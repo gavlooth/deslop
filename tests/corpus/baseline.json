@@ -1,0 +1,32 @@
+{
+  "schema": "deslop.eval-baseline/1",
+  "epsilon": 0.0001,
+  "rules": [
+    { "rule": "comment-block", "precision": 1.0, "recall": 1.0 },
+    { "rule": "consecutive-blank-lines", "precision": 1.0, "recall": 1.0 },
+    { "rule": "duplicate-block", "precision": 1.0, "recall": 1.0 },
+    { "rule": "incompleteness", "precision": 1.0, "recall": 1.0 },
+    { "rule": "let-and-return", "precision": 1.0, "recall": 1.0 },
+    { "rule": "long-method", "precision": 1.0, "recall": 1.0 },
+    { "rule": "magic-number", "precision": 1.0, "recall": 1.0 },
+    { "rule": "narrating-comment", "precision": 1.0, "recall": 1.0 },
+    { "rule": "near-duplicate", "precision": 0.96, "recall": 1.0 },
+    { "rule": "needless-clone", "precision": 0.5, "recall": 1.0 },
+    { "rule": "needless-return", "precision": 0.5, "recall": 1.0 },
+    { "rule": "redundant-closure", "precision": 1.0, "recall": 1.0 },
+    { "rule": "redundant-do", "precision": 1.0, "recall": 1.0 },
+    { "rule": "reimpl-boolean", "precision": 1.0, "recall": 1.0 },
+    { "rule": "reimpl-eachindex", "precision": 1.0, "recall": 1.0 },
+    { "rule": "reimpl-empty?", "precision": 1.0, "recall": 1.0 },
+    { "rule": "reimpl-isempty", "precision": 1.0, "recall": 1.0 },
+    { "rule": "reimpl-isnothing", "precision": 1.0, "recall": 1.0 },
+    { "rule": "reimpl-not=", "precision": 1.0, "recall": 1.0 },
+    { "rule": "reimpl-seq", "precision": 1.0, "recall": 1.0 },
+    { "rule": "reimpl-some?", "precision": 1.0, "recall": 1.0 },
+    { "rule": "reimpl-vec", "precision": 1.0, "recall": 1.0 },
+    { "rule": "single-use-binding", "precision": 1.0, "recall": 1.0 },
+    { "rule": "unused-arg", "precision": 1.0, "recall": 0.0 },
+    { "rule": "unused-binding", "precision": 1.0, "recall": 0.0 },
+    { "rule": "useless-format", "precision": 1.0, "recall": 1.0 }
+  ]
+}

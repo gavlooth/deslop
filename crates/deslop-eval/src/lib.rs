@@ -1,0 +1,371 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result, bail};
+use deslop_analyzer::scan_file;
+use deslop_core::{FileReport, Finding};
+use serde::{Deserialize, Serialize};
+
+const DEFAULT_EPSILON: f64 = 0.0001;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvalManifest {
+    pub schema: String,
+    #[serde(default = "default_epsilon")]
+    pub epsilon: f64,
+    pub cases: Vec<CorpusCase>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorpusCase {
+    pub path: PathBuf,
+    pub label: QualityLabel,
+    pub language: String,
+    pub expectations: Vec<RuleExpectation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum QualityLabel {
+    Clean,
+    Sloppy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuleExpectation {
+    pub rule: String,
+    pub should_fire: bool,
+    pub start_line: Option<usize>,
+    pub end_line: Option<usize>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvalReport {
+    pub schema: String,
+    pub corpus: CorpusSummary,
+    pub overall: RuleScore,
+    pub rules: Vec<RuleScore>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorpusSummary {
+    pub cases: usize,
+    pub clean_cases: usize,
+    pub sloppy_cases: usize,
+    pub languages: BTreeMap<String, usize>,
+    pub expectations_by_rule: BTreeMap<String, RuleExpectationCount>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RuleExpectationCount {
+    pub should_fire: usize,
+    pub should_not_fire: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RuleScore {
+    pub rule: String,
+    pub true_positives: usize,
+    pub false_positives: usize,
+    pub false_negatives: usize,
+    pub precision: f64,
+    pub recall: f64,
+    pub f1: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvalBaseline {
+    pub schema: String,
+    pub epsilon: f64,
+    pub rules: Vec<RuleBaseline>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuleBaseline {
+    pub rule: String,
+    pub precision: f64,
+    pub recall: f64,
+}
+
+pub fn run_eval(corpus_root: &Path) -> Result<EvalReport> {
+    let manifest = read_manifest(corpus_root)?;
+    run_eval_with_manifest(corpus_root, &manifest)
+}
+
+pub fn read_manifest(corpus_root: &Path) -> Result<EvalManifest> {
+    let path = corpus_root.join("manifest.json");
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let manifest: EvalManifest = serde_json::from_str(&text)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+    if manifest.schema != "deslop.eval-manifest/1" {
+        bail!("unsupported eval manifest schema `{}`", manifest.schema);
+    }
+    Ok(manifest)
+}
+
+pub fn read_baseline(corpus_root: &Path) -> Result<EvalBaseline> {
+    let path = corpus_root.join("baseline.json");
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let baseline: EvalBaseline = serde_json::from_str(&text)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+    if baseline.schema != "deslop.eval-baseline/1" {
+        bail!("unsupported eval baseline schema `{}`", baseline.schema);
+    }
+    Ok(baseline)
+}
+
+pub fn assert_baseline(report: &EvalReport, baseline: &EvalBaseline) -> Result<()> {
+    let scores = report
+        .rules
+        .iter()
+        .map(|score| (score.rule.as_str(), score))
+        .collect::<BTreeMap<_, _>>();
+    for expected in &baseline.rules {
+        let Some(score) = scores.get(expected.rule.as_str()) else {
+            bail!("baseline rule `{}` missing from eval report", expected.rule);
+        };
+        let min_precision = expected.precision - baseline.epsilon;
+        let min_recall = expected.recall - baseline.epsilon;
+        if score.precision < min_precision {
+            bail!(
+                "precision for `{}` regressed: {:.4} < baseline {:.4} - epsilon {:.4}",
+                expected.rule,
+                score.precision,
+                expected.precision,
+                baseline.epsilon
+            );
+        }
+        if score.recall < min_recall {
+            bail!(
+                "recall for `{}` regressed: {:.4} < baseline {:.4} - epsilon {:.4}",
+                expected.rule,
+                score.recall,
+                expected.recall,
+                baseline.epsilon
+            );
+        }
+    }
+    Ok(())
+}
+
+pub fn render_eval_json(report: &EvalReport) -> Result<String> {
+    Ok(serde_json::to_string_pretty(report)?)
+}
+
+pub fn render_eval_text(report: &EvalReport) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "corpus: {} cases ({} clean, {} sloppy)\n",
+        report.corpus.cases, report.corpus.clean_cases, report.corpus.sloppy_cases
+    ));
+    out.push_str("languages:\n");
+    for (language, count) in &report.corpus.languages {
+        out.push_str(&format!("  {language:<8} {count}\n"));
+    }
+    out.push_str("\nrule                     tp   fp   fn   precision  recall  f1\n");
+    out.push_str("----------------------------------------------------------------\n");
+    for score in &report.rules {
+        out.push_str(&format!(
+            "{:<24} {:>3} {:>4} {:>4} {:>10.3} {:>7.3} {:>5.3}\n",
+            score.rule,
+            score.true_positives,
+            score.false_positives,
+            score.false_negatives,
+            score.precision,
+            score.recall,
+            score.f1
+        ));
+    }
+    out.push_str("----------------------------------------------------------------\n");
+    out.push_str(&format!(
+        "{:<24} {:>3} {:>4} {:>4} {:>10.3} {:>7.3} {:>5.3}\n",
+        "overall",
+        report.overall.true_positives,
+        report.overall.false_positives,
+        report.overall.false_negatives,
+        report.overall.precision,
+        report.overall.recall,
+        report.overall.f1
+    ));
+    out
+}
+
+fn run_eval_with_manifest(corpus_root: &Path, manifest: &EvalManifest) -> Result<EvalReport> {
+    let mut rule_counts = BTreeMap::<String, RuleScore>::new();
+    let mut summary = CorpusSummary {
+        cases: manifest.cases.len(),
+        clean_cases: 0,
+        sloppy_cases: 0,
+        languages: BTreeMap::new(),
+        expectations_by_rule: BTreeMap::new(),
+    };
+
+    for case in &manifest.cases {
+        match case.label {
+            QualityLabel::Clean => summary.clean_cases += 1,
+            QualityLabel::Sloppy => summary.sloppy_cases += 1,
+        }
+        *summary
+            .languages
+            .entry(case.language.to_owned())
+            .or_default() += 1;
+        for expectation in &case.expectations {
+            let counts = summary
+                .expectations_by_rule
+                .entry(expectation.rule.to_owned())
+                .or_default();
+            if expectation.should_fire {
+                counts.should_fire += 1;
+            } else {
+                counts.should_not_fire += 1;
+            }
+            rule_counts
+                .entry(expectation.rule.to_owned())
+                .or_insert_with(|| empty_score(expectation.rule.to_owned()));
+        }
+
+        let report = scan_file(&corpus_root.join(&case.path))
+            .with_context(|| format!("failed to scan corpus case {}", case.path.display()))?;
+        score_case(case, &report, &mut rule_counts);
+    }
+
+    let mut rules = rule_counts.into_values().collect::<Vec<_>>();
+    for score in &mut rules {
+        finalize_score(score);
+    }
+    let mut overall = RuleScore {
+        rule: "overall".to_string(),
+        true_positives: rules.iter().map(|score| score.true_positives).sum(),
+        false_positives: rules.iter().map(|score| score.false_positives).sum(),
+        false_negatives: rules.iter().map(|score| score.false_negatives).sum(),
+        precision: 0.0,
+        recall: 0.0,
+        f1: 0.0,
+    };
+    finalize_score(&mut overall);
+
+    Ok(EvalReport {
+        schema: "deslop.eval/1".to_string(),
+        corpus: summary,
+        overall,
+        rules,
+    })
+}
+
+fn score_case(
+    case: &CorpusCase,
+    report: &FileReport,
+    rule_counts: &mut BTreeMap<String, RuleScore>,
+) {
+    let mut matched_findings = BTreeSet::new();
+    for expectation in &case.expectations {
+        let match_idx = report
+            .findings
+            .iter()
+            .enumerate()
+            .find(|(idx, finding)| {
+                !matched_findings.contains(idx)
+                    && finding.rule == expectation.rule
+                    && expectation_matches_finding(expectation, finding)
+            })
+            .map(|(idx, _)| idx);
+        let score = rule_counts
+            .entry(expectation.rule.to_owned())
+            .or_insert_with(|| empty_score(expectation.rule.to_owned()));
+        match (expectation.should_fire, match_idx) {
+            (true, Some(idx)) => {
+                score.true_positives += 1;
+                matched_findings.insert(idx);
+            }
+            (true, None) => score.false_negatives += 1,
+            (false, Some(idx)) => {
+                score.false_positives += 1;
+                matched_findings.insert(idx);
+            }
+            (false, None) => {}
+        }
+    }
+
+    for (idx, finding) in report.findings.iter().enumerate() {
+        if matched_findings.contains(&idx) {
+            continue;
+        }
+        rule_counts
+            .entry(finding.rule.to_owned())
+            .or_insert_with(|| empty_score(finding.rule.to_owned()))
+            .false_positives += 1;
+    }
+}
+
+fn expectation_matches_finding(expectation: &RuleExpectation, finding: &Finding) -> bool {
+    let Some(start) = expectation.start_line else {
+        return true;
+    };
+    let end = expectation.end_line.unwrap_or(start);
+    finding.span.start_line <= end && finding.span.end_line >= start
+}
+
+fn empty_score(rule: String) -> RuleScore {
+    RuleScore {
+        rule,
+        ..RuleScore::default()
+    }
+}
+
+fn finalize_score(score: &mut RuleScore) {
+    score.precision = ratio(
+        score.true_positives,
+        score.true_positives + score.false_positives,
+    );
+    score.recall = ratio(
+        score.true_positives,
+        score.true_positives + score.false_negatives,
+    );
+    score.f1 = if (score.precision + score.recall).abs() < f64::EPSILON {
+        0.0
+    } else {
+        2.0 * score.precision * score.recall / (score.precision + score.recall)
+    };
+}
+
+fn ratio(numerator: usize, denominator: usize) -> f64 {
+    if denominator == 0 {
+        1.0
+    } else {
+        numerator as f64 / denominator as f64
+    }
+}
+
+fn default_epsilon() -> f64 {
+    DEFAULT_EPSILON
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn corpus_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus")
+    }
+
+    #[test]
+    fn eval_corpus_matches_quality_baseline() {
+        let root = corpus_root();
+        let report = run_eval(&root).expect("eval report");
+        let baseline = read_baseline(&root).expect("baseline");
+        assert_baseline(&report, &baseline).expect("baseline ratchet");
+    }
+
+    #[test]
+    fn eval_report_renders_text_and_json() {
+        let root = corpus_root();
+        let report = run_eval(&root).expect("eval report");
+        assert!(render_eval_text(&report).contains("precision"));
+        let json = render_eval_json(&report).expect("json");
+        assert!(json.contains("\"schema\": \"deslop.eval/1\""));
+    }
+}

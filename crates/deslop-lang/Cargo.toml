@@ -1,0 +1,14 @@
+[package]
+name = "deslop-lang"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+deslop-core.workspace = true
+tree-sitter.workspace = true
+tree-sitter-clojure.workspace = true
+tree-sitter-julia.workspace = true
+tree-sitter-rust.workspace = true

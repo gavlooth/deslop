@@ -1,0 +1,30 @@
+[package]
+name = "deslop-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "deslop"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+deslop-analyzer.workspace = true
+deslop-core.workspace = true
+deslop-eval.workspace = true
+deslop-fix.workspace = true
+deslop-metrics.workspace = true
+deslop-mcp = { workspace = true, optional = true }
+deslop-protocol.workspace = true
+deslop-report.workspace = true
+deslop-verify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+[features]
+default = []
+mcp = ["dep:deslop-mcp"]

@@ -1,0 +1,50 @@
+[workspace]
+members = [
+  "crates/deslop-core",
+  "crates/deslop-lang",
+  "crates/deslop-parse",
+  "crates/deslop-analyzer",
+  "crates/deslop-eval",
+  "crates/deslop-metrics",
+  "crates/deslop-mcp",
+  "crates/deslop-external",
+  "crates/deslop-protocol",
+  "crates/deslop-verify",
+  "crates/deslop-report",
+  "crates/deslop-fix",
+  "crates/deslop-cli",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://example.invalid/deslop"
+
+[workspace.dependencies]
+anyhow = "1"
+clap = { version = "4.5", features = ["derive"] }
+ignore = "0.4"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+toml = "0.8"
+tree-sitter = "0.25.10"
+tree-sitter-clojure = "0.1.0"
+tree-sitter-julia = "0.23.1"
+tree-sitter-rust = "0.24.2"
+
+deslop-core = { path = "crates/deslop-core" }
+deslop-lang = { path = "crates/deslop-lang" }
+deslop-parse = { path = "crates/deslop-parse" }
+deslop-analyzer = { path = "crates/deslop-analyzer" }
+deslop-eval = { path = "crates/deslop-eval" }
+deslop-metrics = { path = "crates/deslop-metrics" }
+deslop-mcp = { path = "crates/deslop-mcp" }
+deslop-external = { path = "crates/deslop-external" }
+deslop-protocol = { path = "crates/deslop-protocol" }
+deslop-verify = { path = "crates/deslop-verify" }
+deslop-report = { path = "crates/deslop-report" }
+deslop-fix = { path = "crates/deslop-fix" }

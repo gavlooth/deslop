@@ -1,0 +1,210 @@
+{
+  "schema": "deslop.eval-manifest/1",
+  "epsilon": 0.0001,
+  "cases": [
+    {
+      "path": "sloppy/clojure_idioms.clj",
+      "label": "sloppy",
+      "language": "clojure",
+      "expectations": [
+        { "rule": "reimpl-not=", "should_fire": true, "start_line": 4, "end_line": 4, "note": "not equals reimplementation" },
+        { "rule": "reimpl-some?", "should_fire": true, "start_line": 5, "end_line": 5, "note": "not nil reimplementation" },
+        { "rule": "reimpl-boolean", "should_fire": true, "start_line": 6, "end_line": 6, "note": "if true false boolean coercion" },
+        { "rule": "redundant-do", "should_fire": true, "start_line": 9, "end_line": 9, "note": "do under when" },
+        { "rule": "reimpl-empty?", "should_fire": true, "start_line": 12, "end_line": 12, "note": "count equals zero" },
+        { "rule": "reimpl-seq", "should_fire": true, "start_line": 13, "end_line": 13, "note": "count greater than zero" },
+        { "rule": "reimpl-vec", "should_fire": true, "start_line": 14, "end_line": 14, "note": "into []" },
+        { "rule": "single-use-binding", "should_fire": true, "start_line": 17, "end_line": 17, "note": "let binding used once" }
+      ]
+    },
+    {
+      "path": "sloppy/comments_and_blanks.clj",
+      "label": "sloppy",
+      "language": "clojure",
+      "expectations": [
+        { "rule": "narrating-comment", "should_fire": true, "start_line": 4, "end_line": 4, "note": "comment narrates return" },
+        { "rule": "consecutive-blank-lines", "should_fire": true, "start_line": 6, "end_line": 7, "note": "two blank lines" },
+        { "rule": "comment-block", "should_fire": true, "start_line": 10, "end_line": 13, "note": "four line narration block" }
+      ]
+    },
+    {
+      "path": "sloppy/julia_idioms.jl",
+      "label": "sloppy",
+      "language": "julia",
+      "expectations": [
+        { "rule": "reimpl-isempty", "should_fire": true, "start_line": 4, "end_line": 4, "note": "isempty equals true" },
+        { "rule": "reimpl-eachindex", "should_fire": true, "start_line": 5, "end_line": 5, "note": "1:length indexing" },
+        { "rule": "reimpl-isnothing", "should_fire": true, "start_line": 8, "end_line": 8, "note": "nothing equality" }
+      ]
+    },
+    {
+      "path": "sloppy/unused.jl",
+      "label": "sloppy",
+      "language": "julia",
+      "expectations": [
+        { "rule": "unused-arg", "should_fire": true, "start_line": 3, "end_line": 3, "note": "external StaticLint-confirmed unused argument" },
+        { "rule": "unused-binding", "should_fire": true, "start_line": 8, "end_line": 8, "note": "external StaticLint-confirmed unused binding" }
+      ]
+    },
+    {
+      "path": "sloppy/rust_idioms.rs",
+      "label": "sloppy",
+      "language": "rust",
+      "expectations": [
+        { "rule": "needless-return", "should_fire": true, "start_line": 2, "end_line": 2, "note": "tail return" },
+        { "rule": "useless-format", "should_fire": true, "start_line": 6, "end_line": 6, "note": "format empty display" },
+        { "rule": "redundant-closure", "should_fire": true, "start_line": 10, "end_line": 10, "note": "closure forwards argument" },
+        { "rule": "needless-clone", "should_fire": true, "start_line": 18, "end_line": 18, "note": "clone may be unnecessary" },
+        { "rule": "magic-number", "should_fire": true, "start_line": 22, "end_line": 22, "note": "unnamed answer literal" },
+        { "rule": "let-and-return", "should_fire": true, "start_line": 22, "end_line": 23, "note": "binding returned immediately" }
+      ]
+    },
+    {
+      "path": "sloppy/duplication.rs",
+      "label": "sloppy",
+      "language": "rust",
+      "expectations": [
+        { "rule": "magic-number", "should_fire": true, "start_line": 4, "end_line": 4, "note": "unnamed adjustment literal in copied logic" },
+        { "rule": "duplicate-block", "should_fire": true, "start_line": 9, "end_line": 14, "note": "exact behavioral copy" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 17, "end_line": 22, "note": "renamed behavioral copy" }
+      ]
+    },
+    {
+      "path": "sloppy/slop_rust.rs",
+      "label": "sloppy",
+      "language": "rust",
+      "expectations": [
+        { "rule": "incompleteness", "should_fire": true, "start_line": 2, "end_line": 2, "note": "Rust todo stub" },
+        { "rule": "magic-number", "should_fire": true, "start_line": 6, "end_line": 6, "note": "unnamed domain literal" },
+        { "rule": "long-method", "should_fire": true, "start_line": 9, "end_line": 51, "note": "long function body" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 14, "end_line": 17, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 18, "end_line": 21, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 22, "end_line": 25, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 26, "end_line": 29, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 30, "end_line": 33, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 34, "end_line": 38, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 38, "end_line": 42, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 43, "end_line": 46, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 46, "end_line": 49, "note": "repeated step chain" },
+        { "rule": "let-and-return", "should_fire": true, "start_line": 49, "end_line": 50, "note": "binding returned immediately" }
+      ]
+    },
+    {
+      "path": "sloppy/slop_clojure.clj",
+      "label": "sloppy",
+      "language": "clojure",
+      "expectations": [
+        { "rule": "incompleteness", "should_fire": true, "start_line": 4, "end_line": 4, "note": "Clojure TODO throw" },
+        { "rule": "magic-number", "should_fire": true, "start_line": 7, "end_line": 7, "note": "unnamed domain literal" },
+        { "rule": "long-method", "should_fire": true, "start_line": 9, "end_line": 50, "note": "long function body" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 14, "end_line": 17, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 18, "end_line": 22, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 22, "end_line": 26, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 26, "end_line": 30, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 30, "end_line": 34, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 34, "end_line": 38, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 39, "end_line": 42, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 43, "end_line": 47, "note": "repeated step chain" }
+      ]
+    },
+    {
+      "path": "sloppy/slop_julia.jl",
+      "label": "sloppy",
+      "language": "julia",
+      "expectations": [
+        { "rule": "incompleteness", "should_fire": true, "start_line": 4, "end_line": 4, "note": "Julia TODO error" },
+        { "rule": "magic-number", "should_fire": true, "start_line": 8, "end_line": 8, "note": "unnamed domain literal" },
+        { "rule": "long-method", "should_fire": true, "start_line": 11, "end_line": 53, "note": "long function body" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 17, "end_line": 21, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 22, "end_line": 26, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 27, "end_line": 32, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 32, "end_line": 37, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 37, "end_line": 42, "note": "repeated step chain" },
+        { "rule": "near-duplicate", "should_fire": true, "start_line": 43, "end_line": 47, "note": "repeated step chain" }
+      ]
+    },
+    {
+      "path": "sloppy/narration.rs",
+      "label": "sloppy",
+      "language": "rust",
+      "expectations": [
+        { "rule": "narrating-comment", "should_fire": true, "start_line": 2, "end_line": 2, "note": "Rust comment restates return" }
+      ]
+    },
+    {
+      "path": "sloppy/narration.jl",
+      "label": "sloppy",
+      "language": "julia",
+      "expectations": [
+        { "rule": "narrating-comment", "should_fire": true, "start_line": 2, "end_line": 2, "note": "Julia comment restates calculation" }
+      ]
+    },
+    {
+      "path": "clean/clojure_clean.clj",
+      "label": "clean",
+      "language": "clojure",
+      "expectations": [
+        { "rule": "duplicate-block", "should_fire": false, "start_line": 1, "end_line": 12, "note": "legitimate ns/def structural repetition" },
+        { "rule": "near-duplicate", "should_fire": false, "start_line": 1, "end_line": 12, "note": "legitimate ns/def structural repetition" },
+        { "rule": "single-use-binding", "should_fire": false, "start_line": 18, "end_line": 20, "note": "binding reused" }
+      ]
+    },
+    {
+      "path": "clean/julia_clean.jl",
+      "label": "clean",
+      "language": "julia",
+      "expectations": [
+        { "rule": "duplicate-block", "should_fire": false, "start_line": 1, "end_line": 14, "note": "structural using/field repetition" },
+        { "rule": "near-duplicate", "should_fire": false, "start_line": 1, "end_line": 14, "note": "structural using/field repetition" },
+        { "rule": "reimpl-isempty", "should_fire": false, "start_line": 17, "end_line": 17, "note": "idiomatic isempty" },
+        { "rule": "reimpl-eachindex", "should_fire": false, "start_line": 18, "end_line": 18, "note": "idiomatic eachindex" },
+        { "rule": "reimpl-isnothing", "should_fire": false, "start_line": 19, "end_line": 19, "note": "idiomatic isnothing" }
+      ]
+    },
+    {
+      "path": "clean/rust_clean.rs",
+      "label": "clean",
+      "language": "rust",
+      "expectations": [
+        { "rule": "duplicate-block", "should_fire": false, "start_line": 1, "end_line": 11, "note": "legitimate derive/field structural repetition" },
+        { "rule": "near-duplicate", "should_fire": false, "start_line": 1, "end_line": 11, "note": "legitimate derive/field structural repetition" },
+        { "rule": "needless-return", "should_fire": false, "start_line": 14, "end_line": 14, "note": "explicit tail return labeled clean for precision measurement" },
+        { "rule": "needless-clone", "should_fire": false, "start_line": 18, "end_line": 18, "note": "ownership-required clone" },
+        { "rule": "needless-return", "should_fire": false, "start_line": 23, "end_line": 23, "note": "early return guard" }
+      ]
+    },
+    {
+      "path": "clean/slop_clean.rs",
+      "label": "clean",
+      "language": "rust",
+      "expectations": [
+        { "rule": "incompleteness", "should_fire": false, "start_line": 1, "end_line": 14, "note": "complete Rust implementation" },
+        { "rule": "magic-number", "should_fire": false, "start_line": 1, "end_line": 14, "note": "named constant and small allowed numbers" },
+        { "rule": "long-method", "should_fire": false, "start_line": 1, "end_line": 14, "note": "small functions" },
+        { "rule": "narrating-comment", "should_fire": false, "start_line": 12, "end_line": 12, "note": "why-comment" }
+      ]
+    },
+    {
+      "path": "clean/slop_clean.clj",
+      "label": "clean",
+      "language": "clojure",
+      "expectations": [
+        { "rule": "incompleteness", "should_fire": false, "start_line": 1, "end_line": 13, "note": "complete Clojure implementation" },
+        { "rule": "magic-number", "should_fire": false, "start_line": 1, "end_line": 13, "note": "named constant and small allowed numbers" },
+        { "rule": "long-method", "should_fire": false, "start_line": 1, "end_line": 13, "note": "small functions" },
+        { "rule": "narrating-comment", "should_fire": false, "start_line": 12, "end_line": 12, "note": "why-comment" }
+      ]
+    },
+    {
+      "path": "clean/slop_clean.jl",
+      "label": "clean",
+      "language": "julia",
+      "expectations": [
+        { "rule": "incompleteness", "should_fire": false, "start_line": 1, "end_line": 18, "note": "complete Julia implementation" },
+        { "rule": "magic-number", "should_fire": false, "start_line": 1, "end_line": 18, "note": "named constant and small allowed numbers" },
+        { "rule": "long-method", "should_fire": false, "start_line": 1, "end_line": 18, "note": "small functions" },
+        { "rule": "narrating-comment", "should_fire": false, "start_line": 14, "end_line": 14, "note": "why-comment" }
+      ]
+    }
+  ]
+}

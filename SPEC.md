@@ -1,0 +1,458 @@
+# `deslop` — Specification (Rust implementation)
+
+**Status:** Draft v0.4 · 2026-06-23
+**Author:** spec drafted with Claude (Opus 4.8); adversarially reviewed with Codex (gpt-5.5)
+**One line:** A deterministic code-bloat **analyzer** whose product is rich, **agent-ready
+output** — it *proposes* behavior-preserving cleanups and *verifies/applies* the patches
+that come back. Any LLM is a **swappable, external consumer**, never a dependency.
+
+> **v0.4 change — the analyzer + its output is the product; the LLM is ad-hoc.** v0.3 still
+> treated a bundled LLM (`slim`) as a pipeline pillar. It isn't. The moat is the
+> deterministic analyzer and an **LLM-friendly output format** that lets *any* agent
+> (Claude Code, Cursor, Codex, a CI bot — or the optional built-in consumer) do the rewrite.
+> What deslop must own on **both ends** is the contract: **`propose`** (work orders) and
+> **`verify`/`apply`** (the deterministic safety gate). The LLM is the swappable middle. The
+> tool is fully useful with the LLM feature compiled out. This mirrors `fallow`'s
+> "No AI inside the analyzer, but agent-ready" stance.
+>
+> Retained from v0.3: the **fix-safety lattice** (§3) and the counterexamples that justify
+> it. Deviation from the original "auto-fix in place": only `safe-auto` writes in place;
+> everything else is propose → verify → apply.
+
+---
+
+## 1. Thesis & positioning
+
+| Tool | Lang | Analyzer | Agent-ready output | Bundled LLM | Verify/apply loop | CLJ/Julia |
+|---|---|---|---|---|---|---|
+| `fallow` | Rust | strong | yes (JSON/MCP/LSP) | No (by design) | partial (`fix --dry-run`) | No |
+| `antislop` | Rust | medium | JSON | No | No | No |
+| Claude "clean-ai-slop" skills | — | none | — | Yes (in-harness) | No | partial |
+| **`deslop`** | Rust | strong | **first-class (work orders + MCP)** | **optional/swappable** | **yes (`verify`/`apply`)** | **yes** |
+
+**Thesis.** The winning artifact is *not* "a tool with an LLM in it." It is **a precise
+analyzer + an output an LLM can act on + a deterministic gate that checks the LLM's work.**
+deslop owns the deterministic ends; the model in the middle is interchangeable.
+
+The AI-slop catalog is empirical, not provenance-based. Recent smell-taxonomy work on
+LLM-generated code reports that implementation smells dominate the measured gap, with an
+average implementation-smell increase of roughly 73% per task
+(https://arxiv.org/abs/2510.03029). deslop uses that evidence to prioritize intrinsic,
+baseline-free cleanup rules such as stubs, magic numbers, long methods, duplication, and
+over-narration. It is **not** an AI-authorship detector: clean code should pass whether a
+human or model wrote it, and sloppy code should be fixable regardless of provenance.
+
+### Goals
+- A genuine analyzer (tree-sitter CST + scope/ref graph + token duplication + complexity),
+  Clojure/Julia/Rust first-class by consuming clj-kondo / StaticLint or JET / clippy.
+- **Report broadly; auto-fix narrowly** (only provably behavior-preserving edits, in place).
+- A **machine/agent output** rich enough to rewrite from without re-deriving anything.
+- A **`propose → verify → apply`** loop so the safety contract survives even when the LLM
+  is external and unknown to deslop.
+- Adoptable on bloated repos via baseline/ratchet. No telemetry. LLM feature optional.
+
+### Non-goals
+Not a formatter, not a type checker, not an LLM wrapper. The bundled consumer is a demo.
+
+---
+
+## 2. Tiered analysis (deterministic) → external rewrite (swappable)
+
+```
+ T0 PARSE      tree-sitter CST → nodes, spans, comments, byte ranges
+ T1 SEMANTIC   locals.scm scope/ref graph (unused/single-use); token suffix-automaton
+               duplication; CST branch-count complexity; AST idiom matching
+ T2 EXTERNAL   Clojure: clj-kondo JSON (authoritative). Julia (opt): StaticLint/JET.
+               Rust (opt): clippy JSON (machine-applicable lint confirmation).
+ ───────────────────────────────────────────────────────────────────────────────────
+ OUTPUTS:  scan → findings (text / json / sarif / AGENT work-orders)
+           fix  → safe-auto + analyzer-confirmed edits, in place
+           propose → work orders for non-deterministic findings  ──┐
+                                                                    ▼
+                              [ ANY LLM / AGENT — external, swappable, ad-hoc ]
+                                                                    │ returns a patch
+           verify ◄───────────────────────────────────────────────┘
+           apply  = verify (parse + --check-cmd + defensive-guard) then atomic write
+```
+
+The deterministic tiers (T0–T2) and the `verify`/`apply` gate are deslop. The rewrite step
+is *outside* the trust boundary — which is exactly why `verify` must be deterministic, local,
+and mandatory before any non-`safe-auto` write.
+
+---
+
+## 3. The fix-safety lattice (retained spine)
+
+Every rule has a **safety class**. `scan` reports all; `fix`/`apply` key off it.
+
+| class | meaning | in-place by `fix`? | to apply otherwise |
+|---|---|---|---|
+| `safe-auto` | behavior-preserving under **all** syntactic conditions | **yes** | — |
+| `analyzer-confirmed` | safe **iff** clj-kondo/StaticLint/JET/clippy confirms the fact | yes, iff T2 confirms | — |
+| `safe-with-precondition` | safe only under a stated, not-always-checkable precondition | no (suggest) | `apply` with passing `--check-cmd` |
+| `risky-suggest` | plausible but real semantic surface | no (suggest) | `apply` with `--check-cmd` |
+| `llm-only` | needs judgment; no deterministic edit | no | `propose` → LLM → `verify`/`apply` |
+| `never-auto` | report only | never | — |
+
+Canonical counterexamples that forbid "obvious" auto-fixes:
+- **CLJ `(= (count x) 0)`→`(empty? x)`** changes termination on infinite/lazy `x` ⇒
+  `safe-with-precondition` (finite/countable).
+- **Julia `1:length(x)`→`eachindex(x)`** is wrong for `OffsetArrays`/ordinal use ⇒
+  `safe-with-precondition` (1-based, positional).
+
+Each non-`safe-auto` rule ships a machine-readable **precondition** + **counterexample** +
+**default**, surfaced in `deslop rules` and in every work order.
+
+---
+
+## 4. The `propose → verify → apply` loop  *(new core)*
+
+This is how "the repo proposes to the LLM" works without losing safety.
+
+1. **`deslop propose`** emits **work orders** (§5) for findings that have no `safe-auto`
+   edit — one self-contained unit per region: the region source, the findings inside it
+   (rule, message, safety class, precondition), and an explicit **instruction** +
+   **acceptance contract** (`check_cmd`, "must still parse", "must not delete error
+   handling", "must not add public defs"). No model is called.
+2. **Any agent** (external Claude Code/Cursor/Codex session, a CI script, or the optional
+   bundled consumer) reads the work orders and returns **patches** in deslop's patch schema
+   (§5): region fingerprint + replacement text.
+3. **`deslop verify`** ingests patches and runs the **deterministic gate** — re-parse
+   (tree-sitter/balance), the `--check-cmd` (tests/typecheck/clj-kondo re-lint), the
+   defensive-code guard, and the size/scope guards — reporting pass/fail per patch. Writes
+   nothing.
+   With `--coverage`, the gate uses registry-driven `CoverageProvider`s: Rust via
+   `cargo-llvm-cov` LCOV, Clojure via cloverage JSON/EDN, Julia via Coverage.jl `.cov`/LCOV,
+   and Python via coverage.py JSON/XML. Missing tools degrade to `coverage-unknown`; they never
+   fail verification by themselves.
+4. If the verifier verdict is `coverage-unknown`, `untested-risky`, or `dead-candidate`, the
+   oracle is too weak to trust deletion. **`deslop characterize --patches ...`** emits
+   `needs-characterization-test` work orders. An external agent writes the test, then
+   **`deslop verify-characterization --tests ... --check-cmd ...`** accepts it only if it
+   compiles and passes on the current unmodified code. Accepted characterization tests can be
+   passed to `verify`/`apply` with `--characterization-tests`; deslop writes them into the temp
+   project and requires the same `--check-cmd` to pass after the patch.
+5. **`deslop apply`** = `verify` + atomic write (`*.deslop.bak`, `undo`-able), skipping any
+   patch that fails the gate.
+
+The model is interchangeable because the contract is carried *in the data* (work order out,
+patch in) and the gate is owned by deslop. Swap Claude for Codex for a local model — the
+safety guarantees are unchanged.
+
+---
+
+## 5. Agent-ready output / protocol (`deslop-protocol`)  *(new, first-class)*
+
+The **work-order** (proposal) and **patch** (ingest) schemas are the product surface.
+Stable, versioned, emitted by `--format agent` (JSONL) and over MCP.
+
+```jsonc
+// WORK ORDER  (deslop propose / scan --format agent)
+{ "schema": "deslop.workorder/1",
+  "kind": "rewrite-region | needs-characterization-test",
+  "id": "wo_<fingerprint>",
+  "path": "src/core.clj",
+  "region": { "start_line": 40, "end_line": 71, "text": "<exact region source>" },
+  "findings": [
+    { "rule": "duplicate-block", "severity": "major", "safety": "llm-only",
+      "message": "lines 44-58 duplicate src/io.clj:12-26",
+      "precondition": null }
+  ],
+  "instruction": "Rewrite the region to remove the flagged bloat without changing behavior or the public API. Preserve language and indentation.",
+  "contract": { "must_parse": true, "no_new_public_defs": true,
+                "keep_error_handling": true, "max_growth_ratio": 1.0,
+                "check_cmd": "clojure -M:test" } }
+
+// PATCH  (input to deslop verify / apply)
+{ "schema": "deslop.patch/1",
+  "workorder_id": "wo_<fingerprint>",
+  "region_fingerprint": "<fingerprint>",   // must match current bytes or verify rejects
+  "replacement": "<rewritten region source>",
+  "by": "claude-code | cursor | codex | deslop-slim | human" }
+
+// CHARACTERIZATION TEST  (input to deslop verify-characterization and optional verify/apply gate)
+{ "schema": "deslop.characterization-test/1",
+  "workorder_id": "wo_<fingerprint>",
+  "region_fingerprint": "<fingerprint>",
+  "test_path": "tests/characterization_test.clj",
+  "test_text": "<test source written by an external agent>",
+  "by": "claude-code | cursor | codex | human" }
+```
+
+- `scan --format agent` / `propose` produce work orders; `verify`/`apply` consume patches.
+- `characterize` produces `needs-characterization-test` work orders for weak-oracle verifier
+  verdicts; `verify-characterization` consumes submitted tests and rejects tests that fail on
+  current unmodified code.
+- Same surface is exposed as **MCP** tools/resources (`list_workorders`, `submit_patch`)
+  so an in-loop agent calls deslop directly (§9).
+- `region_fingerprint` mismatch ⇒ the file changed under the patch ⇒ reject (no stale write).
+
+---
+
+## 6. Core types (`deslop-core`)
+
+```rust
+pub enum Severity { Info, Minor, Major }
+pub enum SafetyClass { SafeAuto, AnalyzerConfirmed, SafeWithPrecondition,
+                       RiskySuggest, LlmOnly, NeverAuto }
+pub enum DetectedBy { TreeSitter, ScopeGraph, Duplication, Complexity,
+                      Idiom, CljKondo, JuliaAnalyzer, RustAnalyzer }
+
+pub struct Finding {
+    pub path: PathBuf, pub span: Span, pub rule: &'static str,
+    pub severity: Severity, pub safety: SafetyClass, pub detected_by: DetectedBy,
+    pub message: String, pub suggestion: String,
+    pub precondition: Option<&'static str>,
+    pub edit: Option<Edit>,        // Some only for safe-auto / analyzer-confirmed
+    pub fingerprint: u64,          // stable: rule + norm-path + span-shape + node-text
+}
+pub struct Edit { pub splices: Vec<Splice>, pub kind: EditKind }   // ropey, fmt-preserving
+pub enum Lang { Clojure, Julia, Rust, Python, Generic }
+```
+
+## 6a. Plugin architecture (`LangPack`, `Rule`, `ExternalAnalyzer`)
+
+Language support is a registry-driven plugin boundary, not a pile of core `match`
+arms. `deslop-lang` is the low crate shared by parsing and analysis; it owns path
+detection, tree-sitter grammar selection, CST region extraction, and comment syntax.
+`deslop-parse` and `deslop-analyzer` query this registry rather than switching on
+`Lang`. Analyzer rule packs and external analyzers attach to the same stable `Lang`
+id. Adding low-level language behavior should require only a new pack module plus one
+registry registration line.
+
+```rust
+pub trait LangPack {
+    fn name(&self) -> &'static str;
+    fn lang(&self) -> Lang;
+    fn extensions(&self) -> &'static [&'static str];      // detection
+    fn grammar(&self) -> Option<TreeSitterGrammar>;       // parse + ERROR-node check
+    fn line_comments(&self) -> &'static [&'static str];   // tokenizer/comment rules
+    fn enclosing_region(&self, node: Node, text: &str) -> Option<RegionSpan>;
+}
+
+pub trait Rule {
+    fn name(&self) -> &'static str;
+    fn check(&self, source: &SourceFile, cfg: AnalyzerConfig) -> Vec<Finding>;
+}
+
+pub trait ExternalAnalyzer {
+    fn name(&self) -> &'static str;
+    fn covered_rules(&self) -> &'static [&'static str];
+    fn analyze(&self, path: &Path, source: &SourceFile) -> Result<ExternalFindings>;
+}
+```
+
+External analyzers are all the same shape: subprocess + machine-readable output →
+`Finding`s, with graceful degradation when the executable or analyzer package is absent.
+`clj-kondo`, `clippy`, and Julia StaticLint/JET adapters share this contract. When an
+external analyzer is available, covered built-in rules are suppressed to avoid
+double-reporting.
+
+---
+
+## 7. Rule catalog (class-tagged; `scan` reports all)
+
+**Scope/dead-code** (T1 `locals.scm`, upgraded by T2): `unused-import/require`,
+`unused-private-def`, `unused-binding` → `analyzer-confirmed` (else `risky-suggest`);
+`single-use-binding`, `unreachable-form` → `risky-suggest`; `unused-public-def` →
+`never-auto` (candidate). **Duplication** (token suffix-automaton): `duplicate-block`,
+`near-duplicate` → `llm-only`. **Complexity/shape**: `high-cyclomatic`, `deep-nesting`,
+`long-method` → `llm-only`.
+
+**Clojure idioms** — `safe-auto`: `reimpl-not=` `(not (= …))→(not= …)`, `reimpl-some?`
+`(not (nil? x))→(some? x)`, `reimpl-boolean` `(if x true false)→(boolean x)`, `redundant-do`
+`(when c (do …))→(when c …)`. `safe-with-precondition`: `reimpl-empty?`, `reimpl-seq`,
+`reimpl-vec` (finite coll). `risky-suggest`: `threading-opportunity`.
+
+**Julia idioms** — `safe-with-precondition`: `explicit-return` (AST tail position),
+`reimpl-isempty` (well-behaved collection), `reimpl-eachindex` (1-based/positional).
+`risky-suggest`: `reimpl-isnothing` (`==` overloadable), `trivial-fn-block`. Optional
+StaticLint JSON upgrades `unused-arg`/`unused-binding` to `analyzer-confirmed`; StaticLint
+missing references and JET diagnostics are report-only/`never-auto`.
+
+**Rust idioms** — `safe-with-precondition`: `needless-return` (tail-position
+`return x;`→`x`), `useless-format` (`format!("{}", x)`→`x.to_string()`). `risky-suggest`:
+`redundant-closure` (`|x| f(x)`→`f`), `let-and-return`. `llm-only`: `needless-clone`
+(`.clone()` where a borrow may suffice). Optional clippy JSON upgrades covered lints to
+`analyzer-confirmed`.
+
+**Intrinsic slop** — `llm-only`: `incompleteness` (stubs/placeholders/TODO implementation
+holes), `long-method`; `risky-suggest`: `magic-number` (inline numeric literals without a
+named constant, excluding conventional tiny values). `slop-score` is a report metric, not an
+edit rule: it summarizes weighted slop-rule density per file/repo.
+
+**Comment/structure** — `llm-only`: `narrating-comment`, `comment-block` (≥4 lines, not
+header). `safe-auto`: `consecutive-blank-lines` (collapse).
+
+> The only unconditional in-place auto-fixes: blank-line collapse + four exact CLJ idioms.
+
+---
+
+## 8. Commands (`deslop-cli`)
+
+```
+deslop scan     [PATHS…] [--format text|json|sarif|agent] [--baseline FILE] [--since REF] [--fail-on major] [--julia-external[=staticlint|jet|off]] [--julia-project DIR]
+deslop metrics  [PATHS…] [--format text|json] [--hotspots-only] [--sigma N]
+deslop health   [PATHS…] [--format text|json] [--hotspots-only] [--sigma N] # alias
+deslop slop     [PATHS…] [--format text|json]                 # weighted slop score
+deslop fix      [PATHS…] [--dry-run] [--no-backup] [--yes]      # safe-auto (+analyzer-confirmed) only
+deslop propose  [PATHS…] [-o workorders.jsonl] [--julia-external[=staticlint|jet|off]] [--julia-project DIR] # emit work orders
+deslop characterize --patches FILE [-o workorders.jsonl] [--check-cmd "CMD"] [--coverage] [--mutation]
+deslop verify-characterization --tests FILE --check-cmd "CMD"
+deslop verify   --patches FILE  [--check-cmd "CMD"] [--coverage] [--mutation] [--characterization-tests FILE] # run the gate; write nothing
+deslop apply    --patches FILE  [--check-cmd "CMD"] [--coverage] [--mutation] [--characterization-tests FILE] [--no-backup] [--yes]   # verify then write
+deslop baseline write [PATHS…] [-o deslop-baseline.json]
+deslop undo     [PATHS…]
+deslop mcp                                                      # feature=mcp stdio MCP server
+deslop rules                                                   # class, precondition, counterexample
+deslop slim     [PATHS…] [--model M] [--apply] [--check-cmd "CMD"]   # OPTIONAL bundled consumer (feature=llm)
+```
+
+- **`scan`**: `ignore`-walk; `--since` = changed files only; `--baseline` suppresses known
+  findings and **fails CI only on new slop** (ratchet). Heavy external analyzers are
+  opt-in; `--julia-external` selects StaticLint by default and `--julia-project` passes
+  `julia --project=...`.
+- **`metrics`/`health`**: computes per-region complexity and expressivity metrics, ranks
+  repo-relative bloat hotspots, and emits text or JSON.
+- **`fix`**: deterministic `safe-auto`/`analyzer-confirmed` in place, right-to-left CST
+  splices, idempotent, backup + `undo`.
+- **`propose`/`verify`/`apply`**: the swappable-LLM loop (§4). `verify`/`apply` are the
+  trust boundary; they run with **no network** and need no model.
+- **`mcp`**: feature-gated stdio MCP server exposing `scan`, `propose`, `verify`,
+  `apply`, `metrics`, and `rules` as tools for in-loop agents.
+- **`slim`**: thin reference consumer — `propose` → bundled Anthropic call → `apply`.
+  Feature-gated (`--features llm`); the binary builds and ships without it.
+
+---
+
+## 9. Metrics / health
+
+`deslop metrics` measures bloat-prone regions, not just rule findings. It is built on
+`LangPack`: each pack declares metric region node kinds, branch node kinds,
+nesting/control-flow node kinds, line-comment tokens, and Halstead operator tokens.
+`deslop-parse` supplies the CST; languages without a grammar use text-only metrics.
+
+Per region:
+- **Complexity:** cyclomatic (`branch_count + 1`), cognitive control/nesting/flow-break
+  score, max nesting, NLOC, Halstead Volume/Difficulty/Effort, Maintainability Index
+  normalized 0-100.
+- **Expressivity / density:** decision density (`cyclomatic / tokens`), unique-token
+  ratio, comment-to-code ratio, and a compression/redundancy proxy.
+- **Compression proxy:** currently byte entropy normalized to `0.0..1.0`, chosen to avoid
+  a compression dependency while still flagging repetitive low-information regions.
+
+After scanning, metrics are compared against the run's own distribution. A hotspot is a
+region at least `--sigma` standard deviations from the repo median on high complexity or
+low expressivity. Low-expressivity checks require a minimum token count to avoid tiny helper
+false positives. Ranked hotspots are `llm-only` cleanup candidates for future slim/MCP
+workflows; metrics itself does not rewrite code.
+
+---
+
+## 10. MCP and optional LLM reference consumer (`deslop-mcp`, `deslop-slim`)
+
+`deslop-mcp` is the preferred integration: an in-loop coding agent lists tools, requests
+findings/work orders, rewrites regions, and submits patches that deslop verifies. It is a
+feature-gated stdio MCP server (`--features mcp`) and is network-free: it only runs the
+deterministic analyzer, protocol serializer, metrics engine, and `deslop-verify` gate.
+It implements the core JSON-RPC MCP methods needed by coding agents:
+`initialize`, `tools/list`, and `tools/call`. Tool payloads reuse the existing
+`deslop.findings/1`, `deslop.workorder/1`, `deslop.patch/1`,
+`deslop.characterization-test/1`, `deslop.verify/1`, `deslop.apply/1`, and
+`deslop.metrics/1` schemas.
+
+`slim` exists to prove the loop and to serve users with no agent harness. It is ~a loop:
+`propose` → POST each work order to Anthropic Messages (via `ureq`, key `ANTHROPIC_API_KEY`,
+default `claude-sonnet-4-6`, `temperature 0`) → feed patches to `apply`. It enforces nothing
+the core doesn't; all guarantees live in `verify`. Removing the crate removes a feature, not
+a guarantee. `.deslopignore-llm` + first-run consent govern source leaving the machine.
+
+---
+
+## 11. Architecture (Rust workspace)
+
+```
+crates/
+  deslop-core/       # Finding, SafetyClass, Edit, Span, Lang, fingerprint
+  deslop-lang/       # LangPack registry: detection, grammar, region, comment syntax
+  deslop-parse/      # SourceFile + tree-sitter parse calls via deslop-lang
+  deslop-analyzer/   # T1: scope graph, duplication, complexity, idiom rules
+  deslop-metrics/    # per-region complexity/expressivity + hotspot ranking
+  deslop-external/   # T2: clj-kondo / clippy / StaticLint/JET adapters (subprocess; graceful degrade)
+  deslop-fix/        # safe-auto / analyzer-confirmed CST edits (ropey)
+  deslop-protocol/   # work-order + patch schemas (serde); --format agent
+  deslop-verify/     # the deterministic gate: parse + check-cmd + defensive/scope guards
+  deslop-report/     # text / json / sarif renderers
+  deslop-cli/        # orchestration, exit codes
+  deslop-mcp/        # feature=mcp stdio MCP tools over protocol/verify
+  deslop-slim/       # bundled Anthropic reference consumer    (optional, feature=llm)
+```
+
+`core/parse/analyzer/fix/protocol/verify` have **no network deps**. `mcp` is optional,
+network-free, and depends only on deterministic deslop crates. `slim` is optional and is the
+only bundled network consumer.
+
+---
+
+## 12. Baseline, output, config, safety, deps
+- **Baseline/ratchet** (M1): `baseline write`; `scan --baseline` fails CI only on new
+  `fingerprint`s. Gates reporting/CI only — **never weakens `fix`/`apply`**.
+- **Output:** text (shows `class`+`detected_by`), JSON, SARIF 2.1.0, **agent JSONL** (§5).
+- **Config** `deslop.toml`: `[scan]`, `[metrics] sigma=2.0`, `[fix]`, `[external] clj_kondo=auto|off clippy=off|on julia_analyzer=off|staticlint|jet julia_project="..."`, `[analyzer]`
+  thresholds, `[verify] check_cmd/defensive_guard`, `[slim] model`. Inline `deslop-ignore`.
+- **Safety:** `verify` owns the gate; `*.deslop.bak` + `undo`; `git`/`jj` dirty check;
+  atomic temp+rename; `region_fingerprint` guards against stale patches.
+- **Deps:** `clap`, `ignore`, `tree-sitter`+grammars, `ropey`, `regex`, `serde`/`toml`/
+  `serde_json`, `similar`, `anyhow`/`thiserror`; optional `ureq` (slim).
+
+---
+
+## 13. Testing
+Golden fixtures + `.expected.json`; **fix round-trip** (gone, still parses, idempotent);
+**FP corpus** (clean CLJ/Julia/Rust → zero findings); **parser-survival fuzz**; **safety-class
+property tests** (`safe-auto` ⇒ AST-equivalent on a corpus; `safe-with-precondition` ⇒ fix
+**withheld** without `--check-cmd`); **protocol round-trip** (work order → patch → verify);
+**verify-gate tests** (a patch deleting a `try/catch` is **rejected** by the defensive
+guard; a stale `region_fingerprint` is rejected); clj-kondo/clippy/Julia external
+present/absent fixture/degrade tests; plugin registry dispatch; Rust CST region
+extraction; `slim` mocked + one opt-in live smoke.
+Metrics tests cover cyclomatic counts, known Halstead numbers, hotspot detection, and a
+throwaway pack driving metric declarations without central language edits.
+MCP tests cover `tools/list` schemas, `tools/call scan`, propose→verify round-trip, stale
+`region_fingerprint` rejection, and an initialize/list/scan stdio transcript.
+
+---
+
+## 14. Milestones  *(LLM bundling is last and optional)*
+1. **M1 — Analyzer + safe core + agent output:** `core`+`parse`+`analyzer` (report) +
+   idiom detection (CLJ/Julia/Rust) + `scan` (text/json/SARIF/**agent**) +
+   `fix` (**safe-auto only**) + `baseline` + `undo` + `--since`. Useful, safe, every
+   language, no model.
+2. **M2 — The loop + clj-kondo:** `deslop-protocol` + `propose`/`verify`/`apply` +
+   `deslop-verify` gate (parse + `--check-cmd` + defensive guard) + clj-kondo/clippy
+   `analyzer-confirmed` fixes + duplication detection + plugin registry.
+3. **M3 — Metrics + MCP + breadth:** `deslop metrics/health`, `deslop-mcp` (the real
+   "propose to the LLM" channel), SARIF 2.1.0, and config-gated Julia StaticLint/JET adapter.
+4. **M4 — Optional consumers:** `deslop-slim` reference consumer + LSP + pre-commit hook +
+   GitHub Action (ratchet gate).
+5. **M5 — Later/experimental:** statistical per-repo verbosity anomalies; learned detector.
+
+---
+
+## 15. Open questions
+- clj-kondo overlap: defer entirely to it for covered rules when present (one source of
+  truth); our CLJ rules are the no-kondo fallback. (Lean yes.)
+- Julia T2 is runtime-heavy and analyzer-package dependent, so it defaults `off`. StaticLint
+  is the preferred bloat-oriented adapter (`unused-arg`/`unused-binding` confirmed);
+  JET remains available for report-only correctness diagnostics. Missing Julia/package,
+  helper failure, or timeout emits one notice and falls back to T1 Julia rules.
+- Cross-file `unused-public-def`: labeled `never-auto` candidates first.
+
+---
+
+## Sources (survey, 2026-06-23)
+- fallow — https://github.com/fallow-rs/fallow · antislop — https://github.com/skew202/antislop
+- sloppylint — https://github.com/rsionnach/sloppylint · DCE-LLM — https://aclanthology.org/2025.naacl-long.501.pdf
+- clj-kondo analysis — https://github.com/clj-kondo/clj-kondo/blob/master/analysis/README.md
+- tree-sitter locals.scm — https://tree-sitter.github.io/tree-sitter/3-syntax-highlighting.html
+- JET.jl — https://github.com/aviatesk/JET.jl · StaticLint.jl — https://github.com/julia-vscode/StaticLint.jl

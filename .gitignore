@@ -1,0 +1,5 @@
+/target/
+/.serena/
+*.deslop.bak
+*.deslop.tmp
+deslop-baseline.json
