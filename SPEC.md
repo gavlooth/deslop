@@ -140,6 +140,11 @@ The model is interchangeable because the contract is carried *in the data* (work
 patch in) and the gate is owned by deslop. Swap Claude for Codex for a local model — the
 safety guarantees are unchanged.
 
+Coverage mode parsing is shared by the CLI and MCP through `deslop-verify`. The accepted mode
+strings are `disabled`/`off`/`none`, `auto`, `auto:<cmd>`, `lcov:<path>`,
+`cloverage:<path>`, `julia-cov:<path>`/`julia:<path>`, and
+`coverage-py:<path>`/`coverage.py:<path>`/`python:<path>`.
+
 ---
 
 ## 5. Agent-ready output / protocol (`deslop-protocol`)  *(new, first-class)*
@@ -377,8 +382,11 @@ It implements the core JSON-RPC MCP methods needed by coding agents:
 `deslop_slim::build_prompt`, and returns prompt entries containing `workorder_id`, `path`,
 line range, `region_fingerprint`, contract, findings, and prompt text. The caller rewrites
 the region and submits `deslop.patch/1` patches through `apply`, so the existing
-verify-gated removable-only default remains the write boundary. Server-side LLM execution
-for MCP is deferred.
+verify-gated removable-only default remains the write boundary. MCP `verify` and `apply`
+accept `coverage` as either the original boolean (`true` = `auto`, `false`/absent =
+`disabled`) or a shared parser mode string such as `lcov:<path>`, so agents can reach
+`removable` verdicts from recorded coverage without CLI-only affordances. Server-side LLM
+execution for MCP is deferred.
 
 `deslop-slim` exists to prove the loop and to serve users with no agent harness. The runtime
 loop is: propose/load work orders → build a constrained prompt from instruction, exact region
@@ -462,8 +470,9 @@ Optional live smoke sits outside the default suite.
 Metrics tests cover cyclomatic counts, known Halstead numbers, hotspot detection, and a
 throwaway pack driving metric declarations without central language edits.
 MCP tests cover `tools/list` schemas, `tools/call scan`, `fix` prompt generation,
-propose→verify round-trip, stale `region_fingerprint` rejection, and an initialize/list/scan
-stdio transcript.
+propose→verify round-trip, stale `region_fingerprint` rejection, MCP coverage bool
+back-compat/defaults, bad coverage-mode errors, LCOV mode-string `apply` upgrading a covered
+patch to `removable`, and an initialize/list/scan stdio transcript.
 
 ---
 

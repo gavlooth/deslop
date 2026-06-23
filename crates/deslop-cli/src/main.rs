@@ -20,7 +20,7 @@ use deslop_slim::{
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
     characterization_work_orders_for_patches, load_characterization_tests, load_patches,
-    verify_characterization_tests, verify_patches,
+    parse_coverage_mode, verify_characterization_tests, verify_patches,
 };
 use serde::{Deserialize, Serialize};
 
@@ -758,35 +758,7 @@ fn coverage_config(enabled: bool) -> CoverageConfig {
 }
 
 fn parse_coverage_config(value: &str) -> Result<CoverageConfig> {
-    let value = value.trim();
-    match value {
-        "disabled" | "off" | "none" => Ok(CoverageConfig::Disabled),
-        "auto" => Ok(CoverageConfig::Auto),
-        _ => parse_coverage_config_with_value(value),
-    }
-}
-
-fn parse_coverage_config_with_value(value: &str) -> Result<CoverageConfig> {
-    let Some((kind, payload)) = value.split_once(':') else {
-        anyhow::bail!(
-            "unsupported coverage mode `{value}`; use disabled, auto, auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>, or coverage-py:<path>"
-        );
-    };
-    if payload.is_empty() {
-        anyhow::bail!("coverage mode `{kind}` requires a value");
-    }
-    match kind {
-        "auto" => Ok(CoverageConfig::AutoWithCommand(payload.to_string())),
-        "lcov" => Ok(CoverageConfig::LcovFile(PathBuf::from(payload))),
-        "cloverage" => Ok(CoverageConfig::CloverageFile(PathBuf::from(payload))),
-        "julia-cov" | "julia" => Ok(CoverageConfig::JuliaCovFile(PathBuf::from(payload))),
-        "coverage-py" | "coverage.py" | "python" => {
-            Ok(CoverageConfig::CoveragePyFile(PathBuf::from(payload)))
-        }
-        _ => anyhow::bail!(
-            "unsupported coverage mode `{kind}`; use disabled, auto, auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>, or coverage-py:<path>"
-        ),
-    }
+    parse_coverage_mode(value)
 }
 
 fn mutation_config(enabled: bool) -> MutationConfig {

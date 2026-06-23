@@ -13,7 +13,8 @@ use deslop_report::{render_agent, render_json};
 use deslop_slim::build_prompt;
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
-    characterization_work_orders_for_patches, verify_characterization_tests, verify_patches,
+    characterization_work_orders_for_patches, parse_coverage_mode, verify_characterization_tests,
+    verify_patches,
 };
 use serde_json::{Value, json};
 
@@ -100,7 +101,7 @@ fn tools_list_result() -> Value {
             tool("verify", "Verify deslop.patch/1 patches without writing files.", required_schema(&["patches"], json!({
                     "patches": patches_schema(),
                     "check_cmd": { "type": "string" },
-                    "coverage": { "type": "boolean", "default": false },
+                    "coverage": coverage_schema(),
                     "mutation": { "type": "boolean", "default": false },
                     "characterization_tests": characterization_tests_schema()
             }))),
@@ -117,7 +118,7 @@ fn tools_list_result() -> Value {
             tool("apply", "Verify and atomically apply deslop.patch/1 patches.", required_schema(&["patches"], json!({
                     "patches": patches_schema(),
                     "check_cmd": { "type": "string" },
-                    "coverage": { "type": "boolean", "default": false },
+                    "coverage": coverage_schema(),
                     "mutation": { "type": "boolean", "default": false },
                     "characterization_tests": characterization_tests_schema(),
                     "allow_non_removable": { "type": "boolean", "default": false },
@@ -180,6 +181,17 @@ fn patches_schema() -> Value {
                 "additionalProperties": false
             }
         }
+    })
+}
+
+fn coverage_schema() -> Value {
+    json!({
+        "anyOf": [
+            { "type": "boolean" },
+            { "type": "string" }
+        ],
+        "default": false,
+        "description": "Coverage gate. Boolean back-compat: true=auto, false=disabled. Mode string: disabled, off, none, auto, auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>, julia:<path>, coverage-py:<path>, coverage.py:<path>, or python:<path>."
     })
 }
 
@@ -353,18 +365,20 @@ fn verify_options(args: &Value, allow_non_removable: bool) -> Result<VerifyOptio
     Ok(VerifyOptions {
         root: PathBuf::from("."),
         check_cmd: optional_string(args, "check_cmd"),
-        coverage: coverage_config(args),
+        coverage: coverage_config(args)?,
         mutation: mutation_config(args),
         characterization_tests: characterization_tests_arg(args)?,
         allow_non_removable,
     })
 }
 
-fn coverage_config(args: &Value) -> CoverageConfig {
-    if bool_arg(args, "coverage") {
-        CoverageConfig::Auto
-    } else {
-        CoverageConfig::Disabled
+fn coverage_config(args: &Value) -> Result<CoverageConfig> {
+    match args.get("coverage") {
+        None => Ok(CoverageConfig::Disabled),
+        Some(Value::Bool(true)) => Ok(CoverageConfig::Auto),
+        Some(Value::Bool(false)) => Ok(CoverageConfig::Disabled),
+        Some(Value::String(mode)) => parse_coverage_mode(mode),
+        Some(_) => bail!("coverage must be a boolean or coverage mode string"),
     }
 }
 
@@ -497,6 +511,7 @@ duplicate-block         llm-only                propose
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::sync::{Mutex, MutexGuard};
 
     static TEMP_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -505,6 +520,14 @@ mod tests {
         _guard: MutexGuard<'static, ()>,
         _temp: tempfile::TempDir,
         path: PathBuf,
+    }
+
+    struct RustCoverageFixture {
+        _guard: MutexGuard<'static, ()>,
+        _temp: tempfile::TempDir,
+        source: PathBuf,
+        coverage: PathBuf,
+        work_order: WorkOrder,
     }
 
     #[test]
@@ -535,6 +558,19 @@ mod tests {
             ]
         );
         assert!(tools.iter().all(|tool| tool.get("inputSchema").is_some()));
+        let verify = tools
+            .iter()
+            .find(|tool| tool["name"] == "verify")
+            .expect("verify tool");
+        let coverage = &verify["inputSchema"]["properties"]["coverage"];
+        assert_eq!(coverage["default"], false);
+        assert!(coverage["anyOf"].as_array().expect("anyOf").len() == 2);
+        assert!(
+            coverage["description"]
+                .as_str()
+                .expect("description")
+                .contains("lcov:<path>")
+        );
     }
 
     #[test]
@@ -572,6 +608,117 @@ mod tests {
         let rejected = call_tool("verify", json!({ "patches": [stale] })).expect("verify");
         assert_eq!(first_tool_result(&rejected)["passed"], false);
         assert_eq!(first_tool_result(&rejected)["verdict"], "rejected");
+    }
+
+    #[test]
+    fn verify_coverage_boolean_back_compat_and_default() {
+        let fixture = sample_fixture();
+
+        let proposed =
+            call_tool("propose", json!({ "paths": [fixture.path.clone()] })).expect("propose");
+        let work_order: deslop_protocol::WorkOrder =
+            serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
+                .expect("workorder");
+        let patch = patch_for_workorder(&work_order, "(empty? xs)\n");
+
+        let absent =
+            call_tool("verify", json!({ "patches": [patch.clone()] })).expect("verify absent");
+        assert_eq!(first_tool_result(&absent)["verdict"], "coverage-unknown");
+        assert!(
+            first_tool_result(&absent)["reasons"]
+                .as_array()
+                .expect("reasons")
+                .iter()
+                .any(|reason| reason.as_str().unwrap().contains("coverage disabled"))
+        );
+
+        let disabled = call_tool(
+            "verify",
+            json!({
+                "patches": [patch.clone()],
+                "coverage": false
+            }),
+        )
+        .expect("verify false");
+        assert_eq!(first_tool_result(&disabled)["verdict"], "coverage-unknown");
+        assert!(
+            first_tool_result(&disabled)["reasons"]
+                .as_array()
+                .expect("reasons")
+                .iter()
+                .any(|reason| reason.as_str().unwrap().contains("coverage disabled"))
+        );
+
+        let enabled = call_tool(
+            "verify",
+            json!({
+                "patches": [patch],
+                "coverage": true
+            }),
+        )
+        .expect("verify true");
+        assert_eq!(first_tool_result(&enabled)["verdict"], "coverage-unknown");
+        assert!(
+            first_tool_result(&enabled)["reasons"]
+                .as_array()
+                .expect("reasons")
+                .iter()
+                .any(|reason| reason.as_str().unwrap().contains("coverage-unknown"))
+        );
+    }
+
+    #[test]
+    fn apply_accepts_lcov_coverage_mode_string_and_writes_removable_patch() {
+        let fixture = rust_coverage_fixture();
+        let patch = patch_for_workorder(&fixture.work_order, "fn f() -> i32 {\n    1\n}\n");
+        let applied = call_tool(
+            "apply",
+            json!({
+                "patches": [patch],
+                "check_cmd": "true",
+                "coverage": format!("lcov:{}", fixture.coverage.display()),
+                "no_backup": true
+            }),
+        )
+        .expect("apply");
+
+        let content = structured_content(&applied);
+        assert_eq!(content["schema"], "deslop.apply/1");
+        assert_eq!(
+            content["verified"]["results"][0]["verdict"], "removable",
+            "{content:#}"
+        );
+        assert_eq!(content["verified"]["results"][0]["passed"], true);
+        assert_eq!(
+            fs::read_to_string(&fixture.source).expect("read source"),
+            "fn f() -> i32 {\n    1\n}\n"
+        );
+        assert_eq!(content["written"].as_array().expect("written").len(), 1);
+    }
+
+    #[test]
+    fn verify_rejects_bad_coverage_mode_string() {
+        let fixture = sample_fixture();
+        let proposed = call_tool("propose", json!({ "paths": [fixture.path] })).expect("propose");
+        let work_order: deslop_protocol::WorkOrder =
+            serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
+                .expect("workorder");
+        let patch = patch_for_workorder(&work_order, "(empty? xs)\n");
+
+        let error = call_tool(
+            "verify",
+            json!({
+                "patches": [patch],
+                "coverage": "bogus"
+            }),
+        )
+        .expect_err("bad coverage mode");
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported coverage mode `bogus`"),
+            "{error:#}"
+        );
     }
 
     #[test]
@@ -650,6 +797,30 @@ mod tests {
             _guard: guard,
             _temp: temp,
             path,
+        }
+    }
+
+    fn rust_coverage_fixture() -> RustCoverageFixture {
+        let guard = temp_test_lock();
+        let temp = tempfile::tempdir_in(".").expect("tempdir");
+        let source = repo_relative_temp_path(&temp, "sample.rs");
+        fs::write(&source, "fn f() -> i32 {\n    return 1;\n}\n").expect("rust fixture");
+        let coverage = repo_relative_temp_path(&temp, "coverage.lcov");
+        fs::write(
+            &coverage,
+            format!("TN:\nSF:{}\nDA:2,1\nend_of_record\n", source.display()),
+        )
+        .expect("coverage fixture");
+        let proposed = call_tool("propose", json!({ "paths": [source.clone()] })).expect("propose");
+        let work_order: WorkOrder =
+            serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
+                .expect("workorder");
+        RustCoverageFixture {
+            _guard: guard,
+            _temp: temp,
+            source,
+            coverage,
+            work_order,
         }
     }
 

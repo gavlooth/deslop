@@ -1,5 +1,64 @@
 # Session Report
 
+## 2026-06-23T22:30:57+02:00 — MCP Coverage-Mode Parity
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 3 only: lift the CLI coverage-mode parser
+into `deslop-verify`, make MCP `verify`/`apply` accept coverage as bool or mode string,
+and keep MCP network-free. Do not start queued items 4-6.
+
+Changes:
+- Started a new jj change `wnyosyly` on top of `txmxlptr`.
+- Added public `deslop_verify::parse_coverage_mode(&str) -> Result<CoverageConfig>`.
+- Moved the existing mode semantics into the shared parser without CLI behavior change:
+  - `disabled` / `off` / `none`
+  - `auto`
+  - `auto:<cmd>`
+  - `lcov:<path>`
+  - `cloverage:<path>`
+  - `julia-cov:<path>` / `julia:<path>`
+  - `coverage-py:<path>` / `coverage.py:<path>` / `python:<path>`
+- Updated `deslop-cli` to delegate its slim coverage parser to
+  `deslop_verify::parse_coverage_mode`; the existing `parses_slim_coverage_modes` test
+  remains green.
+- Updated MCP `verify_options` so `coverage` accepts:
+  - absent or `false` -> `CoverageConfig::Disabled`
+  - `true` -> `CoverageConfig::Auto`
+  - string -> shared `parse_coverage_mode`
+  - other JSON types -> clear error.
+- Updated MCP `verify` and `apply` tool schemas to document `coverage` as boolean or mode
+  string and list supported modes.
+- Updated `SPEC.md` for the shared parser and MCP coverage mode-string behavior.
+- Touched `.agents/HEARTBEAT.md`.
+
+Tests:
+- MCP `apply` with `coverage: "lcov:<path>"` on a covered Rust region verifies
+  `removable` and writes without `allow_non_removable`.
+- MCP `verify` back-compat:
+  - absent coverage -> disabled / `coverage-unknown`
+  - `coverage: false` -> disabled / `coverage-unknown`
+  - `coverage: true` -> Auto / graceful coverage-unknown path
+- MCP bad mode string returns a clear unsupported-mode error instead of panicking.
+- Tool-schema test checks `coverage` has bool|string `anyOf`, default false, and mode docs.
+
+Verification:
+- After implementation/tests:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- After SPEC/report update:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- MCP network-free check:
+  - `cargo tree -p deslop-mcp -i ureq`: exits with no matching `ureq` package, so MCP
+    still does not pull the HTTP client dependency.
+
+Not started:
+- Queue item 4: LSP server.
+- Queue item 5: CI/pre-commit packaging.
+- Queue item 6: config file.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-23T22:14:04+02:00 — Slim Characterization Generation Loop
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 2 only: add the

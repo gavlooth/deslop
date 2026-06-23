@@ -113,6 +113,38 @@ pub enum CoverageConfig {
     CoveragePyFile(PathBuf),
 }
 
+pub fn parse_coverage_mode(value: &str) -> Result<CoverageConfig> {
+    let value = value.trim();
+    match value {
+        "disabled" | "off" | "none" => Ok(CoverageConfig::Disabled),
+        "auto" => Ok(CoverageConfig::Auto),
+        _ => parse_coverage_mode_with_value(value),
+    }
+}
+
+fn parse_coverage_mode_with_value(value: &str) -> Result<CoverageConfig> {
+    let Some((kind, payload)) = value.split_once(':') else {
+        bail!(
+            "unsupported coverage mode `{value}`; use disabled, auto, auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>, or coverage-py:<path>"
+        );
+    };
+    if payload.is_empty() {
+        bail!("coverage mode `{kind}` requires a value");
+    }
+    match kind {
+        "auto" => Ok(CoverageConfig::AutoWithCommand(payload.to_string())),
+        "lcov" => Ok(CoverageConfig::LcovFile(PathBuf::from(payload))),
+        "cloverage" => Ok(CoverageConfig::CloverageFile(PathBuf::from(payload))),
+        "julia-cov" | "julia" => Ok(CoverageConfig::JuliaCovFile(PathBuf::from(payload))),
+        "coverage-py" | "coverage.py" | "python" => {
+            Ok(CoverageConfig::CoveragePyFile(PathBuf::from(payload)))
+        }
+        _ => bail!(
+            "unsupported coverage mode `{kind}`; use disabled, auto, auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>, or coverage-py:<path>"
+        ),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoverageStatus {
     Covered,

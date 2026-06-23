@@ -1,46 +1,50 @@
-# TASK 3/queue — MCP coverage-mode parity
+# TASK 4/queue — LSP server (deslop-lsp): diagnostics + safe-auto code actions
 
-MCP `verify`/`apply` only accept `coverage: boolean` (true→Auto, false→Disabled). The CLI supports
-full modes (disabled/auto/auto:<cmd>/lcov:<path>/cloverage:<path>/julia-cov:<path>/coverage-py:<path>).
-Without mode parity, an agent CANNOT reach a `Removable` verdict via MCP (can't point at an LCOV
-file etc.). Fix it. Start with `jj new` (separate change on top of txmxlptr).
+Editor integration over the analyzer. MVP: live diagnostics + code actions limited to the
+fix-safety lattice (only SafeAuto/AnalyzerConfirmed get an auto-fix). Start with `jj new` (separate
+change on top of wnyosyly). This is a bigger feature — multiple rounds are fine; gate each round.
 
-## The parser to share (currently CLI-only)
-`crates/deslop-cli/src/main.rs:760` `parse_coverage_config(&str) -> Result<CoverageConfig>` (+
-`parse_coverage_config_with_value` at 769) handles every mode. deslop-verify has NO public mode
-parser. MCP `coverage_config(args)` (in deslop-mcp) only branches on a bool.
+## Deps (use the SYNC stack — matches deslop's no-tokio design)
+Add `lsp-server` and `lsp-types` (rust-analyzer's crates: synchronous JSON-RPC over stdio +
+protocol types). Do NOT use tower-lsp/tokio. These are justified new deps (LSP can't be done with
+the existing stack; these are the minimal maintained sync option).
 
-## Do
-1. **Lift the parser into `deslop-verify`** as a public fn (e.g.
-   `pub fn parse_coverage_mode(s: &str) -> Result<CoverageConfig>`, or `impl FromStr for
-   CoverageConfig`). Move the mode logic from the CLI into it verbatim (disabled/off/none, auto,
-   auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>|julia, coverage-py:<path>|python,
-   with the same error message). Update the CLI to delegate to the shared fn — NO behavior change;
-   keep the CLI's `parses_slim_coverage_modes` test green.
-2. **MCP `coverage_config(args)`**: accept `coverage` as EITHER
-   - a boolean (back-compat: true→Auto, false→Disabled), OR
-   - a string mode parsed via the shared `parse_coverage_mode` (return a clear error on bad mode —
-     `coverage_config` may need to return `Result<CoverageConfig>`; thread that through verify/apply
-     tool handlers).
-   Apply to BOTH the `verify` and `apply` tools (the two that take coverage). `fix` returns prompts
-   only — no coverage needed there.
-3. **Update tool schemas** in `tools_list_result` so `verify`/`apply` document `coverage` accepting
-   either a boolean or a mode string (list the modes in the description). Keep the default false.
+## Build (new crate crates/deslop-lsp: lib + bin `deslop-lsp`)
+1. **Server loop**: stdio JSON-RPC via `lsp-server`. Initialize with capabilities:
+   `text_document_sync = FULL`, `code_action_provider = true`. Handle shutdown/exit cleanly.
+2. **Diagnostics**: on `didOpen`/`didChange`/`didSave`, take the in-memory text, infer `Lang` from
+   the URI extension, run the analyzer over a `SourceFile` built from that text (reuse the same scan
+   path the CLI/MCP use — find the public analyze entry in deslop-analyzer; do NOT duplicate rule
+   logic), map each `Finding` → `lsp_types::Diagnostic`:
+   - range from `Finding.span` (0-based lines `start_line-1..=end_line-1`; columns 0..end-of-line is
+     acceptable for the MVP — note precise UTF-16 columns as a follow-up),
+   - severity: Major→ERROR, Minor→WARNING, Info→HINT (pick a sane fixed mapping),
+   - `source = "deslop"`, `code = rule`, `message = finding.message`.
+   Publish via `textDocument/publishDiagnostics`. Keep a simple in-memory doc map (uri → text).
+3. **Code actions** (`textDocument/codeAction`): for findings overlapping the requested range
+   whose `safety` is `SafeAuto | AnalyzerConfirmed`, offer a `quickfix` "deslop: apply safe fix"
+   returning a `WorkspaceEdit`. Compute the edit by running
+   `deslop_fix::apply_findings_to_text(text, &[finding])` and diffing to a TextEdit (replace the
+   whole document, or the minimal changed range). For findings with any OTHER safety class
+   (RiskySuggest/LlmOnly/SafeWithPrecondition/NeverAuto), DO NOT offer an auto-fix (optionally a
+   non-editing informational action). This enforces the lattice.
 
-## Tests (deterministic, NO network) — reuse the LCOV fixture pattern
-- MCP `apply` (or `verify`) with `coverage: "lcov:<path>"` on a covered region → verdict `Removable`
-  (mirror the LCOV fixture used in deslop-verify / deslop-slim tests). With the patch covered, it
-  applies WITHOUT `allow_non_removable`.
-- Back-compat: `coverage: true` still behaves as `Auto`; `coverage: false`/absent → `Disabled`.
-- Bad mode string → clear error (tool returns an error, doesn't panic).
-- Keep existing MCP tests green (scan/propose/verify/apply/fix).
+## Tests (deterministic, NO editor / NO full RPC loop required)
+- Unit-test the PURE mapping functions:
+  - findings → diagnostics: a known fixture yields a diagnostic with the right range/severity/
+    source/code/message.
+  - code-action gating: a SafeAuto finding yields a quickfix with a non-empty WorkspaceEdit; an
+    LlmOnly finding yields NO quickfix.
+- (Optional) a minimal init/handshake smoke test if cheap. Don't block on full server I/O tests.
 
 ## Constraints / gate
-No CLI behavior change. No new deps. MCP stays network-free (`cargo tree -p deslop-mcp -i ureq`
-empty). Do NOT touch `deslop/*.py`. Gate after each change:
+Keep the analyzer/fix/verify surfaces unchanged (consume them, don't modify). MCP stays
+network-free; don't add deslop-lsp deps to other crates. Do NOT touch `deslop/*.py`. Gate after
+each change:
 `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
 
 ## Report
-shared parser location; MCP coverage accepting bool|mode; the LCOV→Removable MCP test; back-compat
-+ bad-mode tests; SPEC.md + tool-schema updates. `jj describe -m "<summary>"`. Touch
-`.agents/HEARTBEAT.md`. Do NOT start queued items 4-6.
+crate layout + bin name; deps added (lsp-server/lsp-types versions); capabilities; the
+finding→diagnostic mapping; the safe-auto-only code-action gating; test outcomes; what's deferred
+(incremental sync, precise UTF-16 columns, workspace-wide scan, multi-fix actions). `jj describe -m
+"<summary>"`. Touch `.agents/HEARTBEAT.md`. Do NOT start queued items 5-6.
