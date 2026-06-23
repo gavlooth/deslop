@@ -333,6 +333,7 @@ dependencies = [
  "deslop-parse",
  "deslop-protocol",
  "deslop-report",
+ "deslop-slim",
  "deslop-verify",
  "serde",
  "serde_json",

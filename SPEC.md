@@ -184,8 +184,9 @@ Stable, versioned, emitted by `--format agent` (JSONL) and over MCP.
 - `characterize` produces `needs-characterization-test` work orders for weak-oracle verifier
   verdicts; `verify-characterization` consumes submitted tests and rejects tests that fail on
   current unmodified code.
-- Same surface is exposed as **MCP** tools/resources (`list_workorders`, `submit_patch`)
-  so an in-loop agent calls deslop directly (§9).
+- Same surface is exposed as **MCP** tools (`propose`, `fix`, `verify`, `apply`) so an
+  in-loop agent calls deslop directly (§9). The MCP `fix` tool is agent-as-consumer: it
+  returns prompts and fingerprints, never a server-side LLM result.
 - `region_fingerprint` mismatch ⇒ the file changed under the patch ⇒ reject (no stale write).
 
 ---
@@ -364,9 +365,14 @@ feature-gated stdio MCP server (`--features mcp`) and is network-free: it only r
 deterministic analyzer, protocol serializer, metrics engine, and `deslop-verify` gate.
 It implements the core JSON-RPC MCP methods needed by coding agents:
 `initialize`, `tools/list`, and `tools/call`. Tool payloads reuse the existing
-`deslop.findings/1`, `deslop.workorder/1`, `deslop.patch/1`,
+`deslop.findings/1`, `deslop.workorder/1`, `deslop.fix/1`, `deslop.patch/1`,
 `deslop.characterization-test/1`, `deslop.verify/1`, `deslop.apply/1`, and
-`deslop.metrics/1` schemas.
+`deslop.metrics/1` schemas. The `fix` tool scans/proposes work orders, reuses
+`deslop_slim::build_prompt`, and returns prompt entries containing `workorder_id`, `path`,
+line range, `region_fingerprint`, contract, findings, and prompt text. The caller rewrites
+the region and submits `deslop.patch/1` patches through `apply`, so the existing
+verify-gated removable-only default remains the write boundary. Server-side LLM execution
+for MCP is deferred.
 
 `deslop-slim` exists to prove the loop and to serve users with no agent harness. The runtime
 loop is: propose/load work orders → build a constrained prompt from instruction, exact region
@@ -377,8 +383,11 @@ or `apply_patches` when `--apply` is explicit. Its report separates patches into
 characterization tests, or explicitly use `--allow-unverified`. `AnthropicClient` is the
 default implementation and uses Anthropic Messages via `ureq`; it reads `ANTHROPIC_API_KEY`
 and never logs it. `RecordedClient` reads a response from disk and is the test/replay client.
-It enforces nothing the core doesn't; all guarantees live in `verify`. Deferred integration
-work: MCP fix-tool parity, streaming progress, and additional provider clients.
+It enforces nothing the core doesn't; all guarantees live in `verify`. The Anthropic HTTP
+client is behind `deslop-slim`'s default `anthropic` feature; MCP depends on `deslop-slim`
+with default features disabled, so the MCP server can reuse prompt construction without
+pulling `ureq` or network client code. Deferred integration work: server-run MCP client
+option, streaming progress, and additional provider clients.
 
 ---
 
@@ -402,8 +411,9 @@ crates/
 ```
 
 `core/parse/analyzer/fix/protocol/verify` have **no network deps**. `mcp` is optional,
-network-free, and depends only on deterministic deslop crates. `slim` is isolated and is the
-only bundled network consumer.
+network-free, and depends only on deterministic deslop crates plus `deslop-slim` with
+default features disabled for prompt construction. `slim` is isolated and only its
+`anthropic` feature is allowed to depend on HTTP/LLM client code.
 
 ---
 
@@ -435,8 +445,9 @@ blocked in both modes, and LCOV-backed `removable` apply by default. Optional li
 outside the default suite.
 Metrics tests cover cyclomatic counts, known Halstead numbers, hotspot detection, and a
 throwaway pack driving metric declarations without central language edits.
-MCP tests cover `tools/list` schemas, `tools/call scan`, propose→verify round-trip, stale
-`region_fingerprint` rejection, and an initialize/list/scan stdio transcript.
+MCP tests cover `tools/list` schemas, `tools/call scan`, `fix` prompt generation,
+propose→verify round-trip, stale `region_fingerprint` rejection, and an initialize/list/scan
+stdio transcript.
 
 ---
 

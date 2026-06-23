@@ -6,9 +6,11 @@ use deslop_analyzer::{AnalyzerConfig, scan_paths_with_config};
 use deslop_metrics::{MetricsConfig, metrics_paths};
 use deslop_parse::SourceFile;
 use deslop_protocol::{
-    CharacterizationTest, Patch, work_orders_for_source, workorder_region_fingerprint,
+    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, work_orders_for_source,
+    workorder_region_fingerprint,
 };
 use deslop_report::{render_agent, render_json};
+use deslop_slim::build_prompt;
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
     characterization_work_orders_for_patches, verify_characterization_tests, verify_patches,
@@ -90,6 +92,9 @@ fn tools_list_result() -> Value {
                     "format": { "type": "string", "enum": ["json"], "default": "json" }
             }))),
             tool("propose", "Return deslop.workorder/1 JSONL-compatible work orders.", object_schema(json!({
+                    "paths": paths_schema()
+            }))),
+            tool("fix", "Return deslop-slim rewrite prompts (deslop.fix/1) for agent-as-consumer; submit resulting deslop.patch/1 via the apply tool.", object_schema(json!({
                     "paths": paths_schema()
             }))),
             tool("verify", "Verify deslop.patch/1 patches without writing files.", required_schema(&["patches"], json!({
@@ -210,6 +215,7 @@ fn tools_call_result(params: &Value) -> Result<Value> {
     let payload = match name {
         "scan" => scan_tool(args)?,
         "propose" => propose_tool(args)?,
+        "fix" => fix_tool(args)?,
         "verify" => verify_tool(args)?,
         "characterize" => characterize_tool(args)?,
         "verify_characterization" => verify_characterization_tool(args)?,
@@ -241,6 +247,43 @@ fn scan_tool(args: &Value) -> Result<Value> {
 }
 
 fn propose_tool(args: &Value) -> Result<Value> {
+    let work_orders = proposed_work_orders(args)?;
+    Ok(json!({
+        "schema": "deslop.workorders/1",
+        "workorders": work_orders,
+    }))
+}
+
+fn fix_tool(args: &Value) -> Result<Value> {
+    let prompts = proposed_work_orders(args)?
+        .into_iter()
+        .filter(|work_order| work_order.kind == WorkOrderKind::RewriteRegion)
+        .map(fix_prompt_entry)
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "schema": "deslop.fix/1",
+        "prompts": prompts,
+        "next": "Rewrite each region. Build deslop.patch/1 patches { schema:\"deslop.patch/1\", workorder_id, region_fingerprint, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)."
+    }))
+}
+
+fn fix_prompt_entry(work_order: WorkOrder) -> Value {
+    let prompt = build_prompt(&work_order);
+    json!({
+        "workorder_id": work_order.id,
+        "path": work_order.path,
+        "region": {
+            "start_line": work_order.region.start_line,
+            "end_line": work_order.region.end_line,
+        },
+        "region_fingerprint": workorder_region_fingerprint(&work_order),
+        "contract": work_order.contract,
+        "findings": work_order.findings,
+        "prompt": prompt.text,
+    })
+}
+
+fn proposed_work_orders(args: &Value) -> Result<Vec<WorkOrder>> {
     let reports = scan_reports(args)?;
     let _jsonl = render_agent(&reports)?;
     let mut work_orders = Vec::new();
@@ -248,10 +291,7 @@ fn propose_tool(args: &Value) -> Result<Value> {
         let source = SourceFile::read(&report.path)?;
         work_orders.extend(work_orders_for_source(&source, &report.findings));
     }
-    Ok(json!({
-        "schema": "deslop.workorders/1",
-        "workorders": work_orders,
-    }))
+    Ok(work_orders)
 }
 
 fn scan_reports(args: &Value) -> Result<Vec<deslop_core::FileReport>> {
@@ -485,6 +525,7 @@ mod tests {
             vec![
                 "scan",
                 "propose",
+                "fix",
                 "verify",
                 "characterize",
                 "verify_characterization",
@@ -531,6 +572,41 @@ mod tests {
         let rejected = call_tool("verify", json!({ "patches": [stale] })).expect("verify");
         assert_eq!(first_tool_result(&rejected)["passed"], false);
         assert_eq!(first_tool_result(&rejected)["verdict"], "rejected");
+    }
+
+    #[test]
+    fn fix_tool_returns_slim_prompts_for_agent_consumer() {
+        let fixture = sample_fixture();
+
+        let proposed =
+            call_tool("propose", json!({ "paths": [fixture.path.clone()] })).expect("propose");
+        let work_order: deslop_protocol::WorkOrder =
+            serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
+                .expect("workorder");
+        let fixed = call_tool("fix", json!({ "paths": [fixture.path] })).expect("fix");
+        let content = structured_content(&fixed);
+        let prompts = content["prompts"].as_array().expect("prompts");
+
+        assert_eq!(content["schema"], "deslop.fix/1");
+        assert!(!prompts.is_empty());
+        assert_eq!(prompts[0]["workorder_id"], work_order.id);
+        assert_eq!(
+            prompts[0]["region_fingerprint"],
+            workorder_region_fingerprint(&work_order)
+        );
+        assert!(
+            prompts[0]["prompt"]
+                .as_str()
+                .unwrap()
+                .contains("(= (count xs) 0)")
+        );
+        assert!(
+            prompts[0]["prompt"]
+                .as_str()
+                .unwrap()
+                .contains(&work_order.findings[0].message)
+        );
+        assert!(content["next"].as_str().unwrap().contains("apply"));
     }
 
     #[test]

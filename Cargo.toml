@@ -48,6 +48,6 @@ deslop-mcp = { path = "crates/deslop-mcp" }
 deslop-external = { path = "crates/deslop-external" }
 deslop-protocol = { path = "crates/deslop-protocol" }
 deslop-verify = { path = "crates/deslop-verify" }
-deslop-slim = { path = "crates/deslop-slim" }
+deslop-slim = { path = "crates/deslop-slim", default-features = false }
 deslop-report = { path = "crates/deslop-report" }
 deslop-fix = { path = "crates/deslop-fix" }

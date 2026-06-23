@@ -1,58 +1,50 @@
-# TASK — MCP `fix` tool parity (option B: agent-as-consumer, NO server-side LLM)
+# TASK 1/queue — OpenAI-compatible LLM provider (decouple LlmClient providers)
 
-deslop-slim works via CLI. Expose it through MCP so an agent can run the consumer loop — but the
-MCP server must NOT call its own LLM (the caller IS an LLM; circular). Option B: the `fix` tool
-returns deslop-slim's rewrite PROMPTS + fingerprints; the calling agent rewrites; patches go back
-through the EXISTING verify-gated `apply` tool (already defaults to removable-only,
-allow_non_removable=false). Start with `jj new` (separate change on top of kxunkwxn).
+deslop-slim has a swappable `LlmClient` trait; only `AnthropicClient` exists (feature-gated behind
+`anthropic`, uses `ureq`). Add an OpenAI-compatible provider so Together/Groq/Ollama/OpenRouter/
+vLLM/etc. work via base_url. MCP must stay network-free (it depends on deslop-slim with
+default-features=false). Start with `jj new` (separate change on top of otlwomyy).
 
-## Step 1 — feature-gate the HTTP client so MCP stays network-free
-In `crates/deslop-slim/Cargo.toml`: make `ureq` optional; add
-```
-[features]
-default = ["anthropic"]
-anthropic = ["dep:ureq"]
-```
-Gate `AnthropicClient` (struct + impl + anthropic_text_response + any ureq use) behind
-`#[cfg(feature = "anthropic")]`. Everything else — `SlimPrompt`, `build_prompt`, `strip_code_fences`,
-`RecordedClient`, `run_slim`, gating types — stays feature-independent and must compile with
-`--no-default-features`. The CLI keeps default features (AnthropicClient still works there).
-Verify: `cargo build -p deslop-slim --no-default-features` succeeds with no ureq in the tree.
+## Build
+1. **`OpenAiClient`** in deslop-slim, behind a new `openai` cargo feature (also `dep:ureq`):
+   - `[features]` → `default = ["anthropic", "openai"]`, `openai = ["dep:ureq"]` (keep `anthropic`).
+     Both http clients are now optional; with `--no-default-features` NEITHER is compiled (MCP path
+     unaffected — re-verify `cargo build -p deslop-slim --no-default-features` and that ureq stays
+     out of deslop-mcp's tree).
+   - Chat Completions shape: `POST {base_url}/chat/completions` with
+     `{ "model": <model>, "messages": [{"role":"user","content": prompt.text}] }`, parse
+     `choices[0].message.content`, then `strip_code_fences`. Mirror AnthropicClient's structure
+     (blocking ureq, clear errors, NEVER log the key).
+   - `base_url` default `https://api.openai.com/v1`; key from `OPENAI_API_KEY` (fall back to a
+     generic `DESLOP_SLIM_API_KEY` if you add one); model from `--model`/`DESLOP_SLIM_MODEL`.
+   - Factor a small shared `anthropic_text_response`-style pure parser (`openai_text_response(body)
+     -> Result<String>`) so it's unit-testable without network.
+2. **Provider selection** in the `deslop fix` CLI:
+   - `--provider <anthropic|openai>` (default `anthropic`), `--base-url <url>` (override), keep
+     `--model`. Build the matching client. `--mock` (RecordedClient) still overrides everything.
+   - `deslop fix --help` must show `--provider` and `--base-url`.
+   - The CLI depends on deslop-slim with DEFAULT features (both clients available) — confirm.
 
-## Step 2 — deslop-mcp depends on deslop-slim (no default features)
-In `crates/deslop-mcp/Cargo.toml`: add `deslop-slim = { workspace = true, default-features = false }`
-so the MCP server reuses `build_prompt` / `SlimPrompt` WITHOUT pulling ureq/network.
+## Tests (deterministic, NO network, NO key)
+- `openai_text_response` parses `{"choices":[{"message":{"content":"```rust\nfn f() {}\n```"}}]}` →
+  `fn f() {}` (fence-stripped). Mirror the existing anthropic parser test.
+- Provider selection: a small unit asserting `--provider openai` + `--base-url` constructs the
+  OpenAI client (or a factory fn returns the right variant). No live call.
+- Keep all existing slim tests green (recorded e2e, gating, rejection).
 
-## Step 3 — add the MCP `fix` tool (match existing tool pattern)
-- Register in `tools_list_result()` (crates/deslop-mcp/src/lib.rs:85) alongside the others:
-  `tool("fix", "Return deslop-slim rewrite prompts (deslop.fix/1) for agent-as-consumer; submit resulting deslop.patch/1 via the apply tool.", object_schema(json!({ "paths": paths_schema() })))`.
-- Dispatch in `tools_call_result` (the `match name` ~line 211): `"fix" => fix_tool(args)?`.
-- Implement `fix_tool(args)` mirroring `propose_tool`: propose work orders
-  (`work_orders_for_source`), and for each `RewriteRegion` work order (SKIP NeedsCharacterizationTest)
-  emit a prompt entry. Reuse `deslop_slim::build_prompt(&work_order)` and
-  `deslop_protocol::workorder_region_fingerprint(&work_order)`. Return:
-  ```
-  { "schema": "deslop.fix/1",
-    "prompts": [ { "workorder_id", "path", "region": {"start_line","end_line"},
-                   "region_fingerprint", "contract", "findings", "prompt" } ],
-    "next": "Rewrite each region. Build deslop.patch/1 patches { schema:\"deslop.patch/1\", workorder_id, region_fingerprint, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)." }
-  ```
-- NO server-side LLM call. Do NOT add AnthropicClient to the MCP path. Note option A
-  (server-run client) as deferred.
-
-## Tests (deterministic, no network)
-- `fix_tool` on a fixture with a known rewrite finding returns schema `deslop.fix/1`, ≥1 prompt,
-  each prompt's `region_fingerprint == workorder_region_fingerprint(work_order)`, and `prompt`
-  contains the region text + a finding message. (Reuse the MCP test pattern already in the crate.)
-- Confirm `deslop-slim` builds with `--no-default-features` (the feature gate works) — note it in
-  the report (a CI/check line is enough; a build invocation in the gate covers it).
-
-## Gate after each change (revert anything that breaks)
+## Constraints / gate
+Do NOT change the prompt builder, run_slim gating, verify, or the MCP path. Do NOT touch
+`deslop/*.py`. Reuse `strip_code_fences`. Gate after each change:
 `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
 
-## Constraints / report
-Do NOT change the CLI slim behavior, the prompt builder, or verify. Do NOT touch `deslop/*.py`. No
-new deps (ureq becomes optional, not new). Update SPEC.md (MCP `fix` tool documented; option A
-deferred) and the MCP tools list. Report: feature-gate result, the `fix` tool schema, the
-agent-as-consumer flow (fix → agent rewrites → apply), test outcomes, `--no-default-features` build
-proof. `jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`.
+## Report
+new feature flags; OpenAiClient + parser; CLI `--provider`/`--base-url`; test outcomes;
+re-confirm MCP network-free (`cargo tree -p deslop-mcp -i ureq` empty); SPEC.md update (providers).
+`jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`.
+
+---
+## Queue after this (do NOT start these now; one task per pass, I verify between)
+2. Characterization-test generation loop (slim/agent fulfills NeedsCharacterizationTest).
+3. MCP coverage-mode parity (verify/apply/fix accept coverage modes, not just bool).
+4. LSP server. 5. CI/pre-commit packaging. 6. Config file (deslop.toml).
+(Python LangPack intentionally EXCLUDED.)

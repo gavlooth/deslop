@@ -1,4 +1,3 @@
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +12,6 @@ use deslop_verify::{
     apply_patches, verify_patches,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 pub const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 
@@ -74,14 +72,16 @@ pub struct SlimPatchStatus {
     pub suggestion: Option<String>,
 }
 
+#[cfg(feature = "anthropic")]
 pub struct AnthropicClient {
     model: String,
     api_key: String,
 }
 
+#[cfg(feature = "anthropic")]
 impl AnthropicClient {
     pub fn from_env(model: impl Into<String>) -> Result<Self> {
-        let api_key = env::var("ANTHROPIC_API_KEY")
+        let api_key = std::env::var("ANTHROPIC_API_KEY")
             .context("ANTHROPIC_API_KEY is required for deslop-slim Anthropic requests")?;
         Ok(Self {
             model: model.into(),
@@ -90,9 +90,10 @@ impl AnthropicClient {
     }
 }
 
+#[cfg(feature = "anthropic")]
 impl LlmClient for AnthropicClient {
     fn rewrite(&self, prompt: &SlimPrompt) -> Result<String> {
-        let request = json!({
+        let request = serde_json::json!({
             "model": self.model,
             "max_tokens": 4096,
             "messages": [
@@ -143,7 +144,7 @@ impl LlmClient for RecordedClient {
 
 pub fn resolve_model(explicit: Option<String>) -> String {
     explicit
-        .or_else(|| env::var("DESLOP_SLIM_MODEL").ok())
+        .or_else(|| std::env::var("DESLOP_SLIM_MODEL").ok())
         .unwrap_or_else(|| DEFAULT_MODEL.to_string())
 }
 
@@ -337,6 +338,7 @@ pub fn parse_workorders_jsonl(text: &str) -> Result<Vec<WorkOrder>> {
     Ok(records)
 }
 
+#[cfg(feature = "anthropic")]
 fn anthropic_text_response(body: &str) -> Result<String> {
     let value: serde_json::Value =
         serde_json::from_str(body).context("failed to parse Anthropic response JSON")?;
@@ -578,6 +580,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "anthropic")]
     #[test]
     fn anthropic_response_extracts_text_block_and_strips_fences() -> Result<()> {
         let body = r#"{"content":[{"type":"text","text":"```rust\nfn f() {}\n```"}]}"#;

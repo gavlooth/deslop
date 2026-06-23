@@ -1,5 +1,75 @@
 # Session Report
 
+## 2026-06-23T20:58:02+02:00 — MCP Fix Tool Option B
+
+Objective: Execute `.agents/NEXT_TASK.md`: add an MCP `fix` tool using option B
+agent-as-consumer semantics. The MCP server must not call an LLM; it returns
+deslop-slim prompts and fingerprints, and the caller submits resulting patches through the
+existing verify-gated `apply` tool.
+
+Changes:
+- Started a new jj change on top of `kxunkwxn`:
+  - working copy `otlwomyy`
+  - parent `kxunkwxn`
+- Feature-gated `deslop-slim`'s HTTP client:
+  - `ureq` is now optional.
+  - `default = ["anthropic"]`.
+  - `anthropic = ["dep:ureq"]`.
+  - `AnthropicClient`, the ureq call, and Anthropic response parsing are behind
+    `#[cfg(feature = "anthropic")]`.
+  - `build_prompt`, `SlimPrompt`, `RecordedClient`, `run_slim`, and gating/report types
+    remain available with `--no-default-features`.
+- Set workspace `deslop-slim` dependency to `default-features = false`.
+- Enabled `deslop-cli`'s slim dependency with `features = ["anthropic"]` so CLI behavior is
+  unchanged.
+- Added `deslop-mcp` dependency on `deslop-slim` with `default-features = false`.
+- Added MCP `fix` tool:
+  - tool name: `fix`
+  - output schema: `deslop.fix/1`
+  - payload: `prompts[]` entries with `workorder_id`, `path`, `region` line range,
+    `region_fingerprint`, `contract`, `findings`, and `prompt`
+  - `next` text instructing the caller to rewrite regions, create `deslop.patch/1`, and
+    call `apply`
+- Reused `deslop_slim::build_prompt` and
+  `deslop_protocol::workorder_region_fingerprint`.
+- Did not add `AnthropicClient` or any LLM call to MCP.
+- Updated `SPEC.md` to document MCP `fix`, `deslop.fix/1`, the network-free feature
+  boundary, and server-run MCP client as deferred.
+
+Test outcomes:
+- MCP tools list includes `fix`.
+- `fix_tool_returns_slim_prompts_for_agent_consumer` verifies `deslop.fix/1`, at least one
+  prompt, matching `region_fingerprint`, and prompt text containing the region text plus
+  finding message.
+- Existing MCP scan/propose/verify/apply tests still pass.
+
+Network-free proof:
+- `cargo build -p deslop-slim --no-default-features`: pass.
+- `cargo tree -p deslop-mcp`: shows `deslop-slim` but no `ureq` dependency.
+
+Verification:
+- After slim feature split:
+  - initial gate failed because `resolve_model` still referenced the removed `env` import;
+    changed it to `std::env::var`.
+  - re-run full gate passed.
+- After MCP tool wiring:
+  - initial gate failed because Cargo does not allow disabling default features only at a
+    member dependency when the workspace dependency has defaults enabled.
+  - fixed by moving `deslop-slim` workspace dependency to `default-features = false` and
+    enabling `anthropic` explicitly in `deslop-cli`.
+  - re-run full gate passed:
+    `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`.
+
+Deferred:
+- MCP option A: server-run client / server-side LLM.
+- Streaming progress.
+- Additional provider clients.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-23T20:29:34+02:00 — deslop-slim Apply-Gating Fix
 
 Objective: Execute `.agents/NEXT_TASK.md` surgical fix for `deslop-slim` apply gating
