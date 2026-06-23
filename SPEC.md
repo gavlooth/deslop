@@ -52,7 +52,8 @@ human or model wrote it, and sloppy code should be fixable regardless of provena
 - Adoptable on bloated repos via baseline/ratchet. No telemetry. LLM feature optional.
 
 ### Non-goals
-Not a formatter, not a type checker, not an LLM wrapper. The bundled consumer is a demo.
+Not a formatter, not a type checker, not an LLM-first analyzer. The bundled consumer is a
+thin reference implementation of the existing work-order/patch contract.
 
 ---
 
@@ -295,7 +296,7 @@ deslop scan     [PATHS…] [--format text|json|sarif|agent] [--baseline FILE] [-
 deslop metrics  [PATHS…] [--format text|json] [--hotspots-only] [--sigma N]
 deslop health   [PATHS…] [--format text|json] [--hotspots-only] [--sigma N] # alias
 deslop slop     [PATHS…] [--format text|json]                 # weighted slop score
-deslop fix      [PATHS…] [--dry-run] [--no-backup] [--yes]      # safe-auto (+analyzer-confirmed) only
+deslop fix      [--paths PATH… | --workorders FILE] [--apply] [--allow-unverified] [--coverage MODE] [--model M] [--mock recorded.txt] [--check-cmd "CMD"] [--no-backup] # bundled slim consumer; dry-run by default
 deslop propose  [PATHS…] [-o workorders.jsonl] [--julia-external[=staticlint|jet|off]] [--julia-project DIR] # emit work orders
 deslop characterize --patches FILE [-o workorders.jsonl] [--check-cmd "CMD"] [--coverage] [--mutation]
 deslop verify-characterization --tests FILE --check-cmd "CMD"
@@ -305,7 +306,6 @@ deslop baseline write [PATHS…] [-o deslop-baseline.json]
 deslop undo     [PATHS…]
 deslop mcp                                                      # feature=mcp stdio MCP server
 deslop rules                                                   # class, precondition, counterexample
-deslop slim     [PATHS…] [--model M] [--apply] [--check-cmd "CMD"]   # OPTIONAL bundled consumer (feature=llm)
 ```
 
 - **`scan`**: `ignore`-walk; `--since` = changed files only; `--baseline` suppresses known
@@ -314,14 +314,21 @@ deslop slim     [PATHS…] [--model M] [--apply] [--check-cmd "CMD"]   # OPTIONA
   `julia --project=...`.
 - **`metrics`/`health`**: computes per-region complexity and expressivity metrics, ranks
   repo-relative bloat hotspots, and emits text or JSON.
-- **`fix`**: deterministic `safe-auto`/`analyzer-confirmed` in place, right-to-left CST
-  splices, idempotent, backup + `undo`.
+- **`fix`**: the bundled `deslop-slim` consumer. It proposes work orders from `--paths` or
+  reads JSONL from `--workorders`, builds prompts, asks a swappable `LlmClient`, converts
+  rewrites into `deslop.patch/1`, verifies them, and prints a dry-run JSON report unless
+  `--apply` is passed. Default `--apply` writes only `removable` verifier verdicts;
+  `coverage-unknown`, `untested-risky`, and `dead-candidate` are reported as held-unproven
+  unless `--allow-unverified` is explicit. `--coverage` accepts `disabled`, `auto`,
+  `auto:<cmd>`, `lcov:<path>`, `cloverage:<path>`, `julia-cov:<path>`, and
+  `coverage-py:<path>`, mapping directly to `CoverageConfig`. `--mock` uses
+  `RecordedClient` for deterministic tests and offline replay; the default client is
+  Anthropic via `ureq` with the model from `--model`, `DESLOP_SLIM_MODEL`, or the built-in
+  default.
 - **`propose`/`verify`/`apply`**: the swappable-LLM loop (§4). `verify`/`apply` are the
   trust boundary; they run with **no network** and need no model.
 - **`mcp`**: feature-gated stdio MCP server exposing `scan`, `propose`, `verify`,
   `apply`, `metrics`, and `rules` as tools for in-loop agents.
-- **`slim`**: thin reference consumer — `propose` → bundled Anthropic call → `apply`.
-  Feature-gated (`--features llm`); the binary builds and ships without it.
 
 ---
 
@@ -361,11 +368,17 @@ It implements the core JSON-RPC MCP methods needed by coding agents:
 `deslop.characterization-test/1`, `deslop.verify/1`, `deslop.apply/1`, and
 `deslop.metrics/1` schemas.
 
-`slim` exists to prove the loop and to serve users with no agent harness. It is ~a loop:
-`propose` → POST each work order to Anthropic Messages (via `ureq`, key `ANTHROPIC_API_KEY`,
-default `claude-sonnet-4-6`, `temperature 0`) → feed patches to `apply`. It enforces nothing
-the core doesn't; all guarantees live in `verify`. Removing the crate removes a feature, not
-a guarantee. `.deslopignore-llm` + first-run consent govern source leaving the machine.
+`deslop-slim` exists to prove the loop and to serve users with no agent harness. The runtime
+loop is: propose/load work orders → build a constrained prompt from instruction, exact region
+text, findings, and contract → `LlmClient::rewrite` → strip markdown fences → emit
+`deslop.patch/1` with `by = deslop-slim/<model>` → `verify_patches` → default dry-run report
+or `apply_patches` when `--apply` is explicit. Its report separates patches into `applied`,
+`held_unproven`, and `rejected`; held patches include a suggestion to pass coverage, add
+characterization tests, or explicitly use `--allow-unverified`. `AnthropicClient` is the
+default implementation and uses Anthropic Messages via `ureq`; it reads `ANTHROPIC_API_KEY`
+and never logs it. `RecordedClient` reads a response from disk and is the test/replay client.
+It enforces nothing the core doesn't; all guarantees live in `verify`. Deferred integration
+work: MCP fix-tool parity, streaming progress, and additional provider clients.
 
 ---
 
@@ -382,14 +395,14 @@ crates/
   deslop-fix/        # safe-auto / analyzer-confirmed CST edits (ropey)
   deslop-protocol/   # work-order + patch schemas (serde); --format agent
   deslop-verify/     # the deterministic gate: parse + check-cmd + defensive/scope guards
+  deslop-slim/       # bundled Anthropic/recorded-client reference consumer
   deslop-report/     # text / json / sarif renderers
   deslop-cli/        # orchestration, exit codes
   deslop-mcp/        # feature=mcp stdio MCP tools over protocol/verify
-  deslop-slim/       # bundled Anthropic reference consumer    (optional, feature=llm)
 ```
 
 `core/parse/analyzer/fix/protocol/verify` have **no network deps**. `mcp` is optional,
-network-free, and depends only on deterministic deslop crates. `slim` is optional and is the
+network-free, and depends only on deterministic deslop crates. `slim` is isolated and is the
 only bundled network consumer.
 
 ---
@@ -402,8 +415,9 @@ only bundled network consumer.
   thresholds, `[verify] check_cmd/defensive_guard`, `[slim] model`. Inline `deslop-ignore`.
 - **Safety:** `verify` owns the gate; `*.deslop.bak` + `undo`; `git`/`jj` dirty check;
   atomic temp+rename; `region_fingerprint` guards against stale patches.
-- **Deps:** `clap`, `ignore`, `tree-sitter`+grammars, `ropey`, `regex`, `serde`/`toml`/
-  `serde_json`, `similar`, `anyhow`/`thiserror`; optional `ureq` (slim).
+- **Deps:** `clap`, `ignore`, `tree-sitter`+grammars, `regex`, `serde`/`toml`/
+  `serde_json`, `anyhow`/`thiserror`; `ureq` is used only by `deslop-slim` as a minimal
+  synchronous HTTP client.
 
 ---
 
@@ -415,7 +429,10 @@ property tests** (`safe-auto` ⇒ AST-equivalent on a corpus; `safe-with-precond
 **verify-gate tests** (a patch deleting a `try/catch` is **rejected** by the defensive
 guard; a stale `region_fingerprint` is rejected); clj-kondo/clippy/Julia external
 present/absent fixture/degrade tests; plugin registry dispatch; Rust CST region
-extraction; `slim` mocked + one opt-in live smoke.
+extraction; `slim` deterministic prompt/client/e2e tests with no network/API key, including
+default hold of `coverage-unknown`, `--allow-unverified` opt-in apply, rejected rewrites
+blocked in both modes, and LCOV-backed `removable` apply by default. Optional live smoke sits
+outside the default suite.
 Metrics tests cover cyclomatic counts, known Halstead numbers, hotspot detection, and a
 throwaway pack driving metric declarations without central language edits.
 MCP tests cover `tools/list` schemas, `tools/call scan`, propose→verify round-trip, stale

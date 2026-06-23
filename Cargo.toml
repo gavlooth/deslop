@@ -10,6 +10,7 @@ members = [
   "crates/deslop-external",
   "crates/deslop-protocol",
   "crates/deslop-verify",
+  "crates/deslop-slim",
   "crates/deslop-report",
   "crates/deslop-fix",
   "crates/deslop-cli",
@@ -31,6 +32,7 @@ serde_json = "1"
 tempfile = "3"
 thiserror = "2"
 toml = "0.8"
+ureq = { version = "3.3", features = ["json"] }
 tree-sitter = "0.25.10"
 tree-sitter-clojure = "0.1.0"
 tree-sitter-julia = "0.23.1"
@@ -46,5 +48,6 @@ deslop-mcp = { path = "crates/deslop-mcp" }
 deslop-external = { path = "crates/deslop-external" }
 deslop-protocol = { path = "crates/deslop-protocol" }
 deslop-verify = { path = "crates/deslop-verify" }
+deslop-slim = { path = "crates/deslop-slim" }
 deslop-report = { path = "crates/deslop-report" }
 deslop-fix = { path = "crates/deslop-fix" }

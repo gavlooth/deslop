@@ -8,12 +8,13 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use deslop_analyzer::{AnalyzerConfig, JuliaExternal, scan_paths, scan_paths_with_config};
 use deslop_core::{FileReport, Severity};
 use deslop_eval::{render_eval_json, render_eval_text, run_eval};
-use deslop_fix::{FixOptions, fix_paths, undo_paths};
+use deslop_fix::undo_paths;
 use deslop_metrics::{
     MetricsConfig, metrics_paths, render_json as render_metrics_json,
     render_text as render_metrics_text,
 };
 use deslop_report::{render_agent, render_json, render_sarif, render_text};
+use deslop_slim::{AnthropicClient, RecordedClient, SlimOptions, resolve_model, run_slim};
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
     characterization_work_orders_for_patches, load_characterization_tests, load_patches,
@@ -86,17 +87,32 @@ struct ScanArgs {
 
 #[derive(Debug, Args)]
 struct FixArgs {
-    #[arg(default_value = ".")]
+    #[arg(long, value_name = "PATH", num_args = 1..)]
     paths: Vec<PathBuf>,
 
     #[arg(long)]
-    dry_run: bool,
+    workorders: Option<PathBuf>,
+
+    #[arg(long)]
+    apply: bool,
+
+    #[arg(long)]
+    allow_unverified: bool,
+
+    #[arg(long, value_name = "MODE", default_value = "disabled")]
+    coverage: String,
+
+    #[arg(long)]
+    model: Option<String>,
+
+    #[arg(long)]
+    mock: Option<PathBuf>,
+
+    #[arg(long)]
+    check_cmd: Option<String>,
 
     #[arg(long)]
     no_backup: bool,
-
-    #[arg(long)]
-    yes: bool,
 }
 
 #[derive(Debug, Args)]
@@ -401,28 +417,32 @@ fn scan(args: ScanArgs) -> Result<()> {
 }
 
 fn fix(args: FixArgs) -> Result<()> {
-    let outcomes = fix_paths(
-        &args.paths,
-        FixOptions {
-            dry_run: args.dry_run,
-            backup: !args.no_backup,
-        },
-    )?;
-    for outcome in outcomes {
-        let action = if args.dry_run {
-            "would apply"
-        } else if outcome.changed {
-            "applied"
-        } else {
-            "unchanged"
-        };
-        println!(
-            "{} {} safe edit(s) in {}",
-            action,
-            outcome.applied,
-            outcome.path.display()
-        );
-    }
+    let model = resolve_model(args.model);
+    let paths = if args.paths.is_empty() {
+        vec![PathBuf::from(".")]
+    } else {
+        args.paths
+    };
+    let coverage = parse_coverage_config(&args.coverage)?;
+    let options = SlimOptions {
+        root: PathBuf::from("."),
+        paths,
+        workorders: args.workorders,
+        apply: args.apply,
+        allow_unverified: args.allow_unverified,
+        coverage,
+        model: model.to_owned(),
+        check_cmd: args.check_cmd,
+        backup: !args.no_backup,
+    };
+    let report = if let Some(path) = args.mock {
+        let client = RecordedClient::from_path(path)?;
+        run_slim(&client, options)?
+    } else {
+        let client = AnthropicClient::from_env(model)?;
+        run_slim(&client, options)?
+    };
+    print_pretty_json(&report)?;
     Ok(())
 }
 
@@ -711,6 +731,38 @@ fn coverage_config(enabled: bool) -> CoverageConfig {
     }
 }
 
+fn parse_coverage_config(value: &str) -> Result<CoverageConfig> {
+    let value = value.trim();
+    match value {
+        "disabled" | "off" | "none" => Ok(CoverageConfig::Disabled),
+        "auto" => Ok(CoverageConfig::Auto),
+        _ => parse_coverage_config_with_value(value),
+    }
+}
+
+fn parse_coverage_config_with_value(value: &str) -> Result<CoverageConfig> {
+    let Some((kind, payload)) = value.split_once(':') else {
+        anyhow::bail!(
+            "unsupported coverage mode `{value}`; use disabled, auto, auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>, or coverage-py:<path>"
+        );
+    };
+    if payload.is_empty() {
+        anyhow::bail!("coverage mode `{kind}` requires a value");
+    }
+    match kind {
+        "auto" => Ok(CoverageConfig::AutoWithCommand(payload.to_string())),
+        "lcov" => Ok(CoverageConfig::LcovFile(PathBuf::from(payload))),
+        "cloverage" => Ok(CoverageConfig::CloverageFile(PathBuf::from(payload))),
+        "julia-cov" | "julia" => Ok(CoverageConfig::JuliaCovFile(PathBuf::from(payload))),
+        "coverage-py" | "coverage.py" | "python" => {
+            Ok(CoverageConfig::CoveragePyFile(PathBuf::from(payload)))
+        }
+        _ => anyhow::bail!(
+            "unsupported coverage mode `{kind}`; use disabled, auto, auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>, or coverage-py:<path>"
+        ),
+    }
+}
+
 fn mutation_config(enabled: bool) -> MutationConfig {
     if enabled {
         MutationConfig::Auto
@@ -829,6 +881,8 @@ impl Baseline {
 
 #[cfg(test)]
 mod tests {
+    use clap::CommandFactory;
+
     use super::*;
 
     #[test]
@@ -866,6 +920,63 @@ mod tests {
         );
         assert_eq!(analyzer.julia_external, JuliaExternal::Off);
         assert_eq!(analyzer.julia_project, Some(PathBuf::from("cli-project")));
+    }
+
+    #[test]
+    fn fix_help_lists_slim_flags() {
+        let mut command = Cli::command();
+        let fix = command
+            .find_subcommand_mut("fix")
+            .expect("fix subcommand exists");
+        let mut help = Vec::new();
+        fix.write_long_help(&mut help).expect("write help");
+        let help = String::from_utf8(help).expect("utf8 help");
+
+        for flag in [
+            "--paths",
+            "--workorders",
+            "--apply",
+            "--allow-unverified",
+            "--coverage",
+            "--model",
+            "--mock",
+            "--check-cmd",
+        ] {
+            assert!(help.contains(flag), "{flag} missing from help:\n{help}");
+        }
+    }
+
+    #[test]
+    fn parses_slim_coverage_modes() {
+        assert!(matches!(
+            parse_coverage_config("disabled").expect("parse"),
+            CoverageConfig::Disabled
+        ));
+        assert!(matches!(
+            parse_coverage_config("auto").expect("parse"),
+            CoverageConfig::Auto
+        ));
+        assert!(matches!(
+            parse_coverage_config("auto:cargo").expect("parse"),
+            CoverageConfig::AutoWithCommand(command) if command == "cargo"
+        ));
+        assert!(matches!(
+            parse_coverage_config("lcov:coverage.lcov").expect("parse"),
+            CoverageConfig::LcovFile(path) if path == PathBuf::from("coverage.lcov")
+        ));
+        assert!(matches!(
+            parse_coverage_config("cloverage:coverage.json").expect("parse"),
+            CoverageConfig::CloverageFile(path) if path == PathBuf::from("coverage.json")
+        ));
+        assert!(matches!(
+            parse_coverage_config("julia-cov:coverage.cov").expect("parse"),
+            CoverageConfig::JuliaCovFile(path) if path == PathBuf::from("coverage.cov")
+        ));
+        assert!(matches!(
+            parse_coverage_config("coverage-py:coverage.json").expect("parse"),
+            CoverageConfig::CoveragePyFile(path) if path == PathBuf::from("coverage.json")
+        ));
+        assert!(parse_coverage_config("unknown").is_err());
     }
 }
 

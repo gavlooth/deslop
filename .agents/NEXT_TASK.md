@@ -1,63 +1,58 @@
-# TASK — Build deslop-slim: the bundled LLM consumer that closes propose → verify → apply
+# TASK — MCP `fix` tool parity (option B: agent-as-consumer, NO server-side LLM)
 
-Self-debloat converged; tree-sitter 0.26 held (clojure blocker, documented). Now build the
-headline feature: a slim, bundled LLM consumer realizing the SPEC thesis — **deslop proposes &
-verifies; the LLM is a swappable consumer that only rewrites.** deslop stays the verifier/applier.
+deslop-slim works via CLI. Expose it through MCP so an agent can run the consumer loop — but the
+MCP server must NOT call its own LLM (the caller IS an LLM; circular). Option B: the `fix` tool
+returns deslop-slim's rewrite PROMPTS + fingerprints; the calling agent rewrites; patches go back
+through the EXISTING verify-gated `apply` tool (already defaults to removable-only,
+allow_non_removable=false). Start with `jj new` (separate change on top of kxunkwxn).
 
-## Start
-Run `jj new` first so deslop-slim is a SEPARATE change on top of the now-described analyzer change
-(do NOT amend the analyzer change). Describe the slim change at the end.
+## Step 1 — feature-gate the HTTP client so MCP stays network-free
+In `crates/deslop-slim/Cargo.toml`: make `ureq` optional; add
+```
+[features]
+default = ["anthropic"]
+anthropic = ["dep:ureq"]
+```
+Gate `AnthropicClient` (struct + impl + anthropic_text_response + any ureq use) behind
+`#[cfg(feature = "anthropic")]`. Everything else — `SlimPrompt`, `build_prompt`, `strip_code_fences`,
+`RecordedClient`, `run_slim`, gating types — stays feature-independent and must compile with
+`--no-default-features`. The CLI keeps default features (AnthropicClient still works there).
+Verify: `cargo build -p deslop-slim --no-default-features` succeeds with no ureq in the tree.
 
-## Existing seam (use these real types — do not reinvent)
-- `deslop-protocol`: `WorkOrder { schema, kind: WorkOrderKind (RewriteRegion|NeedsCharacterizationTest),
-  id, path, region: Region { start_line, end_line, text }, findings: Vec<WorkOrderFinding {rule,
-  severity, safety, message, precondition}>, instruction, contract: Contract { must_parse,
-  no_new_public_defs, keep_error_handling, max_growth_ratio, check_cmd } }`. `Patch { schema, workorder_id,
-  region_fingerprint, replacement, by }`. Helper: `workorder_region_fingerprint(&WorkOrder) -> String`.
-- `deslop-cli`: `Propose` emits `deslop.workorder/1`; `Verify`/`Apply` consume `deslop.patch/1`.
-- `deslop-verify`: `verify_patches(&[Patch], &VerifyOptions) -> Result<VerifyReport>` (per-patch
-  `verdict: VerificationVerdict`), `apply_patches(...)`, `load_patches(&Path)`.
-- Workspace deps available: anyhow, clap, serde, serde_json. No HTTP client yet.
+## Step 2 — deslop-mcp depends on deslop-slim (no default features)
+In `crates/deslop-mcp/Cargo.toml`: add `deslop-slim = { workspace = true, default-features = false }`
+so the MCP server reuses `build_prompt` / `SlimPrompt` WITHOUT pulling ureq/network.
 
-## Build (crates/deslop-slim, new crate in the workspace)
-1. **`LlmClient` trait** (swappable): `fn rewrite(&self, prompt: &SlimPrompt) -> Result<String>`.
-   - `AnthropicClient` (default): blocking HTTP via **`ureq`** (add to workspace deps — justified:
-     existing stack can't make HTTP calls; ureq is minimal/sync, no tokio). Anthropic Messages API;
-     model from `--model` / `DESLOP_SLIM_MODEL` (default a current Claude model id), key from
-     `ANTHROPIC_API_KEY`. NEVER log the key. On missing key / network error: clear error, no panic.
-   - `RecordedClient` (for tests): returns a recorded response read from a path — NO network.
-2. **Prompt builder**: from `instruction` + `region.text` + each finding (rule/message/precondition)
-   + contract constraints. Instruct the model to return ONLY the rewritten region (behavior-
-   preserving, no prose, no fences). Strip code fences if the model adds them.
-3. **Consumer loop** `run_slim`: for each `RewriteRegion` work order → prompt → client.rewrite →
-   build `Patch { schema:"deslop.patch/1", workorder_id: wo.id, region_fingerprint:
-   workorder_region_fingerprint(&wo), replacement, by: format!("deslop-slim/{model}") }`. Collect
-   patches, run `verify_patches`, and apply only verified patches (`apply_patches`) — DEFAULT
-   dry-run (print verdicts); `--apply` writes. Skip `NeedsCharacterizationTest` work orders (out of
-   scope; note them).
-4. **CLI**: add `deslop fix` subcommand: `--paths <...>` (propose internally) OR `--workorders
-   <file.jsonl>`; `--apply`; `--model`; `--mock <recorded.json>` (uses RecordedClient); `--check-cmd`.
-   Wire the contract's check_cmd / VerifyOptions through. `deslop fix --help` must show these.
+## Step 3 — add the MCP `fix` tool (match existing tool pattern)
+- Register in `tools_list_result()` (crates/deslop-mcp/src/lib.rs:85) alongside the others:
+  `tool("fix", "Return deslop-slim rewrite prompts (deslop.fix/1) for agent-as-consumer; submit resulting deslop.patch/1 via the apply tool.", object_schema(json!({ "paths": paths_schema() })))`.
+- Dispatch in `tools_call_result` (the `match name` ~line 211): `"fix" => fix_tool(args)?`.
+- Implement `fix_tool(args)` mirroring `propose_tool`: propose work orders
+  (`work_orders_for_source`), and for each `RewriteRegion` work order (SKIP NeedsCharacterizationTest)
+  emit a prompt entry. Reuse `deslop_slim::build_prompt(&work_order)` and
+  `deslop_protocol::workorder_region_fingerprint(&work_order)`. Return:
+  ```
+  { "schema": "deslop.fix/1",
+    "prompts": [ { "workorder_id", "path", "region": {"start_line","end_line"},
+                   "region_fingerprint", "contract", "findings", "prompt" } ],
+    "next": "Rewrite each region. Build deslop.patch/1 patches { schema:\"deslop.patch/1\", workorder_id, region_fingerprint, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)." }
+  ```
+- NO server-side LLM call. Do NOT add AnthropicClient to the MCP path. Note option A
+  (server-run client) as deferred.
 
-## Tests (REQUIRED — deterministic, NO network, NO api key)
-- Mock end-to-end: RecordedClient returns a valid behavior-preserving rewrite for a known work
-  order → assert Patch shape (schema/workorder_id/fingerprint/by) → verify runs → with `--apply`
-  in a tempdir the verified replacement is written.
-- Rejection path: a recorded BAD rewrite (fails to parse, or violates max_growth_ratio / adds a
-  public def) → `verify_patches` REJECTS it → it is NOT applied. Assert the verdict + that the file
-  is unchanged.
-- Prompt builder unit test: prompt contains the region text + the finding message + contract.
+## Tests (deterministic, no network)
+- `fix_tool` on a fixture with a known rewrite finding returns schema `deslop.fix/1`, ≥1 prompt,
+  each prompt's `region_fingerprint == workorder_region_fingerprint(work_order)`, and `prompt`
+  contains the region text + a finding message. (Reuse the MCP test pattern already in the crate.)
+- Confirm `deslop-slim` builds with `--no-default-features` (the feature gate works) — note it in
+  the report (a CI/check line is enough; a build invocation in the gate covers it).
 
-## Constraints
-- The LLM only rewrites; deslop-slim NEVER applies an unverified patch. Respect the safety class /
-  contract. No new deps beyond `ureq`. Do NOT touch `deslop/*.py`. Do NOT weaken verify.
-- Update SPEC.md: deslop-slim is no longer deferred — document the consumer + the swappable client.
+## Gate after each change (revert anything that breaks)
+`cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
 
-## Gate after EACH change (revert anything that breaks)
-`cargo fmt --all && cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings`
-
-## Report
-crate layout; LlmClient + Anthropic/Recorded impls; CLI flags; the verify-gated apply; test
-results (mock e2e + rejection path, no network); SPEC.md update; remaining deferred (MCP `fix`
-tool, streaming, multi-provider). `jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md` each
-round. If you need multiple rounds, keep going — this is a big feature; gate each round.
+## Constraints / report
+Do NOT change the CLI slim behavior, the prompt builder, or verify. Do NOT touch `deslop/*.py`. No
+new deps (ureq becomes optional, not new). Update SPEC.md (MCP `fix` tool documented; option A
+deferred) and the MCP tools list. Report: feature-gate result, the `fix` tool schema, the
+agent-as-consumer flow (fix → agent rewrites → apply), test outcomes, `--no-default-features` build
+proof. `jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`.

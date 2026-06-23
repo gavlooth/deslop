@@ -1,5 +1,165 @@
 # Session Report
 
+## 2026-06-23T20:29:34+02:00 — deslop-slim Apply-Gating Fix
+
+Objective: Execute `.agents/NEXT_TASK.md` surgical fix for `deslop-slim` apply gating
+inside the existing `kxunkwxn` slim change. Restore graded-removability semantics:
+default `--apply` writes only `removable`; behavior-unproven non-rejected verdicts are held
+unless `--allow-unverified` is explicit.
+
+Changes:
+- Removed slim's hardcoded `allow_non_removable = true`.
+- Added `SlimOptions.allow_unverified` and `SlimOptions.coverage`.
+- `verify_options` now passes the selected `CoverageConfig` and sets
+  `allow_non_removable` from `allow_unverified`.
+- Added `SlimReport.gating` with `applied`, `held_unproven`, and `rejected` buckets.
+  Held-unproven verdicts carry the suggestion to pass `--coverage`, add
+  characterization tests, or use `--allow-unverified`.
+- Added `deslop fix --allow-unverified`.
+- Added `deslop fix --coverage <MODE>` parser mapping to existing `CoverageConfig`
+  variants:
+  - `disabled`
+  - `auto`
+  - `auto:<cmd>`
+  - `lcov:<path>`
+  - `cloverage:<path>`
+  - `julia-cov:<path>`
+  - `coverage-py:<path>`
+- Updated `SPEC.md` and this report.
+
+Gating before -> after:
+- Before: slim `--apply` used `coverage = Disabled` and `allow_non_removable = true`, so
+  verified-but-unproven `coverage-unknown` rewrites were written.
+- After: slim default `--apply` uses `allow_non_removable = false`; only `removable`
+  verdicts write. `coverage-unknown`, `untested-risky`, and `dead-candidate` are held
+  unless `--allow-unverified` is explicit. `rejected` remains blocked.
+
+Tests:
+- Default `--apply`, coverage disabled: parseable rewrite -> `coverage-unknown` ->
+  held-unproven, not written, file unchanged.
+- `--allow-unverified`: same `coverage-unknown` rewrite is applied.
+- Rejected rewrite remains blocked in both default and `--allow-unverified` modes.
+- LCOV fixture: covered Rust region -> `removable` -> applied by default.
+- CLI parser covers all slim coverage modes above.
+
+Verification:
+- Initial core-only gate failed at build because the CLI had not yet been updated for new
+  `SlimOptions` fields.
+- After CLI wiring:
+  - `cargo fmt --all && cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- After SPEC/report update:
+  - `cargo fmt --all && cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- Help smoke:
+  - `cargo run -q -p deslop-cli -- fix --help`: pass; output includes
+    `--allow-unverified` and `--coverage <MODE> [default: disabled]`.
+
+Standalone apply:
+- Unchanged. `deslop apply` still writes only `removable` by default; its existing
+  `--allow-non-removable` remains the explicit opt-in.
+
+Blockers:
+- None.
+
+Signature: Codex
+
+## 2026-06-23T20:00:18+02:00 — deslop-slim Reference Consumer
+
+Objective: Execute `.agents/NEXT_TASK.md` to build the new `deslop-slim` crate as a
+bundled LLM consumer: propose/load work orders, build prompts, call a swappable
+`LlmClient`, emit `deslop.patch/1`, verify patches, and default to dry-run unless
+`--apply` is explicit. Start from a separate `jj new` change and gate after each change.
+
+Changes:
+- Started a new jj change before implementation:
+  - working copy `kxunkwxn`
+  - parent `yrzlsulx`
+- Added `crates/deslop-slim` as a workspace member.
+- Added workspace `ureq = { version = "3.3", features = ["json"] }` and isolated it to
+  the slim crate as the minimal synchronous HTTP client for Anthropic Messages.
+- Implemented `deslop-slim`:
+  - `LlmClient` trait with `fn rewrite(&self, prompt: &SlimPrompt) -> Result<String>`.
+  - `AnthropicClient` using `ureq` against Anthropic Messages, `ANTHROPIC_API_KEY`, and
+    a model resolved from `--model`, `DESLOP_SLIM_MODEL`, or `claude-sonnet-4-6`.
+  - `RecordedClient` for deterministic no-network replay/tests.
+  - Prompt builder containing instruction, exact region text, finding rule/message/
+    precondition, and contract constraints.
+  - Markdown fence stripping for model output.
+  - Work-order proposal from analyzer reports or JSONL loading from `--workorders`.
+  - Patch construction with schema `deslop.patch/1`, `workorder_id`,
+    `region_fingerprint`, replacement, and `by = deslop-slim/<model>`.
+  - `run_slim` flow: work order -> prompt -> client -> patch -> `verify_patches` ->
+    dry-run report or `apply_patches`.
+  - `NeedsCharacterizationTest` work orders are skipped with an explicit reason.
+- Wired `deslop fix` to the slim consumer with:
+  - `--paths <PATH>...`
+  - `--workorders <WORKORDERS>`
+  - `--apply`
+  - `--allow-unverified`
+  - `--coverage <MODE>`
+  - `--model <MODEL>`
+  - `--mock <MOCK>`
+  - `--check-cmd <CHECK_CMD>`
+  - `--no-backup`
+- Kept the existing `undo` path backed by `deslop-fix` backups.
+- Updated `SPEC.md` so `deslop-slim` is no longer deferred and documents the consumer,
+  swappable clients, default dry-run, and deferred MCP fix-tool parity/streaming/
+  multiprovider work.
+- Updated `.agents/HEARTBEAT.md` each implementation round.
+
+Verification:
+- After skeleton crate/dependency change:
+  - `cargo fmt --all && cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- After core slim implementation:
+  - First full gate failed on an exact trailing-newline test expectation; fixed the test
+    to match the implemented output normalization.
+  - Re-run full gate: pass.
+- After CLI wiring:
+  - First full gate failed in clippy because `CommandFactory` was imported in the binary
+    build but only used in tests; moved the import into the test module.
+  - Re-run full gate: pass.
+- After SPEC update:
+  - `cargo fmt --all && cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- CLI help smoke:
+  - `cargo run -q -p deslop-cli -- fix --help`: pass; output lists `--paths`,
+    `--workorders`, `--apply`, `--allow-unverified`, `--coverage`, `--model`, `--mock`,
+    `--check-cmd`, and `--no-backup`.
+
+Deterministic tests added:
+- Prompt unit proves region text, finding message, and contract constraints are present.
+- Recorded-client e2e proves a valid rewrite becomes a patch, verifies as `removable` with
+  recorded LCOV coverage, and writes by default with `--apply` in a tempdir without network
+  or API keys.
+- Default `--apply` with coverage disabled verifies a parseable rewrite as
+  `coverage-unknown`, reports it as held-unproven, writes nothing, and leaves the file
+  unchanged.
+- `--allow-unverified` applies the same `coverage-unknown` rewrite.
+- Rejection path proves a bad rewrite is rejected by verify in both default and
+  `--allow-unverified` modes and leaves the file unchanged.
+- Anthropic response parser unit extracts text blocks and strips code fences without
+  making a network request.
+- CLI parser unit covers `disabled`, `auto`, `auto:<cmd>`, `lcov:<path>`,
+  `cloverage:<path>`, `julia-cov:<path>`, and `coverage-py:<path>`.
+
+Important behavior note:
+- Before this surgical fix, `deslop-slim` hardcoded `coverage = Disabled` and
+  `allow_non_removable = true`, so explicit slim `--apply` wrote behavior-unproven
+  `coverage-unknown` rewrites. After the fix, default slim `--apply` writes only
+  `removable`; non-rejected but unproven verdicts are held unless `--allow-unverified` is
+  explicit. The standalone `deslop apply` command keeps its existing stricter default unless
+  `--allow-non-removable` is used.
+
+Deferred:
+- MCP fix-tool parity.
+- Streaming progress.
+- Additional provider clients beyond Anthropic and RecordedClient.
+- First-run/source-egress consent was documented historically in the spec but not
+  implemented in this pass.
+
+Blockers:
+- None for this requested slim pass.
+
+Signature: Codex
+
 Date/time: 2026-06-23 Europe/Madrid
 
 Objective: Build `deslop` from `SPEC.md` v0.4.
