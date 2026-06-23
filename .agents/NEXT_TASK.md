@@ -1,50 +1,46 @@
-# TASK 4/queue — LSP server (deslop-lsp): diagnostics + safe-auto code actions
+# TASK 5/queue — CI / pre-commit packaging
 
-Editor integration over the analyzer. MVP: live diagnostics + code actions limited to the
-fix-safety lattice (only SafeAuto/AnalyzerConfirmed get an auto-fix). Start with `jj new` (separate
-change on top of wnyosyly). This is a bigger feature — multiple rounds are fine; gate each round.
+The gating primitives already exist in the CLI: `deslop scan --fail-on <severity>` (exits 1 when a
+finding meets/exceeds the threshold), `deslop scan --format sarif`, and a baseline ratchet
+(`--baseline deslop-baseline.json` + `deslop baseline`). This task PACKAGES them for CI / pre-commit
+— mostly config + docs, minimal/no Rust. Start with `jj new` (separate change on top of wvzwxyuw).
 
-## Deps (use the SYNC stack — matches deslop's no-tokio design)
-Add `lsp-server` and `lsp-types` (rust-analyzer's crates: synchronous JSON-RPC over stdio +
-protocol types). Do NOT use tower-lsp/tokio. These are justified new deps (LSP can't be done with
-the existing stack; these are the minimal maintained sync option).
+## Do
+1. **GitHub Action (reusable) + example workflow**
+   - `action.yml` (composite action, repo root or `.github/actions/deslop/action.yml`) with inputs:
+     `paths` (default `.`), `fail-on` (default `major`), `sarif` (bool, default true),
+     `baseline` (optional path). Steps: build/install deslop (`cargo install --path
+     crates/deslop-cli` or use the workspace binary), run `deslop scan` producing SARIF, and run the
+     `--fail-on` gate. Note: `scan` writes to stdout (no `--output` flag) — redirect
+     `deslop scan --format sarif <paths> > deslop.sarif`.
+   - `.github/workflows/deslop.yml` example: checkout → rust toolchain → run the composite action →
+     upload SARIF via `github/codeql-action/upload-sarif@v3` (so findings show in GitHub code
+     scanning) → the `--fail-on major` gate fails the build on Major findings. If `baseline` is set,
+     pass `--baseline` so only NEW findings gate.
+2. **pre-commit hook**
+   - `.pre-commit-hooks.yaml` at repo root defining a `deslop` hook: `id: deslop`,
+     `name: deslop scan`, `entry: deslop scan --fail-on major`, `language: system` (deslop must be on
+     PATH), `pass_filenames: true` (or false with `.` — pick what works with the CLI's path args),
+     `types: [text]`. Document adding it to a consumer `.pre-commit-config.yaml`.
+3. **Docs** — a `docs/CI.md` (or a README "CI & pre-commit" section): the Action usage, pre-commit
+   setup, the exit-code contract (`--fail-on`), SARIF → GitHub code scanning, and the baseline
+   ratchet workflow (`deslop baseline` to snapshot, `--baseline` to gate only regressions).
 
-## Build (new crate crates/deslop-lsp: lib + bin `deslop-lsp`)
-1. **Server loop**: stdio JSON-RPC via `lsp-server`. Initialize with capabilities:
-   `text_document_sync = FULL`, `code_action_provider = true`. Handle shutdown/exit cleanly.
-2. **Diagnostics**: on `didOpen`/`didChange`/`didSave`, take the in-memory text, infer `Lang` from
-   the URI extension, run the analyzer over a `SourceFile` built from that text (reuse the same scan
-   path the CLI/MCP use — find the public analyze entry in deslop-analyzer; do NOT duplicate rule
-   logic), map each `Finding` → `lsp_types::Diagnostic`:
-   - range from `Finding.span` (0-based lines `start_line-1..=end_line-1`; columns 0..end-of-line is
-     acceptable for the MVP — note precise UTF-16 columns as a follow-up),
-   - severity: Major→ERROR, Minor→WARNING, Info→HINT (pick a sane fixed mapping),
-   - `source = "deslop"`, `code = rule`, `message = finding.message`.
-   Publish via `textDocument/publishDiagnostics`. Keep a simple in-memory doc map (uri → text).
-3. **Code actions** (`textDocument/codeAction`): for findings overlapping the requested range
-   whose `safety` is `SafeAuto | AnalyzerConfirmed`, offer a `quickfix` "deslop: apply safe fix"
-   returning a `WorkspaceEdit`. Compute the edit by running
-   `deslop_fix::apply_findings_to_text(text, &[finding])` and diffing to a TextEdit (replace the
-   whole document, or the minimal changed range). For findings with any OTHER safety class
-   (RiskySuggest/LlmOnly/SafeWithPrecondition/NeverAuto), DO NOT offer an auto-fix (optionally a
-   non-editing informational action). This enforces the lattice.
-
-## Tests (deterministic, NO editor / NO full RPC loop required)
-- Unit-test the PURE mapping functions:
-  - findings → diagnostics: a known fixture yields a diagnostic with the right range/severity/
-    source/code/message.
-  - code-action gating: a SafeAuto finding yields a quickfix with a non-empty WorkspaceEdit; an
-    LlmOnly finding yields NO quickfix.
-- (Optional) a minimal init/handshake smoke test if cheap. Don't block on full server I/O tests.
+## Verify (this task is config-heavy — verification = well-formed + the gate works)
+- YAML validity: parse every new YAML (`python3 -c "import yaml,sys; yaml.safe_load(open(f))"` for
+  action.yml, the workflow, `.pre-commit-hooks.yaml`) — all must load. Show the commands.
+- Exit-code contract: add/confirm a CLI test that `deslop scan --fail-on major` exits NON-zero on a
+  sloppy fixture and ZERO on a clean fixture (reuse tests/corpus or tests/fixtures). If such a test
+  already exists, cite it.
+- SARIF still schema-valid (cite the existing SARIF test; don't duplicate).
+- Do NOT push, tag, or trigger anything. These are files only.
 
 ## Constraints / gate
-Keep the analyzer/fix/verify surfaces unchanged (consume them, don't modify). MCP stays
-network-free; don't add deslop-lsp deps to other crates. Do NOT touch `deslop/*.py`. Gate after
-each change:
+No analyzer/CLI behavior change beyond (if needed) a test; reuse existing flags. MCP stays
+network-free. Do NOT touch `deslop/*.py`. Gate after each change:
 `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
 
 ## Report
-crate layout + bin name; deps added (lsp-server/lsp-types versions); capabilities; the
-finding→diagnostic mapping; the safe-auto-only code-action gating; test outcomes; what's deferred
-(incremental sync, precise UTF-16 columns, workspace-wide scan, multi-fix actions). `jj describe -m
-"<summary>"`. Touch `.agents/HEARTBEAT.md`. Do NOT start queued items 5-6.
+files added (action.yml, workflow, .pre-commit-hooks.yaml, docs); YAML-parse proof; the exit-code
+test (new or cited); how SARIF upload + baseline ratchet are wired; SPEC.md note. `jj describe -m
+"<summary>"`. Touch `.agents/HEARTBEAT.md`. Do NOT start queued item 6 (config file).

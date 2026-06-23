@@ -1,5 +1,79 @@
 # Session Report
 
+## 2026-06-23T22:47:59+02:00 — LSP Server MVP
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 4 only: add an MVP synchronous LSP
+server with live diagnostics and safety-gated code actions. Do not start queued items 5-6.
+
+Changes:
+- Started a new jj change `wvzwxyuw` on top of `wnyosyly`.
+- Added workspace crate `crates/deslop-lsp`.
+- Added binary `deslop-lsp`.
+- Added justified LSP dependencies:
+  - `lsp-server = 0.7.9`
+  - `lsp-types = 0.97.0`
+- Implemented a synchronous stdio LSP loop with `lsp_server::Connection`.
+- Initialize capabilities:
+  - `text_document_sync = FULL`
+  - `code_action_provider = true`
+- Maintains an in-memory `Uri -> { text, findings, version }` document map.
+- Handles:
+  - `textDocument/didOpen`
+  - full-document `textDocument/didChange`
+  - `textDocument/didSave`
+  - `textDocument/didClose`
+  - `textDocument/codeAction`
+  - shutdown via `lsp-server`.
+- Diagnostics analyze the in-memory text through `deslop_analyzer::scan_source`; no rule
+  logic is duplicated.
+- Finding -> diagnostic mapping:
+  - range: zero-based whole-line range derived from `Finding.span`
+  - severity: `Major -> ERROR`, `Minor -> WARNING`, `Info -> HINT`
+  - source: `deslop`
+  - code: finding rule
+  - message: finding message.
+- Code actions enforce the fix-safety lattice:
+  - only `SafeAuto` and `AnalyzerConfirmed` findings with edits produce a `quickfix`
+  - other safety classes produce no edit
+  - edit generation reuses `deslop_fix::apply_findings_to_text`
+  - MVP returns a whole-document `WorkspaceEdit` via `documentChanges`.
+- Updated `SPEC.md` with the LSP crate, binary, sync deps, behavior, tests, and deferrals.
+- Touched `.agents/HEARTBEAT.md`.
+
+Tests:
+- Pure diagnostic mapping test verifies range, severity, source, code, and message.
+- Pure code-action gating test verifies:
+  - a safe fixable finding yields a quickfix with a non-empty edit
+  - an `LlmOnly` finding yields no quickfix.
+
+Verification:
+- First gate caught a `didChange` version type mismatch; fixed by wrapping the version in
+  `Some(...)`.
+- Second gate passed tests but clippy rejected `WorkspaceEdit::changes` because
+  `lsp_types::Uri` is a mutable key type; switched to `documentChanges`.
+- After clippy fix:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- After SPEC/report update:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- MCP network-free check:
+  - `cargo tree -p deslop-mcp -i ureq`: exits with no matching `ureq` package.
+
+Deferred:
+- Incremental sync.
+- Precise UTF-16 columns beyond whole-line MVP ranges.
+- Workspace-wide scan.
+- Multi-fix/source actions.
+- Full RPC loop tests.
+
+Not started:
+- Queue item 5: CI/pre-commit packaging.
+- Queue item 6: config file.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-23T22:30:57+02:00 — MCP Coverage-Mode Parity
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 3 only: lift the CLI coverage-mode parser

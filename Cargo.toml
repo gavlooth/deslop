@@ -11,6 +11,7 @@ members = [
   "crates/deslop-protocol",
   "crates/deslop-verify",
   "crates/deslop-slim",
+  "crates/deslop-lsp",
   "crates/deslop-report",
   "crates/deslop-fix",
   "crates/deslop-cli",
@@ -33,6 +34,8 @@ tempfile = "3"
 thiserror = "2"
 toml = "0.8"
 ureq = { version = "3.3", features = ["json"] }
+lsp-server = "0.7.9"
+lsp-types = "0.97.0"
 tree-sitter = "0.25.10"
 tree-sitter-clojure = "0.1.0"
 tree-sitter-julia = "0.23.1"
@@ -49,5 +52,6 @@ deslop-external = { path = "crates/deslop-external" }
 deslop-protocol = { path = "crates/deslop-protocol" }
 deslop-verify = { path = "crates/deslop-verify" }
 deslop-slim = { path = "crates/deslop-slim", default-features = false }
+deslop-lsp = { path = "crates/deslop-lsp" }
 deslop-report = { path = "crates/deslop-report" }
 deslop-fix = { path = "crates/deslop-fix" }

@@ -308,6 +308,7 @@ deslop characterize --patches FILE [-o workorders.jsonl] [--check-cmd "CMD"] [--
 deslop verify-characterization --tests FILE --check-cmd "CMD"
 deslop verify   --patches FILE  [--check-cmd "CMD"] [--coverage] [--mutation] [--characterization-tests FILE] # run the gate; write nothing
 deslop apply    --patches FILE  [--check-cmd "CMD"] [--coverage] [--mutation] [--characterization-tests FILE] [--no-backup] [--yes]   # verify then write
+deslop-lsp                                                       # synchronous LSP server binary
 deslop baseline write [PATHS…] [-o deslop-baseline.json]
 deslop undo     [PATHS…]
 deslop mcp                                                      # feature=mcp stdio MCP server
@@ -412,6 +413,18 @@ default features disabled, so the MCP server can reuse prompt construction witho
 `ureq` or network client code. Deferred integration work: server-run MCP client option,
 streaming progress, and non-OpenAI-compatible provider families.
 
+`deslop-lsp` is a synchronous editor-integration server built on `lsp-server` and
+`lsp-types`. It advertises full text synchronization and code-action support. On
+`didOpen`, full-document `didChange`, and `didSave`, it analyzes the in-memory document text
+through `deslop-analyzer::scan_source` and publishes diagnostics with `source = "deslop"`,
+rule code, finding message, and severity mapped as major/error, minor/warning, info/hint.
+MVP ranges use 0-based lines and whole-line columns; precise UTF-16 columns are deferred.
+Code actions are deliberately narrower than diagnostics: only `safe-auto` and
+`analyzer-confirmed` findings with edits produce a `quickfix`, using
+`deslop_fix::apply_findings_to_text` and returning a whole-document `WorkspaceEdit`.
+`safe-with-precondition`, `risky-suggest`, `llm-only`, and `never-auto` findings get no
+editing action.
+
 ---
 
 ## 11. Architecture (Rust workspace)
@@ -428,6 +441,7 @@ crates/
   deslop-protocol/   # work-order + patch schemas (serde); --format agent
   deslop-verify/     # the deterministic gate: parse + check-cmd + defensive/scope guards
   deslop-slim/       # bundled optional LLM reference consumer
+  deslop-lsp/        # sync LSP diagnostics + safety-gated code actions
   deslop-report/     # text / json / sarif renderers
   deslop-cli/        # orchestration, exit codes
   deslop-mcp/        # feature=mcp stdio MCP tools over protocol/verify
@@ -449,8 +463,9 @@ default features disabled for prompt construction. `slim` is isolated and only i
 - **Safety:** `verify` owns the gate; `*.deslop.bak` + `undo`; `git`/`jj` dirty check;
   atomic temp+rename; `region_fingerprint` guards against stale patches.
 - **Deps:** `clap`, `ignore`, `tree-sitter`+grammars, `regex`, `serde`/`toml`/
-  `serde_json`, `anyhow`/`thiserror`; `ureq` is used only by `deslop-slim` HTTP provider
-  features as a minimal synchronous HTTP client.
+  `serde_json`, `anyhow`/`thiserror`; `lsp-server`/`lsp-types` are isolated to
+  `deslop-lsp` for synchronous JSON-RPC/LSP types; `ureq` is used only by `deslop-slim`
+  HTTP provider features as a minimal synchronous HTTP client.
 
 ---
 
@@ -473,6 +488,8 @@ MCP tests cover `tools/list` schemas, `tools/call scan`, `fix` prompt generation
 propose→verify round-trip, stale `region_fingerprint` rejection, MCP coverage bool
 back-compat/defaults, bad coverage-mode errors, LCOV mode-string `apply` upgrading a covered
 patch to `removable`, and an initialize/list/scan stdio transcript.
+LSP unit tests cover pure finding→diagnostic mapping and safety-lattice code-action gating:
+safe fixable findings produce a quickfix edit, while `llm-only` findings produce no edit.
 
 ---
 
@@ -486,7 +503,8 @@ patch to `removable`, and an initialize/list/scan stdio transcript.
    `analyzer-confirmed` fixes + duplication detection + plugin registry.
 3. **M3 — Metrics + MCP + breadth:** `deslop metrics/health`, `deslop-mcp` (the real
    "propose to the LLM" channel), SARIF 2.1.0, and config-gated Julia StaticLint/JET adapter.
-4. **M4 — Optional consumers:** `deslop-slim` reference consumer + LSP + pre-commit hook +
+4. **M4 — Optional consumers:** `deslop-slim` reference consumer + `deslop-lsp` +
+   pre-commit hook +
    GitHub Action (ratchet gate).
 5. **M5 — Later/experimental:** statistical per-repo verbosity anomalies; learned detector.
 
