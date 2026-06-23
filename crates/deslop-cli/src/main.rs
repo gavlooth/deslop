@@ -99,6 +99,9 @@ struct FixArgs {
     apply: bool,
 
     #[arg(long)]
+    characterize: bool,
+
+    #[arg(long)]
     allow_unverified: bool,
 
     #[arg(long, value_name = "MODE", default_value = "disabled")]
@@ -443,6 +446,7 @@ fn fix(args: FixArgs) -> Result<()> {
         paths,
         workorders: args.workorders,
         apply: args.apply,
+        characterize: args.characterize,
         allow_unverified: args.allow_unverified,
         coverage,
         model: model.to_owned(),
@@ -958,6 +962,7 @@ mod tests {
             "--paths",
             "--workorders",
             "--apply",
+            "--characterize",
             "--allow-unverified",
             "--coverage",
             "--model",

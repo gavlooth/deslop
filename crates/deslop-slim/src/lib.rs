@@ -5,11 +5,13 @@ use anyhow::{Context, Result, bail};
 use deslop_analyzer::scan_paths;
 use deslop_parse::SourceFile;
 use deslop_protocol::{
-    Patch, WorkOrder, WorkOrderKind, work_orders_for_source, workorder_region_fingerprint,
+    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, work_orders_for_source,
+    workorder_region_fingerprint,
 };
 use deslop_verify::{
     ApplyReport, CoverageConfig, MutationConfig, VerificationVerdict, VerifyOptions, VerifyReport,
-    apply_patches, verify_patches,
+    apply_patches, characterization_work_orders_for_patches, verify_characterization_tests,
+    verify_patches,
 };
 use serde::{Deserialize, Serialize};
 
@@ -19,8 +21,15 @@ pub trait LlmClient {
     fn rewrite(&self, prompt: &SlimPrompt) -> Result<String>;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlimPromptKind {
+    Rewrite,
+    Characterization,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlimPrompt {
+    pub kind: SlimPromptKind,
     pub workorder_id: String,
     pub text: String,
 }
@@ -31,6 +40,7 @@ pub struct SlimOptions {
     pub paths: Vec<PathBuf>,
     pub workorders: Option<PathBuf>,
     pub apply: bool,
+    pub characterize: bool,
     pub allow_unverified: bool,
     pub coverage: CoverageConfig,
     pub model: String,
@@ -47,6 +57,7 @@ pub struct SlimReport {
     pub patches: Vec<Patch>,
     pub verified: VerifyReport,
     pub gating: SlimGatingReport,
+    pub characterization: Option<SlimCharacterizationReport>,
     pub applied: Option<ApplyReport>,
 }
 
@@ -70,6 +81,30 @@ pub struct SlimPatchStatus {
     pub verdict: VerificationVerdict,
     pub reasons: Vec<String>,
     pub suggestion: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlimCharacterizationReport {
+    pub attempts: Vec<SlimCharacterizationAttempt>,
+    pub accepted: Vec<SlimCharacterizationAttempt>,
+    pub rejected: Vec<SlimCharacterizationAttempt>,
+    pub upgrades: Vec<SlimVerdictUpgrade>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlimCharacterizationAttempt {
+    pub workorder_id: String,
+    pub test_path: PathBuf,
+    pub accepted: bool,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlimVerdictUpgrade {
+    pub workorder_id: String,
+    pub before: VerificationVerdict,
+    pub after: VerificationVerdict,
+    pub applied_after_characterization: bool,
 }
 
 #[cfg(feature = "anthropic")]
@@ -222,13 +257,40 @@ pub fn run_slim(client: &impl LlmClient, options: SlimOptions) -> Result<SlimRep
     }
 
     let verify_options = verify_options(&options);
-    let verified = verify_patches(&patches, &verify_options)?;
-    let gating = gating_report(&verified, options.apply, options.allow_unverified);
-    let applied = if options.apply {
-        Some(apply_patches(&patches, &verify_options, options.backup)?)
+    let initial_verified = verify_patches(&patches, &verify_options)?;
+    let characterization = if options.characterize {
+        Some(run_characterization_pass(
+            client,
+            &options,
+            &patches,
+            &verify_options,
+            &initial_verified,
+        )?)
     } else {
         None
     };
+    let accepted_tests = characterization
+        .as_ref()
+        .map(|report| report.accepted_tests.clone())
+        .unwrap_or_default();
+    let final_verify_options = verify_options_with_characterization(&options, accepted_tests);
+    let verified = if options.characterize {
+        verify_patches(&patches, &final_verify_options)?
+    } else {
+        initial_verified.clone()
+    };
+    let gating = gating_report(&verified, options.apply, options.allow_unverified);
+    let applied = if options.apply {
+        Some(apply_patches(
+            &patches,
+            &final_verify_options,
+            options.backup,
+        )?)
+    } else {
+        None
+    };
+    let characterization = characterization
+        .map(|report| report.into_public_report(&initial_verified, &verified, options.apply));
 
     Ok(SlimReport {
         schema: "deslop.slim/1".to_string(),
@@ -238,6 +300,7 @@ pub fn run_slim(client: &impl LlmClient, options: SlimOptions) -> Result<SlimRep
         patches,
         verified,
         gating,
+        characterization,
         applied,
     })
 }
@@ -266,6 +329,7 @@ pub fn build_prompt(work_order: &WorkOrder) -> SlimPrompt {
         work_order.contract.check_cmd.as_deref().unwrap_or("none")
     );
     SlimPrompt {
+        kind: SlimPromptKind::Rewrite,
         workorder_id: work_order.id.to_owned(),
         text: format!(
             "You are deslop-slim. Rewrite exactly the target region to remove the flagged bloat while preserving behavior.\n\nReturn only the replacement text for the region. Do not return markdown fences, JSON, explanations, or surrounding file text.\n\nInstruction:\n{}\n\nPath: {}\nLines: {}-{}\n\nFindings:\n{}\n\nContract:\n{}\n\nTarget region:\n<<<DESLOP_REGION\n{}>>>",
@@ -275,6 +339,21 @@ pub fn build_prompt(work_order: &WorkOrder) -> SlimPrompt {
             work_order.region.end_line,
             findings,
             contract,
+            work_order.region.text
+        ),
+    }
+}
+
+pub fn build_characterization_prompt(work_order: &WorkOrder) -> SlimPrompt {
+    SlimPrompt {
+        kind: SlimPromptKind::Characterization,
+        workorder_id: work_order.id.to_owned(),
+        text: format!(
+            "You are deslop-slim. Write a characterization test that pins the CURRENT observable behavior of the target region before any rewrite is applied.\n\nReturn only the test source text. Do not return markdown fences, JSON, explanations, or production code changes.\n\nInstruction:\n{}\n\nPath: {}\nLines: {}-{}\n\nCurrent target region:\n<<<DESLOP_REGION\n{}>>>\n\nThe test must pass against the current unmodified code and should fail if the rewrite changes observable behavior.",
+            work_order.instruction,
+            work_order.path.display(),
+            work_order.region.start_line,
+            work_order.region.end_line,
             work_order.region.text
         ),
     }
@@ -295,14 +374,152 @@ pub fn strip_code_fences(text: &str) -> String {
 }
 
 fn verify_options(options: &SlimOptions) -> VerifyOptions {
+    verify_options_with_characterization(options, Vec::new())
+}
+
+fn verify_options_with_characterization(
+    options: &SlimOptions,
+    characterization_tests: Vec<CharacterizationTest>,
+) -> VerifyOptions {
     VerifyOptions {
         root: options.root.to_owned(),
         check_cmd: options.check_cmd.to_owned(),
         coverage: options.coverage.clone(),
         mutation: MutationConfig::Disabled,
-        characterization_tests: Vec::new(),
+        characterization_tests,
         allow_non_removable: options.allow_unverified,
     }
+}
+
+struct CharacterizationRun {
+    accepted_tests: Vec<CharacterizationTest>,
+    attempts: Vec<SlimCharacterizationAttempt>,
+}
+
+impl CharacterizationRun {
+    fn into_public_report(
+        self,
+        before: &VerifyReport,
+        after: &VerifyReport,
+        applying: bool,
+    ) -> SlimCharacterizationReport {
+        let accepted = self
+            .attempts
+            .iter()
+            .filter(|attempt| attempt.accepted)
+            .cloned()
+            .collect();
+        let rejected = self
+            .attempts
+            .iter()
+            .filter(|attempt| !attempt.accepted)
+            .cloned()
+            .collect();
+        SlimCharacterizationReport {
+            attempts: self.attempts,
+            accepted,
+            rejected,
+            upgrades: verdict_upgrades(before, after, applying),
+        }
+    }
+}
+
+fn run_characterization_pass(
+    client: &impl LlmClient,
+    options: &SlimOptions,
+    patches: &[Patch],
+    verify_options: &VerifyOptions,
+    _initial_verified: &VerifyReport,
+) -> Result<CharacterizationRun> {
+    let work_orders = characterization_work_orders_for_patches(patches, verify_options)?;
+    let tests = work_orders
+        .iter()
+        .map(|work_order| characterization_test_for_work_order(client, options, work_order))
+        .collect::<Result<Vec<_>>>()?;
+    let report = verify_characterization_tests(&tests, verify_options)?;
+    let mut accepted_tests = Vec::new();
+    let mut attempts = Vec::new();
+    for (test, result) in tests.into_iter().zip(report.results) {
+        if result.accepted {
+            accepted_tests.push(test.clone());
+        }
+        attempts.push(SlimCharacterizationAttempt {
+            workorder_id: result.workorder_id,
+            test_path: test.test_path,
+            accepted: result.accepted,
+            reasons: result.reasons,
+        });
+    }
+    Ok(CharacterizationRun {
+        accepted_tests,
+        attempts,
+    })
+}
+
+fn characterization_test_for_work_order(
+    client: &impl LlmClient,
+    options: &SlimOptions,
+    work_order: &WorkOrder,
+) -> Result<CharacterizationTest> {
+    let prompt = build_characterization_prompt(work_order);
+    Ok(CharacterizationTest {
+        schema: "deslop.characterization-test/1".to_string(),
+        workorder_id: work_order.id.to_owned(),
+        region_fingerprint: workorder_region_fingerprint(work_order),
+        test_path: characterization_test_path(work_order),
+        test_text: strip_code_fences(&client.rewrite(&prompt)?),
+        by: format!("deslop-slim/{}", options.model),
+    })
+}
+
+fn characterization_test_path(work_order: &WorkOrder) -> PathBuf {
+    let extension = work_order
+        .path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("txt");
+    PathBuf::from("deslop_characterization").join(format!(
+        "{}.{}",
+        safe_filename_component(&work_order.id),
+        extension
+    ))
+}
+
+fn safe_filename_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn verdict_upgrades(
+    before: &VerifyReport,
+    after: &VerifyReport,
+    applying: bool,
+) -> Vec<SlimVerdictUpgrade> {
+    before
+        .results
+        .iter()
+        .filter_map(|initial| {
+            let final_result = after
+                .results
+                .iter()
+                .find(|result| result.workorder_id == initial.workorder_id)?;
+            (initial.verdict != final_result.verdict).then(|| SlimVerdictUpgrade {
+                workorder_id: initial.workorder_id.to_owned(),
+                before: initial.verdict,
+                after: final_result.verdict,
+                applied_after_characterization: applying
+                    && final_result.verdict == VerificationVerdict::Removable,
+            })
+        })
+        .collect()
 }
 
 fn gating_report(
@@ -458,10 +675,20 @@ mod tests {
 
         let prompt = build_prompt(&work_order);
 
+        assert_eq!(prompt.kind, SlimPromptKind::Rewrite);
         assert!(prompt.text.contains("fn sample()"));
         assert!(prompt.text.contains("unneeded return"));
         assert!(prompt.text.contains("must parse: true"));
         assert!(prompt.text.contains("no new public definitions: true"));
+
+        let characterization = build_characterization_prompt(&work_order);
+        assert_eq!(characterization.kind, SlimPromptKind::Characterization);
+        assert!(
+            characterization
+                .text
+                .contains("pins the CURRENT observable behavior")
+        );
+        assert!(characterization.text.contains("fn sample()"));
     }
 
     #[test]
@@ -481,6 +708,7 @@ mod tests {
                 paths: vec![temp.path().to_path_buf()],
                 workorders: None,
                 apply: true,
+                characterize: false,
                 allow_unverified: false,
                 coverage: CoverageConfig::LcovFile(coverage),
                 model: "recorded".to_string(),
@@ -526,6 +754,7 @@ mod tests {
                 paths: vec![temp.path().to_path_buf()],
                 workorders: None,
                 apply: true,
+                characterize: false,
                 allow_unverified: false,
                 coverage: CoverageConfig::Disabled,
                 model: "recorded".to_string(),
@@ -570,6 +799,7 @@ mod tests {
                 paths: vec![temp.path().to_path_buf()],
                 workorders: None,
                 apply: true,
+                characterize: false,
                 allow_unverified: true,
                 coverage: CoverageConfig::Disabled,
                 model: "recorded".to_string(),
@@ -616,6 +846,7 @@ mod tests {
                 paths: vec![temp.path().to_path_buf()],
                 workorders: None,
                 apply: true,
+                characterize: false,
                 allow_unverified,
                 coverage: CoverageConfig::Disabled,
                 model: "recorded".to_string(),
@@ -632,6 +863,116 @@ mod tests {
         assert!(report.gating.applied.is_empty());
         assert!(report.gating.held_unproven.is_empty());
         assert_eq!(report.gating.rejected.len(), 1);
+        assert!(
+            report
+                .applied
+                .as_ref()
+                .expect("apply report")
+                .written
+                .is_empty()
+        );
+        assert_eq!(fs::read_to_string(&source)?, original);
+        Ok(())
+    }
+
+    #[test]
+    fn characterize_accepts_test_upgrades_and_applies_rewrite() -> Result<()> {
+        let temp = TempDir::new()?;
+        let source = temp.path().join("sample.rs");
+        fs::write(
+            &source,
+            "fn identity(value: i32) -> i32 {\n    return value;\n}\n",
+        )?;
+        let check_cmd = characterization_check_cmd(temp.path(), "PIN")?;
+        let client = ScriptedClient {
+            rewrite: "fn identity(value: i32) -> i32 {\n    value\n}\n".to_string(),
+            characterization: "PIN current behavior".to_string(),
+        };
+        let report = run_slim(
+            &client,
+            SlimOptions {
+                root: temp.path().to_path_buf(),
+                paths: vec![temp.path().to_path_buf()],
+                workorders: None,
+                apply: true,
+                characterize: true,
+                allow_unverified: false,
+                coverage: CoverageConfig::Disabled,
+                model: "scripted".to_string(),
+                check_cmd: Some(check_cmd),
+                backup: false,
+            },
+        )?;
+
+        let characterization = report.characterization.as_ref().expect("characterization");
+        assert_eq!(characterization.attempts.len(), 1);
+        assert_eq!(characterization.accepted.len(), 1);
+        assert!(characterization.rejected.is_empty());
+        assert_eq!(characterization.upgrades.len(), 1);
+        assert_eq!(
+            characterization.upgrades[0].before,
+            VerificationVerdict::CoverageUnknown
+        );
+        assert_eq!(
+            characterization.upgrades[0].after,
+            VerificationVerdict::Removable
+        );
+        assert!(characterization.upgrades[0].applied_after_characterization);
+        assert_eq!(
+            report.verified.results[0].verdict,
+            VerificationVerdict::Removable
+        );
+        assert_eq!(report.gating.applied.len(), 1);
+        assert!(report.gating.held_unproven.is_empty());
+        assert_eq!(
+            report.applied.as_ref().expect("apply report").written,
+            vec![source.clone()]
+        );
+        assert_eq!(
+            fs::read_to_string(&source)?,
+            "fn identity(value: i32) -> i32 {\n    value\n}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn characterize_rejects_failing_test_and_holds_rewrite() -> Result<()> {
+        let temp = TempDir::new()?;
+        let source = temp.path().join("sample.rs");
+        let original = "fn identity(value: i32) -> i32 {\n    return value;\n}\n";
+        fs::write(&source, original)?;
+        let check_cmd = characterization_check_cmd(temp.path(), "PIN")?;
+        let client = ScriptedClient {
+            rewrite: "fn identity(value: i32) -> i32 {\n    value\n}\n".to_string(),
+            characterization: "WRONG current behavior".to_string(),
+        };
+        let report = run_slim(
+            &client,
+            SlimOptions {
+                root: temp.path().to_path_buf(),
+                paths: vec![temp.path().to_path_buf()],
+                workorders: None,
+                apply: true,
+                characterize: true,
+                allow_unverified: false,
+                coverage: CoverageConfig::Disabled,
+                model: "scripted".to_string(),
+                check_cmd: Some(check_cmd),
+                backup: false,
+            },
+        )?;
+
+        let characterization = report.characterization.as_ref().expect("characterization");
+        assert_eq!(characterization.attempts.len(), 1);
+        assert!(characterization.accepted.is_empty());
+        assert_eq!(characterization.rejected.len(), 1);
+        assert!(characterization.upgrades.is_empty());
+        assert_eq!(
+            report.verified.results[0].verdict,
+            VerificationVerdict::CoverageUnknown
+        );
+        assert!(report.gating.applied.is_empty());
+        assert_eq!(report.gating.held_unproven.len(), 1);
         assert!(
             report
                 .applied
@@ -688,5 +1029,31 @@ mod tests {
         )
         .expect("write lcov fixture");
         path
+    }
+
+    struct ScriptedClient {
+        rewrite: String,
+        characterization: String,
+    }
+
+    impl LlmClient for ScriptedClient {
+        fn rewrite(&self, prompt: &SlimPrompt) -> Result<String> {
+            Ok(match prompt.kind {
+                SlimPromptKind::Rewrite => self.rewrite.to_owned(),
+                SlimPromptKind::Characterization => self.characterization.to_owned(),
+            })
+        }
+    }
+
+    fn characterization_check_cmd(root: &Path, expected: &str) -> Result<String> {
+        let work_order = propose_work_orders(&[root.to_path_buf()])?
+            .into_iter()
+            .next()
+            .context("expected work order")?;
+        let test_path = characterization_test_path(&work_order);
+        Ok(format!(
+            "if [ -f {path} ]; then grep -q {expected} {path}; else true; fi",
+            path = test_path.display()
+        ))
     }
 }

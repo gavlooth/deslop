@@ -297,7 +297,7 @@ deslop scan     [PATHS…] [--format text|json|sarif|agent] [--baseline FILE] [-
 deslop metrics  [PATHS…] [--format text|json] [--hotspots-only] [--sigma N]
 deslop health   [PATHS…] [--format text|json] [--hotspots-only] [--sigma N] # alias
 deslop slop     [PATHS…] [--format text|json]                 # weighted slop score
-deslop fix      [--paths PATH… | --workorders FILE] [--apply] [--allow-unverified] [--coverage MODE] [--provider anthropic|openai] [--base-url URL] [--model M] [--mock recorded.txt] [--check-cmd "CMD"] [--no-backup] # bundled slim consumer; dry-run by default
+deslop fix      [--paths PATH… | --workorders FILE] [--apply] [--characterize] [--allow-unverified] [--coverage MODE] [--provider anthropic|openai] [--base-url URL] [--model M] [--mock recorded.txt] [--check-cmd "CMD"] [--no-backup] # bundled slim consumer; dry-run by default
 deslop propose  [PATHS…] [-o workorders.jsonl] [--julia-external[=staticlint|jet|off]] [--julia-project DIR] # emit work orders
 deslop characterize --patches FILE [-o workorders.jsonl] [--check-cmd "CMD"] [--coverage] [--mutation]
 deslop verify-characterization --tests FILE --check-cmd "CMD"
@@ -320,12 +320,18 @@ deslop rules                                                   # class, precondi
   rewrites into `deslop.patch/1`, verifies them, and prints a dry-run JSON report unless
   `--apply` is passed. Default `--apply` writes only `removable` verifier verdicts;
   `coverage-unknown`, `untested-risky`, and `dead-candidate` are reported as held-unproven
-  unless `--allow-unverified` is explicit. `--coverage` accepts `disabled`, `auto`,
-  `auto:<cmd>`, `lcov:<path>`, `cloverage:<path>`, `julia-cov:<path>`, and
-  `coverage-py:<path>`, mapping directly to `CoverageConfig`. `--provider` selects
-  `anthropic` or OpenAI-compatible `openai`; `--base-url` overrides the OpenAI-compatible
-  base URL for providers such as Together, Groq, Ollama, OpenRouter, or vLLM. `--mock` uses
-  `RecordedClient` for deterministic tests and offline replay.
+  unless `--allow-unverified` is explicit. With `--characterize`, slim asks the same
+  `LlmClient` for tests only for rewrites whose initial verdict needs characterization,
+  accepts generated tests only through `verify_characterization_tests` on the current
+  unmodified code, then re-verifies and applies rewrites with the accepted tests in
+  `VerifyOptions.characterization_tests`. The report includes characterization attempts,
+  accepted/rejected tests, and verdict upgrades such as `coverage-unknown` -> `removable`.
+  `--coverage` accepts `disabled`, `auto`, `auto:<cmd>`, `lcov:<path>`,
+  `cloverage:<path>`, `julia-cov:<path>`, and `coverage-py:<path>`, mapping directly to
+  `CoverageConfig`. `--provider` selects `anthropic` or OpenAI-compatible `openai`;
+  `--base-url` overrides the OpenAI-compatible base URL for providers such as Together,
+  Groq, Ollama, OpenRouter, or vLLM. `--mock` uses `RecordedClient` for deterministic tests
+  and offline replay.
 - **`propose`/`verify`/`apply`**: the swappable-LLM loop (§4). `verify`/`apply` are the
   trust boundary; they run with **no network** and need no model.
 - **`mcp`**: feature-gated stdio MCP server exposing `scan`, `propose`, `verify`,
@@ -380,9 +386,15 @@ text, findings, and contract → `LlmClient::rewrite` → strip markdown fences 
 `deslop.patch/1` with `by = deslop-slim/<model>` → `verify_patches` → default dry-run report
 or `apply_patches` when `--apply` is explicit. Its report separates patches into `applied`,
 `held_unproven`, and `rejected`; held patches include a suggestion to pass coverage, add
-characterization tests, or explicitly use `--allow-unverified`. `AnthropicClient` uses
-Anthropic Messages via `ureq` and `ANTHROPIC_API_KEY`. `OpenAiClient` uses the
-OpenAI-compatible Chat Completions shape at `{base_url}/chat/completions`, defaults
+characterization tests, or explicitly use `--allow-unverified`. `SlimPrompt.kind` labels
+rewrite and characterization prompts so deterministic tests and providers can distinguish the
+two phases. When `--characterize` is enabled, slim generates characterization tests only for
+weak-oracle rewrites, verifies those tests on current code, carries accepted tests into the
+second verifier pass, and reports attempts plus before/after verdict upgrades. Failed
+generated tests are rejected and do not weaken the removable-only apply gate.
+`AnthropicClient` uses Anthropic Messages via `ureq` and `ANTHROPIC_API_KEY`.
+`OpenAiClient` uses the OpenAI-compatible Chat Completions shape at
+`{base_url}/chat/completions`, defaults
 `base_url` to `https://api.openai.com/v1`, and reads `OPENAI_API_KEY` with
 `DESLOP_SLIM_API_KEY` fallback. Neither client logs keys. `RecordedClient` reads a response
 from disk and is the test/replay client. It enforces nothing the core doesn't; all guarantees
@@ -407,7 +419,7 @@ crates/
   deslop-fix/        # safe-auto / analyzer-confirmed CST edits (ropey)
   deslop-protocol/   # work-order + patch schemas (serde); --format agent
   deslop-verify/     # the deterministic gate: parse + check-cmd + defensive/scope guards
-  deslop-slim/       # bundled Anthropic/recorded-client reference consumer
+  deslop-slim/       # bundled optional LLM reference consumer
   deslop-report/     # text / json / sarif renderers
   deslop-cli/        # orchestration, exit codes
   deslop-mcp/        # feature=mcp stdio MCP tools over protocol/verify
@@ -444,8 +456,9 @@ guard; a stale `region_fingerprint` is rejected); clj-kondo/clippy/Julia externa
 present/absent fixture/degrade tests; plugin registry dispatch; Rust CST region
 extraction; `slim` deterministic prompt/client/e2e tests with no network/API key, including
 default hold of `coverage-unknown`, `--allow-unverified` opt-in apply, rejected rewrites
-blocked in both modes, and LCOV-backed `removable` apply by default. Optional live smoke sits
-outside the default suite.
+blocked in both modes, `--characterize` accept/reject paths that prove accepted tests upgrade
+weak verdicts while failing tests stay held, and LCOV-backed `removable` apply by default.
+Optional live smoke sits outside the default suite.
 Metrics tests cover cyclomatic counts, known Halstead numbers, hotspot detection, and a
 throwaway pack driving metric declarations without central language edits.
 MCP tests cover `tools/list` schemas, `tools/call scan`, `fix` prompt generation,

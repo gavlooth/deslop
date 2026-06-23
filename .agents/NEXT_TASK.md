@@ -1,59 +1,46 @@
-# TASK 2/queue — Characterization-test generation loop (close the graded-removability loop)
+# TASK 3/queue — MCP coverage-mode parity
 
-Today slim SKIPS `NeedsCharacterizationTest` work orders (lib.rs ~156). The prover emits them for
-`CoverageUnknown`/`UntestedRisky` rewrites, and `verify_characterization_tests` accepts a test only
-if it passes on CURRENT code — but nothing GENERATES the test. Close the loop: generate a
-characterization test that pins current behavior, verify it, then re-verify the rewrite WITH that
-test so a risky removal can become safe. Start with `jj new` (separate change on top of rqmuzkxm).
+MCP `verify`/`apply` only accept `coverage: boolean` (true→Auto, false→Disabled). The CLI supports
+full modes (disabled/auto/auto:<cmd>/lcov:<path>/cloverage:<path>/julia-cov:<path>/coverage-py:<path>).
+Without mode parity, an agent CANNOT reach a `Removable` verdict via MCP (can't point at an LCOV
+file etc.). Fix it. Start with `jj new` (separate change on top of txmxlptr).
 
-## Real API to use (don't reinvent)
-- `deslop_verify::characterization_work_orders_for_patches(&[Patch], &VerifyOptions) -> Vec<WorkOrder>`
-  (returns characterize work orders for patches whose verdict `needs_characterization_test()`).
-- `deslop_verify::verify_characterization_tests(&[CharacterizationTest], ...) -> report` (accepts
-  only tests that PASS on current unmodified code).
-- `VerifyOptions.characterization_tests: Vec<CharacterizationTest>` → feeds `run_characterization_gate`
-  during `verify_patches`/`apply_patches` (re-verify with accepted tests can upgrade the verdict).
-- `deslop_protocol::CharacterizationTest { schema, workorder_id, region_fingerprint, test_path,
-  test_text, by }`, `characterization_work_order_for(&WorkOrder)`.
+## The parser to share (currently CLI-only)
+`crates/deslop-cli/src/main.rs:760` `parse_coverage_config(&str) -> Result<CoverageConfig>` (+
+`parse_coverage_config_with_value` at 769) handles every mode. deslop-verify has NO public mode
+parser. MCP `coverage_config(args)` (in deslop-mcp) only branches on a bool.
 
-## Build (in deslop-slim)
-1. **Prompt kind**: add a `kind` to `SlimPrompt` (`Rewrite` | `Characterization`) so clients/tests
-   can distinguish. Add `build_characterization_prompt(&WorkOrder)` — instruct the model to write a
-   test that PINS the CURRENT behavior of the region (asserts current outputs), returning only the
-   test code. Keep `build_prompt` (rewrite) unchanged in behavior.
-2. **Generation step** in `run_slim`, gated by a new `characterize: bool` option (CLI
-   `deslop fix --characterize`, default off — it writes test files + runs check_cmd):
-   - After the initial `verify_patches`, compute `characterization_work_orders_for_patches(&patches,
-     &verify_options)`.
-   - For each, `build_characterization_prompt` → `client.rewrite` → construct `CharacterizationTest`
-     { schema:"deslop.characterization-test/1", workorder_id, region_fingerprint (=
-     workorder_region_fingerprint), test_path (derive a deterministic path under root, e.g.
-     `<root>/deslop_characterization/<workorder_id>.rs` or per work order), test_text (LLM output,
-     fence-stripped), by:"deslop-slim/<model>" }.
-   - `verify_characterization_tests(&tests, ...)` with the same check_cmd; keep only ACCEPTED.
-   - Set `verify_options.characterization_tests = accepted`, then re-run `verify_patches` (and
-     `apply_patches` if `--apply`) so the gate re-evaluates the rewrites WITH the tests.
-3. **Report** (extend SlimReport): characterization attempts, accepted vs rejected (with reason),
-   and which rewrites were upgraded (verdict before→after) / applied because of an accepted test.
-   Patches still unproven after characterization stay held (existing behavior).
+## Do
+1. **Lift the parser into `deslop-verify`** as a public fn (e.g.
+   `pub fn parse_coverage_mode(s: &str) -> Result<CoverageConfig>`, or `impl FromStr for
+   CoverageConfig`). Move the mode logic from the CLI into it verbatim (disabled/off/none, auto,
+   auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>|julia, coverage-py:<path>|python,
+   with the same error message). Update the CLI to delegate to the shared fn — NO behavior change;
+   keep the CLI's `parses_slim_coverage_modes` test green.
+2. **MCP `coverage_config(args)`**: accept `coverage` as EITHER
+   - a boolean (back-compat: true→Auto, false→Disabled), OR
+   - a string mode parsed via the shared `parse_coverage_mode` (return a clear error on bad mode —
+     `coverage_config` may need to return `Result<CoverageConfig>`; thread that through verify/apply
+     tool handlers).
+   Apply to BOTH the `verify` and `apply` tools (the two that take coverage). `fix` returns prompts
+   only — no coverage needed there.
+3. **Update tool schemas** in `tools_list_result` so `verify`/`apply` document `coverage` accepting
+   either a boolean or a mode string (list the modes in the description). Keep the default false.
 
-## Tests (deterministic, NO network) — model them on the existing deslop-verify characterization tests
-- Add a test-only client that serves DIFFERENT responses by `SlimPrompt.kind` (rewrite vs
-  characterization) — e.g. extend `RecordedClient` or add `ScriptedClient`.
-- Accept path: a needs-characterization rewrite + `--characterize`, characterization test that
-  PASSES on current code (use the same recorded-fixture / check_cmd approach the verify crate's
-  characterization tests use) → test accepted → rewrite verdict upgraded → applied (with `--apply`).
-- Reject path: characterization test that FAILS on current code → rejected → rewrite NOT upgraded,
-  remains held; file unchanged.
-- Keep all existing slim tests green (recorded e2e, gating, rejection, openai parser).
+## Tests (deterministic, NO network) — reuse the LCOV fixture pattern
+- MCP `apply` (or `verify`) with `coverage: "lcov:<path>"` on a covered region → verdict `Removable`
+  (mirror the LCOV fixture used in deslop-verify / deslop-slim tests). With the patch covered, it
+  applies WITHOUT `allow_non_removable`.
+- Back-compat: `coverage: true` still behaves as `Auto`; `coverage: false`/absent → `Disabled`.
+- Bad mode string → clear error (tool returns an error, doesn't panic).
+- Keep existing MCP tests green (scan/propose/verify/apply/fix).
 
 ## Constraints / gate
-Do NOT weaken verify or change the rewrite gating from Task earlier (default --apply still
-Removable-only; characterization is how CoverageUnknown becomes safe). Do NOT touch the MCP path,
-do NOT pull ureq into MCP, do NOT touch `deslop/*.py`. Gate after each change:
+No CLI behavior change. No new deps. MCP stays network-free (`cargo tree -p deslop-mcp -i ureq`
+empty). Do NOT touch `deslop/*.py`. Gate after each change:
 `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
 
 ## Report
-the loop wiring; `--characterize` flag; accept+reject test outcomes; verdict before→after on the
-accept path; SPEC.md update (characterization loop). `jj describe -m "<summary>"`. Touch
-`.agents/HEARTBEAT.md`. Do NOT start queued items 3-6.
+shared parser location; MCP coverage accepting bool|mode; the LCOV→Removable MCP test; back-compat
++ bad-mode tests; SPEC.md + tool-schema updates. `jj describe -m "<summary>"`. Touch
+`.agents/HEARTBEAT.md`. Do NOT start queued items 4-6.

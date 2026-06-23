@@ -1,5 +1,59 @@
 # Session Report
 
+## 2026-06-23T22:14:04+02:00 — Slim Characterization Generation Loop
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 2 only: add the
+`deslop fix --characterize` characterization-test generation loop to `deslop-slim`,
+without starting queued items 3-6.
+
+Changes:
+- Started a new jj change `txmxlptr` on top of `rqmuzkxm`.
+- Added `SlimPrompt.kind` with `Rewrite` and `Characterization` variants.
+- Added `build_characterization_prompt(&WorkOrder)` for current-behavior test prompts.
+- Added `SlimOptions.characterize` and CLI flag `deslop fix --characterize`, default off.
+- `run_slim` now:
+  - runs the initial rewrite verification;
+  - computes `characterization_work_orders_for_patches` for weak-oracle rewrites when
+    `--characterize` is enabled;
+  - sends characterization prompts through the existing `LlmClient`;
+  - constructs `deslop.characterization-test/1` candidates;
+  - accepts only tests passing `verify_characterization_tests` on current unmodified code;
+  - re-runs `verify_patches` with accepted tests in
+    `VerifyOptions.characterization_tests`;
+  - passes the same accepted tests into `apply_patches`.
+- Extended `SlimReport` with a `characterization` section containing attempts,
+  accepted/rejected tests, and verdict upgrades before -> after.
+- Updated `SPEC.md` for `deslop fix --characterize`, the slim characterization loop, and
+  deterministic accept/reject test coverage.
+- Touched `.agents/HEARTBEAT.md`.
+
+Deterministic tests:
+- Accept path: a `coverage-unknown` rewrite plus accepted generated test upgrades to
+  `removable` and applies under default removable-only gating.
+- Reject path: a generated test that fails current code is rejected, the rewrite remains
+  `coverage-unknown`, and default `--apply` holds it without changing the file.
+- Existing `RecordedClient`/provider parser tests remain no-network/no-key.
+
+Verification:
+- After core loop/test implementation:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- After SPEC/report update:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- Help smoke:
+  - `cargo run -q -p deslop-cli -- fix --help`: pass; output includes
+    `--characterize`.
+
+Not started:
+- Queue item 3: MCP coverage-mode parity.
+- Queue item 4: LSP server.
+- Queue item 5: CI/pre-commit packaging.
+- Queue item 6: config file.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-23T21:23:33+02:00 — OpenAI-Compatible Slim Provider
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 1 only: add an OpenAI-compatible LLM
