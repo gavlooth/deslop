@@ -1,4 +1,4 @@
-use deslop_core::{DetectedBy, Finding, SafetyClass, Severity};
+use deslop_core::{DetectedBy, Finding, Lang, SafetyClass, Severity};
 use deslop_lang::{LangPack, RegionClass, Registry as LangRegistry};
 use deslop_parse::{SourceFile, parse_tree};
 use tree_sitter::Node;
@@ -43,6 +43,7 @@ pub(crate) fn duplicate_token_sequences(source: &SourceFile, min_tokens: usize) 
     if min_tokens == 0 || tokens.len() < min_tokens * 2 {
         return Vec::new();
     }
+    let rust_tree = rust_tree(source);
     let mut out = Vec::new();
     let mut reported_until = 0;
     for i in 0..=(tokens.len() - min_tokens) {
@@ -62,14 +63,9 @@ pub(crate) fn duplicate_token_sequences(source: &SourceFile, min_tokens: usize) 
             {
                 continue;
             }
-            let exact_match = left
-                .iter()
-                .zip(right)
-                .all(|(left, right)| left.exact == right.exact);
-            let normalized_match = left
-                .iter()
-                .zip(right)
-                .all(|(left, right)| left.normalized == right.normalized);
+            let exact_match = token_windows_match(left, right, |token| token.exact.as_str());
+            let normalized_match =
+                token_windows_match(left, right, |token| token.normalized.as_str());
             let rule = if exact_match {
                 "duplicate-block"
             } else if normalized_match {
@@ -77,6 +73,11 @@ pub(crate) fn duplicate_token_sequences(source: &SourceFile, min_tokens: usize) 
             } else {
                 continue;
             };
+            if rust_tree.as_ref().is_some_and(|tree| {
+                non_removable_rust_mapping_rhyme(source, tree.root_node(), left, right)
+            }) {
+                continue;
+            }
             let start_line = source.line_for_byte(tokens[j].start_byte);
             let end_line = source.line_for_byte(tokens[j + min_tokens - 1].end_byte);
             out.push(finding(
@@ -438,6 +439,139 @@ fn single_segment(tokens: &[Token]) -> bool {
 
 fn meaningful_count(tokens: &[Token]) -> usize {
     tokens.iter().filter(|token| token.meaningful).count()
+}
+
+fn token_windows_match(left: &[Token], right: &[Token], field: impl Fn(&Token) -> &str) -> bool {
+    left.iter()
+        .zip(right)
+        .all(|(left, right)| field(left) == field(right))
+}
+
+fn rust_tree(source: &SourceFile) -> Option<tree_sitter::Tree> {
+    (source.lang == Lang::Rust)
+        .then(|| parse_tree(source.lang, &source.text).ok().flatten())?
+        .filter(|tree| !tree.root_node().has_error())
+}
+
+fn non_removable_rust_mapping_rhyme(
+    source: &SourceFile,
+    root: Node<'_>,
+    left: &[Token],
+    right: &[Token],
+) -> bool {
+    let Some((left_start, left_end)) = token_window_range(left) else {
+        return false;
+    };
+    let Some((right_start, right_end)) = token_window_range(right) else {
+        return false;
+    };
+    is_in_pure_path_mapping_context(source, root, left_start, left_end)
+        && is_in_pure_path_mapping_context(source, root, right_start, right_end)
+}
+
+fn token_window_range(tokens: &[Token]) -> Option<(usize, usize)> {
+    Some((tokens.first()?.start_byte, tokens.last()?.end_byte))
+}
+
+fn smallest_enclosing_node<'tree>(
+    node: Node<'tree>,
+    start_byte: usize,
+    end_byte: usize,
+    kind: &str,
+) -> Option<Node<'tree>> {
+    if !node_contains_range(node, start_byte, end_byte) {
+        return None;
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor).filter(|child| child.is_named()) {
+        if let Some(enclosing) = smallest_enclosing_node(child, start_byte, end_byte, kind) {
+            return Some(enclosing);
+        }
+    }
+
+    (node.kind() == kind).then_some(node)
+}
+
+fn node_contains_range(node: Node<'_>, start_byte: usize, end_byte: usize) -> bool {
+    node.start_byte() <= start_byte && end_byte <= node.end_byte()
+}
+
+fn is_in_pure_path_mapping_context(
+    source: &SourceFile,
+    root: Node<'_>,
+    start_byte: usize,
+    end_byte: usize,
+) -> bool {
+    if smallest_enclosing_node(root, start_byte, end_byte, "match_expression")
+        .is_some_and(|node| is_pure_path_mapping_match(source, node))
+    {
+        return true;
+    }
+
+    ["function_item", "impl_item"].into_iter().any(|kind| {
+        smallest_enclosing_node(root, start_byte, end_byte, kind)
+            .is_some_and(|node| contains_pure_path_mapping_match(source, node))
+    })
+}
+
+fn contains_pure_path_mapping_match(source: &SourceFile, node: Node<'_>) -> bool {
+    if node.kind() == "match_expression" && is_pure_path_mapping_match(source, node) {
+        return true;
+    }
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .filter(|child| child.is_named())
+        .any(|child| contains_pure_path_mapping_match(source, child))
+}
+
+fn is_pure_path_mapping_match(source: &SourceFile, match_node: Node<'_>) -> bool {
+    let Some(body) = match_node.child_by_field_name("body") else {
+        return false;
+    };
+    let mut cursor = body.walk();
+    let arms: Vec<_> = body
+        .children(&mut cursor)
+        .filter(|child| child.kind() == "match_arm")
+        .collect();
+    arms.len() >= 2
+        && arms
+            .into_iter()
+            .all(|arm| is_pure_path_mapping_arm(source, arm))
+}
+
+fn is_pure_path_mapping_arm(source: &SourceFile, arm: Node<'_>) -> bool {
+    let Some(pattern) = arm.child_by_field_name("pattern") else {
+        return false;
+    };
+    let Some(value) = arm.child_by_field_name("value") else {
+        return false;
+    };
+    is_path_like_pattern(source, pattern) && is_path_like_value(value)
+}
+
+fn is_path_like_pattern(source: &SourceFile, node: Node<'_>) -> bool {
+    match node.kind() {
+        "identifier" | "scoped_identifier" => true,
+        "match_pattern" => {
+            if node.child_by_field_name("condition").is_some() {
+                return false;
+            }
+            let mut cursor = node.walk();
+            let mut children = node.children(&mut cursor).filter(|child| child.is_named());
+            let Some(child) = children.next() else {
+                return false;
+            };
+            children.next().is_none() && is_path_like_pattern(source, child)
+        }
+        _ => node
+            .utf8_text(source.text.as_bytes())
+            .is_ok_and(|text| text.contains("::") && !text.contains([' ', '\n', '\t'])),
+    }
+}
+
+fn is_path_like_value(node: Node<'_>) -> bool {
+    matches!(node.kind(), "identifier" | "scoped_identifier")
 }
 
 fn disjoint_ranges(left: &[Token], right: &[Token]) -> bool {

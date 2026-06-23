@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -296,10 +296,13 @@ impl DeslopConfig {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let text = fs::read_to_string(&path)
-            .with_context(|| format!("failed to read {}", path.display()))?;
+        let text = read_to_string_ctx(&path)?;
         toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
     }
+}
+
+fn read_to_string_ctx(path: &Path) -> Result<String> {
+    fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -477,34 +480,11 @@ fn slop(args: SlopArgs) -> Result<()> {
 }
 
 fn slop_report(reports: &[FileReport]) -> Result<SlopReport> {
-    let mut files = Vec::new();
     let mut rule_counts = BTreeMap::new();
-    for report in reports {
-        let text = fs::read_to_string(&report.path)
-            .with_context(|| format!("failed to read {}", report.path.display()))?;
-        let nloc = text.lines().filter(|line| !line.trim().is_empty()).count();
-        let mut file_rules = BTreeMap::new();
-        let mut weighted = 0.0;
-        for finding in &report.findings {
-            if let Some(weight) = slop_weight(&finding.rule) {
-                *file_rules.entry(finding.rule.to_owned()).or_default() += 1;
-                *rule_counts.entry(finding.rule.to_owned()).or_default() += 1;
-                weighted += weight;
-            }
-        }
-        let density = if nloc == 0 {
-            0.0
-        } else {
-            weighted * 100.0 / nloc as f64
-        };
-        files.push(FileSlopScore {
-            path: report.path.to_path_buf(),
-            score: density.min(100.0),
-            findings: file_rules.values().sum(),
-            nloc,
-            rule_counts: file_rules,
-        });
-    }
+    let mut files = reports
+        .iter()
+        .map(|report| slop_score_for_file(report, &mut rule_counts))
+        .collect::<Result<Vec<_>>>()?;
     files.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
@@ -521,6 +501,35 @@ fn slop_report(reports: &[FileReport]) -> Result<SlopReport> {
         score,
         files,
         rule_counts,
+    })
+}
+
+fn slop_score_for_file(
+    report: &FileReport,
+    rule_counts: &mut BTreeMap<String, usize>,
+) -> Result<FileSlopScore> {
+    let text = read_to_string_ctx(&report.path)?;
+    let nloc = text.lines().filter(|line| !line.trim().is_empty()).count();
+    let mut file_rules = BTreeMap::new();
+    let mut weighted = 0.0;
+    for finding in &report.findings {
+        if let Some(weight) = slop_weight(&finding.rule) {
+            *file_rules.entry(finding.rule.to_owned()).or_default() += 1;
+            *rule_counts.entry(finding.rule.to_owned()).or_default() += 1;
+            weighted += weight;
+        }
+    }
+    let density = if nloc == 0 {
+        0.0
+    } else {
+        weighted * 100.0 / nloc as f64
+    };
+    Ok(FileSlopScore {
+        path: report.path.to_path_buf(),
+        score: density.min(100.0),
+        findings: file_rules.values().sum(),
+        nloc,
+        rule_counts: file_rules,
     })
 }
 
@@ -607,14 +616,13 @@ fn characterize(args: CharacterizeArgs) -> Result<()> {
     let patches = load_patches(&args.patches)?;
     let work_orders = characterization_work_orders_for_patches(
         &patches,
-        &VerifyOptions {
-            root: PathBuf::from("."),
-            check_cmd: args.check_cmd,
-            coverage: coverage_config(args.coverage),
-            mutation: mutation_config(args.mutation),
-            characterization_tests: Vec::new(),
-            allow_non_removable: false,
-        },
+        &verify_options(
+            args.check_cmd,
+            args.coverage,
+            args.mutation,
+            Vec::new(),
+            false,
+        ),
     )?;
     let mut rendered = String::new();
     for work_order in work_orders {
@@ -634,16 +642,9 @@ fn verify_characterization(args: VerifyCharacterizationArgs) -> Result<()> {
     let tests = load_characterization_tests(&args.tests)?;
     let report = verify_characterization_tests(
         &tests,
-        &VerifyOptions {
-            root: PathBuf::from("."),
-            check_cmd: Some(args.check_cmd),
-            coverage: CoverageConfig::Disabled,
-            mutation: MutationConfig::Disabled,
-            characterization_tests: Vec::new(),
-            allow_non_removable: false,
-        },
+        &verify_options(Some(args.check_cmd), false, false, Vec::new(), false),
     )?;
-    println!("{}", serde_json::to_string_pretty(&report)?);
+    print_pretty_json(&report)?;
     if report.rejected_count() > 0 {
         std::process::exit(1);
     }
@@ -656,16 +657,15 @@ fn verify(args: PatchArgs) -> Result<()> {
         load_optional_characterization_tests(&args.characterization_tests)?;
     let report = verify_patches(
         &patches,
-        &VerifyOptions {
-            root: PathBuf::from("."),
-            check_cmd: args.check_cmd,
-            coverage: coverage_config(args.coverage),
-            mutation: mutation_config(args.mutation),
+        &verify_options(
+            args.check_cmd,
+            args.coverage,
+            args.mutation,
             characterization_tests,
-            allow_non_removable: false,
-        },
+            false,
+        ),
     )?;
-    println!("{}", serde_json::to_string_pretty(&report)?);
+    print_pretty_json(&report)?;
     if report.failed_count() > 0 {
         std::process::exit(1);
     }
@@ -678,17 +678,16 @@ fn apply(args: ApplyArgs) -> Result<()> {
         load_optional_characterization_tests(&args.characterization_tests)?;
     let report = apply_patches(
         &patches,
-        &VerifyOptions {
-            root: PathBuf::from("."),
-            check_cmd: args.check_cmd,
-            coverage: coverage_config(args.coverage),
-            mutation: mutation_config(args.mutation),
+        &verify_options(
+            args.check_cmd,
+            args.coverage,
+            args.mutation,
             characterization_tests,
-            allow_non_removable: args.allow_non_removable,
-        },
+            args.allow_non_removable,
+        ),
         !args.no_backup,
     )?;
-    println!("{}", serde_json::to_string_pretty(&report)?);
+    print_pretty_json(&report)?;
     if report.verified.failed_count() > 0 {
         std::process::exit(1);
     }
@@ -718,6 +717,28 @@ fn mutation_config(enabled: bool) -> MutationConfig {
     } else {
         MutationConfig::Disabled
     }
+}
+
+fn verify_options(
+    check_cmd: Option<String>,
+    coverage: bool,
+    mutation: bool,
+    characterization_tests: Vec<deslop_protocol::CharacterizationTest>,
+    allow_non_removable: bool,
+) -> VerifyOptions {
+    VerifyOptions {
+        root: PathBuf::from("."),
+        check_cmd,
+        coverage: coverage_config(coverage),
+        mutation: mutation_config(mutation),
+        characterization_tests,
+        allow_non_removable,
+    }
+}
+
+fn print_pretty_json<T: Serialize>(value: &T) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
 }
 
 fn baseline(args: BaselineArgs) -> Result<()> {
@@ -788,9 +809,8 @@ struct Baseline {
 }
 
 impl Baseline {
-    fn read(path: &PathBuf) -> Result<Self> {
-        let text = fs::read_to_string(path)
-            .with_context(|| format!("failed to read {}", path.display()))?;
+    fn read(path: &Path) -> Result<Self> {
+        let text = read_to_string_ctx(path)?;
         serde_json::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
     }
 

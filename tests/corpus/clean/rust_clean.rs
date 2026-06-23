@@ -25,3 +25,47 @@ fn early_return(value: i32) -> i32 {
     }
     value + 1
 }
+
+enum SourceMode {
+    Fast,
+    Slow,
+    Off,
+}
+
+enum RuntimeMode {
+    Fast,
+    Slow,
+    Off,
+}
+
+enum SourceLevel {
+    Low,
+    Medium,
+    High,
+}
+
+enum RuntimeLevel {
+    Low,
+    Medium,
+    High,
+}
+
+impl From<SourceMode> for RuntimeMode {
+    fn from(value: SourceMode) -> Self {
+        match value {
+            SourceMode::Fast => RuntimeMode::Fast,
+            SourceMode::Slow => RuntimeMode::Slow,
+            SourceMode::Off => RuntimeMode::Off,
+        }
+    }
+}
+
+impl From<SourceLevel> for RuntimeLevel {
+    fn from(value: SourceLevel) -> Self {
+        match value {
+            SourceLevel::Low => RuntimeLevel::Low,
+            SourceLevel::Medium => RuntimeLevel::Medium,
+            SourceLevel::High => RuntimeLevel::High,
+        }
+    }
+}

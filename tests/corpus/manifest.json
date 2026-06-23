@@ -54,7 +54,7 @@
         { "rule": "needless-return", "should_fire": true, "start_line": 2, "end_line": 2, "note": "tail return" },
         { "rule": "useless-format", "should_fire": true, "start_line": 6, "end_line": 6, "note": "format empty display" },
         { "rule": "redundant-closure", "should_fire": true, "start_line": 10, "end_line": 10, "note": "closure forwards argument" },
-        { "rule": "needless-clone", "should_fire": true, "start_line": 18, "end_line": 18, "note": "clone may be unnecessary" },
+        { "rule": "needless-clone", "should_fire": true, "start_line": 18, "end_line": 18, "note": "clone then borrow" },
         { "rule": "magic-number", "should_fire": true, "start_line": 22, "end_line": 22, "note": "unnamed answer literal" },
         { "rule": "let-and-return", "should_fire": true, "start_line": 22, "end_line": 23, "note": "binding returned immediately" }
       ]
@@ -170,7 +170,9 @@
         { "rule": "near-duplicate", "should_fire": false, "start_line": 1, "end_line": 11, "note": "legitimate derive/field structural repetition" },
         { "rule": "needless-return", "should_fire": false, "start_line": 14, "end_line": 14, "note": "explicit tail return labeled clean for precision measurement" },
         { "rule": "needless-clone", "should_fire": false, "start_line": 18, "end_line": 18, "note": "ownership-required clone" },
-        { "rule": "needless-return", "should_fire": false, "start_line": 23, "end_line": 23, "note": "early return guard" }
+        { "rule": "needless-return", "should_fire": false, "start_line": 23, "end_line": 23, "note": "early return guard" },
+        { "rule": "duplicate-block", "should_fire": false, "start_line": 29, "end_line": 68, "note": "enum mapping boilerplate is not removable duplication" },
+        { "rule": "near-duplicate", "should_fire": false, "start_line": 29, "end_line": 68, "note": "enum mapping boilerplate is not removable duplication" }
       ]
     },
     {

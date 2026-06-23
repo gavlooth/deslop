@@ -11,7 +11,7 @@
     { "rule": "magic-number", "precision": 1.0, "recall": 1.0 },
     { "rule": "narrating-comment", "precision": 1.0, "recall": 1.0 },
     { "rule": "near-duplicate", "precision": 0.96, "recall": 1.0 },
-    { "rule": "needless-clone", "precision": 0.5, "recall": 1.0 },
+    { "rule": "needless-clone", "precision": 1.0, "recall": 1.0 },
     { "rule": "needless-return", "precision": 0.5, "recall": 1.0 },
     { "rule": "redundant-closure", "precision": 1.0, "recall": 1.0 },
     { "rule": "redundant-do", "precision": 1.0, "recall": 1.0 },

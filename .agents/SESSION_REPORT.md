@@ -63,6 +63,509 @@ Dependencies/restart requirements:
 
 Signature: Codex
 
+## 2026-06-23T19:05:47+02:00 — Tree-Sitter 0.26 Bump Blocked
+
+Objective: Execute `.agents/NEXT_TASK.md` for a tree-sitter `0.25` -> `0.26`
+dependency bump with grammar-crate compatibility and node-kind stability gates.
+
+Result: blocked before dependency edit.
+
+Compatibility checks:
+- `cargo search tree-sitter --limit 5` reports latest `tree-sitter = "0.26.9"`.
+- `cargo search tree-sitter-language --limit 5` reports latest
+  `tree-sitter-language = "0.1.7"`.
+- `cargo search tree-sitter-rust --limit 5` reports latest
+  `tree-sitter-rust = "0.24.2"`.
+  - Registry manifest dependency: `tree-sitter-language = "0.1"`.
+  - Dev dependency: `tree-sitter = "0.25"`.
+- `cargo search tree-sitter-julia --limit 5` reports latest
+  `tree-sitter-julia = "0.23.1"`.
+  - Registry manifest dependency: `tree-sitter-language = "0.1"`.
+  - Dev dependency: `tree-sitter = "0.24"`.
+- `cargo search tree-sitter-clojure --limit 5` reports latest
+  `tree-sitter-clojure = "0.1.0"`.
+  - Registry manifest dependency: `tree-sitter = "0.25.6"`.
+  - Registry manifest dependency: `tree-sitter-language = "0.1.5"`.
+
+Blocker:
+- `tree-sitter-clojure 0.1.0` is the latest published `tree-sitter-clojure`
+  crate and depends on `tree-sitter = "0.25.6"`. Under Cargo `0.x` semver,
+  that does not allow `0.26.x`.
+- The task explicitly says to stop if a grammar has no `0.26`-compatible release,
+  and to not silently revert or vendor/patch a grammar in this pass.
+
+Changes made:
+- No `Cargo.toml` or `Cargo.lock` dependency changes.
+- No parser/API/node-kind changes.
+- Updated `.agents/HEARTBEAT.md` and this session report only.
+
+Commands run:
+- `cargo search tree-sitter --limit 5`
+- `cargo search tree-sitter-rust --limit 5`
+- `cargo search tree-sitter-julia --limit 5`
+- `cargo search tree-sitter-clojure --limit 5`
+- `cargo search tree-sitter-language --limit 5`
+- `cargo info tree-sitter@0.26.9`
+- `cargo info tree-sitter-rust@0.24.2`
+- `cargo info tree-sitter-julia@0.23.1`
+- `cargo info tree-sitter-clojure@0.1.0`
+- Registry manifest inspection under `~/.cargo/registry/src/...`
+- `cargo tree -p deslop-lang | rg -n "tree-sitter"`
+
+Verification not run:
+- The hard compile/eval/node-kind gate was not run because the dependency migration
+  was not attempted after the grammar compatibility blocker was confirmed.
+
+Recommendation:
+- Wait for a `tree-sitter-clojure` crate release compatible with tree-sitter
+  `0.26`, or schedule a separate explicit grammar replacement/vendor pass. That
+  is outside this task's allowed scope.
+
+Signature: Codex
+
+## 2026-06-23T18:44:45+02:00 — Duplicate Removability Precision Pass
+
+Objective: Execute `.agents/NEXT_TASK.md` for near-duplicate / duplicate-block
+removability precision plus a couple of genuine extractions. No new dependencies,
+no macros, and no `deslop/*.py` changes.
+
+Baseline:
+- `target/debug/deslop scan crates --format json` before this pass:
+  - `duplicate-block`: 17
+  - `near-duplicate`: 39
+
+Changes:
+- Extracted the repeated token-window equality check in
+  `crates/deslop-analyzer/src/tokens.rs` into `token_windows_match(left, right,
+  field)`.
+- Added Rust CST suppression for non-removable pure enum/path mapping matches in
+  the duplicate detector. This suppresses `From`/dispatch-style enum mapping
+  boilerplate where the repeated structure differs only by identifiers and has no
+  shared extractable body without a macro/new dependency.
+- Added/extended guards:
+  - `tests/fixtures/clean/precision_fp.rs` now contains enum-mapping boilerplate
+    and is covered by the existing clean structural FP test.
+  - `tests/corpus/clean/rust_clean.rs` now includes enum-mapping boilerplate with
+    explicit `duplicate-block` / `near-duplicate` false expectations.
+  - Existing behavioral duplication TP fixture remains the recall guard.
+- Extracted repeated `deslop-verify` test fixture setup into
+  `verify_fixture(FixtureKind, text)`, with `clojure_fixture` and `rust_fixture`
+  wrappers. Only one-work-order Rust/Clojure fixture cases were converted; tests
+  that build multiple files or custom `SourceFile`s were left explicit.
+
+Measured split:
+- After token equality extraction only:
+  - `duplicate-block`: 17 -> 17
+  - `near-duplicate`: 39 -> 38
+- After Rust mapping precision suppression and verify fixture extraction:
+  - `duplicate-block`: 17 -> 17
+  - `near-duplicate`: 38 -> 36
+- Overall before -> after:
+  - `duplicate-block`: 17 -> 17
+  - `near-duplicate`: 39 -> 36
+
+Gate history:
+- Token equality extraction: full gate passed.
+- Initial precision test fixture was too small/threshold-sensitive; fixed by using
+  the existing behavioral duplication corpus guard for TP recall.
+- Inline enum-mapping FP test caused a new self-scan duplicate hit in
+  `crates/deslop-analyzer/src/tests.rs`; moved the guard to fixture/corpus data.
+- Precision suppression final gate passed.
+- Verify fixture extraction final gate passed.
+
+Verification:
+- `cargo fmt --all && cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+  - Workspace tests: 60 unit tests plus doc-tests.
+- `target/debug/deslop eval tests/corpus --format json`: pass.
+  - Overall precision=0.9666666666666667
+  - Overall recall=0.9666666666666667
+  - Overall F1=0.9666666666666667
+  - `duplicate-block`: precision=1.0 recall=1.0 tp=1 fp=0 fn=0
+  - `near-duplicate`: precision=0.96 recall=1.0 tp=24 fp=1 fn=0
+  - Known local fallback notice: `clj-kondo not on PATH; falling back to built-in T1 Clojure rules`
+- Final `target/debug/deslop scan crates --format json`:
+  - `duplicate-block`: 17
+  - `near-duplicate`: 36
+
+Residual target findings:
+- Converged for this pass. Remaining hits are cohesive detector/provider/reporting
+  bodies, test loops/fixtures, or idiomatic boilerplate. I did not force macros,
+  new dependencies, or helper extraction that would fragment cohesive functions.
+- Representative residuals include:
+  - `crates/deslop-analyzer/src/agnostic.rs:15`
+  - `crates/deslop-analyzer/src/clojure.rs:90`
+  - `crates/deslop-analyzer/src/julia.rs:40`
+  - `crates/deslop-analyzer/src/packs/rust.rs:182`
+  - `crates/deslop-analyzer/src/tokens.rs:349`
+  - `crates/deslop-cli/src/main.rs:813`
+  - `crates/deslop-eval/src/lib.rs:110`
+  - `crates/deslop-external/src/lib.rs:897`
+  - `crates/deslop-lang/src/lib.rs:495`
+  - `crates/deslop-mcp/src/lib.rs:302`
+  - `crates/deslop-parse/src/lib.rs:189`
+  - `crates/deslop-verify/src/lib.rs:1773`
+
+Blockers:
+- None. This pass is intentionally stopped at the removability boundary.
+
+Signature: Codex
+
+## 2026-06-23T18:10:59+02:00 — Rust Detector Precision Pass
+
+Objective: Execute `.agents/NEXT_TASK.md` for the Rust `redundant-closure` and
+`needless-clone` rules only, with every other analyzer rule frozen.
+
+Target:
+- `crates/deslop-analyzer/src/packs/rust.rs`
+- target-rule corpus/unit tests only
+
+Changes:
+- Replaced the `redundant-closure` line regex with a tree-sitter Rust CST walk.
+  It now fires only for a closure with exactly one identifier parameter and a body
+  that is exactly one single-argument function call forwarding that parameter.
+- Replaced the broad `needless-clone` `.clone()` line regex with tree-sitter Rust
+  CST tells for real expression nodes only:
+  - `&<expr>.clone()`
+  - `.clone().iter()`
+  - `.clone().iter_mut()`
+  - `.clone().into_iter()`
+- Kept message text, severity, safety class, and detection source unchanged.
+- Added Rust analyzer unit tests for true positives and false positives for both
+  target rules.
+- Updated the Rust idiom corpus to use clone-then-borrow as the positive
+  `needless-clone` fixture and raised the `needless-clone` corpus precision
+  baseline to 1.0.
+- Updated `.agents/HEARTBEAT.md` during each active iteration.
+
+Before counts:
+- `target/debug/deslop scan crates --format json` target-rule baseline before edits:
+  - `needless-clone`: 11
+  - `redundant-closure`: 3
+
+Gate history:
+- First full gate failed during `cargo test --workspace` compilation because the new
+  tests shadowed the `source(...)` fixture helper with a local variable. Fixed by
+  renaming the locals.
+- Second full gate passed after the test fix.
+- First after-scan then found one `needless-clone` hit in
+  `crates/deslop-analyzer/src/tests.rs:252`, caused by the line-regex detector
+  matching a Rust string fixture. This invalidated the regex approach for
+  clone-then-borrow in this repo.
+- Replaced `needless-clone` with CST expression detection and reran the full gate.
+
+Verification run:
+- `cargo fmt --all && cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+  - Workspace tests: 60 unit tests plus doc-tests.
+- `target/debug/deslop eval tests/corpus --format json`: pass.
+  - Overall precision=0.9666666666666667
+  - Overall recall=0.9666666666666667
+  - Overall F1=0.9666666666666667
+  - `needless-clone`: precision=1.0 recall=1.0 tp=1 fp=0 fn=0
+  - `redundant-closure`: precision=1.0 recall=1.0 tp=1 fp=0 fn=0
+  - Known local fallback notice: `clj-kondo not on PATH; falling back to built-in T1 Clojure rules`
+- `target/debug/deslop scan crates --format json` target-rule after counts:
+  - `needless-clone`: 0
+  - `redundant-closure`: 0
+
+Residual target-rule hits:
+- None.
+
+Known false positives explicitly not chased:
+- The old non-forwarding `redundant-closure` false positives are eliminated by CST,
+  not individually edited at call sites.
+- The old bare ownership `.clone()` false positives are eliminated by CST, not
+  individually edited at call sites.
+
+Blockers:
+- None for this detector-precision pass.
+
+Signature: Codex
+
+---
+
+# Session Report — Finish Revalidation
+
+Date/time: 2026-06-23T17:23:33+02:00 Europe/Madrid
+
+Objective: Re-run final verification from the latest cleanup checkpoint and confirm residual
+hotspots/blockers.
+
+Verification:
+- `cargo fmt --all --check && cargo build --workspace && cargo test --workspace &&
+  cargo clippy --workspace -- -D warnings`: pass.
+- `cargo run -p deslop-cli -- eval tests/corpus --format json`: pass.
+  - precision=0.9508196721311475
+  - recall=0.9666666666666667
+  - F1=0.9586776859504132
+  - expected fallback notice: `clj-kondo not on PATH; falling back to built-in T1 Clojure rules`
+
+Current residual self-scan:
+- `target/debug/deslop slop crates`: score=10.9/100.
+- Rule counts:
+  - comment-block=1
+  - duplicate-block=15
+  - long-method=17
+  - magic-number=14
+  - near-duplicate=37
+  - needless-clone=11
+  - redundant-closure=3 in raw scan aggregation
+
+Metrics:
+- `target/debug/deslop metrics crates`: repo health=42.5/100, regions=517, hotspots=75.
+- Top hotspots remain `deslop-lang`, `deslop-verify` coverage providers, analyzer token
+  duplication/tokenization, and eval scoring.
+
+Blockers:
+- No verification blockers.
+- Local optional external tools remain unavailable/partial as previously recorded:
+  `clj-kondo` missing, `lein` missing, `coverage.py` missing, Julia without Coverage.jl.
+
+Signature: Codex
+
+---
+
+# Session Report — Behavior-Preserving Own-Code Debloat, Iteration 2
+
+Date/time: 2026-06-23T16:41:41+02:00 Europe/Madrid
+
+Objective: Continue the frozen-analyzer own-code debloat pass after the first refactor
+checkpoint.
+
+Before measurements for this iteration:
+- `target/debug/deslop slop crates`:
+  - score: 11.1/100
+  - comment-block=1
+  - duplicate-block=15
+  - long-method=23
+  - magic-number=14
+  - near-duplicate=37
+  - needless-clone=11
+
+Changes:
+- `crates/deslop-verify/src/lib.rs`
+  - Extracted `read_report_text` for repeated contextual report reads.
+  - Extracted `run_output_file_command` for external commands that write a temp output
+    artifact (`cargo-llvm-cov`, Coverage.jl, coverage.py).
+  - Reused `read_report_text` for cargo-mutants, LCOV, cloverage, Coverage.jl, and
+    coverage.py file/report loading.
+  - Split `write_prepared_patches` into grouping, per-file patch application, replacement
+    writing, and temp-path construction helpers.
+
+Gates:
+- After provider/report helper extraction:
+  - `cargo fmt --all && cargo build --workspace && cargo test --workspace &&
+    cargo clippy --workspace -- -D warnings`: pass.
+- After patch-writing split and local temp-path cleanup:
+  - `cargo fmt --all && cargo build --workspace && cargo test --workspace &&
+    cargo clippy --workspace -- -D warnings`: pass.
+
+After measurements:
+- `target/debug/deslop slop crates`:
+  - score: 10.9/100
+  - comment-block=1
+  - duplicate-block=15
+  - long-method=17
+  - magic-number=14
+  - near-duplicate=37
+  - needless-clone=11
+
+Attribution:
+- Iteration delta:
+  - score 11.1 -> 10.9
+  - long-method 23 -> 17
+  - comment-block, duplicate-block, magic-number, near-duplicate, needless-clone unchanged.
+- Combined frozen-refactor delta from the original debloat baseline:
+  - score 11.3 -> 10.9
+  - duplicate-block 17 -> 15
+  - long-method 25 -> 17
+  - near-duplicate 40 -> 37
+  - comment-block 1 unchanged
+  - magic-number 14 unchanged
+  - needless-clone 11 unchanged.
+
+Known false positives still listed, not chased:
+- Redundant-closure on non-forwarding compare closures:
+  - `crates/deslop-verify/src/lib.rs:1126`
+  - `crates/deslop-verify/src/lib.rs:2053`
+  - `crates/deslop-verify/src/lib.rs:2121`
+- Needless-clone/ownership false positives encountered:
+  - `crates/deslop-verify/src/lib.rs:372`
+  - `crates/deslop-verify/src/lib.rs:3147`
+  - plus previously listed unchanged non-verify clones in analyzer tokens, metrics, protocol,
+    and analyzer Rust pack files.
+
+Long methods left intentionally:
+- Analyzer rule/pack bodies remain untouched to keep analyzer behavior frozen.
+- Remaining `deslop-verify` long methods are test scenario bodies; they can be cleaned in a
+  focused test-fixture helper pass, but this iteration stopped after the production verifier
+  helper boundaries were extracted.
+
+Notes:
+- `.agents/HEARTBEAT.md` appeared in the working copy during the session; it was not created
+  or edited by this pass and was left untouched.
+
+Signature: Codex
+
+---
+
+## Session Report — CLI Verification Boilerplate + Heartbeat
+
+Date/time: 2026-06-23T16:40:06+02:00 Europe/Madrid
+
+Objective: Add a stale-pane heartbeat artifact for the long-running Codex loop and trim
+repeated CLI verification boilerplate.
+
+Changes:
+- Added `.agents/HEARTBEAT.md` as the stale-pane heartbeat file for tmux pane `0:1`.
+- Added explicit iteration discipline to `.agents/NEXT_TASK.md`:
+  - touch the heartbeat file every round;
+  - run `jj describe -m "<round summary>"` at the end of each successful round.
+- Extracted `verify_options(...)` in `crates/deslop-cli/src/main.rs` to centralize repeated
+  `VerifyOptions` construction for `characterize`, `verify_characterization`, `verify`, and
+  `apply`.
+- Extracted `print_pretty_json(...)` in `crates/deslop-cli/src/main.rs` to remove repeated
+  pretty-JSON printing boilerplate in the verify/apply command path.
+
+Commands run:
+- `date --iso-8601=seconds`
+- `cargo fmt --all --check` initially failed on the helper call formatting
+- `cargo fmt --all`
+- `cargo fmt --all --check`
+- `cargo build --workspace`
+- `cargo test --workspace`
+- `cargo clippy --workspace -- -D warnings`
+- `jj describe -m "Add heartbeat and iteration discipline"`
+- `jj describe -m "Extract CLI verify-options helper and refresh heartbeat"`
+
+Results:
+- Formatting, build, test, and clippy all passed after the formatting fix.
+- The new heartbeat artifact is in place and refreshed for this iteration.
+- CLI verification code is slightly less repetitive without changing behavior.
+
+Invalidated assumptions:
+- None.
+
+Current recommendation/checkpoint:
+- Continue with the remaining high-signal `deslop-cli` / `deslop-verify` duplication clusters
+  only if the next scan shows a clear win; otherwise stop when the remaining clusters turn into
+  low-signal plumbing.
+
+Blockers:
+- None.
+
+Dependencies/restart requirements:
+- No restart required.
+
+Signature: Codex
+
+---
+
+# Session Report — Behavior-Preserving Own-Code Debloat
+
+Date/time: 2026-06-23T16:18:39+02:00 Europe/Madrid
+
+Objective: Execute `.agents/NEXT_TASK.md`: debloat deslop's own Rust crates with real
+behavior-preserving refactoring, keep the analyzer/metrics/lang rule surfaces frozen, keep
+the existing `read_to_string_ctx` dedup in `deslop-verify`, and do not touch `deslop/*.py`.
+
+Target:
+- Extract shared helpers for genuine duplicate/near-duplicate boilerplate in
+  `deslop-verify` and `deslop-cli`.
+- Decompose only long methods with cohesive phase boundaries.
+
+Before measurements:
+- Step 0 `cargo build --workspace`: pass.
+- Step 0 `cargo test --workspace`: pass.
+- `target/debug/deslop slop crates`:
+  - score: 11.3/100
+  - comment-block=1
+  - duplicate-block=17
+  - long-method=25
+  - magic-number=14
+  - near-duplicate=40
+  - needless-clone=11
+
+Changes:
+- `crates/deslop-verify/src/lib.rs`
+  - Kept the existing `read_to_string_ctx` helper from the working copy.
+  - Extracted `parse_jsonl_records` for patch and characterization-test JSONL loading.
+  - Extracted `coverage_status_for_lines` for duplicated line coverage grading.
+  - Extracted `visit_json_children` for repeated recursive JSON object/array traversal.
+  - Extracted `PatchSignals`, `assess_patch_signals`, `assess_coverage_if_clean`, and
+    `assess_mutation_if_clean` from `prepare_patch` around the semantic-gate/probe phase.
+- `crates/deslop-cli/src/main.rs`
+  - Added `read_to_string_ctx` and reused it for config, slop, and baseline reads.
+  - Extracted `slop_score_for_file` from `slop_report`.
+  - Changed `Baseline::read` from `&PathBuf` to `&Path` after clippy exposed the stricter
+    signature during the refactor.
+
+Gates after changes:
+- After verify helper extraction: `cargo fmt --all && cargo build --workspace &&
+  cargo test --workspace && cargo clippy --workspace -- -D warnings` passed after fixing a
+  helper lifetime caught by the first build.
+- After CLI extraction: same full gate passed after changing `Baseline::read` to `&Path`.
+- After `prepare_patch` signal/probe decomposition: same full gate passed.
+- After final probe helper split: same full gate passed.
+
+After measurements:
+- `target/debug/deslop slop crates`:
+  - score: 11.1/100
+  - comment-block=1
+  - duplicate-block=15
+  - long-method=23
+  - magic-number=14
+  - near-duplicate=37
+  - needless-clone=11
+
+Attribution:
+- Refactoring-only delta with analyzer frozen:
+  - score 11.3 -> 11.1
+  - duplicate-block 17 -> 15
+  - long-method 25 -> 23
+  - near-duplicate 40 -> 37
+  - comment-block, magic-number, needless-clone unchanged.
+
+Known false positives listed, not chased:
+- Redundant-closure on non-forwarding compare closures:
+  - `crates/deslop-verify/src/lib.rs:1136`
+  - `crates/deslop-verify/src/lib.rs:2079`
+  - `crates/deslop-verify/src/lib.rs:2147`
+- Needless-clone/ownership false positives encountered:
+  - `crates/deslop-verify/src/lib.rs:372`
+  - `crates/deslop-analyzer/src/packs/rust.rs:159`
+  - `crates/deslop-analyzer/src/tokens.rs:203`
+  - `crates/deslop-analyzer/src/tokens.rs:248`
+  - `crates/deslop-metrics/src/lib.rs:286`
+  - `crates/deslop-metrics/src/lib.rs:450`
+  - `crates/deslop-metrics/src/lib.rs:453`
+  - `crates/deslop-metrics/src/lib.rs:611`
+  - `crates/deslop-metrics/src/lib.rs:612`
+  - `crates/deslop-protocol/src/lib.rs:153`
+  - `crates/deslop-verify/src/lib.rs:3148`
+
+Long methods left intentionally:
+- Analyzer pack/rule functions in `deslop-analyzer`: these are cohesive rule/dispatch bodies;
+  changing them in this pass would be analyzer-surface-adjacent and risk mixing refactor with
+  detector behavior.
+- Provider load/run methods in `deslop-verify`: remaining long methods mostly wrap one
+  external tool or fixture scenario; further splitting would be command plumbing rather than
+  clearer behavior.
+- Metrics/report/eval long methods: outside the requested high-confidence `deslop-verify` and
+  `deslop-cli` duplicate clusters; left for a focused pass if desired.
+
+Invalidated assumptions:
+- Extracting the `prepare_patch` semantic-gate phase alone improved clarity but did not reduce
+  the long-method count because the new helper was still above the threshold; splitting coverage
+  and mutation probes along domain boundaries was required for the measured count drop.
+
+Blockers:
+- None.
+
+Dependencies/restart requirements:
+- No live services or restart required.
+
+Signature: Codex
+
 ---
 
 # Session Report — Near-Duplicate Precision Pass
@@ -1890,5 +2393,91 @@ Invalidated assumptions:
 
 Current recommendation:
 - Treat SARIF as the CI/code-scanning output path; use agent JSONL/MCP for rewrite loops.
+
+Signature: Codex
+
+---
+
+# Session Report — Finish Verification and Residual Hotspots
+
+Date/time: 2026-06-23T17:09:58+02:00 Europe/Madrid
+
+Objective: Continue from the latest cleanup checkpoint, run remaining verification, and
+report residual hotspots/blockers.
+
+Working-copy context:
+- Existing cleanup changes remain in `crates/deslop-cli/src/main.rs` and
+  `crates/deslop-verify/src/lib.rs`.
+- `.agents/HEARTBEAT.md` is present as an added file in the working copy but was not created
+  or edited by this finish pass.
+
+Verification run:
+- `cargo fmt --all --check`: pass.
+- `cargo build --workspace`: pass.
+- `cargo test --workspace`: pass, 58 unit tests plus doc-tests.
+- `cargo clippy --workspace -- -D warnings`: pass.
+- `cargo run -p deslop-cli -- eval tests/corpus --format json`: pass.
+  - overall precision=0.9508196721311475
+  - overall recall=0.9666666666666667
+  - overall F1=0.9586776859504132
+  - known local fallback notice: `clj-kondo not on PATH; falling back to built-in T1 Clojure rules`
+- SARIF smoke:
+  - `cargo run -p deslop-cli -- scan tests/corpus/sloppy/comments_and_blanks.clj --format sarif | jq -e '.version == "2.1.0" and .runs[0].tool.driver.name == "deslop" and (.runs[0].results | length) == 3'`: pass.
+
+Current self-scan/slop:
+- `target/debug/deslop slop crates`:
+  - score: 10.9/100
+  - comment-block=1
+  - duplicate-block=15
+  - long-method=17
+  - magic-number=14
+  - near-duplicate=37
+  - needless-clone=11
+- Highest slop files:
+  - `crates/deslop-analyzer/src/julia.rs`: 42.4
+  - `crates/deslop-analyzer/src/clojure.rs`: 27.5
+  - `crates/deslop-eval/src/lib.rs`: 19.0
+  - `crates/deslop-analyzer/src/tokens.rs`: 18.7
+  - `crates/deslop-analyzer/src/packs/rust.rs`: 14.6
+
+Metrics health:
+- `target/debug/deslop metrics crates`:
+  - repo health: 42.5/100
+  - regions: 517
+  - hotspots: 75
+- Top metric hotspots:
+  - `crates/deslop-lang/src/lib.rs:358`
+  - `crates/deslop-verify/src/lib.rs:1317`
+  - `crates/deslop-analyzer/src/tests.rs:261` (comment-ratio hotspot)
+  - `crates/deslop-verify/src/lib.rs:1420`
+  - `crates/deslop-verify/src/lib.rs:1192`
+  - `crates/deslop-verify/src/lib.rs:1523`
+  - `crates/deslop-verify/src/lib.rs:842`
+  - `crates/deslop-lang/src/lib.rs:270`
+  - `crates/deslop-analyzer/src/tokens.rs:41`
+  - `crates/deslop-eval/src/lib.rs:197`
+
+Residual hotspots:
+- Long methods remaining:
+  - Analyzer rule/dispatch bodies: Clojure, Julia, Rust pack, token duplication/tokenization,
+    and `scan_paths_with_config`.
+  - Eval/reporting routines: `run_eval_with_manifest`, `score_case`.
+  - Runtime/tooling routines: `deslop-fix`, `deslop-mcp`, `deslop-metrics`.
+  - Verify test scenario bodies: `cargo_mutants_fixture_survivor_feeds_dead_signal` and
+    `apply_writes_only_removable_patches_by_default`.
+- Duplicate/near-duplicate clusters remaining:
+  - Analyzer rule-table/test repetition.
+  - Token window/mask symmetry in `deslop-analyzer/src/tokens.rs`.
+  - CLI enum/config parsing shape repetition.
+  - Verify JSON traversal/fixture/test setup residuals.
+
+Blockers:
+- No verification blockers.
+- External optional analyzer/tool availability remains limited locally:
+  - `clj-kondo` is not on PATH for eval.
+  - Earlier coverage checkpoint also found `lein` missing, coverage.py missing, and Julia
+    installed without Coverage.jl.
+- Remaining cleanup would require either analyzer-surface refactoring or a focused test-fixture
+  helper pass; neither is required for a green finish state.
 
 Signature: Codex

@@ -1,7 +1,8 @@
 use deslop_core::{DetectedBy, Finding, Lang, SafetyClass, Severity, Span, fingerprint};
 use deslop_external::{ClippyAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait};
-use deslop_parse::SourceFile;
+use deslop_parse::{SourceFile, parse_tree};
 use regex::Regex;
+use tree_sitter::Node;
 
 use crate::{AnalysisPack, AnalyzerConfig};
 use deslop_lang::Rule;
@@ -53,10 +54,6 @@ fn rust_findings(source: &SourceFile) -> Vec<Finding> {
     let mut out = Vec::new();
     let useless_format =
         Regex::new(r#"format!\s*\(\s*"\{\}"\s*,\s*([^)]+)\)"#).expect("valid regex");
-    let redundant_closure =
-        Regex::new(r"\|\s*([A-Za-z_][A-Za-z0-9_]*)\s*\|\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)")
-            .expect("valid regex");
-    let clone = Regex::new(r"\.clone\s*\(\s*\)").expect("valid regex");
     let lines = source.lines();
     for (idx, line) in lines.iter().enumerate() {
         let line_no = idx + 1;
@@ -74,40 +71,188 @@ fn rust_findings(source: &SourceFile) -> Vec<Finding> {
                 Some("Display formatting is equivalent to ToString for this value"),
             ));
         }
-        if redundant_closure
-            .captures(line)
-            .is_some_and(|caps| caps.get(1).map(|m| m.as_str()) == caps.get(3).map(|m| m.as_str()))
-        {
-            out.push(finding(
-                source,
-                line_no,
-                line_no,
-                "redundant-closure",
-                Severity::Minor,
-                SafetyClass::RiskySuggest,
-                DetectedBy::Idiom,
-                "closure forwards its argument directly to a function",
-                "replace with function item only after inference remains valid",
-                None,
-            ));
-        }
-        if clone.is_match(line) {
-            out.push(finding(
-                source,
-                line_no,
-                line_no,
-                "needless-clone",
-                Severity::Minor,
-                SafetyClass::LlmOnly,
-                DetectedBy::Idiom,
-                "clone may be unnecessary if a borrow suffices",
-                "remove clone only with ownership/typecheck confirmation",
-                None,
-            ));
-        }
     }
+    out.extend(redundant_closures(source));
+    out.extend(needless_clones(source));
     out.extend(let_and_return(source));
     out
+}
+
+fn redundant_closures(source: &SourceFile) -> Vec<Finding> {
+    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    collect_redundant_closures(source, tree.root_node(), &mut out);
+    out
+}
+
+fn collect_redundant_closures(source: &SourceFile, node: Node<'_>, out: &mut Vec<Finding>) {
+    if node.kind() == "closure_expression" && closure_forwards_single_arg(source, node) {
+        let start_line = node.start_position().row + 1;
+        let end_line = node.end_position().row + 1;
+        out.push(finding(
+            source,
+            start_line,
+            end_line,
+            "redundant-closure",
+            Severity::Minor,
+            SafetyClass::RiskySuggest,
+            DetectedBy::Idiom,
+            "closure forwards its argument directly to a function",
+            "replace with function item only after inference remains valid",
+            None,
+        ));
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_redundant_closures(source, child, out);
+    }
+}
+
+fn closure_forwards_single_arg(source: &SourceFile, closure: Node<'_>) -> bool {
+    let Some(param) = closure_single_parameter(source, closure) else {
+        return false;
+    };
+    let Some(body) = closure_body(closure) else {
+        return false;
+    };
+    body.kind() == "call_expression"
+        && call_has_identifier_function(body)
+        && call_single_argument_text(source, body).is_some_and(|arg| arg == param)
+}
+
+fn closure_single_parameter(source: &SourceFile, closure: Node<'_>) -> Option<String> {
+    let mut cursor = closure.walk();
+    let params = closure
+        .children(&mut cursor)
+        .find(|child| child.kind() == "closure_parameters")?;
+    let mut cursor = params.walk();
+    let mut identifiers = params
+        .children(&mut cursor)
+        .filter(|child| child.kind() == "identifier");
+    let param = identifiers.next()?;
+    if identifiers.next().is_some() {
+        return None;
+    }
+    param
+        .utf8_text(source.text.as_bytes())
+        .ok()
+        .map(str::to_string)
+}
+
+fn closure_body(closure: Node<'_>) -> Option<Node<'_>> {
+    let mut cursor = closure.walk();
+    let mut body = None;
+    for child in closure.children(&mut cursor) {
+        if child.is_named() && child.kind() != "closure_parameters" {
+            body = Some(child);
+        }
+    }
+    body
+}
+
+fn call_has_identifier_function(call: Node<'_>) -> bool {
+    let mut cursor = call.walk();
+    call.children(&mut cursor)
+        .find(|child| child.is_named())
+        .is_some_and(|child| child.kind() == "identifier")
+}
+
+fn call_single_argument_text(source: &SourceFile, call: Node<'_>) -> Option<String> {
+    let mut cursor = call.walk();
+    let arguments = call
+        .children(&mut cursor)
+        .find(|child| child.kind() == "arguments")?;
+    let mut cursor = arguments.walk();
+    let mut args = arguments
+        .children(&mut cursor)
+        .filter(|child| child.is_named());
+    let arg = args.next()?;
+    if args.next().is_some() {
+        return None;
+    }
+    arg.utf8_text(source.text.as_bytes())
+        .ok()
+        .map(str::trim)
+        .map(str::to_string)
+}
+
+fn needless_clones(source: &SourceFile) -> Vec<Finding> {
+    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    collect_needless_clones(source, tree.root_node(), &mut out);
+    out
+}
+
+fn collect_needless_clones(source: &SourceFile, node: Node<'_>, out: &mut Vec<Finding>) {
+    if reference_borrows_clone(source, node) || call_iterates_clone(source, node) {
+        let start_line = node.start_position().row + 1;
+        let end_line = node.end_position().row + 1;
+        out.push(finding(
+            source,
+            start_line,
+            end_line,
+            "needless-clone",
+            Severity::Minor,
+            SafetyClass::LlmOnly,
+            DetectedBy::Idiom,
+            "clone may be unnecessary if a borrow suffices",
+            "remove clone only with ownership/typecheck confirmation",
+            None,
+        ));
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_needless_clones(source, child, out);
+    }
+}
+
+fn reference_borrows_clone(source: &SourceFile, node: Node<'_>) -> bool {
+    node.kind() == "reference_expression"
+        && node
+            .child_by_field_name("value")
+            .is_some_and(|value| is_clone_method_call(source, value))
+}
+
+fn call_iterates_clone(source: &SourceFile, node: Node<'_>) -> bool {
+    if node.kind() != "call_expression" {
+        return false;
+    }
+    let Some(function) = node.child_by_field_name("function") else {
+        return false;
+    };
+    matches!(
+        method_name(source, function).as_deref(),
+        Some("iter" | "iter_mut" | "into_iter")
+    ) && function
+        .child_by_field_name("value")
+        .is_some_and(|value| is_clone_method_call(source, value))
+}
+
+fn is_clone_method_call(source: &SourceFile, node: Node<'_>) -> bool {
+    if node.kind() != "call_expression" {
+        return false;
+    }
+    node.child_by_field_name("function")
+        .is_some_and(|function| method_name(source, function).as_deref() == Some("clone"))
+}
+
+fn method_name(source: &SourceFile, field_expression: Node<'_>) -> Option<String> {
+    if field_expression.kind() != "field_expression" {
+        return None;
+    }
+    let field = field_expression.child_by_field_name("field")?;
+    (field.kind() == "field_identifier").then(|| {
+        field
+            .utf8_text(source.text.as_bytes())
+            .ok()
+            .map(str::to_string)
+    })?
 }
 
 fn let_and_return(source: &SourceFile) -> Vec<Finding> {

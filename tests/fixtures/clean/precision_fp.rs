@@ -46,3 +46,47 @@ fn ok_right(value: i32) -> Result<Response, String> {
         value,
     })
 }
+
+enum LeftArg {
+    One,
+    Two,
+    Three,
+}
+
+enum Left {
+    One,
+    Two,
+    Three,
+}
+
+enum RightArg {
+    Alpha,
+    Beta,
+    Gamma,
+}
+
+enum Right {
+    Alpha,
+    Beta,
+    Gamma,
+}
+
+impl From<LeftArg> for Left {
+    fn from(value: LeftArg) -> Self {
+        match value {
+            LeftArg::One => Left::One,
+            LeftArg::Two => Left::Two,
+            LeftArg::Three => Left::Three,
+        }
+    }
+}
+
+impl From<RightArg> for Right {
+    fn from(value: RightArg) -> Self {
+        match value {
+            RightArg::Alpha => Right::Alpha,
+            RightArg::Beta => Right::Beta,
+            RightArg::Gamma => Right::Gamma,
+        }
+    }
+}

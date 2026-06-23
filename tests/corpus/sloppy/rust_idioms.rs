@@ -14,12 +14,11 @@ fn normalize(value: i32) -> i32 {
     value
 }
 
-fn cloned_name(name: String) -> String {
-    name.clone()
+fn borrowed_clone(name: String) -> usize {
+    (&name.clone()).len()
 }
 
 fn bind_then_return() -> i32 {
     let answer = 42;
     answer
 }
-

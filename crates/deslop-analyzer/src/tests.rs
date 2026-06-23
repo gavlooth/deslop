@@ -219,6 +219,60 @@ fn rust_non_tail_return_is_not_needless() {
 }
 
 #[test]
+fn rust_redundant_closure_only_flags_exact_forwarding_call_body() {
+    let fixture = source(
+        "sample.rs",
+        "fn foo(x: i32) -> i32 { x }\nfn process(item: i32) -> i32 { item }\nfn f(xs: Vec<i32>) -> Vec<i32> {\n    xs.into_iter().map(|x| foo(x)).map(|item| process(item)).collect()\n}\n",
+    );
+    let report = scan_source(&fixture);
+    assert_eq!(
+        report
+            .findings
+            .iter()
+            .filter(|finding| finding.rule == "redundant-closure")
+            .count(),
+        2
+    );
+
+    let clean = source(
+        "sample.rs",
+        "fn f(xs: Vec<i32>, y: i32) {\n    let _ = xs.iter().find(|name| Some(name) == xs.first());\n    let _ = xs.iter().map(|x| foo(x).await);\n    let _ = xs.iter().map(|x| foo(x)?);\n    let _ = xs.iter().map(|x| foo(x).method());\n    let _ = xs.iter().map(|x| foo(x, y));\n    let _ = xs.iter().map(|a| foo(y));\n}\n",
+    );
+    let report = scan_source(&clean);
+    assert!(
+        !has_rule(&report, "redundant-closure"),
+        "wrapping/comparison/multi-arg/trailing-operation closures must not fire"
+    );
+}
+
+#[test]
+fn rust_needless_clone_only_flags_clone_then_borrow_or_iterate() {
+    let fixture = source(
+        "sample.rs",
+        "fn f(v: Vec<String>) {\n    let _ = &v.clone();\n    let _ = v.clone().iter();\n    let _ = v.clone().into_iter();\n    let _ = v.clone().iter_mut();\n}\n",
+    );
+    let report = scan_source(&fixture);
+    assert_eq!(
+        report
+            .findings
+            .iter()
+            .filter(|finding| finding.rule == "needless-clone")
+            .count(),
+        4
+    );
+
+    let clean = source(
+        "sample.rs",
+        "struct Item { field: String }\nfn f(x: String, mut vec: Vec<String>) -> String {\n    let _item = Item { field: x.clone() };\n    if vec.is_empty() {\n        return x.clone();\n    }\n    vec.push(x.clone());\n    let y = x.clone();\n    y\n}\n",
+    );
+    let report = scan_source(&clean);
+    assert!(
+        !has_rule(&report, "needless-clone"),
+        "owned bare clones must not be reported as needless"
+    );
+}
+
+#[test]
 fn julia_external_is_config_gated_pack_local() {
     assert!(
         JULIA_PACK

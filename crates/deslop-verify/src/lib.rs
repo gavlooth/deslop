@@ -11,6 +11,7 @@ use deslop_protocol::{
     CharacterizationTest, Patch, WorkOrder, characterization_work_order_for,
     work_orders_for_source, workorder_region_fingerprint,
 };
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
@@ -180,6 +181,12 @@ struct PreparedPatch {
     reasons: Vec<String>,
 }
 
+struct PatchSignals {
+    coverage: CoverageAssessment,
+    mutation: MutationAssessment,
+    characterized: bool,
+}
+
 struct VerificationRun {
     work_orders: BTreeMap<String, WorkOrder>,
     coverage: CoverageRegistry,
@@ -193,54 +200,63 @@ pub struct ApplyReport {
     pub written: Vec<PathBuf>,
 }
 
+fn read_to_string_ctx(path: &Path) -> Result<String> {
+    fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
+}
+
 pub fn load_patches(path: &Path) -> Result<Vec<Patch>> {
-    let text =
-        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let text = read_to_string_ctx(path)?;
     parse_patches_jsonl(&text)
 }
 
 pub fn load_characterization_tests(path: &Path) -> Result<Vec<CharacterizationTest>> {
-    let text =
-        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let text = read_to_string_ctx(path)?;
     parse_characterization_tests_jsonl(&text)
 }
 
 pub fn parse_patches_jsonl(text: &str) -> Result<Vec<Patch>> {
-    let mut patches = Vec::new();
-    for (idx, line) in text.lines().enumerate() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let patch: Patch = serde_json::from_str(line)
-            .with_context(|| format!("failed to parse patch JSONL line {}", idx + 1))?;
-        if patch.schema != "deslop.patch/1" {
-            bail!("line {} has unsupported schema `{}`", idx + 1, patch.schema);
-        }
-        patches.push(patch);
-    }
-    Ok(patches)
+    parse_jsonl_records(text, "patch", "deslop.patch/1", |patch: &Patch| {
+        patch.schema.as_str()
+    })
 }
 
 pub fn parse_characterization_tests_jsonl(text: &str) -> Result<Vec<CharacterizationTest>> {
-    let mut tests = Vec::new();
+    parse_jsonl_records(
+        text,
+        "characterization test",
+        "deslop.characterization-test/1",
+        |test: &CharacterizationTest| test.schema.as_str(),
+    )
+}
+
+fn parse_jsonl_records<T>(
+    text: &str,
+    label: &str,
+    expected_schema: &str,
+    schema: impl Fn(&T) -> &str,
+) -> Result<Vec<T>>
+where
+    T: DeserializeOwned,
+{
+    let mut records = Vec::new();
     for (idx, line) in text.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let test: CharacterizationTest = serde_json::from_str(line).with_context(|| {
-            format!(
-                "failed to parse characterization test JSONL line {}",
-                idx + 1
-            )
-        })?;
-        if test.schema != "deslop.characterization-test/1" {
-            bail!("line {} has unsupported schema `{}`", idx + 1, test.schema);
+        let record: T = serde_json::from_str(line)
+            .with_context(|| format!("failed to parse {label} JSONL line {}", idx + 1))?;
+        let actual_schema = schema(&record);
+        if actual_schema != expected_schema {
+            bail!(
+                "line {} has unsupported schema `{}`",
+                idx + 1,
+                actual_schema
+            );
         }
-        tests.push(test);
+        records.push(record);
     }
-    Ok(tests)
+    Ok(records)
 }
 
 pub fn characterization_work_orders_for_patches(
@@ -406,54 +422,106 @@ fn prepare_patch(
     let range = region_byte_range(&source, work_order)?;
     let candidate = replace_region(&source.text, range.start..range.end, &patch.replacement)?;
     let mut reasons = guard_rejections(work_order, patch, source.lang, &candidate)?;
-
-    if reasons.is_empty()
-        && let Some(command) = selected_check_cmd(options, work_order)
-    {
-        run_check_cmd_on_temp_copy(options, work_order, &candidate, command, &mut reasons)?;
-    }
-
-    let characterized = if reasons.is_empty() {
-        run_characterization_gate(options, work_order, &candidate, &mut reasons)?
-    } else {
-        false
-    };
-
-    let coverage_assessment = if reasons.is_empty() {
-        coverage.assess(CoverageRequest {
-            root: &options.root,
-            source: &source,
-            work_order,
-        })?
-    } else {
-        CoverageAssessment {
-            status: CoverageStatus::Unknown,
-            reason: None,
-        }
-    };
-
-    let mutation_assessment = if reasons.is_empty() {
-        mutation.assess(MutationRequest {
-            root: &options.root,
-            source: &source,
-            work_order,
-        })?
-    } else {
-        MutationAssessment {
-            status: MutationStatus::Unknown,
-            reason: None,
-        }
-    };
+    let signals = assess_patch_signals(
+        options,
+        &source,
+        work_order,
+        &candidate,
+        &mut reasons,
+        coverage,
+        mutation,
+    )?;
 
     Ok(prepared_outcome(
         patch,
         work_order,
         range,
         reasons,
-        coverage_assessment,
-        mutation_assessment,
-        characterized,
+        signals.coverage,
+        signals.mutation,
+        signals.characterized,
     ))
+}
+
+fn assess_patch_signals(
+    options: &VerifyOptions,
+    source: &SourceFile,
+    work_order: &WorkOrder,
+    candidate: &str,
+    reasons: &mut Vec<String>,
+    coverage: &mut CoverageRegistry,
+    mutation: &mut MutationRegistry,
+) -> Result<PatchSignals> {
+    if reasons.is_empty()
+        && let Some(command) = selected_check_cmd(options, work_order)
+    {
+        run_check_cmd_on_temp_copy(options, work_order, candidate, command, reasons)?;
+    }
+
+    let characterized = if reasons.is_empty() {
+        run_characterization_gate(options, work_order, candidate, reasons)?
+    } else {
+        false
+    };
+
+    let coverage = assess_coverage_if_clean(options, source, work_order, reasons, coverage)?;
+    let mutation = assess_mutation_if_clean(options, source, work_order, reasons, mutation)?;
+
+    Ok(PatchSignals {
+        coverage,
+        mutation,
+        characterized,
+    })
+}
+
+fn assess_coverage_if_clean(
+    options: &VerifyOptions,
+    source: &SourceFile,
+    work_order: &WorkOrder,
+    reasons: &[String],
+    coverage: &mut CoverageRegistry,
+) -> Result<CoverageAssessment> {
+    if reasons.is_empty() {
+        coverage.assess(CoverageRequest {
+            root: &options.root,
+            source,
+            work_order,
+        })
+    } else {
+        Ok(unknown_coverage_assessment())
+    }
+}
+
+fn assess_mutation_if_clean(
+    options: &VerifyOptions,
+    source: &SourceFile,
+    work_order: &WorkOrder,
+    reasons: &[String],
+    mutation: &mut MutationRegistry,
+) -> Result<MutationAssessment> {
+    if reasons.is_empty() {
+        mutation.assess(MutationRequest {
+            root: &options.root,
+            source,
+            work_order,
+        })
+    } else {
+        Ok(unknown_mutation_assessment())
+    }
+}
+
+fn unknown_coverage_assessment() -> CoverageAssessment {
+    CoverageAssessment {
+        status: CoverageStatus::Unknown,
+        reason: None,
+    }
+}
+
+fn unknown_mutation_assessment() -> MutationAssessment {
+    MutationAssessment {
+        status: MutationStatus::Unknown,
+        reason: None,
+    }
 }
 
 fn reject_unknown_workorder(patch: &Patch) -> PatchVerification {
@@ -811,12 +879,7 @@ impl RustCargoMutantsProbe {
         match &self.mode {
             MutationProbeMode::Disabled => Err("mutation disabled".to_string()),
             MutationProbeMode::OutcomesFile(path) => {
-                let text = fs::read_to_string(path).map_err(|err| {
-                    format!(
-                        "failed to read cargo-mutants outcomes {}: {err}",
-                        path.display()
-                    )
-                })?;
+                let text = read_report_text(path, "cargo-mutants outcomes")?;
                 MutantOutcomes::parse(&text).map_err(|err| err.to_string())
             }
             MutationProbeMode::Auto { command } => {
@@ -840,12 +903,7 @@ impl RustCargoMutantsProbe {
                     )
                     .replace("coverage unknown", "mutation unknown"));
                 }
-                let text = fs::read_to_string(&outcomes_path).map_err(|err| {
-                    format!(
-                        "failed to read cargo-mutants outcomes {}: {err}",
-                        outcomes_path.display()
-                    )
-                })?;
+                let text = read_report_text(&outcomes_path, "cargo-mutants outcomes")?;
                 MutantOutcomes::parse(&text).map_err(|err| err.to_string())
             }
         }
@@ -957,13 +1015,28 @@ fn collect_outcome_entries<'a>(
                 entries.push(value);
                 return;
             }
+            visit_json_children(value, |child| collect_outcome_entries(child, entries));
+        }
+        serde_json::Value::Array(_) => {
+            visit_json_children(value, |child| collect_outcome_entries(child, entries));
+        }
+        _ => {}
+    }
+}
+
+fn visit_json_children<'a>(
+    value: &'a serde_json::Value,
+    mut visit: impl FnMut(&'a serde_json::Value),
+) {
+    match value {
+        serde_json::Value::Object(map) => {
             for child in map.values() {
-                collect_outcome_entries(child, entries);
+                visit(child);
             }
         }
         serde_json::Value::Array(values) => {
             for child in values {
-                collect_outcome_entries(child, entries);
+                visit(child);
             }
         }
         _ => {}
@@ -1163,37 +1236,25 @@ impl RustCargoLlvmCovProvider {
             | CoverageProviderMode::JuliaCovFile(_)
             | CoverageProviderMode::CoveragePyFile(_) => Err("coverage disabled".to_string()),
             CoverageProviderMode::LcovFile(path) => {
-                let text = fs::read_to_string(path).map_err(|err| {
-                    format!("failed to read coverage LCOV {}: {err}", path.display())
-                })?;
+                let text = read_report_text(path, "coverage LCOV")?;
                 LcovCoverage::parse(&text).map_err(|err| err.to_string())
             }
             CoverageProviderMode::Auto { command } => {
                 if !cargo_llvm_cov_available(command, root) {
                     return Err("coverage-unknown: cargo-llvm-cov not available".to_string());
                 }
-                let temp = TempDir::new()
-                    .map_err(|err| format!("failed to create coverage tempdir: {err}"))?;
-                let output_path = temp.path().join("coverage.lcov");
-                let output = Command::new(command)
-                    .args(["llvm-cov", "--workspace", "--lcov", "--output-path"])
-                    .arg(&output_path)
-                    .current_dir(root)
-                    .output()
-                    .map_err(|err| format!("failed to run cargo-llvm-cov: {err}"))?;
-                if !output.status.success() {
-                    return Err(command_failure_reason(
-                        "cargo-llvm-cov",
-                        output.status,
-                        &output.stderr,
-                    ));
-                }
-                let text = fs::read_to_string(&output_path).map_err(|err| {
-                    format!(
-                        "failed to read coverage LCOV {}: {err}",
-                        output_path.display()
-                    )
-                })?;
+                let text = run_output_file_command(
+                    command,
+                    root,
+                    "cargo-llvm-cov",
+                    "coverage",
+                    "coverage.lcov",
+                    "coverage LCOV",
+                    |cmd, output_path| {
+                        cmd.args(["llvm-cov", "--workspace", "--lcov", "--output-path"])
+                            .arg(output_path);
+                    },
+                )?;
                 LcovCoverage::parse(&text).map_err(|err| err.to_string())
             }
         }
@@ -1299,9 +1360,7 @@ impl ClojureCloverageProvider {
     fn load_coverage(&self, root: &Path) -> std::result::Result<LineCoverage, String> {
         match &self.mode {
             CoverageProviderMode::CloverageFile(path) => {
-                let text = fs::read_to_string(path).map_err(|err| {
-                    format!("failed to read cloverage report {}: {err}", path.display())
-                })?;
+                let text = read_report_text(path, "cloverage report")?;
                 LineCoverage::parse_cloverage(&text).map_err(|err| err.to_string())
             }
             CoverageProviderMode::Auto { command } => {
@@ -1326,12 +1385,7 @@ impl ClojureCloverageProvider {
                 let report = find_named_file(temp.path(), "coverage.json").ok_or_else(|| {
                     "coverage-unknown: cloverage produced no coverage.json".to_string()
                 })?;
-                let text = fs::read_to_string(&report).map_err(|err| {
-                    format!(
-                        "failed to read cloverage report {}: {err}",
-                        report.display()
-                    )
-                })?;
+                let text = read_report_text(&report, "cloverage report")?;
                 LineCoverage::parse_cloverage(&text).map_err(|err| err.to_string())
             }
             _ => Err("coverage disabled".to_string()),
@@ -1409,46 +1463,32 @@ impl JuliaCoverageProvider {
     fn load_coverage(&self, root: &Path) -> std::result::Result<LineCoverage, String> {
         match &self.mode {
             CoverageProviderMode::JuliaCovFile(path) => {
-                let text = fs::read_to_string(path).map_err(|err| {
-                    format!("failed to read Coverage.jl .cov {}: {err}", path.display())
-                })?;
+                let text = read_report_text(path, "Coverage.jl .cov")?;
                 Ok(LineCoverage::from_julia_cov(path, &text))
             }
             CoverageProviderMode::LcovFile(path) => {
-                let text = fs::read_to_string(path).map_err(|err| {
-                    format!("failed to read Coverage.jl LCOV {}: {err}", path.display())
-                })?;
+                let text = read_report_text(path, "Coverage.jl LCOV")?;
                 LineCoverage::parse_lcov(&text).map_err(|err| err.to_string())
             }
             CoverageProviderMode::Auto { command } => {
                 if !julia_coverage_available(command, root) {
                     return Err("coverage-unknown: Coverage.jl not available".to_string());
                 }
-                let temp = TempDir::new()
-                    .map_err(|err| format!("failed to create Coverage.jl tempdir: {err}"))?;
-                let output_path = temp.path().join("coverage.lcov");
-                let script = format!(
-                    "using Coverage; coverage = process_folder(); LCOV.writefile(\"{}\", coverage)",
-                    output_path.display()
-                );
-                let output = Command::new(command)
-                    .args(["--startup-file=no", "-e", &script])
-                    .current_dir(root)
-                    .output()
-                    .map_err(|err| format!("failed to run Coverage.jl: {err}"))?;
-                if !output.status.success() {
-                    return Err(command_failure_reason(
-                        "Coverage.jl",
-                        output.status,
-                        &output.stderr,
-                    ));
-                }
-                let text = fs::read_to_string(&output_path).map_err(|err| {
-                    format!(
-                        "failed to read Coverage.jl LCOV {}: {err}",
-                        output_path.display()
-                    )
-                })?;
+                let text = run_output_file_command(
+                    command,
+                    root,
+                    "Coverage.jl",
+                    "Coverage.jl",
+                    "coverage.lcov",
+                    "Coverage.jl LCOV",
+                    |cmd, output_path| {
+                        let script = format!(
+                            "using Coverage; coverage = process_folder(); LCOV.writefile(\"{}\", coverage)",
+                            output_path.display()
+                        );
+                        cmd.args(["--startup-file=no", "-e", &script]);
+                    },
+                )?;
                 LineCoverage::parse_lcov(&text).map_err(|err| err.to_string())
             }
             _ => Err("coverage disabled".to_string()),
@@ -1526,40 +1566,24 @@ impl PythonCoveragePyProvider {
     fn load_coverage(&self, root: &Path) -> std::result::Result<LineCoverage, String> {
         match &self.mode {
             CoverageProviderMode::CoveragePyFile(path) => {
-                let text = fs::read_to_string(path).map_err(|err| {
-                    format!(
-                        "failed to read coverage.py report {}: {err}",
-                        path.display()
-                    )
-                })?;
+                let text = read_report_text(path, "coverage.py report")?;
                 LineCoverage::parse_coverage_py(&text).map_err(|err| err.to_string())
             }
             CoverageProviderMode::Auto { command } => {
                 if !coverage_py_available(command, root) {
                     return Err("coverage-unknown: coverage.py not available".to_string());
                 }
-                let temp = TempDir::new()
-                    .map_err(|err| format!("failed to create coverage.py tempdir: {err}"))?;
-                let output_path = temp.path().join("coverage.json");
-                let output = Command::new(command)
-                    .args(["json", "-o"])
-                    .arg(&output_path)
-                    .current_dir(root)
-                    .output()
-                    .map_err(|err| format!("failed to run coverage.py: {err}"))?;
-                if !output.status.success() {
-                    return Err(command_failure_reason(
-                        "coverage.py",
-                        output.status,
-                        &output.stderr,
-                    ));
-                }
-                let text = fs::read_to_string(&output_path).map_err(|err| {
-                    format!(
-                        "failed to read coverage.py report {}: {err}",
-                        output_path.display()
-                    )
-                })?;
+                let text = run_output_file_command(
+                    command,
+                    root,
+                    "coverage.py",
+                    "coverage.py",
+                    "coverage.json",
+                    "coverage.py report",
+                    |cmd, output_path| {
+                        cmd.args(["json", "-o"]).arg(output_path);
+                    },
+                )?;
                 LineCoverage::parse_coverage_py(&text).map_err(|err| err.to_string())
             }
             _ => Err("coverage disabled".to_string()),
@@ -1650,6 +1674,39 @@ fn coverage_py_available(command: &str, root: &Path) -> bool {
         .current_dir(root)
         .output()
         .is_ok_and(|output| output.status.success())
+}
+
+fn run_output_file_command(
+    command: &str,
+    root: &Path,
+    tool_name: &str,
+    temp_label: &str,
+    output_name: &str,
+    read_label: &str,
+    configure: impl FnOnce(&mut Command, &Path),
+) -> std::result::Result<String, String> {
+    let temp =
+        TempDir::new().map_err(|err| format!("failed to create {temp_label} tempdir: {err}"))?;
+    let output_path = temp.path().join(output_name);
+    let mut cmd = Command::new(command);
+    configure(&mut cmd, &output_path);
+    let output = cmd
+        .current_dir(root)
+        .output()
+        .map_err(|err| format!("failed to run {tool_name}: {err}"))?;
+    if !output.status.success() {
+        return Err(command_failure_reason(
+            tool_name,
+            output.status,
+            &output.stderr,
+        ));
+    }
+    read_report_text(&output_path, read_label)
+}
+
+fn read_report_text(path: &Path, label: &str) -> std::result::Result<String, String> {
+    fs::read_to_string(path)
+        .map_err(|err| format!("failed to read {label} {}: {err}", path.display()))
 }
 
 fn find_named_file(root: &Path, name: &str) -> Option<PathBuf> {
@@ -1751,20 +1808,7 @@ impl LineCoverage {
         let Some(file) = self.file_for(absolute_path, relative_path) else {
             return CoverageStatus::Unknown;
         };
-        let mut saw_executable_line = false;
-        for line in start_line..=end_line {
-            if let Some(count) = file.lines.get(&line) {
-                saw_executable_line = true;
-                if *count == 0 {
-                    return CoverageStatus::Uncovered;
-                }
-            }
-        }
-        if saw_executable_line {
-            CoverageStatus::Covered
-        } else {
-            CoverageStatus::Unknown
-        }
+        coverage_status_for_lines(&file.lines, start_line, end_line)
     }
 
     fn file_for(&self, absolute_path: &Path, relative_path: &Path) -> Option<&LineCoverageFile> {
@@ -1780,6 +1824,27 @@ fn line_files_from_json(value: &serde_json::Value) -> Vec<LineCoverageFile> {
     files
 }
 
+fn coverage_status_for_lines(
+    lines: &BTreeMap<usize, usize>,
+    start_line: usize,
+    end_line: usize,
+) -> CoverageStatus {
+    let mut saw_executable_line = false;
+    for line in start_line..=end_line {
+        if let Some(count) = lines.get(&line) {
+            saw_executable_line = true;
+            if *count == 0 {
+                return CoverageStatus::Uncovered;
+            }
+        }
+    }
+    if saw_executable_line {
+        CoverageStatus::Covered
+    } else {
+        CoverageStatus::Unknown
+    }
+}
+
 fn collect_line_files_from_json(value: &serde_json::Value, files: &mut Vec<LineCoverageFile>) {
     match value {
         serde_json::Value::Object(map) => {
@@ -1793,14 +1858,10 @@ fn collect_line_files_from_json(value: &serde_json::Value, files: &mut Vec<LineC
                     return;
                 }
             }
-            for child in map.values() {
-                collect_line_files_from_json(child, files);
-            }
+            visit_json_children(value, |child| collect_line_files_from_json(child, files));
         }
-        serde_json::Value::Array(values) => {
-            for child in values {
-                collect_line_files_from_json(child, files);
-            }
+        serde_json::Value::Array(_) => {
+            visit_json_children(value, |child| collect_line_files_from_json(child, files));
         }
         _ => {}
     }
@@ -1822,14 +1883,10 @@ fn collect_json_line_counts(value: &serde_json::Value, lines: &mut BTreeMap<usiz
                 lines.insert(line, count);
                 return;
             }
-            for child in map.values() {
-                collect_json_line_counts(child, lines);
-            }
+            visit_json_children(value, |child| collect_json_line_counts(child, lines));
         }
-        serde_json::Value::Array(values) => {
-            for child in values {
-                collect_json_line_counts(child, lines);
-            }
+        serde_json::Value::Array(_) => {
+            visit_json_children(value, |child| collect_json_line_counts(child, lines));
         }
         _ => {}
     }
@@ -2051,20 +2108,7 @@ impl LcovCoverage {
         let Some(file) = self.file_for(absolute_path, relative_path) else {
             return CoverageStatus::Unknown;
         };
-        let mut saw_executable_line = false;
-        for line in start_line..=end_line {
-            if let Some(count) = file.lines.get(&line) {
-                saw_executable_line = true;
-                if *count == 0 {
-                    return CoverageStatus::Uncovered;
-                }
-            }
-        }
-        if saw_executable_line {
-            CoverageStatus::Covered
-        } else {
-            CoverageStatus::Unknown
-        }
+        coverage_status_for_lines(&file.lines, start_line, end_line)
     }
 
     fn file_for(&self, absolute_path: &Path, relative_path: &Path) -> Option<&LcovFile> {
@@ -2371,6 +2415,20 @@ fn write_prepared_patches(
     prepared: &[PreparedPatch],
     backup: bool,
 ) -> Result<Vec<PathBuf>> {
+    let grouped = group_prepared_patches(root, prepared);
+    let mut written = Vec::new();
+    for (path, patches) in grouped {
+        if write_prepared_patches_to_file(&path, patches, backup)? {
+            written.push(path);
+        }
+    }
+    Ok(written)
+}
+
+fn group_prepared_patches<'a>(
+    root: &Path,
+    prepared: &'a [PreparedPatch],
+) -> BTreeMap<PathBuf, Vec<&'a PreparedPatch>> {
     let mut grouped: BTreeMap<PathBuf, Vec<&PreparedPatch>> = BTreeMap::new();
     for patch in prepared {
         grouped
@@ -2378,41 +2436,51 @@ fn write_prepared_patches(
             .or_default()
             .push(patch);
     }
+    grouped
+}
 
-    let mut written = Vec::new();
-    for (path, mut patches) in grouped {
-        patches.sort_by(|a, b| b.range.start.cmp(&a.range.start));
-        let original = fs::read_to_string(&path)
-            .with_context(|| format!("failed to read {}", path.display()))?;
-        let mut next_start = original.len() + 1;
-        let mut text = original.to_owned();
-        for patch in patches {
-            if patch.range.end > next_start {
-                bail!("overlapping patches for {}", path.display());
-            }
-            text.replace_range(patch.range.start..patch.range.end, &patch.replacement);
-            next_start = patch.range.start;
+fn write_prepared_patches_to_file(
+    path: &Path,
+    mut patches: Vec<&PreparedPatch>,
+    backup: bool,
+) -> Result<bool> {
+    patches.sort_by(|a, b| b.range.start.cmp(&a.range.start));
+    let original = read_to_string_ctx(path)?;
+    let mut next_start = original.len() + 1;
+    let mut text = original.to_owned();
+    for patch in patches {
+        if patch.range.end > next_start {
+            bail!("overlapping patches for {}", path.display());
         }
-        if text != original {
-            if backup {
-                let backup_path = PathBuf::from(format!("{}.deslop.bak", path.display()));
-                fs::write(&backup_path, &original)
-                    .with_context(|| format!("failed to write {}", backup_path.display()))?;
-            }
-            let tmp = path.with_extension(format!(
-                "{}deslop.tmp",
-                path.extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(|ext| format!("{ext}."))
-                    .unwrap_or_default()
-            ));
-            fs::write(&tmp, text).with_context(|| format!("failed to write {}", tmp.display()))?;
-            fs::rename(&tmp, &path)
-                .with_context(|| format!("failed to replace {}", path.display()))?;
-            written.push(path);
-        }
+        text.replace_range(patch.range.start..patch.range.end, &patch.replacement);
+        next_start = patch.range.start;
     }
-    Ok(written)
+    if text == original {
+        return Ok(false);
+    }
+    write_replacement_file(path, &original, text, backup)?;
+    Ok(true)
+}
+
+fn write_replacement_file(path: &Path, original: &str, text: String, backup: bool) -> Result<()> {
+    if backup {
+        let backup_path = PathBuf::from(format!("{}.deslop.bak", path.display()));
+        fs::write(&backup_path, original)
+            .with_context(|| format!("failed to write {}", backup_path.display()))?;
+    }
+    let tmp = deslop_tmp_path(path);
+    fs::write(&tmp, text).with_context(|| format!("failed to write {}", tmp.display()))?;
+    fs::rename(&tmp, path).with_context(|| format!("failed to replace {}", path.display()))
+}
+
+fn deslop_tmp_path(path: &Path) -> PathBuf {
+    path.with_extension(format!(
+        "{}deslop.tmp",
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| format!("{ext}."))
+            .unwrap_or_default()
+    ))
 }
 
 fn path_in_root(root: &Path, path: &Path) -> PathBuf {
@@ -2446,6 +2514,12 @@ mod tests {
     struct VerifyFixture {
         temp: tempfile::TempDir,
         work_order: WorkOrder,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum FixtureKind {
+        Clojure,
+        Rust,
     }
 
     fn write_fixture(root: &Path, text: &str) -> PathBuf {
@@ -2526,10 +2600,21 @@ mod tests {
         only_work_order(root)
     }
 
-    fn clojure_fixture(text: &str) -> VerifyFixture {
+    fn verify_fixture(kind: FixtureKind, text: &str) -> VerifyFixture {
         let temp = tempfile::tempdir().expect("tempdir");
-        let work_order = work_order_from_fixture(temp.path(), text);
+        let work_order = match kind {
+            FixtureKind::Clojure => work_order_from_fixture(temp.path(), text),
+            FixtureKind::Rust => rust_work_order_from_fixture(temp.path(), text),
+        };
         VerifyFixture { temp, work_order }
+    }
+
+    fn clojure_fixture(text: &str) -> VerifyFixture {
+        verify_fixture(FixtureKind::Clojure, text)
+    }
+
+    fn rust_fixture(text: &str) -> VerifyFixture {
+        verify_fixture(FixtureKind::Rust, text)
     }
 
     fn lcov_fixture(root: &Path, name: &str, source: &Path, line: usize, count: usize) -> PathBuf {
@@ -2792,14 +2877,12 @@ mod tests {
 
     #[test]
     fn absent_coverage_tool_degrades_to_unknown() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let work_order =
-            rust_work_order_from_fixture(temp.path(), "fn f() -> i32 {\n    return 1;\n}\n");
+        let fixture = rust_fixture("fn f() -> i32 {\n    return 1;\n}\n");
         let report = verify_single_with_options(
-            temp.path(),
-            patch_for(&work_order, "fn f() -> i32 {\n    1\n}\n"),
+            fixture.temp.path(),
+            patch_for(&fixture.work_order, "fn f() -> i32 {\n    1\n}\n"),
             test_options(
-                temp.path(),
+                fixture.temp.path(),
                 Some("true"),
                 CoverageConfig::AutoWithCommand("__deslop_missing_cargo__".to_string()),
             ),
@@ -2980,14 +3063,12 @@ mod tests {
 
     #[test]
     fn absent_cargo_mutants_degrades_without_rejecting_patch() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let work_order =
-            rust_work_order_from_fixture(temp.path(), "fn f() -> i32 {\n    return 1;\n}\n");
+        let fixture = rust_fixture("fn f() -> i32 {\n    return 1;\n}\n");
         let report = verify_single_with_options(
-            temp.path(),
-            patch_for(&work_order, "fn f() -> i32 {\n    1\n}\n"),
+            fixture.temp.path(),
+            patch_for(&fixture.work_order, "fn f() -> i32 {\n    1\n}\n"),
             test_options_with_mutation(
-                temp.path(),
+                fixture.temp.path(),
                 Some("true"),
                 MutationConfig::AutoWithCommand("__deslop_missing_cargo__".to_string()),
             ),
@@ -3002,12 +3083,13 @@ mod tests {
 
     #[test]
     fn weak_verdict_emits_characterization_work_order() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let work_order =
-            rust_work_order_from_fixture(temp.path(), "fn f() -> i32 {\n    return 1;\n}\n");
+        let fixture = rust_fixture("fn f() -> i32 {\n    return 1;\n}\n");
         let work_orders = characterization_work_orders_for_patches(
-            &[patch_for(&work_order, "fn f() -> i32 {\n    1\n}\n")],
-            &test_options(temp.path(), Some("true"), CoverageConfig::Disabled),
+            &[patch_for(
+                &fixture.work_order,
+                "fn f() -> i32 {\n    1\n}\n",
+            )],
+            &test_options(fixture.temp.path(), Some("true"), CoverageConfig::Disabled),
         )
         .expect("characterize");
 
@@ -3016,7 +3098,7 @@ mod tests {
             work_orders[0].kind,
             WorkOrderKind::NeedsCharacterizationTest
         );
-        assert_eq!(work_orders[0].id, work_order.id);
+        assert_eq!(work_orders[0].id, fixture.work_order.id);
         assert!(
             work_orders[0]
                 .instruction
@@ -3026,14 +3108,13 @@ mod tests {
 
     #[test]
     fn characterization_test_passing_current_code_is_accepted() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let work_order =
-            rust_work_order_from_fixture(temp.path(), "fn f() -> i32 {\n    return 1;\n}\n");
-        let test = characterization_test_for(&work_order, "tests/characterization.txt", "pin");
+        let fixture = rust_fixture("fn f() -> i32 {\n    return 1;\n}\n");
+        let test =
+            characterization_test_for(&fixture.work_order, "tests/characterization.txt", "pin");
         let report = verify_characterization_tests(
             &[test],
             &test_options(
-                temp.path(),
+                fixture.temp.path(),
                 Some("test -f tests/characterization.txt && grep -q 'return 1' sample.rs"),
                 CoverageConfig::Disabled,
             ),
@@ -3046,14 +3127,13 @@ mod tests {
 
     #[test]
     fn characterization_test_failing_current_code_is_rejected() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let work_order =
-            rust_work_order_from_fixture(temp.path(), "fn f() -> i32 {\n    return 1;\n}\n");
-        let test = characterization_test_for(&work_order, "tests/characterization.txt", "pin");
+        let fixture = rust_fixture("fn f() -> i32 {\n    return 1;\n}\n");
+        let test =
+            characterization_test_for(&fixture.work_order, "tests/characterization.txt", "pin");
         let report = verify_characterization_tests(
             &[test],
             &test_options(
-                temp.path(),
+                fixture.temp.path(),
                 Some("test -f tests/characterization.txt && grep -q 'return 2' sample.rs"),
                 CoverageConfig::Disabled,
             ),
@@ -3067,24 +3147,27 @@ mod tests {
 
     #[test]
     fn accepted_characterization_test_gates_patch_verification() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let work_order =
-            rust_work_order_from_fixture(temp.path(), "fn f() -> i32 {\n    return 1;\n}\n");
-        let test = characterization_test_for(&work_order, "tests/characterization.txt", "pin");
+        let fixture = rust_fixture("fn f() -> i32 {\n    return 1;\n}\n");
+        let test =
+            characterization_test_for(&fixture.work_order, "tests/characterization.txt", "pin");
         let command = "if [ -f tests/characterization.txt ]; then grep -q 'return 1' sample.rs; else true; fi";
 
         let rejected = verify_single_with_options(
-            temp.path(),
-            patch_for(&work_order, "fn f() -> i32 {\n    return 2;\n}\n"),
-            test_options_with_characterization(temp.path(), Some(command), vec![test.clone()]),
+            fixture.temp.path(),
+            patch_for(&fixture.work_order, "fn f() -> i32 {\n    return 2;\n}\n"),
+            test_options_with_characterization(
+                fixture.temp.path(),
+                Some(command),
+                vec![test.clone()],
+            ),
         );
         assert_eq!(rejected.results[0].verdict, VerificationVerdict::Rejected);
         assert!(rejected.results[0].reasons[0].contains("check_cmd failed"));
 
         let accepted = verify_single_with_options(
-            temp.path(),
-            patch_for(&work_order, "fn f() -> i32 {\n    return 1;\n}\n"),
-            test_options_with_characterization(temp.path(), Some(command), vec![test]),
+            fixture.temp.path(),
+            patch_for(&fixture.work_order, "fn f() -> i32 {\n    return 1;\n}\n"),
+            test_options_with_characterization(fixture.temp.path(), Some(command), vec![test]),
         );
         assert_eq!(accepted.results[0].verdict, VerificationVerdict::Removable);
         assert!(
