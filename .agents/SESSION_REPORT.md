@@ -1,5 +1,67 @@
 # Session Report
 
+## 2026-06-23T23:14:29+02:00 — Project Config File
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 6 only: extend `deslop.toml`
+project defaults for scan/fix/slim/analyzer while keeping `[external]` working, add
+`--config`, document precedence, and complete the queued task list.
+
+Changes:
+- Continued in new jj change `znzxmqym` on top of `lnlzsupu`.
+- Added global `--config <path>` with default `deslop.toml`; absent config files keep
+  built-in defaults.
+- Extended `DeslopConfig` with:
+  - `[slim] provider/model/base_url`
+  - `[fix] check_cmd/coverage/allow_unverified`
+  - `[scan] fail_on/baseline`
+  - `[analyzer] min_duplication_tokens`
+  - existing `[external] clippy/julia_analyzer/julia_project` unchanged.
+- Threaded the loaded config into `scan`, `propose`, and bundled `fix`.
+- Added explicit resolution helpers for the affected options:
+  - CLI > env > config > default for slim model (`DESLOP_SLIM_MODEL`)
+  - CLI > config > default for scan/fix/slim fields without env equivalents.
+- Kept API keys env-only; config never reads Anthropic/OpenAI/DESLOP slim API keys.
+- Updated `fix` parsing so `--provider`, `--coverage`, and `--allow-unverified` retain
+  "not supplied" state for config precedence. `--allow-unverified=false` is supported to
+  override a true config value.
+- Added `deslop.toml.example` and `docs/CONFIG.md`.
+- Updated `SPEC.md` to document the implemented config surface and remove older
+  unimplemented config promises.
+- Touched `.agents/HEARTBEAT.md`.
+
+Tests:
+- Added deterministic CLI unit coverage for:
+  - all config sections parsing
+  - slim model precedence across CLI/env/config/default
+  - scan fail-on/baseline precedence
+  - fix coverage parsing through `parse_coverage_mode`
+  - boolean forms for `--allow-unverified`.
+- Existing external config tests remain green.
+
+Verification:
+- First full gate failed at clippy only:
+  - needless borrow in `read_from`
+  - needless struct update after setting all `AnalyzerConfig` fields.
+- Fixed both clippy findings.
+- Full gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+- Smoke:
+  - `cargo run -q -p deslop-cli -- --config /tmp/nonexistent-deslop.toml scan tests/corpus/clean --format json >/tmp/deslop-config-smoke.json && wc -c /tmp/deslop-config-smoke.json`
+  - passed; output size 1389 bytes. The command emitted the expected clj-kondo fallback
+    notice because clj-kondo is not installed locally.
+
+Deferred:
+- Additional analyzer threshold knobs, including long-method thresholds, remain deferred
+  until `AnalyzerConfig` owns those values directly.
+
+Queue status:
+- Task 6 is complete. This was the last queued item.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-23T23:00:02+02:00 — CI and Pre-commit Packaging
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 5 only: package existing deslop scan

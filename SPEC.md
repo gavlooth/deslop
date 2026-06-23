@@ -464,8 +464,11 @@ default features disabled for prompt construction. `slim` is isolated and only i
   `github/codeql-action/upload-sarif@v3`. `.pre-commit-hooks.yaml` exposes a system
   `deslop scan --fail-on major` hook. `docs/CI.md` documents SARIF upload, fail-on exit
   codes, and baseline ratchets.
-- **Config** `deslop.toml`: `[scan]`, `[metrics] sigma=2.0`, `[fix]`, `[external] clj_kondo=auto|off clippy=off|on julia_analyzer=off|staticlint|jet julia_project="..."`, `[analyzer]`
-  thresholds, `[verify] check_cmd/defensive_guard`, `[slim] model`. Inline `deslop-ignore`.
+- **Config** `deslop.toml`: `--config <path>` loads project defaults with CLI > env >
+  config > built-in precedence. Implemented sections are `[scan] fail_on/baseline`,
+  `[fix] check_cmd/coverage/allow_unverified`, `[slim] provider/model/base_url`,
+  `[external] clippy/julia_analyzer/julia_project`, and `[analyzer] min_duplication_tokens`.
+  API keys are env-only. Inline `deslop-ignore` remains deferred.
 - **Safety:** `verify` owns the gate; `*.deslop.bak` + `undo`; `git`/`jj` dirty check;
   atomic temp+rename; `region_fingerprint` guards against stale patches.
 - **Deps:** `clap`, `ignore`, `tree-sitter`+grammars, `regex`, `serde`/`toml`/

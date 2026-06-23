@@ -1,0 +1,25 @@
+# Project defaults for the deslop CLI.
+# Precedence is: explicit CLI flag > environment variable > deslop.toml > built-in default.
+# API keys are intentionally not supported here; keep provider secrets in environment variables.
+
+[scan]
+# fail_on = "major" # info | minor | major
+# baseline = "deslop-baseline.json"
+
+[fix]
+# check_cmd = "cargo test --workspace"
+# coverage = "disabled" # disabled | auto | auto:<cmd> | lcov:<path> | cloverage:<path> | julia-cov:<path> | coverage-py:<path>
+# allow_unverified = false
+
+[slim]
+# provider = "anthropic" # anthropic | openai
+# model = "claude-sonnet-4-6"
+# base_url = "https://api.openai.com/v1" # used by provider = "openai"
+
+[external]
+# clippy = "off" # off | on
+# julia_analyzer = "off" # off | staticlint | jet
+# julia_project = "julia-env"
+
+[analyzer]
+# min_duplication_tokens = 24

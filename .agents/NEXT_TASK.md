@@ -1,44 +1,40 @@
-# TASK 6/queue (final) — Config file: extend deslop.toml for project defaults
+# TASK 7/queue — MCP `fix` option A: opt-in server-run LLM (feature-gated, default stays network-free)
 
-A `DeslopConfig` already loads `deslop.toml` (cwd) with an `[external]` section
-(crates/deslop-cli/src/main.rs:320, `read_default()`). EXTEND it to cover the rest, with clear
-precedence. Start with `jj new` (separate change on top of lnlzsupu).
+The MCP `fix` tool today only does option B (returns prompts; `fix_tool` at deslop-mcp lib.rs:269).
+Add option A — the server runs the LLM end-to-end (slim `run_slim` → verify → apply) — but ONLY
+behind a cargo feature that is OFF by default, so the default MCP build remains provably
+network-free. Start with `jj new` (separate change on top of znzxmqym).
 
-## Do
-1. **Extend `DeslopConfig`** with optional sections (keep `[external]` working unchanged):
-   - `[slim]` → `provider` (anthropic|openai), `model`, `base_url`
-   - `[fix]` → `check_cmd`, `coverage` (mode string, parsed via `deslop_verify::parse_coverage_mode`),
-     `allow_unverified` (bool)
-   - `[scan]` → `fail_on` (severity: info|minor|major), `baseline` (path)
-   - (optional) `[analyzer]` → `min_duplication_tokens` (AnalyzerConfig already has this field; only
-     expose knobs that AnalyzerConfig actually supports — long-method NLOC etc. are consts, NOT in
-     AnalyzerConfig, so DEFER those with a note; do not refactor the analyzer this pass).
-2. **`--config <path>`** global flag to load a specific file (default `./deslop.toml`; absent file →
-   defaults, same as today). Thread it into `read_default`/a new `read_from(path)`.
-3. **Precedence** (apply everywhere the config now feeds): explicit CLI flag > env (where one exists,
-   e.g. API key, model) > `deslop.toml` > built-in default. Implement by resolving
-   `cli.or(config).or(default)` for the affected options (make fields `Option` where needed to detect
-   "not provided"). Keep current behavior identical when no `deslop.toml` exists.
-   - SECURITY: do NOT read API keys from `deslop.toml`. Keys stay env-only. Document this.
-4. **Sample + docs**: a commented `deslop.toml.example` (all sections) and a `docs/CONFIG.md` (or a
-   README section) describing each key + the precedence order + the env-only-secrets rule.
+## Design
+1. **Cargo feature** on deslop-mcp, e.g. `slim-llm = ["deslop-slim/anthropic", "deslop-slim/openai"]`
+   (deslop-mcp currently depends on deslop-slim with `default-features = false`). Default features:
+   feature OFF. With it OFF, `cargo tree -p deslop-mcp -i ureq` MUST stay empty (keep that test).
+2. **`fix` tool gains `mode`** (string, default `"prompts"`):
+   - `"prompts"` → current option-B behavior, ALWAYS available (unchanged output `deslop.fix/1`).
+   - `"auto"` → option A. Requires the `slim-llm` feature. Build a slim `LlmClient` from args and run
+     `deslop_slim::run_slim`, returning the `SlimReport` JSON (schema `deslop.slim/1`).
+     - If the feature is NOT compiled in, return a CLEAR error: "fix mode=auto requires deslop-mcp
+       built with --features slim-llm". Do NOT panic.
+3. **auto-mode params** (mirror the CLI `fix` surface, reuse `SlimOptions`): `paths`, `provider`
+   (anthropic|openai), `model`, `base_url`, `apply` (bool, default false → dry-run), `allow_unverified`
+   (default false), `coverage` (mode string via the shared `parse_coverage_mode`), `check_cmd`,
+   `characterize` (bool), and `mock` (path to a recorded response → use `RecordedClient`/`ScriptedClient`
+   for deterministic tests). API key stays env-only (never from args). Never log the key.
+4. Update the `fix` tool schema + description (document mode + the auto params + the feature
+   requirement). SPEC.md: note option A is available behind `slim-llm`, default build is network-free.
 
-## Tests (deterministic, NO network)
-- Parsing: a fixture `deslop.toml` with all sections deserializes into `DeslopConfig` with expected
-  values (slim/fix/scan/external).
-- Precedence: with a config setting (e.g. slim.model or scan.fail_on), an explicit CLI flag wins;
-  with no CLI flag, the config value is used; with neither, the built-in default. Unit-test the
-  resolution helper(s) directly (don't require running the whole CLI).
-- Coverage mode in `[fix]` parses via `parse_coverage_mode` (reuse).
-- Keep all existing tests green (external config, slim, scan exit codes).
+## Tests
+- DEFAULT build (no feature): `fix` mode=prompts unchanged; mode=auto returns the clear
+  feature-required error; `cargo tree -p deslop-mcp -i ureq` empty. (Keep/extend existing MCP tests.)
+- `#[cfg(feature = "slim-llm")]` test: `fix` mode=auto with `mock` (recorded rewrite) on a fixture →
+  returns a `deslop.slim/1` report; with `apply:true` in a tempdir a verified (Removable / covered or
+  allow_unverified) rewrite is written; a rejected rewrite is not. Deterministic, NO network/key.
 
-## Constraints / gate
-No analyzer behavior change beyond reading existing AnalyzerConfig knobs. No new deps (toml already
-present). MCP stays network-free. Do NOT touch `deslop/*.py`. Gate after each change:
-`cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+## Gate (run BOTH feature states)
+Default: `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+Feature: `cargo test -p deslop-mcp --features slim-llm && cargo clippy -p deslop-mcp --features slim-llm -- -D warnings`
 
-## Report
-config sections added; `--config`; the precedence rule + helper; env-only-secrets note; sample +
-docs; test outcomes; what's deferred (analyzer threshold knobs needing AnalyzerConfig changes).
-`jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`. This is the LAST queued item — note the
-queue is complete in your report.
+## Constraints / report
+Do NOT change option B output, the slim gating, or verify. Do NOT touch `deslop/*.py`. Report: the
+feature; `mode` param; default-build network-free proof; the auto-mode mock test; both gate states.
+`jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`. Do NOT start queued items 8-13.

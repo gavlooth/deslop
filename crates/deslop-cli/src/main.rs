@@ -15,7 +15,7 @@ use deslop_metrics::{
 };
 use deslop_report::{render_agent, render_json, render_sarif, render_text};
 use deslop_slim::{
-    AnthropicClient, OpenAiClient, RecordedClient, SlimOptions, resolve_model, run_slim,
+    AnthropicClient, DEFAULT_MODEL, OpenAiClient, RecordedClient, SlimOptions, run_slim,
 };
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
@@ -30,6 +30,14 @@ use serde::{Deserialize, Serialize};
     about = "Deterministic code-bloat analyzer with agent-ready output"
 )]
 struct Cli {
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        default_value = "deslop.toml"
+    )]
+    config: PathBuf,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -101,17 +109,17 @@ struct FixArgs {
     #[arg(long)]
     characterize: bool,
 
-    #[arg(long)]
-    allow_unverified: bool,
+    #[arg(long, default_missing_value = "true", num_args = 0..=1)]
+    allow_unverified: Option<bool>,
 
-    #[arg(long, value_name = "MODE", default_value = "disabled")]
-    coverage: String,
+    #[arg(long, value_name = "MODE")]
+    coverage: Option<String>,
 
     #[arg(long)]
     model: Option<String>,
 
-    #[arg(long, value_enum, default_value_t = SlimProvider::Anthropic)]
-    provider: SlimProvider,
+    #[arg(long, value_enum)]
+    provider: Option<SlimProvider>,
 
     #[arg(long)]
     base_url: Option<String>,
@@ -277,7 +285,8 @@ enum MetricsFormat {
     Json,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ValueEnum)]
+#[serde(rename_all = "lowercase")]
 enum SeverityArg {
     Info,
     Minor,
@@ -291,7 +300,8 @@ enum JuliaExternalArg {
     Off,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ValueEnum)]
+#[serde(rename_all = "lowercase")]
 enum SlimProvider {
     Anthropic,
     Openai,
@@ -321,15 +331,22 @@ impl From<SeverityArg> for Severity {
 struct DeslopConfig {
     #[serde(default)]
     external: Option<ExternalConfig>,
+    #[serde(default)]
+    slim: Option<SlimConfig>,
+    #[serde(default)]
+    fix: Option<FixConfig>,
+    #[serde(default)]
+    scan: Option<ScanConfig>,
+    #[serde(default)]
+    analyzer: Option<AnalyzerConfigSection>,
 }
 
 impl DeslopConfig {
-    fn read_default() -> Result<Self> {
-        let path = PathBuf::from("deslop.toml");
+    fn read_from(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let text = read_to_string_ctx(&path)?;
+        let text = read_to_string_ctx(path)?;
         toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
     }
 }
@@ -346,6 +363,40 @@ struct ExternalConfig {
     julia_project: Option<PathBuf>,
     #[serde(default)]
     clippy: Option<ClippyConfig>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct SlimConfig {
+    #[serde(default)]
+    provider: Option<SlimProvider>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    base_url: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct FixConfig {
+    #[serde(default)]
+    check_cmd: Option<String>,
+    #[serde(default)]
+    coverage: Option<String>,
+    #[serde(default)]
+    allow_unverified: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ScanConfig {
+    #[serde(default)]
+    fail_on: Option<SeverityArg>,
+    #[serde(default)]
+    baseline: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct AnalyzerConfigSection {
+    #[serde(default)]
+    min_duplication_tokens: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -375,13 +426,14 @@ enum ClippyConfig {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let config = DeslopConfig::read_from(&cli.config)?;
     match cli.command {
-        Command::Scan(args) => scan(args),
+        Command::Scan(args) => scan(args, &config),
         Command::Metrics(args) => metrics(args),
         #[cfg(feature = "mcp")]
         Command::Mcp => deslop_mcp::run_stdio(),
-        Command::Fix(args) => fix(args),
-        Command::Propose(args) => propose(args),
+        Command::Fix(args) => fix(args, &config),
+        Command::Propose(args) => propose(args, &config),
         Command::Eval(args) => eval(args),
         Command::Slop(args) => slop(args),
         Command::Characterize(args) => characterize(args),
@@ -404,11 +456,16 @@ fn metrics(args: MetricsArgs) -> Result<()> {
     Ok(())
 }
 
-fn scan(args: ScanArgs) -> Result<()> {
+fn scan(args: ScanArgs, config: &DeslopConfig) -> Result<()> {
     let paths = paths_since(args.paths, args.since)?;
-    let config = analyzer_config(args.rust_external, args.julia_external, args.julia_project)?;
-    let mut reports = scan_paths_with_config(&paths, config)?;
-    if let Some(path) = args.baseline {
+    let analyzer = analyzer_config(
+        config,
+        args.rust_external,
+        args.julia_external,
+        args.julia_project,
+    );
+    let mut reports = scan_paths_with_config(&paths, analyzer)?;
+    if let Some(path) = resolve_scan_baseline(args.baseline, config) {
         let baseline = Baseline::read(&path)?;
         suppress_baseline(&mut reports, &baseline);
     }
@@ -421,7 +478,7 @@ fn scan(args: ScanArgs) -> Result<()> {
     };
     print!("{rendered}");
 
-    if let Some(threshold) = args.fail_on.map(Severity::from) {
+    if let Some(threshold) = resolve_scan_fail_on(args.fail_on, config) {
         let should_fail = reports
             .iter()
             .flat_map(|report| &report.findings)
@@ -433,37 +490,41 @@ fn scan(args: ScanArgs) -> Result<()> {
     Ok(())
 }
 
-fn fix(args: FixArgs) -> Result<()> {
-    let model = resolve_model(args.model);
+fn fix(args: FixArgs, config: &DeslopConfig) -> Result<()> {
+    let model = resolve_slim_model(args.model, std::env::var("DESLOP_SLIM_MODEL").ok(), config);
     let paths = if args.paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
         args.paths
     };
-    let coverage = parse_coverage_config(&args.coverage)?;
+    let coverage = resolve_fix_coverage(args.coverage, config)?;
+    let check_cmd = resolve_fix_check_cmd(args.check_cmd, config);
+    let allow_unverified = resolve_fix_allow_unverified(args.allow_unverified, config);
+    let provider = resolve_slim_provider(args.provider, config);
+    let base_url = resolve_slim_base_url(args.base_url, config);
     let options = SlimOptions {
         root: PathBuf::from("."),
         paths,
         workorders: args.workorders,
         apply: args.apply,
         characterize: args.characterize,
-        allow_unverified: args.allow_unverified,
+        allow_unverified,
         coverage,
         model: model.to_owned(),
-        check_cmd: args.check_cmd,
+        check_cmd,
         backup: !args.no_backup,
     };
     let report = if let Some(path) = args.mock {
         let client = RecordedClient::from_path(path)?;
         run_slim(&client, options)?
     } else {
-        match args.provider {
+        match provider {
             SlimProvider::Anthropic => {
-                let client = AnthropicClient::from_env(model)?;
+                let client = AnthropicClient::from_env(model.clone())?;
                 run_slim(&client, options)?
             }
             SlimProvider::Openai => {
-                let client = OpenAiClient::from_env(model, args.base_url)?;
+                let client = OpenAiClient::from_env(model.clone(), base_url)?;
                 run_slim(&client, options)?
             }
         }
@@ -472,9 +533,14 @@ fn fix(args: FixArgs) -> Result<()> {
     Ok(())
 }
 
-fn propose(args: ProposeArgs) -> Result<()> {
-    let config = analyzer_config(args.rust_external, args.julia_external, args.julia_project)?;
-    let reports = scan_paths_with_config(&args.paths, config)?;
+fn propose(args: ProposeArgs, config: &DeslopConfig) -> Result<()> {
+    let analyzer = analyzer_config(
+        config,
+        args.rust_external,
+        args.julia_external,
+        args.julia_project,
+    );
+    let reports = scan_paths_with_config(&args.paths, analyzer)?;
     let rendered = render_agent(&reports)?;
     if let Some(output) = args.output {
         fs::write(&output, rendered)
@@ -619,17 +685,12 @@ fn render_slop_text(report: &SlopReport) -> String {
 }
 
 fn analyzer_config(
+    config: &DeslopConfig,
     rust_external: bool,
     julia_external: Option<JuliaExternalArg>,
     julia_project: Option<PathBuf>,
-) -> Result<AnalyzerConfig> {
-    let config = DeslopConfig::read_default()?;
-    Ok(analyzer_config_from_config(
-        &config,
-        rust_external,
-        julia_external,
-        julia_project,
-    ))
+) -> AnalyzerConfig {
+    analyzer_config_from_config(config, rust_external, julia_external, julia_project)
 }
 
 fn analyzer_config_from_config(
@@ -647,15 +708,65 @@ fn analyzer_config_from_config(
     let configured_clippy = external
         .and_then(|external| external.clippy)
         .is_some_and(|value| value == ClippyConfig::On);
+    let default = AnalyzerConfig::default();
+    let min_duplication_tokens = config
+        .analyzer
+        .as_ref()
+        .and_then(|analyzer| analyzer.min_duplication_tokens)
+        .unwrap_or(default.min_duplication_tokens);
 
     AnalyzerConfig {
+        min_duplication_tokens,
         rust_external: rust_external || configured_clippy,
         julia_external: julia_external
             .map(JuliaExternal::from)
             .unwrap_or(configured_julia),
         julia_project: julia_project.or(configured_project),
-        ..AnalyzerConfig::default()
     }
+}
+
+fn resolve_scan_baseline(cli: Option<PathBuf>, config: &DeslopConfig) -> Option<PathBuf> {
+    cli.or_else(|| config.scan.as_ref().and_then(|scan| scan.baseline.clone()))
+}
+
+fn resolve_scan_fail_on(cli: Option<SeverityArg>, config: &DeslopConfig) -> Option<Severity> {
+    cli.or_else(|| config.scan.as_ref().and_then(|scan| scan.fail_on))
+        .map(Severity::from)
+}
+
+fn resolve_slim_provider(cli: Option<SlimProvider>, config: &DeslopConfig) -> SlimProvider {
+    cli.or_else(|| config.slim.as_ref().and_then(|slim| slim.provider))
+        .unwrap_or(SlimProvider::Anthropic)
+}
+
+fn resolve_slim_base_url(cli: Option<String>, config: &DeslopConfig) -> Option<String> {
+    cli.or_else(|| config.slim.as_ref().and_then(|slim| slim.base_url.clone()))
+}
+
+fn resolve_slim_model(
+    cli: Option<String>,
+    env_model: Option<String>,
+    config: &DeslopConfig,
+) -> String {
+    cli.or(env_model)
+        .or_else(|| config.slim.as_ref().and_then(|slim| slim.model.clone()))
+        .unwrap_or_else(|| DEFAULT_MODEL.to_string())
+}
+
+fn resolve_fix_check_cmd(cli: Option<String>, config: &DeslopConfig) -> Option<String> {
+    cli.or_else(|| config.fix.as_ref().and_then(|fix| fix.check_cmd.clone()))
+}
+
+fn resolve_fix_allow_unverified(cli: Option<bool>, config: &DeslopConfig) -> bool {
+    cli.or_else(|| config.fix.as_ref().and_then(|fix| fix.allow_unverified))
+        .unwrap_or(false)
+}
+
+fn resolve_fix_coverage(cli: Option<String>, config: &DeslopConfig) -> Result<CoverageConfig> {
+    let mode = cli
+        .or_else(|| config.fix.as_ref().and_then(|fix| fix.coverage.clone()))
+        .unwrap_or_else(|| "disabled".to_string());
+    parse_coverage_config(&mode)
 }
 
 fn characterize(args: CharacterizeArgs) -> Result<()> {
@@ -901,6 +1012,63 @@ mod tests {
     }
 
     #[test]
+    fn parses_all_config_sections() {
+        let config: DeslopConfig = toml::from_str(
+            r#"
+            [slim]
+            provider = "openai"
+            model = "configured-model"
+            base_url = "http://localhost:11434/v1"
+
+            [fix]
+            check_cmd = "cargo test -p configured"
+            coverage = "lcov:coverage.lcov"
+            allow_unverified = true
+
+            [scan]
+            fail_on = "major"
+            baseline = "deslop-baseline.json"
+
+            [analyzer]
+            min_duplication_tokens = 42
+
+            [external]
+            clippy = "on"
+            julia_analyzer = "jet"
+            julia_project = "julia-env"
+            "#,
+        )
+        .expect("parse config");
+
+        assert_eq!(resolve_slim_provider(None, &config), SlimProvider::Openai);
+        assert_eq!(resolve_slim_model(None, None, &config), "configured-model");
+        assert_eq!(
+            resolve_slim_base_url(None, &config).as_deref(),
+            Some("http://localhost:11434/v1")
+        );
+        assert_eq!(
+            resolve_fix_check_cmd(None, &config).as_deref(),
+            Some("cargo test -p configured")
+        );
+        assert!(resolve_fix_allow_unverified(None, &config));
+        assert!(matches!(
+            resolve_fix_coverage(None, &config).expect("parse coverage"),
+            CoverageConfig::LcovFile(path) if path == PathBuf::from("coverage.lcov")
+        ));
+        assert_eq!(
+            resolve_scan_baseline(None, &config),
+            Some(PathBuf::from("deslop-baseline.json"))
+        );
+        assert_eq!(resolve_scan_fail_on(None, &config), Some(Severity::Major));
+
+        let analyzer = analyzer_config_from_config(&config, false, None, None);
+        assert_eq!(analyzer.min_duplication_tokens, 42);
+        assert!(analyzer.rust_external);
+        assert_eq!(analyzer.julia_external, JuliaExternal::Jet);
+        assert_eq!(analyzer.julia_project, Some(PathBuf::from("julia-env")));
+    }
+
+    #[test]
     fn cli_julia_external_overrides_config() {
         let config: DeslopConfig = toml::from_str(
             r#"
@@ -918,6 +1086,89 @@ mod tests {
         );
         assert_eq!(analyzer.julia_external, JuliaExternal::Off);
         assert_eq!(analyzer.julia_project, Some(PathBuf::from("cli-project")));
+    }
+
+    #[test]
+    fn slim_model_precedence_is_cli_env_config_default() {
+        let config: DeslopConfig = toml::from_str(
+            r#"
+            [slim]
+            model = "config-model"
+            "#,
+        )
+        .expect("parse config");
+
+        assert_eq!(
+            resolve_slim_model(
+                Some("cli-model".to_string()),
+                Some("env-model".to_string()),
+                &config
+            ),
+            "cli-model"
+        );
+        assert_eq!(
+            resolve_slim_model(None, Some("env-model".to_string()), &config),
+            "env-model"
+        );
+        assert_eq!(resolve_slim_model(None, None, &config), "config-model");
+        assert_eq!(
+            resolve_slim_model(None, None, &DeslopConfig::default()),
+            DEFAULT_MODEL
+        );
+    }
+
+    #[test]
+    fn scan_precedence_is_cli_config_default() {
+        let config: DeslopConfig = toml::from_str(
+            r#"
+            [scan]
+            fail_on = "minor"
+            baseline = "configured-baseline.json"
+            "#,
+        )
+        .expect("parse config");
+
+        assert_eq!(
+            resolve_scan_fail_on(Some(SeverityArg::Major), &config),
+            Some(Severity::Major)
+        );
+        assert_eq!(resolve_scan_fail_on(None, &config), Some(Severity::Minor));
+        assert_eq!(resolve_scan_fail_on(None, &DeslopConfig::default()), None);
+        assert_eq!(
+            resolve_scan_baseline(Some(PathBuf::from("cli-baseline.json")), &config),
+            Some(PathBuf::from("cli-baseline.json"))
+        );
+        assert_eq!(
+            resolve_scan_baseline(None, &config),
+            Some(PathBuf::from("configured-baseline.json"))
+        );
+    }
+
+    #[test]
+    fn fix_config_coverage_uses_shared_mode_parser() {
+        let config: DeslopConfig = toml::from_str(
+            r#"
+            [fix]
+            coverage = "coverage-py:coverage.json"
+            allow_unverified = true
+            check_cmd = "cargo test"
+            "#,
+        )
+        .expect("parse config");
+
+        assert!(matches!(
+            resolve_fix_coverage(None, &config).expect("parse coverage"),
+            CoverageConfig::CoveragePyFile(path) if path == PathBuf::from("coverage.json")
+        ));
+        assert!(matches!(
+            resolve_fix_coverage(Some("disabled".to_string()), &config).expect("parse coverage"),
+            CoverageConfig::Disabled
+        ));
+        assert!(!resolve_fix_allow_unverified(Some(false), &config));
+        assert_eq!(
+            resolve_fix_check_cmd(Some("cargo check".to_string()), &config).as_deref(),
+            Some("cargo check")
+        );
     }
 
     #[test]
@@ -995,8 +1246,24 @@ mod tests {
         let Command::Fix(args) = cli.command else {
             panic!("expected fix command");
         };
-        assert_eq!(args.provider, SlimProvider::Openai);
+        assert_eq!(args.provider, Some(SlimProvider::Openai));
         assert_eq!(args.base_url.as_deref(), Some("http://localhost:11434/v1"));
+    }
+
+    #[test]
+    fn parses_allow_unverified_bool_forms() {
+        let cli = Cli::try_parse_from(["deslop", "fix", "--allow-unverified"]).expect("parse cli");
+        let Command::Fix(args) = cli.command else {
+            panic!("expected fix command");
+        };
+        assert_eq!(args.allow_unverified, Some(true));
+
+        let cli =
+            Cli::try_parse_from(["deslop", "fix", "--allow-unverified=false"]).expect("parse cli");
+        let Command::Fix(args) = cli.command else {
+            panic!("expected fix command");
+        };
+        assert_eq!(args.allow_unverified, Some(false));
     }
 }
 
