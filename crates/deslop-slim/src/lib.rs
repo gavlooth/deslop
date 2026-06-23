@@ -116,6 +116,55 @@ impl LlmClient for AnthropicClient {
     }
 }
 
+#[cfg(feature = "openai")]
+pub struct OpenAiClient {
+    model: String,
+    api_key: String,
+    base_url: String,
+}
+
+#[cfg(feature = "openai")]
+impl OpenAiClient {
+    pub fn from_env(model: impl Into<String>, base_url: Option<String>) -> Result<Self> {
+        let api_key = std::env::var("OPENAI_API_KEY")
+            .or_else(|_| std::env::var("DESLOP_SLIM_API_KEY"))
+            .context("OPENAI_API_KEY or DESLOP_SLIM_API_KEY is required for deslop-slim OpenAI-compatible requests")?;
+        Ok(Self {
+            model: model.into(),
+            api_key,
+            base_url: base_url.unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
+        })
+    }
+
+    pub fn endpoint(&self) -> String {
+        format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
+    }
+}
+
+#[cfg(feature = "openai")]
+impl LlmClient for OpenAiClient {
+    fn rewrite(&self, prompt: &SlimPrompt) -> Result<String> {
+        let request = serde_json::json!({
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt.text,
+                },
+            ],
+        });
+        let mut response = ureq::post(&self.endpoint())
+            .header("authorization", format!("Bearer {}", self.api_key))
+            .send_json(&request)
+            .context("OpenAI-compatible Chat Completions request failed")?;
+        let body = response
+            .body_mut()
+            .read_to_string()
+            .context("failed to read OpenAI-compatible Chat Completions response")?;
+        openai_text_response(&body)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RecordedClient {
     response: String,
@@ -358,6 +407,21 @@ fn anthropic_text_response(body: &str) -> Result<String> {
     Ok(strip_code_fences(&text))
 }
 
+#[cfg(feature = "openai")]
+fn openai_text_response(body: &str) -> Result<String> {
+    let value: serde_json::Value =
+        serde_json::from_str(body).context("failed to parse OpenAI-compatible response JSON")?;
+    let content = value
+        .get("choices")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(serde_json::Value::as_str)
+        .context("OpenAI-compatible response did not include choices[0].message.content")?;
+    Ok(strip_code_fences(content))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -587,6 +651,30 @@ mod tests {
 
         assert_eq!(anthropic_text_response(body)?, "fn f() {}");
         Ok(())
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn openai_response_extracts_message_content_and_strips_fences() -> Result<()> {
+        let body = r#"{"choices":[{"message":{"content":"```rust\nfn f() {}\n```"}}]}"#;
+
+        assert_eq!(openai_text_response(body)?, "fn f() {}");
+        Ok(())
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn openai_endpoint_joins_base_url_without_double_slash() {
+        let client = OpenAiClient {
+            model: "model".to_string(),
+            api_key: "key".to_string(),
+            base_url: "http://localhost:11434/v1/".to_string(),
+        };
+
+        assert_eq!(
+            client.endpoint(),
+            "http://localhost:11434/v1/chat/completions"
+        );
     }
 
     fn lcov_fixture(root: &Path, name: &str, source: &Path, line: usize, count: usize) -> PathBuf {

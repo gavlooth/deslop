@@ -14,7 +14,9 @@ use deslop_metrics::{
     render_text as render_metrics_text,
 };
 use deslop_report::{render_agent, render_json, render_sarif, render_text};
-use deslop_slim::{AnthropicClient, RecordedClient, SlimOptions, resolve_model, run_slim};
+use deslop_slim::{
+    AnthropicClient, OpenAiClient, RecordedClient, SlimOptions, resolve_model, run_slim,
+};
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
     characterization_work_orders_for_patches, load_characterization_tests, load_patches,
@@ -104,6 +106,12 @@ struct FixArgs {
 
     #[arg(long)]
     model: Option<String>,
+
+    #[arg(long, value_enum, default_value_t = SlimProvider::Anthropic)]
+    provider: SlimProvider,
+
+    #[arg(long)]
+    base_url: Option<String>,
 
     #[arg(long)]
     mock: Option<PathBuf>,
@@ -280,6 +288,12 @@ enum JuliaExternalArg {
     Off,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum SlimProvider {
+    Anthropic,
+    Openai,
+}
+
 impl From<JuliaExternalArg> for JuliaExternal {
     fn from(value: JuliaExternalArg) -> Self {
         match value {
@@ -439,8 +453,16 @@ fn fix(args: FixArgs) -> Result<()> {
         let client = RecordedClient::from_path(path)?;
         run_slim(&client, options)?
     } else {
-        let client = AnthropicClient::from_env(model)?;
-        run_slim(&client, options)?
+        match args.provider {
+            SlimProvider::Anthropic => {
+                let client = AnthropicClient::from_env(model)?;
+                run_slim(&client, options)?
+            }
+            SlimProvider::Openai => {
+                let client = OpenAiClient::from_env(model, args.base_url)?;
+                run_slim(&client, options)?
+            }
+        }
     };
     print_pretty_json(&report)?;
     Ok(())
@@ -939,6 +961,8 @@ mod tests {
             "--allow-unverified",
             "--coverage",
             "--model",
+            "--provider",
+            "--base-url",
             "--mock",
             "--check-cmd",
         ] {
@@ -977,6 +1001,25 @@ mod tests {
             CoverageConfig::CoveragePyFile(path) if path == PathBuf::from("coverage.json")
         ));
         assert!(parse_coverage_config("unknown").is_err());
+    }
+
+    #[test]
+    fn parses_openai_provider_selection_without_network() {
+        let cli = Cli::try_parse_from([
+            "deslop",
+            "fix",
+            "--provider",
+            "openai",
+            "--base-url",
+            "http://localhost:11434/v1",
+        ])
+        .expect("parse cli");
+
+        let Command::Fix(args) = cli.command else {
+            panic!("expected fix command");
+        };
+        assert_eq!(args.provider, SlimProvider::Openai);
+        assert_eq!(args.base_url.as_deref(), Some("http://localhost:11434/v1"));
     }
 }
 

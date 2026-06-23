@@ -16,8 +16,9 @@ serde_json.workspace = true
 ureq = { workspace = true, optional = true }
 
 [features]
-default = ["anthropic"]
+default = ["anthropic", "openai"]
 anthropic = ["dep:ureq"]
+openai = ["dep:ureq"]
 
 [dev-dependencies]
 deslop-core.workspace = true

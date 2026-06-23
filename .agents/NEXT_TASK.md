@@ -1,50 +1,59 @@
-# TASK 1/queue — OpenAI-compatible LLM provider (decouple LlmClient providers)
+# TASK 2/queue — Characterization-test generation loop (close the graded-removability loop)
 
-deslop-slim has a swappable `LlmClient` trait; only `AnthropicClient` exists (feature-gated behind
-`anthropic`, uses `ureq`). Add an OpenAI-compatible provider so Together/Groq/Ollama/OpenRouter/
-vLLM/etc. work via base_url. MCP must stay network-free (it depends on deslop-slim with
-default-features=false). Start with `jj new` (separate change on top of otlwomyy).
+Today slim SKIPS `NeedsCharacterizationTest` work orders (lib.rs ~156). The prover emits them for
+`CoverageUnknown`/`UntestedRisky` rewrites, and `verify_characterization_tests` accepts a test only
+if it passes on CURRENT code — but nothing GENERATES the test. Close the loop: generate a
+characterization test that pins current behavior, verify it, then re-verify the rewrite WITH that
+test so a risky removal can become safe. Start with `jj new` (separate change on top of rqmuzkxm).
 
-## Build
-1. **`OpenAiClient`** in deslop-slim, behind a new `openai` cargo feature (also `dep:ureq`):
-   - `[features]` → `default = ["anthropic", "openai"]`, `openai = ["dep:ureq"]` (keep `anthropic`).
-     Both http clients are now optional; with `--no-default-features` NEITHER is compiled (MCP path
-     unaffected — re-verify `cargo build -p deslop-slim --no-default-features` and that ureq stays
-     out of deslop-mcp's tree).
-   - Chat Completions shape: `POST {base_url}/chat/completions` with
-     `{ "model": <model>, "messages": [{"role":"user","content": prompt.text}] }`, parse
-     `choices[0].message.content`, then `strip_code_fences`. Mirror AnthropicClient's structure
-     (blocking ureq, clear errors, NEVER log the key).
-   - `base_url` default `https://api.openai.com/v1`; key from `OPENAI_API_KEY` (fall back to a
-     generic `DESLOP_SLIM_API_KEY` if you add one); model from `--model`/`DESLOP_SLIM_MODEL`.
-   - Factor a small shared `anthropic_text_response`-style pure parser (`openai_text_response(body)
-     -> Result<String>`) so it's unit-testable without network.
-2. **Provider selection** in the `deslop fix` CLI:
-   - `--provider <anthropic|openai>` (default `anthropic`), `--base-url <url>` (override), keep
-     `--model`. Build the matching client. `--mock` (RecordedClient) still overrides everything.
-   - `deslop fix --help` must show `--provider` and `--base-url`.
-   - The CLI depends on deslop-slim with DEFAULT features (both clients available) — confirm.
+## Real API to use (don't reinvent)
+- `deslop_verify::characterization_work_orders_for_patches(&[Patch], &VerifyOptions) -> Vec<WorkOrder>`
+  (returns characterize work orders for patches whose verdict `needs_characterization_test()`).
+- `deslop_verify::verify_characterization_tests(&[CharacterizationTest], ...) -> report` (accepts
+  only tests that PASS on current unmodified code).
+- `VerifyOptions.characterization_tests: Vec<CharacterizationTest>` → feeds `run_characterization_gate`
+  during `verify_patches`/`apply_patches` (re-verify with accepted tests can upgrade the verdict).
+- `deslop_protocol::CharacterizationTest { schema, workorder_id, region_fingerprint, test_path,
+  test_text, by }`, `characterization_work_order_for(&WorkOrder)`.
 
-## Tests (deterministic, NO network, NO key)
-- `openai_text_response` parses `{"choices":[{"message":{"content":"```rust\nfn f() {}\n```"}}]}` →
-  `fn f() {}` (fence-stripped). Mirror the existing anthropic parser test.
-- Provider selection: a small unit asserting `--provider openai` + `--base-url` constructs the
-  OpenAI client (or a factory fn returns the right variant). No live call.
-- Keep all existing slim tests green (recorded e2e, gating, rejection).
+## Build (in deslop-slim)
+1. **Prompt kind**: add a `kind` to `SlimPrompt` (`Rewrite` | `Characterization`) so clients/tests
+   can distinguish. Add `build_characterization_prompt(&WorkOrder)` — instruct the model to write a
+   test that PINS the CURRENT behavior of the region (asserts current outputs), returning only the
+   test code. Keep `build_prompt` (rewrite) unchanged in behavior.
+2. **Generation step** in `run_slim`, gated by a new `characterize: bool` option (CLI
+   `deslop fix --characterize`, default off — it writes test files + runs check_cmd):
+   - After the initial `verify_patches`, compute `characterization_work_orders_for_patches(&patches,
+     &verify_options)`.
+   - For each, `build_characterization_prompt` → `client.rewrite` → construct `CharacterizationTest`
+     { schema:"deslop.characterization-test/1", workorder_id, region_fingerprint (=
+     workorder_region_fingerprint), test_path (derive a deterministic path under root, e.g.
+     `<root>/deslop_characterization/<workorder_id>.rs` or per work order), test_text (LLM output,
+     fence-stripped), by:"deslop-slim/<model>" }.
+   - `verify_characterization_tests(&tests, ...)` with the same check_cmd; keep only ACCEPTED.
+   - Set `verify_options.characterization_tests = accepted`, then re-run `verify_patches` (and
+     `apply_patches` if `--apply`) so the gate re-evaluates the rewrites WITH the tests.
+3. **Report** (extend SlimReport): characterization attempts, accepted vs rejected (with reason),
+   and which rewrites were upgraded (verdict before→after) / applied because of an accepted test.
+   Patches still unproven after characterization stay held (existing behavior).
+
+## Tests (deterministic, NO network) — model them on the existing deslop-verify characterization tests
+- Add a test-only client that serves DIFFERENT responses by `SlimPrompt.kind` (rewrite vs
+  characterization) — e.g. extend `RecordedClient` or add `ScriptedClient`.
+- Accept path: a needs-characterization rewrite + `--characterize`, characterization test that
+  PASSES on current code (use the same recorded-fixture / check_cmd approach the verify crate's
+  characterization tests use) → test accepted → rewrite verdict upgraded → applied (with `--apply`).
+- Reject path: characterization test that FAILS on current code → rejected → rewrite NOT upgraded,
+  remains held; file unchanged.
+- Keep all existing slim tests green (recorded e2e, gating, rejection, openai parser).
 
 ## Constraints / gate
-Do NOT change the prompt builder, run_slim gating, verify, or the MCP path. Do NOT touch
-`deslop/*.py`. Reuse `strip_code_fences`. Gate after each change:
+Do NOT weaken verify or change the rewrite gating from Task earlier (default --apply still
+Removable-only; characterization is how CoverageUnknown becomes safe). Do NOT touch the MCP path,
+do NOT pull ureq into MCP, do NOT touch `deslop/*.py`. Gate after each change:
 `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
 
 ## Report
-new feature flags; OpenAiClient + parser; CLI `--provider`/`--base-url`; test outcomes;
-re-confirm MCP network-free (`cargo tree -p deslop-mcp -i ureq` empty); SPEC.md update (providers).
-`jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`.
-
----
-## Queue after this (do NOT start these now; one task per pass, I verify between)
-2. Characterization-test generation loop (slim/agent fulfills NeedsCharacterizationTest).
-3. MCP coverage-mode parity (verify/apply/fix accept coverage modes, not just bool).
-4. LSP server. 5. CI/pre-commit packaging. 6. Config file (deslop.toml).
-(Python LangPack intentionally EXCLUDED.)
+the loop wiring; `--characterize` flag; accept+reject test outcomes; verdict before→after on the
+accept path; SPEC.md update (characterization loop). `jj describe -m "<summary>"`. Touch
+`.agents/HEARTBEAT.md`. Do NOT start queued items 3-6.

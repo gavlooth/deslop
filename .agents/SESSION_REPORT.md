@@ -1,5 +1,59 @@
 # Session Report
 
+## 2026-06-23T21:23:33+02:00 — OpenAI-Compatible Slim Provider
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 1 only: add an OpenAI-compatible LLM
+provider to `deslop-slim`, expose `deslop fix --provider anthropic|openai` and
+`--base-url`, keep MCP network-free, and do not start queued tasks 2-6.
+
+Changes:
+- Started new jj change `rqmuzkxm` on top of `otlwomyy`.
+- Added `deslop-slim` feature `openai = ["dep:ureq"]`.
+- Updated `deslop-slim` defaults to `default = ["anthropic", "openai"]`.
+- Kept both HTTP clients optional; `cargo build -p deslop-slim --no-default-features`
+  compiles neither provider client.
+- Added `OpenAiClient` behind `#[cfg(feature = "openai")]`:
+  - POSTs to `{base_url}/chat/completions`.
+  - Sends `{ "model": ..., "messages": [{"role":"user","content": prompt.text}] }`.
+  - Parses `choices[0].message.content`.
+  - Strips markdown fences via existing `strip_code_fences`.
+  - Defaults `base_url` to `https://api.openai.com/v1`.
+  - Reads `OPENAI_API_KEY`, falling back to `DESLOP_SLIM_API_KEY`.
+  - Does not log API keys.
+- Added pure parser test for OpenAI-compatible response JSON; no network/key needed.
+- Added OpenAI endpoint joining test for trailing slash handling.
+- Updated CLI:
+  - `deslop fix --provider <anthropic|openai>` with default `anthropic`.
+  - `deslop fix --base-url <URL>` for OpenAI-compatible providers.
+  - `--mock` still bypasses provider construction.
+  - `deslop-cli` enables both `anthropic` and `openai` slim features.
+- Added CLI parser test for `--provider openai --base-url ...`; no network/key needed.
+- Updated `SPEC.md` for providers and feature boundary.
+
+Verification:
+- After adding `OpenAiClient`:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- After CLI provider/base-url wiring:
+  - same full gate: pass.
+- Help smoke:
+  - `cargo run -q -p deslop-cli -- fix --help`: pass; output includes
+    `--provider <PROVIDER>` with possible values `anthropic, openai`, and `--base-url`.
+- MCP network-free reconfirmation:
+  - `cargo tree -p deslop-mcp -i ureq` returns no matching `ureq` package, proving `ureq`
+    is not in the MCP dependency tree.
+
+Not started:
+- Queue item 2: characterization-test generation loop.
+- Queue item 3: MCP coverage-mode parity.
+- Queue item 4: LSP server.
+- Queue item 5: CI/pre-commit packaging.
+- Queue item 6: config file.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-23T20:58:02+02:00 — MCP Fix Tool Option B
 
 Objective: Execute `.agents/NEXT_TASK.md`: add an MCP `fix` tool using option B

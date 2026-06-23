@@ -20,7 +20,7 @@ deslop-metrics.workspace = true
 deslop-mcp = { workspace = true, optional = true }
 deslop-protocol.workspace = true
 deslop-report.workspace = true
-deslop-slim = { workspace = true, features = ["anthropic"] }
+deslop-slim = { workspace = true, features = ["anthropic", "openai"] }
 deslop-verify.workspace = true
 serde.workspace = true
 serde_json.workspace = true

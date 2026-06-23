@@ -297,7 +297,7 @@ deslop scan     [PATHS…] [--format text|json|sarif|agent] [--baseline FILE] [-
 deslop metrics  [PATHS…] [--format text|json] [--hotspots-only] [--sigma N]
 deslop health   [PATHS…] [--format text|json] [--hotspots-only] [--sigma N] # alias
 deslop slop     [PATHS…] [--format text|json]                 # weighted slop score
-deslop fix      [--paths PATH… | --workorders FILE] [--apply] [--allow-unverified] [--coverage MODE] [--model M] [--mock recorded.txt] [--check-cmd "CMD"] [--no-backup] # bundled slim consumer; dry-run by default
+deslop fix      [--paths PATH… | --workorders FILE] [--apply] [--allow-unverified] [--coverage MODE] [--provider anthropic|openai] [--base-url URL] [--model M] [--mock recorded.txt] [--check-cmd "CMD"] [--no-backup] # bundled slim consumer; dry-run by default
 deslop propose  [PATHS…] [-o workorders.jsonl] [--julia-external[=staticlint|jet|off]] [--julia-project DIR] # emit work orders
 deslop characterize --patches FILE [-o workorders.jsonl] [--check-cmd "CMD"] [--coverage] [--mutation]
 deslop verify-characterization --tests FILE --check-cmd "CMD"
@@ -322,10 +322,10 @@ deslop rules                                                   # class, precondi
   `coverage-unknown`, `untested-risky`, and `dead-candidate` are reported as held-unproven
   unless `--allow-unverified` is explicit. `--coverage` accepts `disabled`, `auto`,
   `auto:<cmd>`, `lcov:<path>`, `cloverage:<path>`, `julia-cov:<path>`, and
-  `coverage-py:<path>`, mapping directly to `CoverageConfig`. `--mock` uses
-  `RecordedClient` for deterministic tests and offline replay; the default client is
-  Anthropic via `ureq` with the model from `--model`, `DESLOP_SLIM_MODEL`, or the built-in
-  default.
+  `coverage-py:<path>`, mapping directly to `CoverageConfig`. `--provider` selects
+  `anthropic` or OpenAI-compatible `openai`; `--base-url` overrides the OpenAI-compatible
+  base URL for providers such as Together, Groq, Ollama, OpenRouter, or vLLM. `--mock` uses
+  `RecordedClient` for deterministic tests and offline replay.
 - **`propose`/`verify`/`apply`**: the swappable-LLM loop (§4). `verify`/`apply` are the
   trust boundary; they run with **no network** and need no model.
 - **`mcp`**: feature-gated stdio MCP server exposing `scan`, `propose`, `verify`,
@@ -380,14 +380,17 @@ text, findings, and contract → `LlmClient::rewrite` → strip markdown fences 
 `deslop.patch/1` with `by = deslop-slim/<model>` → `verify_patches` → default dry-run report
 or `apply_patches` when `--apply` is explicit. Its report separates patches into `applied`,
 `held_unproven`, and `rejected`; held patches include a suggestion to pass coverage, add
-characterization tests, or explicitly use `--allow-unverified`. `AnthropicClient` is the
-default implementation and uses Anthropic Messages via `ureq`; it reads `ANTHROPIC_API_KEY`
-and never logs it. `RecordedClient` reads a response from disk and is the test/replay client.
-It enforces nothing the core doesn't; all guarantees live in `verify`. The Anthropic HTTP
-client is behind `deslop-slim`'s default `anthropic` feature; MCP depends on `deslop-slim`
-with default features disabled, so the MCP server can reuse prompt construction without
-pulling `ureq` or network client code. Deferred integration work: server-run MCP client
-option, streaming progress, and additional provider clients.
+characterization tests, or explicitly use `--allow-unverified`. `AnthropicClient` uses
+Anthropic Messages via `ureq` and `ANTHROPIC_API_KEY`. `OpenAiClient` uses the
+OpenAI-compatible Chat Completions shape at `{base_url}/chat/completions`, defaults
+`base_url` to `https://api.openai.com/v1`, and reads `OPENAI_API_KEY` with
+`DESLOP_SLIM_API_KEY` fallback. Neither client logs keys. `RecordedClient` reads a response
+from disk and is the test/replay client. It enforces nothing the core doesn't; all guarantees
+live in `verify`. The HTTP clients are behind `deslop-slim`'s optional `anthropic` and
+`openai` features; default slim builds enable both, while MCP depends on `deslop-slim` with
+default features disabled, so the MCP server can reuse prompt construction without pulling
+`ureq` or network client code. Deferred integration work: server-run MCP client option,
+streaming progress, and non-OpenAI-compatible provider families.
 
 ---
 
@@ -413,7 +416,7 @@ crates/
 `core/parse/analyzer/fix/protocol/verify` have **no network deps**. `mcp` is optional,
 network-free, and depends only on deterministic deslop crates plus `deslop-slim` with
 default features disabled for prompt construction. `slim` is isolated and only its
-`anthropic` feature is allowed to depend on HTTP/LLM client code.
+`anthropic` and `openai` features are allowed to depend on HTTP/LLM client code.
 
 ---
 
@@ -426,8 +429,8 @@ default features disabled for prompt construction. `slim` is isolated and only i
 - **Safety:** `verify` owns the gate; `*.deslop.bak` + `undo`; `git`/`jj` dirty check;
   atomic temp+rename; `region_fingerprint` guards against stale patches.
 - **Deps:** `clap`, `ignore`, `tree-sitter`+grammars, `regex`, `serde`/`toml`/
-  `serde_json`, `anyhow`/`thiserror`; `ureq` is used only by `deslop-slim` as a minimal
-  synchronous HTTP client.
+  `serde_json`, `anyhow`/`thiserror`; `ureq` is used only by `deslop-slim` HTTP provider
+  features as a minimal synchronous HTTP client.
 
 ---
 
