@@ -29,3 +29,6 @@ toml.workspace = true
 [features]
 default = []
 mcp = ["dep:deslop-mcp"]
+
+[dev-dependencies]
+tempfile.workspace = true

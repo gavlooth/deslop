@@ -1,5 +1,64 @@
 # Session Report
 
+## 2026-06-23T23:00:02+02:00 — CI and Pre-commit Packaging
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 5 only: package existing deslop scan
+gates for GitHub Actions and pre-commit, document CI usage, and add/cite fail-on exit-code
+coverage. Do not start queued item 6.
+
+Changes:
+- Started a new jj change `lnlzsupu` on top of `wvzwxyuw`.
+- Added root `action.yml` composite action:
+  - inputs: `paths`, `fail-on`, `sarif`, optional `baseline`
+  - installs deslop with `cargo install --path crates/deslop-cli --locked`
+  - writes `deslop.sarif` via `deslop scan --format sarif ... > deslop.sarif`
+  - runs the existing `deslop scan --fail-on <severity>` gate
+  - passes `--baseline` when a baseline path is provided.
+- Added `.github/workflows/deslop.yml` example:
+  - checkout
+  - Rust toolchain
+  - local composite action
+  - `github/codeql-action/upload-sarif@v3` with `if: always()`.
+- Added `.pre-commit-hooks.yaml` with a system `deslop scan --fail-on major` hook and
+  `pass_filenames: true`.
+- Added `docs/CI.md` documenting:
+  - GitHub Action usage
+  - SARIF upload/code scanning
+  - fail-on exit-code contract
+  - baseline ratchet workflow
+  - pre-commit consumer and local examples.
+- Added `crates/deslop-cli/tests/scan_exit_codes.rs`, a process-level integration test for
+  the built `deslop` binary:
+  - sloppy Rust fixture with `todo!` exits non-zero under `--fail-on major`
+  - clean Rust fixture exits zero.
+- Added `tempfile` as a `deslop-cli` dev-dependency for that integration test.
+- Updated `SPEC.md` with the CI/pre-commit packaging note and the exit-code/SARIF test
+  coverage note.
+- Touched `.agents/HEARTBEAT.md`.
+
+YAML verification:
+- `python3 - <<'PY' ... yaml.safe_load(...) ... PY`
+  - `action.yml`: ok
+  - `.github/workflows/deslop.yml`: ok
+  - `.pre-commit-hooks.yaml`: ok
+- Initial YAML parse caught an unquoted colon in `action.yml`; fixed by quoting the
+  `fail-on` input description.
+
+Rust verification:
+- `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`: pass.
+- Existing SARIF schema/shape coverage remains
+  `deslop_report::tests::sarif_render_has_required_shape_and_locations`.
+- MCP network-free check:
+  - `cargo tree -p deslop-mcp -i ureq`: exits with no matching `ureq` package.
+
+Not started:
+- Queue item 6: config file.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-23T22:47:59+02:00 — LSP Server MVP
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 4 only: add an MVP synchronous LSP

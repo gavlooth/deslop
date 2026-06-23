@@ -1,0 +1,60 @@
+name: Deslop Scan
+description: Run deslop SARIF reporting and fail-on-severity gating.
+
+inputs:
+  paths:
+    description: Space-separated paths to scan.
+    required: false
+    default: .
+  fail-on:
+    description: "Severity threshold that fails the job: info, minor, or major."
+    required: false
+    default: major
+  sarif:
+    description: Generate deslop.sarif for GitHub code scanning upload.
+    required: false
+    default: "true"
+  baseline:
+    description: Optional deslop baseline path. When set, known findings are suppressed.
+    required: false
+    default: ""
+
+outputs:
+  sarif-file:
+    description: Path to the generated SARIF file.
+    value: ${{ steps.sarif-path.outputs.file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install deslop
+      shell: bash
+      run: cargo install --path crates/deslop-cli --locked
+
+    - name: Record SARIF path
+      id: sarif-path
+      shell: bash
+      run: echo "file=deslop.sarif" >> "$GITHUB_OUTPUT"
+
+    - name: Generate SARIF
+      if: ${{ inputs.sarif == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        args=()
+        if [ -n "${{ inputs.baseline }}" ]; then
+          args+=(--baseline "${{ inputs.baseline }}")
+        fi
+        read -r -a paths <<< "${{ inputs.paths }}"
+        deslop scan --format sarif "${args[@]}" "${paths[@]}" > deslop.sarif
+
+    - name: Fail on severity
+      shell: bash
+      run: |
+        set -euo pipefail
+        args=()
+        if [ -n "${{ inputs.baseline }}" ]; then
+          args+=(--baseline "${{ inputs.baseline }}")
+        fi
+        read -r -a paths <<< "${{ inputs.paths }}"
+        deslop scan --fail-on "${{ inputs.fail-on }}" "${args[@]}" "${paths[@]}"

@@ -1,0 +1,7 @@
+- id: deslop
+  name: deslop scan
+  description: Run deslop scan and fail on major findings.
+  entry: deslop scan --fail-on major
+  language: system
+  pass_filenames: true
+  types: [text]

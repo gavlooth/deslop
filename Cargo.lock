@@ -280,6 +280,7 @@ dependencies = [
  "deslop-verify",
  "serde",
  "serde_json",
+ "tempfile",
  "toml",
 ]
 

@@ -1,0 +1,37 @@
+name: deslop
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    name: deslop scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run deslop
+        id: deslop
+        uses: ./
+        with:
+          paths: .
+          fail-on: major
+          sarif: "true"
+          # baseline: deslop-baseline.json
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.deslop.outputs.sarif-file }}

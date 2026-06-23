@@ -458,6 +458,12 @@ default features disabled for prompt construction. `slim` is isolated and only i
 - **Baseline/ratchet** (M1): `baseline write`; `scan --baseline` fails CI only on new
   `fingerprint`s. Gates reporting/CI only — **never weakens `fix`/`apply`**.
 - **Output:** text (shows `class`+`detected_by`), JSON, SARIF 2.1.0, **agent JSONL** (§5).
+- **CI/pre-commit packaging:** root `action.yml` installs the local CLI, optionally writes
+  `deslop.sarif` with `scan --format sarif`, and gates with `scan --fail-on`; the example
+  `.github/workflows/deslop.yml` uploads SARIF through
+  `github/codeql-action/upload-sarif@v3`. `.pre-commit-hooks.yaml` exposes a system
+  `deslop scan --fail-on major` hook. `docs/CI.md` documents SARIF upload, fail-on exit
+  codes, and baseline ratchets.
 - **Config** `deslop.toml`: `[scan]`, `[metrics] sigma=2.0`, `[fix]`, `[external] clj_kondo=auto|off clippy=off|on julia_analyzer=off|staticlint|jet julia_project="..."`, `[analyzer]`
   thresholds, `[verify] check_cmd/defensive_guard`, `[slim] model`. Inline `deslop-ignore`.
 - **Safety:** `verify` owns the gate; `*.deslop.bak` + `undo`; `git`/`jj` dirty check;
@@ -490,6 +496,8 @@ back-compat/defaults, bad coverage-mode errors, LCOV mode-string `apply` upgradi
 patch to `removable`, and an initialize/list/scan stdio transcript.
 LSP unit tests cover pure finding→diagnostic mapping and safety-lattice code-action gating:
 safe fixable findings produce a quickfix edit, while `llm-only` findings produce no edit.
+CLI integration tests cover `scan --fail-on major` exiting non-zero on a sloppy fixture and
+zero on a clean fixture. SARIF shape remains covered by `sarif_render_has_required_shape_and_locations`.
 
 ---
 
