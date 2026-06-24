@@ -16,8 +16,9 @@ use deslop_metrics::{
 use deslop_report::{render_agent, render_json, render_sarif, render_text};
 use deslop_slim::{
     AnthropicClient, DEFAULT_MODEL, EgressDecision, EgressSummary, OpenAiClient, RecordedClient,
-    SlimOptions, egress_consent_error, egress_prompt_message, egress_summary, env_egress_consent,
-    provider_base_url, resolve_egress_consent, run_slim,
+    SlimOptions, SlimProgress, SlimProgressOutcome, egress_consent_error, egress_prompt_message,
+    egress_summary, env_egress_consent, provider_base_url, resolve_egress_consent,
+    run_slim_with_progress,
 };
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
@@ -137,6 +138,9 @@ struct FixArgs {
 
     #[arg(long)]
     no_backup: bool,
+
+    #[arg(long)]
+    quiet: bool,
 }
 
 #[derive(Debug, Args)]
@@ -536,9 +540,10 @@ fn fix(args: FixArgs, config: &DeslopConfig) -> Result<()> {
         check_cmd,
         backup: !args.no_backup,
     };
+    let mut progress = slim_progress_sink(!args.quiet && io::stderr().is_terminal());
     let report = if let Some(path) = args.mock {
         let client = RecordedClient::from_path(path)?;
-        run_slim(&client, options)?
+        run_slim_with_progress(&client, options, &mut progress)?
     } else {
         let provider_name = provider.as_str();
         let destination = provider_base_url(provider_name, base_url.as_deref());
@@ -551,11 +556,11 @@ fn fix(args: FixArgs, config: &DeslopConfig) -> Result<()> {
         match provider {
             SlimProvider::Anthropic => {
                 let client = AnthropicClient::from_env(model.clone())?;
-                run_slim(&client, options)?
+                run_slim_with_progress(&client, options, &mut progress)?
             }
             SlimProvider::Openai => {
                 let client = OpenAiClient::from_env(model.clone(), base_url)?;
-                run_slim(&client, options)?
+                run_slim_with_progress(&client, options, &mut progress)?
             }
         }
     };
@@ -588,6 +593,64 @@ fn require_cli_egress_consent(
                 bail!("source-egress consent declined; no LLM request was sent")
             }
         }
+    }
+}
+
+fn slim_progress_sink(enabled: bool) -> impl FnMut(SlimProgress) {
+    move |event| {
+        if enabled {
+            let mut stderr = io::stderr();
+            let _ = write_slim_progress(&event, &mut stderr);
+        }
+    }
+}
+
+fn write_slim_progress(event: &SlimProgress, writer: &mut impl Write) -> Result<()> {
+    writeln!(writer, "{}", slim_progress_line(event))?;
+    Ok(())
+}
+
+fn slim_progress_line(event: &SlimProgress) -> String {
+    match event {
+        SlimProgress::Started { work_orders } => {
+            format!("deslop fix: {work_orders} rewrite region(s)")
+        }
+        SlimProgress::Rewriting {
+            index,
+            total,
+            path,
+            start_line,
+            end_line,
+            ..
+        } => format!(
+            "[{index}/{total}] rewriting {}:{start_line}-{end_line}",
+            path.display()
+        ),
+        SlimProgress::Characterizing { workorder_id } => {
+            format!("characterizing {workorder_id}")
+        }
+        SlimProgress::Verified {
+            workorder_id,
+            verdict,
+        } => {
+            format!("verified {workorder_id}: {verdict:?}")
+        }
+        SlimProgress::Outcome {
+            workorder_id,
+            outcome,
+        } => {
+            let outcome = match outcome {
+                SlimProgressOutcome::Applied => "applied",
+                SlimProgressOutcome::Held => "held",
+                SlimProgressOutcome::Rejected => "rejected",
+            };
+            format!("outcome {workorder_id}: {outcome}")
+        }
+        SlimProgress::Finished {
+            applied,
+            held,
+            rejected,
+        } => format!("finished: applied={applied} held={held} rejected={rejected}"),
     }
 }
 
@@ -982,7 +1045,12 @@ fn verify_options(
 }
 
 fn print_pretty_json<T: Serialize>(value: &T) -> Result<()> {
-    println!("{}", serde_json::to_string_pretty(value)?);
+    let mut stdout = io::stdout();
+    write_pretty_json(value, &mut stdout)
+}
+
+fn write_pretty_json<T: Serialize>(value: &T, writer: &mut impl Write) -> Result<()> {
+    writeln!(writer, "{}", serde_json::to_string_pretty(value)?)?;
     Ok(())
 }
 
@@ -1311,9 +1379,34 @@ mod tests {
             "--mock",
             "--yes",
             "--check-cmd",
+            "--quiet",
         ] {
             assert!(help.contains(flag), "{flag} missing from help:\n{help}");
         }
+    }
+
+    #[test]
+    fn slim_progress_never_changes_stdout_report_rendering() {
+        let report = serde_json::json!({
+            "schema": "deslop.slim/1",
+            "dry_run": true,
+            "verified": { "results": [] }
+        });
+        let mut stdout_with_progress = Vec::new();
+        let mut stdout_quiet = Vec::new();
+        let mut stderr = Vec::new();
+
+        write_slim_progress(&SlimProgress::Started { work_orders: 2 }, &mut stderr)
+            .expect("write progress");
+        write_pretty_json(&report, &mut stdout_with_progress).expect("stdout with progress");
+        write_pretty_json(&report, &mut stdout_quiet).expect("stdout quiet");
+
+        assert_eq!(stdout_with_progress, stdout_quiet);
+        assert!(
+            String::from_utf8(stderr)
+                .unwrap()
+                .contains("rewrite region")
+        );
     }
 
     #[test]

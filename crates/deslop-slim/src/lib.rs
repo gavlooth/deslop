@@ -51,6 +51,44 @@ pub struct SlimOptions {
     pub backup: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SlimProgress {
+    Started {
+        work_orders: usize,
+    },
+    Rewriting {
+        index: usize,
+        total: usize,
+        workorder_id: String,
+        path: PathBuf,
+        start_line: usize,
+        end_line: usize,
+    },
+    Characterizing {
+        workorder_id: String,
+    },
+    Verified {
+        workorder_id: String,
+        verdict: VerificationVerdict,
+    },
+    Outcome {
+        workorder_id: String,
+        outcome: SlimProgressOutcome,
+    },
+    Finished {
+        applied: usize,
+        held: usize,
+        rejected: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SlimProgressOutcome {
+    Applied,
+    Held,
+    Rejected,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EgressDecision {
     Granted,
@@ -306,9 +344,26 @@ pub fn resolve_model(explicit: Option<String>) -> String {
 }
 
 pub fn run_slim(client: &impl LlmClient, options: SlimOptions) -> Result<SlimReport> {
+    let mut progress = |_| {};
+    run_slim_with_progress(client, options, &mut progress)
+}
+
+pub fn run_slim_with_progress(
+    client: &impl LlmClient,
+    options: SlimOptions,
+    progress: &mut dyn FnMut(SlimProgress),
+) -> Result<SlimReport> {
     let work_orders = load_or_propose_work_orders(&options)?;
+    let total_rewrites = work_orders
+        .iter()
+        .filter(|work_order| work_order.kind != WorkOrderKind::NeedsCharacterizationTest)
+        .count();
+    progress(SlimProgress::Started {
+        work_orders: total_rewrites,
+    });
     let mut skipped = Vec::new();
     let mut patches = Vec::new();
+    let mut rewrite_index = 0;
     for work_order in work_orders {
         if work_order.kind == WorkOrderKind::NeedsCharacterizationTest {
             skipped.push(SkippedWorkOrder {
@@ -318,6 +373,15 @@ pub fn run_slim(client: &impl LlmClient, options: SlimOptions) -> Result<SlimRep
             });
             continue;
         }
+        rewrite_index += 1;
+        progress(SlimProgress::Rewriting {
+            index: rewrite_index,
+            total: total_rewrites,
+            workorder_id: work_order.id.to_owned(),
+            path: work_order.path.to_owned(),
+            start_line: work_order.region.start_line,
+            end_line: work_order.region.end_line,
+        });
         let prompt = build_prompt(&work_order);
         let replacement = strip_code_fences(&client.rewrite(&prompt)?);
         patches.push(Patch {
@@ -338,6 +402,7 @@ pub fn run_slim(client: &impl LlmClient, options: SlimOptions) -> Result<SlimRep
             &patches,
             &verify_options,
             &initial_verified,
+            progress,
         )?)
     } else {
         None
@@ -352,6 +417,12 @@ pub fn run_slim(client: &impl LlmClient, options: SlimOptions) -> Result<SlimRep
     } else {
         initial_verified.clone()
     };
+    for result in &verified.results {
+        progress(SlimProgress::Verified {
+            workorder_id: result.workorder_id.to_owned(),
+            verdict: result.verdict,
+        });
+    }
     let gating = gating_report(&verified, options.apply, options.allow_unverified);
     let applied = if options.apply {
         Some(apply_patches(
@@ -362,6 +433,19 @@ pub fn run_slim(client: &impl LlmClient, options: SlimOptions) -> Result<SlimRep
     } else {
         None
     };
+    let progress_outcomes = progress_outcomes(&verified, options.apply, options.allow_unverified);
+    for (workorder_id, outcome) in &progress_outcomes {
+        progress(SlimProgress::Outcome {
+            workorder_id: workorder_id.to_owned(),
+            outcome: *outcome,
+        });
+    }
+    let (applied_count, held_count, rejected_count) = progress_outcome_counts(&progress_outcomes);
+    progress(SlimProgress::Finished {
+        applied: applied_count,
+        held: held_count,
+        rejected: rejected_count,
+    });
     let characterization = characterization
         .map(|report| report.into_public_report(&initial_verified, &verified, options.apply));
 
@@ -503,11 +587,17 @@ fn run_characterization_pass(
     patches: &[Patch],
     verify_options: &VerifyOptions,
     _initial_verified: &VerifyReport,
+    progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<CharacterizationRun> {
     let work_orders = characterization_work_orders_for_patches(patches, verify_options)?;
     let tests = work_orders
         .iter()
-        .map(|work_order| characterization_test_for_work_order(client, options, work_order))
+        .map(|work_order| {
+            progress(SlimProgress::Characterizing {
+                workorder_id: work_order.id.to_owned(),
+            });
+            characterization_test_for_work_order(client, options, work_order)
+        })
         .collect::<Result<Vec<_>>>()?;
     let report = verify_characterization_tests(&tests, verify_options)?;
     let mut accepted_tests = Vec::new();
@@ -631,6 +721,40 @@ fn gating_suggestion(verdict: VerificationVerdict) -> Option<String> {
         VerificationVerdict::Rejected => Some("fix the rewrite and rerun deslop fix".to_string()),
         VerificationVerdict::Removable => None,
     }
+}
+
+fn progress_outcomes(
+    verified: &VerifyReport,
+    applying: bool,
+    allow_unverified: bool,
+) -> Vec<(String, SlimProgressOutcome)> {
+    verified
+        .results
+        .iter()
+        .map(|result| {
+            let outcome = if !result.passed || result.verdict == VerificationVerdict::Rejected {
+                SlimProgressOutcome::Rejected
+            } else if applying
+                && (result.verdict == VerificationVerdict::Removable || allow_unverified)
+            {
+                SlimProgressOutcome::Applied
+            } else {
+                SlimProgressOutcome::Held
+            };
+            (result.workorder_id.to_owned(), outcome)
+        })
+        .collect()
+}
+
+fn progress_outcome_counts(outcomes: &[(String, SlimProgressOutcome)]) -> (usize, usize, usize) {
+    outcomes.iter().fold(
+        (0, 0, 0),
+        |(applied, held, rejected), (_, outcome)| match outcome {
+            SlimProgressOutcome::Applied => (applied + 1, held, rejected),
+            SlimProgressOutcome::Held => (applied, held + 1, rejected),
+            SlimProgressOutcome::Rejected => (applied, held, rejected + 1),
+        },
+    )
 }
 
 fn load_or_propose_work_orders(options: &SlimOptions) -> Result<Vec<WorkOrder>> {
@@ -849,6 +973,109 @@ mod tests {
         assert_eq!(
             fs::read_to_string(&source)?,
             "fn identity(value: i32) -> i32 {\n    value\n}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn progress_sink_records_mock_run_sequence() -> Result<()> {
+        let temp = TempDir::new()?;
+        let source = temp.path().join("sample.rs");
+        fs::write(
+            &source,
+            "fn identity(value: i32) -> i32 {\n    return value;\n}\n",
+        )?;
+        let coverage = lcov_fixture(temp.path(), "coverage.lcov", &source, 2, 1);
+        let client = RecordedClient::new("fn identity(value: i32) -> i32 {\n    value\n}\n");
+        let mut events = Vec::new();
+        let report = run_slim_with_progress(
+            &client,
+            SlimOptions {
+                root: temp.path().to_path_buf(),
+                paths: vec![temp.path().to_path_buf()],
+                workorders: None,
+                apply: true,
+                characterize: false,
+                allow_unverified: false,
+                coverage: CoverageConfig::LcovFile(coverage),
+                model: "recorded".to_string(),
+                check_cmd: Some("true".to_string()),
+                backup: false,
+            },
+            &mut |event| events.push(event),
+        )?;
+
+        assert_eq!(report.gating.applied.len(), 1);
+        assert_eq!(events.len(), 5);
+        assert!(matches!(
+            events[0],
+            SlimProgress::Started { work_orders: 1 }
+        ));
+        assert!(matches!(
+            events[1],
+            SlimProgress::Rewriting {
+                index: 1,
+                total: 1,
+                start_line: 1,
+                end_line: 3,
+                ..
+            }
+        ));
+        assert!(matches!(
+            events[2],
+            SlimProgress::Verified {
+                verdict: VerificationVerdict::Removable,
+                ..
+            }
+        ));
+        assert!(matches!(
+            events[3],
+            SlimProgress::Outcome {
+                outcome: SlimProgressOutcome::Applied,
+                ..
+            }
+        ));
+        assert!(matches!(
+            events[4],
+            SlimProgress::Finished {
+                applied: 1,
+                held: 0,
+                rejected: 0
+            }
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn progress_sink_does_not_change_final_report() -> Result<()> {
+        let temp = TempDir::new()?;
+        let source = temp.path().join("sample.rs");
+        fs::write(
+            &source,
+            "fn identity(value: i32) -> i32 {\n    return value;\n}\n",
+        )?;
+        let client = RecordedClient::new("fn identity(value: i32) -> i32 {\n    value\n}\n");
+        let options = SlimOptions {
+            root: temp.path().to_path_buf(),
+            paths: vec![temp.path().to_path_buf()],
+            workorders: None,
+            apply: false,
+            characterize: false,
+            allow_unverified: false,
+            coverage: CoverageConfig::Disabled,
+            model: "recorded".to_string(),
+            check_cmd: Some("true".to_string()),
+            backup: false,
+        };
+        let mut events = Vec::new();
+        let with_progress =
+            run_slim_with_progress(&client, options.clone(), &mut |event| events.push(event))?;
+        let quiet = run_slim(&client, options)?;
+
+        assert!(!events.is_empty());
+        assert_eq!(
+            serde_json::to_value(&with_progress)?,
+            serde_json::to_value(&quiet)?
         );
         Ok(())
     }

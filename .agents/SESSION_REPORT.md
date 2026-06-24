@@ -1,5 +1,57 @@
 # Session Report
 
+## 2026-06-24T08:24:27+02:00 — Slim Progress Events
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 12 only: add streaming-style slim
+progress events, render CLI progress to STDERR without changing STDOUT, keep MCP no-op,
+and do not start queued item 13.
+
+Changes:
+- Started new jj change `oszlxpvn` on top of `qpywotro`.
+- Added `SlimProgress` and `SlimProgressOutcome` in `deslop-slim`.
+- Added `run_slim_with_progress(client, options, sink)` and kept `run_slim` as the
+  compatibility wrapper with a no-op sink. This avoids forcing MCP/tests to pass a callback
+  while allowing CLI progress.
+- Emitted events at existing slim loop points:
+  - `Started`
+  - `Rewriting`
+  - `Characterizing`
+  - `Verified`
+  - `Outcome`
+  - `Finished`
+- Wired CLI `deslop fix` to render progress to STDERR:
+  - default enabled only when STDERR is a TTY
+  - new `--quiet` suppresses it
+  - non-TTY STDERR is silent by default to avoid noisy CI/piped runs
+  - STDOUT remains the final JSON report only.
+- Left MCP `fix mode=auto` on `run_slim` / no-op progress sink; MCP streaming remains
+  deferred.
+- Updated `docs/CONFIG.md` and `SPEC.md`.
+- Touched `.agents/HEARTBEAT.md`.
+
+Tests:
+- `deslop-slim`: recording sink over a mock run asserts event sequence:
+  `Started -> Rewriting -> Verified -> Outcome -> Finished`.
+- `deslop-slim`: progress sink does not change the final report serialization.
+- `deslop-cli`: progress written to a STDERR buffer does not change final report STDOUT
+  rendering; help lists `--quiet`.
+
+Verification:
+- Focused checks passed:
+  - `cargo fmt --all && cargo test -p deslop-slim && cargo test -p deslop-cli`
+- Full required gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+- Required feature gate passed:
+  - `cargo test -p deslop-mcp --features slim-llm`
+
+Not started:
+- Queued item 13.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-24T08:04:14+02:00 — Source Egress Consent
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 11 only: gate real-provider bundled LLM

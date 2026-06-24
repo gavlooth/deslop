@@ -63,6 +63,10 @@ in dry-run. Consent is required through one of:
 `--mock` uses a recorded local response and does not require consent. Non-interactive runs
 without consent fail before constructing a provider client or reading an API key.
 
+`deslop fix` prints progress to STDERR when STDERR is a TTY. Use `--quiet` to suppress it.
+When STDERR is not a TTY, progress is silent by default so CI logs and pipes stay clean.
+STDOUT remains only the final report.
+
 MCP `fix mode=auto` is non-interactive. With `deslop-mcp --features slim-llm`, real-provider
 auto mode requires `consent: true`, `DESLOP_SLIM_CONSENT=1`, or a config file containing
 `[slim] egress_consent = true`; mock auto runs bypass consent.

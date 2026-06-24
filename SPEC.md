@@ -169,6 +169,11 @@ the provider, base URL, file count, and region count. Recorded/mock clients bypa
 because no source leaves the machine. Non-interactive callers, including MCP `fix mode=auto`, must
 provide explicit consent and fail before provider-client construction when it is absent.
 
+`deslop fix` emits `SlimProgress` events internally and renders them as human-readable STDERR lines
+only when STDERR is a TTY; `--quiet` suppresses them and non-TTY STDERR is silent by default. STDOUT
+remains the final report only. MCP `fix mode=auto` uses a no-op progress sink until MCP streaming is
+added.
+
 ---
 
 ## 5. Agent-ready output / protocol (`deslop-protocol`)  *(new, first-class)*
