@@ -446,19 +446,20 @@ from disk and is the test/replay client. It enforces nothing the core doesn't; a
 live in `verify`. The HTTP clients are behind `deslop-slim`'s optional `anthropic` and
 `openai` features; default slim builds enable both, while MCP depends on `deslop-slim` with
 default features disabled unless `deslop-mcp/slim-llm` is explicitly enabled. Deferred
-integration work: streaming progress and non-OpenAI-compatible provider families.
+integration work: non-OpenAI-compatible provider families.
 
 `deslop-lsp` is a synchronous editor-integration server built on `lsp-server` and
-`lsp-types`. It advertises full text synchronization and code-action support. On
-`didOpen`, full-document `didChange`, and `didSave`, it analyzes the in-memory document text
+`lsp-types`. It advertises incremental text synchronization and code-action support. On
+`didOpen`, ranged/full `didChange`, and `didSave`, it analyzes the in-memory document text
 through `deslop-analyzer::scan_source` and publishes diagnostics with `source = "deslop"`,
-rule code, finding message, and severity mapped as major/error, minor/warning, info/hint.
-MVP ranges use 0-based lines and whole-line columns; precise UTF-16 columns are deferred.
-Code actions are deliberately narrower than diagnostics: only `safe-auto` and
-`analyzer-confirmed` findings with edits produce a `quickfix`, using
-`deslop_fix::apply_findings_to_text` and returning a whole-document `WorkspaceEdit`.
-`safe-with-precondition`, `risky-suggest`, `llm-only`, and `never-auto` findings get no
-editing action.
+rule code, finding message, severity mapped as major/error, minor/warning, info/hint, and
+precise LSP UTF-16 ranges derived from `Finding.span` byte offsets. Code actions are
+deliberately narrower than diagnostics: only `safe-auto` and `analyzer-confirmed` findings
+with edits produce per-finding `quickfix` actions. A `source.fixAll` action applies all safe
+findings in the file through `deslop_fix::apply_findings_to_text` and returns a
+whole-document `WorkspaceEdit`. `safe-with-precondition`, `risky-suggest`, `llm-only`, and
+`never-auto` findings get no editing action. Workspace-wide background scan remains deferred
+pending explicit workspace-root, cost-control, and dirty-buffer overlay design.
 
 ---
 
@@ -536,8 +537,10 @@ errors, LCOV mode-string `apply` upgrading a covered patch to `removable`, and a
 initialize/list/scan stdio transcript. With `deslop-mcp/slim-llm`, a deterministic mock
 auto-mode test proves a covered `deslop.slim/1` rewrite writes and a rejected rewrite does
 not.
-LSP unit tests cover pure finding→diagnostic mapping and safety-lattice code-action gating:
-safe fixable findings produce a quickfix edit, while `llm-only` findings produce no edit.
+LSP tests cover precise UTF-16 diagnostic ranges including non-ASCII text, safety-lattice
+code-action gating, `source.fixAll` for all safe findings in a file, no fix-all for riskier
+findings, incremental ranged change application, and a real in-memory JSON-RPC loop
+(`initialize` → `didOpen` → `publishDiagnostics` → `codeAction` → `shutdown`/`exit`).
 CLI integration tests cover `scan --fail-on major` exiting non-zero on a sloppy fixture and
 zero on a clean fixture. SARIF shape remains covered by `sarif_render_has_required_shape_and_locations`.
 

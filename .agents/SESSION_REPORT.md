@@ -1,5 +1,58 @@
 # Session Report
 
+## 2026-06-24T08:38:26+02:00 — LSP Edges Final Queue Item
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 13 only: sharpen LSP diagnostics/code
+actions/RPC coverage in priority order, keep dependencies isolated to `deslop-lsp`, and
+complete the queued task list.
+
+Changes:
+- Started new jj change `xumlpqvs` on top of `oszlxpvn`.
+- P1 precise UTF-16 diagnostics:
+  - `Finding.span` byte offsets now map to LSP `Position` columns in UTF-16 code units.
+  - Mapping handles multibyte UTF-8 without slicing at non-character boundaries.
+- P2 fix-all:
+  - Added `source.fixAll` action titled `deslop: fix all safe findings in file`.
+  - Fix-all uses `deslop_fix::apply_findings_to_text` over all `SafeAuto` and
+    `AnalyzerConfirmed` findings with edits.
+  - Per-finding quickfixes remain.
+  - Riskier classes still get no edit action.
+- P3 real JSON-RPC loop test:
+  - Uses `lsp_server::Connection::memory`.
+  - Drives `initialize -> initialized -> didOpen -> publishDiagnostics -> codeAction ->
+    shutdown -> exit` through the real `run_connection` loop.
+- P4 partial:
+  - Implemented incremental sync capability and ranged `didChange` application with UTF-16
+    position-to-byte conversion.
+  - Deferred workspace-wide scan. Reason: it needs explicit workspace-root semantics,
+    cost controls, and dirty-buffer overlay behavior so unopened-file diagnostics do not
+    conflict with open in-memory state.
+- Updated `SPEC.md`.
+- Touched `.agents/HEARTBEAT.md`.
+
+Tests:
+- Non-ASCII diagnostic range test verifies byte offsets map to UTF-16 columns.
+- Fix-all test verifies two safe Clojure findings are edited together and riskier findings
+  do not produce fix-all.
+- Existing quickfix test updated to prove per-finding quickfixes still exist.
+- Incremental sync test applies a UTF-16 ranged edit over non-ASCII text.
+- Real JSON-RPC loop integration test covers diagnostics and quickfix/fix-all actions.
+
+Verification:
+- Focused check passed:
+  - `cargo fmt --all && cargo test -p deslop-lsp`
+- Full required gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+
+Queue status:
+- Task 13 is the last queued item. Items 1-13 are now implemented or explicitly deferred
+  where documented.
+
+Blockers:
+- Workspace-wide LSP scan deferred for the design reasons above.
+
+Signature: Codex
+
 ## 2026-06-24T08:24:27+02:00 — Slim Progress Events
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 12 only: add streaming-style slim

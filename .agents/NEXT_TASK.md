@@ -1,42 +1,76 @@
-# TASK 13/queue (final) — LSP edges: real columns, fix-all, a true RPC test, (then incremental/workspace)
+# TASK 14 — Native tree-sitter mutation engine (language-agnostic; supersedes Cosmic-Ray-only)
 
-The LSP MVP (deslop-lsp) does FULL sync, whole-line diagnostic ranges, per-open-file scan, safe-auto
-quickfixes, and only PURE-function unit tests. Sharpen it. Multiple rounds OK; gate each round. Start
-with `jj new` (separate change on top of oszlxpvn). Do these in priority order; if you run low on
-runway, ship the high-priority ones and HONESTLY defer the rest with reasons.
+Build mutation testing from deslop's own primitives: tree-sitter (generate mutants) + check-cmd
+(score them) + coverage (gate them). This works for Rust/Clojure/Julia/Python uniformly and unblocks
+the Clojure/Julia mutation that had no external tool. Big feature — MULTIPLE ROUNDS expected; gate
+each round. Start with `jj new` (separate change on top of xumlpqvs).
 
-## P1 — precise UTF-16 columns (biggest quality win)
-Replace whole-line diagnostic ranges with precise ranges from `Finding.span`: map byte offsets within
-each line to LSP `Position.character` in **UTF-16 code units** (LSP's required encoding). Handle
-multi-byte UTF-8 correctly (a byte offset → the UTF-16 column on that line). Unit-test with a fixture
-containing non-ASCII so the column math is exercised (not just ASCII).
+## Why this is possible
+Mutation = (1) syntactic mutant generation — a CST job tree-sitter does well; (2) run the tests, a
+surviving (still-passing) mutant = a test gap — which deslop already does via `--check-cmd` +
+temp-copy patching (`run_check_cmd_on_temp_copy`, `selected_check_cmd`). Combine them.
 
-## P2 — fix-all source action + keep per-finding quickfixes
-Add a `source.fixAll` (kind `CodeActionKind::SOURCE_FIX_ALL`) "deslop: fix all safe findings in file"
-action that applies ALL `SafeAuto`/`AnalyzerConfirmed` fixes via `deslop_fix::apply_findings_to_text`
-in one `WorkspaceEdit`. Keep the per-finding quickfixes. Still NEVER offer auto-fixes for riskier
-safety classes. Unit-test: a file with 2 safe findings yields a fix-all editing both; a file with only
-LlmOnly findings yields no fix-all.
+## Existing surface to build on
+- `parse_tree(lang, text) -> Option<Tree>` (deslop-parse) for the CST.
+- `MutationProbe { assess(&mut self, MutationRequest{ root, source, work_order }) -> MutationAssessment }`,
+  `MutationStatus { Survived, NoSurvivor, Unknown }`, `MutationConfig`, `MutationRegistry` (deslop-verify).
+  A surviving mutant → `MutationStatus::Survived` → already downgrades the removal verdict (keep that).
+- `CoverageStatus { Covered, Uncovered, Unknown }` + the CoverageProvider tier (tasks 3/10).
+- check-cmd resolution: `selected_check_cmd(options, work_order)` (options.check_cmd ?? contract.check_cmd).
 
-## P3 — a real JSON-RPC loop integration test
-Drive the actual server over in-memory pipes (lsp-server supports a Connection over channels):
-`initialize` → `initialized` → `textDocument/didOpen` (a sloppy fixture) → assert a
-`textDocument/publishDiagnostics` with the expected diagnostic → `textDocument/codeAction` → assert
-the quickfix/fix-all → `shutdown`/`exit`. This proves the server works end-to-end (the MVP only tested
-pure fns). Keep it deterministic and fast.
+## P1 — Mutant generation engine (PURE CST; fully unit-testable)
+A new module/crate (prefer `deslop-mutate`, depends on deslop-parse + deslop-core — keep it pure).
+- A `MutationOperator` abstraction + a portable operator set over tree-sitter node kinds:
+  - relational swaps (`<`↔`<=`, `>`↔`>=`, `==`↔`!=`), arithmetic (`+`↔`-`, `*`↔`/`),
+    logical (`&&`↔`||`), boolean-literal flip (`true`↔`false`), condition negation.
+  - Infix languages (Rust/Julia/Python): mutate `binary_expression` operator tokens. Clojure: the
+    operator is a symbol in call position `(< a b)` — mutate that symbol node. Operator applicability
+    is per-language (reuse the LangPack notion; no central `match Lang` in the runtime path).
+- `fn generate_mutants(source: &SourceFile, restrict_lines: Option<&BTreeSet<usize>>) ->
+  Vec<Mutant { line, byte_span, operator, original, mutated, mutated_source }>`. Deterministic.
+- Tests: per language (Rust/Clojure/Julia/Python) a fixture yields the EXACT expected mutants
+  (operator + line + mutated text). This is the core deliverable and must be airtight.
 
-## P4 (if runway allows; else defer with reasons)
-- Incremental document sync (`TextDocumentSyncKind::INCREMENTAL`): apply ranged `didChange` edits to
-  the in-memory doc instead of FULL replacement.
-- Workspace-wide scan: on `initialize`/`didOpen`, scan the workspace folder (respect the LangPack
-  extensions) and publish diagnostics for files, not only open ones. Be mindful of cost.
+## P2 — TreeSitterMutationProbe (execution + scoring)
+Implement `MutationProbe` in deslop-verify using the P1 engine:
+- For the work-order region: generate mutants (restricted to the region's lines).
+- For each mutant: write the mutated source to a temp copy (mirror `run_check_cmd_on_temp_copy`), run
+  the resolved check-cmd, classify:
+  - check-cmd FAILS (non-zero) → mutant KILLED.
+  - check-cmd PASSES (zero) → mutant SURVIVED (test gap).
+  - build/parse failure → UNVIABLE (excluded from the score; don't count as survived).
+- Region status = `Survived` if ANY mutant survives, else `NoSurvivor`; `Unknown` if no viable mutants
+  / no check-cmd. Keep the verdict-downgrade contract.
+- Register in `MutationRegistry`. Make the native probe the DEFAULT engine for all supported languages.
+  KEEP the recorded `OutcomesFile` mode and the cosmic-ray probe as opt-in alternatives (don't delete
+  working code; native becomes the default `Auto`).
+- The probe needs the resolved check-cmd: thread it into `MutationRequest` (add a field) or have the
+  registry pass it — minimal plumbing, justify.
+
+## P3 — timeout + coverage-gating (perf + correctness)
+- **Timeout**: a mutant can hang (flipped loop condition). Add a per-mutant timeout to the check-cmd
+  run (use `wait_timeout` — a small justified dep — or a thread+kill). Timeout → treat as KILLED
+  (behavior changed enough to hang). Make the timeout configurable (default a sane value).
+- **Coverage-gating**: only mutate COVERED lines (uncovered code trivially survives → skip, big perf
+  win + avoids false "survived"). Thread the coverage assessment into the probe (extend
+  `MutationRequest` or compute via the CoverageProvider when coverage is enabled). With coverage
+  disabled, mutate all region lines (document the cost).
+
+## Tests (deterministic, NO real test suite / NO language toolchains)
+- P1 operator generation per language (exact mutant sets).
+- P2 scoring: a CONTENT-KEYED check-cmd (like the characterization PIN trick: `grep` the temp file)
+  so a specific mutant makes check-cmd fail (KILLED) vs pass (SURVIVED) — assert classification with
+  no real tests. Plus a `Survived` mutant downgrades the verdict (reuse the existing pattern).
+- P3 timeout: a check-cmd that sleeps + a short timeout → classified KILLED-by-timeout. Coverage-gating:
+  uncovered lines are not mutated (assert the mutant set is restricted).
 
 ## Constraints / gate
-Reuse the analyzer/fix surfaces unchanged. LSP deps stay isolated to deslop-lsp (don't leak into other
-crates). MCP default build stays network-free. Do NOT touch `deslop/*.py`. Gate after each change:
+Registry-driven, no central `match Lang` in the runtime path. MCP default build stays network-free.
+Only new dep allowed: `wait_timeout` (for P3). Do NOT touch `deslop/*.py`. Gate after each change:
 `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
 
 ## Report
-P1 column mapping + the non-ASCII test; P2 fix-all + tests; P3 the end-to-end RPC test; P4 done-or-
-deferred (with reasons); SPEC.md LSP update. `jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`.
-This is the LAST queued item — state the queue is complete in your report.
+the operator set + per-language applicability; generation tests; the probe scoring + verdict
+downgrade; timeout + coverage-gating; how it relates to the cosmic-ray probe (default vs opt-in);
+deferred (equivalent-mutant pruning, parallelism, unviable-vs-killed nuance). `jj describe`. Touch
+`.agents/HEARTBEAT.md`. If you need multiple rounds, keep going; this is a large feature.
