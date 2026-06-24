@@ -1,5 +1,52 @@
 # Session Report
 
+## 2026-06-24T09:56:44+02:00 — Mutation Parallelism Complete
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 15: parallelize native
+`TreeSitterMutationProbe` scoring with a bounded scoped worker pool while keeping all aggregate
+state evolution serialized and deterministic.
+
+Changes:
+- Started jj change `uvnoxnpv` on top of `lmmlzykp`.
+- Replaced native mutation's serial scoring loop with a bounded `std::thread::scope` worker pool.
+- Added channel actions:
+  - `NativeMutantOutcome { detail, status }`
+  - `NativeMutantError { id, reason }`
+- Workers own only side effects: isolated temp workspace, per-worker build/depot env, mutant
+  source write, check-cmd-with-timeout. They never mutate aggregate state.
+- A single drain loop owns all tallies: viable, killed, timed out, unviable, errors, and stable
+  lowest-id survivor selection.
+- Wrapped worker execution in `std::panic::catch_unwind`; panics and spawn failures become
+  `NativeMutantError` actions.
+- Default concurrency is `std::thread::available_parallelism()`.
+- Added `MutationConfig::AutoWithOptions { timeout, jobs }` and CLI `--mutation-jobs N` for
+  `characterize`, `verify`, and `apply`.
+- Set per-worker isolation env: `CARGO_TARGET_DIR` for Rust, `JULIA_DEPOT_PATH` for Julia, plus
+  single-threaded test env (`RUST_TEST_THREADS=1`, `CARGO_BUILD_JOBS=1`, `JULIA_NUM_THREADS=1`).
+- Updated `SPEC.md`.
+
+Tests:
+- `native_parallel_scoring_matches_serial_scoring` asserts serial and parallel summaries match.
+- `native_parallel_worker_panics_are_errors_not_process_panics` proves worker panic capture.
+- `native_parallel_concurrency_is_bounded` asserts in-flight workers never exceed configured jobs.
+- CLI parser test covers `--mutation-jobs`.
+
+Verification:
+- Focused checks passed:
+  - `cargo fmt --all && cargo test -p deslop-verify`
+  - `cargo fmt --all && cargo test -p deslop-cli parses_mutation_jobs_override && cargo test -p deslop-verify native_parallel`
+- Full required gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+
+Deferred:
+- Equivalent-mutant pruning.
+- Cross-file mutation scheduling.
+
+Queue status:
+- This was the last mutation task.
+
+Signature: Codex
+
 ## 2026-06-24T09:41:37+02:00 — Native Tree-Sitter Mutation Engine Complete
 
 Objective: Finish `.agents/NEXT_TASK.md` Task 14: native tree-sitter mutation

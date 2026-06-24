@@ -209,6 +209,9 @@ struct PatchArgs {
     mutation: bool,
 
     #[arg(long)]
+    mutation_jobs: Option<usize>,
+
+    #[arg(long)]
     characterization_tests: Option<PathBuf>,
 }
 
@@ -225,6 +228,9 @@ struct ApplyArgs {
 
     #[arg(long)]
     mutation: bool,
+
+    #[arg(long)]
+    mutation_jobs: Option<usize>,
 
     #[arg(long)]
     characterization_tests: Option<PathBuf>,
@@ -252,6 +258,9 @@ struct CharacterizeArgs {
 
     #[arg(long)]
     mutation: bool,
+
+    #[arg(long)]
+    mutation_jobs: Option<usize>,
 }
 
 #[derive(Debug, Args)]
@@ -924,6 +933,7 @@ fn characterize(args: CharacterizeArgs) -> Result<()> {
             args.check_cmd,
             args.coverage,
             args.mutation,
+            args.mutation_jobs,
             Vec::new(),
             false,
         ),
@@ -946,7 +956,7 @@ fn verify_characterization(args: VerifyCharacterizationArgs) -> Result<()> {
     let tests = load_characterization_tests(&args.tests)?;
     let report = verify_characterization_tests(
         &tests,
-        &verify_options(Some(args.check_cmd), false, false, Vec::new(), false),
+        &verify_options(Some(args.check_cmd), false, false, None, Vec::new(), false),
     )?;
     print_pretty_json(&report)?;
     if report.rejected_count() > 0 {
@@ -965,6 +975,7 @@ fn verify(args: PatchArgs) -> Result<()> {
             args.check_cmd,
             args.coverage,
             args.mutation,
+            args.mutation_jobs,
             characterization_tests,
             false,
         ),
@@ -986,6 +997,7 @@ fn apply(args: ApplyArgs) -> Result<()> {
             args.check_cmd,
             args.coverage,
             args.mutation,
+            args.mutation_jobs,
             characterization_tests,
             args.allow_non_removable,
         ),
@@ -1019,9 +1031,15 @@ fn parse_coverage_config(value: &str) -> Result<CoverageConfig> {
     parse_coverage_mode(value)
 }
 
-fn mutation_config(enabled: bool) -> MutationConfig {
+fn mutation_config(enabled: bool, jobs: Option<usize>) -> MutationConfig {
     if enabled {
-        MutationConfig::Auto
+        match jobs {
+            Some(jobs) => MutationConfig::AutoWithOptions {
+                timeout: std::time::Duration::from_secs(10),
+                jobs,
+            },
+            None => MutationConfig::Auto,
+        }
     } else {
         MutationConfig::Disabled
     }
@@ -1031,6 +1049,7 @@ fn verify_options(
     check_cmd: Option<String>,
     coverage: bool,
     mutation: bool,
+    mutation_jobs: Option<usize>,
     characterization_tests: Vec<deslop_protocol::CharacterizationTest>,
     allow_non_removable: bool,
 ) -> VerifyOptions {
@@ -1038,7 +1057,7 @@ fn verify_options(
         root: PathBuf::from("."),
         check_cmd,
         coverage: coverage_config(coverage),
-        mutation: mutation_config(mutation),
+        mutation: mutation_config(mutation, mutation_jobs),
         characterization_tests,
         allow_non_removable,
     }
@@ -1459,6 +1478,28 @@ mod tests {
         };
         assert_eq!(args.provider, Some(SlimProvider::Openai));
         assert_eq!(args.base_url.as_deref(), Some("http://localhost:11434/v1"));
+    }
+
+    #[test]
+    fn parses_mutation_jobs_override() {
+        let cli = Cli::try_parse_from([
+            "deslop",
+            "verify",
+            "--patches",
+            "patches.jsonl",
+            "--mutation",
+            "--mutation-jobs",
+            "2",
+        ])
+        .expect("parse cli");
+        let Command::Verify(args) = cli.command else {
+            panic!("expected verify command");
+        };
+        assert_eq!(args.mutation_jobs, Some(2));
+        assert!(matches!(
+            mutation_config(args.mutation, args.mutation_jobs),
+            MutationConfig::AutoWithOptions { jobs: 2, .. }
+        ));
     }
 
     #[test]

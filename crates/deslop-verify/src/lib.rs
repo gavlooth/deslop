@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
@@ -180,6 +183,10 @@ pub enum MutationConfig {
     Disabled,
     Auto,
     AutoWithTimeout(Duration),
+    AutoWithOptions {
+        timeout: Duration,
+        jobs: usize,
+    },
     AutoWithCommand(String),
     OutcomesFile(PathBuf),
 }
@@ -204,6 +211,7 @@ pub struct MutationRequest<'a> {
     pub check_cmd: Option<&'a str>,
     pub coverage: &'a CoverageAssessment,
     pub timeout: Duration,
+    pub jobs: usize,
 }
 
 pub trait MutationProbe {
@@ -549,6 +557,7 @@ fn assess_mutation_if_clean(
             check_cmd: selected_check_cmd(options, work_order),
             coverage,
             timeout: mutation.timeout,
+            jobs: mutation.jobs,
         })
     } else {
         Ok(unknown_mutation_assessment())
@@ -843,14 +852,18 @@ struct MutationRegistry {
     probes: Vec<Box<dyn MutationProbe>>,
     disabled: bool,
     timeout: Duration,
+    jobs: usize,
 }
 
 impl MutationRegistry {
     fn new(config: &MutationConfig) -> Self {
         let timeout = mutation_timeout(config);
+        let jobs = mutation_jobs(config);
         let probes: Vec<Box<dyn MutationProbe>> = match config {
             MutationConfig::Disabled => Vec::new(),
-            MutationConfig::Auto | MutationConfig::AutoWithTimeout(_) => {
+            MutationConfig::Auto
+            | MutationConfig::AutoWithTimeout(_)
+            | MutationConfig::AutoWithOptions { .. } => {
                 vec![Box::new(TreeSitterMutationProbe)]
             }
             MutationConfig::AutoWithCommand(_) | MutationConfig::OutcomesFile(_) => {
@@ -864,6 +877,7 @@ impl MutationRegistry {
             probes,
             disabled: matches!(config, MutationConfig::Disabled),
             timeout,
+            jobs,
         }
     }
 
@@ -890,8 +904,18 @@ impl MutationRegistry {
 
 fn mutation_timeout(config: &MutationConfig) -> Duration {
     match config {
-        MutationConfig::AutoWithTimeout(timeout) => *timeout,
+        MutationConfig::AutoWithTimeout(timeout)
+        | MutationConfig::AutoWithOptions { timeout, .. } => *timeout,
         _ => Duration::from_secs(10),
+    }
+}
+
+fn mutation_jobs(config: &MutationConfig) -> usize {
+    match config {
+        MutationConfig::AutoWithOptions { jobs, .. } => (*jobs).max(1),
+        _ => thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(1),
     }
 }
 
@@ -928,61 +952,312 @@ impl MutationProbe for TreeSitterMutationProbe {
             });
         }
 
-        let mut viable = 0usize;
-        let mut killed = 0usize;
-        let mut unviable = 0usize;
-        let mut timed_out = 0usize;
-        for mutant in mutants {
-            if !parse_check_passes(request.source.lang, &mutant.mutated_source)? {
-                unviable += 1;
-                continue;
-            }
-            viable += 1;
-            match run_mutant_check_cmd_on_temp_copy(
-                request.root,
-                request.source,
-                &mutant.mutated_source,
+        let jobs = request.jobs.max(1).min(mutants.len());
+        score_native_mutants_parallel(
+            self.name(),
+            NativeMutationContext {
+                root: request.root,
+                source: request.source,
                 command,
-                request.timeout,
-            )? {
-                MutantCheckOutcome::Survived => {
-                    return Ok(MutationAssessment {
-                        status: MutationStatus::Survived,
-                        reason: Some(format!(
-                            "mutation probe {} found surviving mutant: {} line {} {} -> {}",
-                            self.name(),
-                            mutant.operator,
-                            mutant.line,
-                            mutant.original,
-                            mutant.mutated
-                        )),
-                    });
-                }
-                MutantCheckOutcome::Killed => {
-                    killed += 1;
-                }
-                MutantCheckOutcome::TimedOut => {
-                    killed += 1;
-                    timed_out += 1;
-                }
-            }
-        }
+                timeout: request.timeout,
+                jobs,
+            },
+            mutants,
+            &default_native_mutant_runner,
+        )
+    }
+}
 
-        if viable == 0 {
-            Ok(MutationAssessment {
-                status: MutationStatus::Unknown,
+#[derive(Debug, Clone)]
+struct NativeMutantJob {
+    id: usize,
+    mutant: deslop_mutate::Mutant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeMutantDetail {
+    id: usize,
+    line: usize,
+    operator: &'static str,
+    original: String,
+    mutated: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativeMutantStatus {
+    Survived,
+    Killed,
+    TimedOut,
+    Unviable,
+}
+
+#[derive(Debug, Clone)]
+struct NativeMutantOutcome {
+    detail: NativeMutantDetail,
+    status: NativeMutantStatus,
+}
+
+#[derive(Debug, Clone)]
+struct NativeMutantError {
+    id: usize,
+    reason: String,
+}
+
+#[derive(Debug, Clone)]
+enum NativeMutantAction {
+    Outcome(NativeMutantOutcome),
+    Error(NativeMutantError),
+}
+
+#[derive(Clone, Copy)]
+struct NativeMutationContext<'a> {
+    root: &'a Path,
+    source: &'a SourceFile,
+    command: &'a str,
+    timeout: Duration,
+    jobs: usize,
+}
+
+type NativeMutantRunner =
+    dyn Fn(NativeMutantJob, NativeMutationContext<'_>) -> NativeMutantAction + Sync;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeMutationSummary {
+    status: MutationStatus,
+    viable: usize,
+    killed: usize,
+    timed_out: usize,
+    unviable: usize,
+    errors: usize,
+    survivor: Option<NativeMutantDetail>,
+}
+
+impl NativeMutationSummary {
+    fn into_assessment(self, probe_name: &'static str) -> MutationAssessment {
+        match (self.status, self.survivor) {
+            (MutationStatus::Survived, Some(survivor)) => MutationAssessment {
+                status: MutationStatus::Survived,
                 reason: Some(format!(
-                    "native mutation found no viable mutants in region ({unviable} unviable)"
+                    "mutation probe {probe_name} found surviving mutant: {} line {} {} -> {}",
+                    survivor.operator, survivor.line, survivor.original, survivor.mutated
                 )),
-            })
-        } else {
-            Ok(MutationAssessment {
+            },
+            (MutationStatus::NoSurvivor, _) => MutationAssessment {
                 status: MutationStatus::NoSurvivor,
                 reason: Some(format!(
-                    "mutation probe {} found no surviving mutant in region ({killed}/{viable} killed, {timed_out} timed out, {unviable} unviable)",
-                    self.name()
+                    "mutation probe {probe_name} found no surviving mutant in region ({}/{} killed, {} timed out, {} unviable, {} errors)",
+                    self.killed, self.viable, self.timed_out, self.unviable, self.errors
                 )),
-            })
+            },
+            _ => MutationAssessment {
+                status: MutationStatus::Unknown,
+                reason: Some(format!(
+                    "native mutation found no viable mutants in region ({} unviable, {} errors)",
+                    self.unviable, self.errors
+                )),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct NativeMutationDrain {
+    viable: usize,
+    killed: usize,
+    timed_out: usize,
+    unviable: usize,
+    errors: usize,
+    survivor: Option<NativeMutantDetail>,
+}
+
+impl NativeMutationDrain {
+    fn apply(&mut self, action: NativeMutantAction) {
+        match action {
+            NativeMutantAction::Outcome(outcome) => self.apply_outcome(outcome),
+            NativeMutantAction::Error(error) => {
+                let _ = error.id;
+                let _ = error.reason;
+                self.errors += 1;
+            }
+        }
+    }
+
+    fn apply_outcome(&mut self, outcome: NativeMutantOutcome) {
+        match outcome.status {
+            NativeMutantStatus::Survived => {
+                self.viable += 1;
+                if self
+                    .survivor
+                    .as_ref()
+                    .is_none_or(|survivor| outcome.detail.id < survivor.id)
+                {
+                    self.survivor = Some(outcome.detail);
+                }
+            }
+            NativeMutantStatus::Killed => {
+                self.viable += 1;
+                self.killed += 1;
+            }
+            NativeMutantStatus::TimedOut => {
+                self.viable += 1;
+                self.killed += 1;
+                self.timed_out += 1;
+            }
+            NativeMutantStatus::Unviable => {
+                self.unviable += 1;
+            }
+        }
+    }
+
+    fn finish(self) -> NativeMutationSummary {
+        let status = if self.survivor.is_some() {
+            MutationStatus::Survived
+        } else if self.viable > 0 {
+            MutationStatus::NoSurvivor
+        } else {
+            MutationStatus::Unknown
+        };
+        NativeMutationSummary {
+            status,
+            viable: self.viable,
+            killed: self.killed,
+            timed_out: self.timed_out,
+            unviable: self.unviable,
+            errors: self.errors,
+            survivor: self.survivor,
+        }
+    }
+}
+
+fn score_native_mutants_parallel(
+    probe_name: &'static str,
+    context: NativeMutationContext<'_>,
+    mutants: Vec<deslop_mutate::Mutant>,
+    runner: &NativeMutantRunner,
+) -> Result<MutationAssessment> {
+    Ok(score_native_mutants_parallel_summary(context, mutants, runner).into_assessment(probe_name))
+}
+
+fn score_native_mutants_parallel_summary(
+    context: NativeMutationContext<'_>,
+    mutants: Vec<deslop_mutate::Mutant>,
+    runner: &NativeMutantRunner,
+) -> NativeMutationSummary {
+    let jobs = native_mutant_jobs(mutants);
+    let mut drain = NativeMutationDrain::default();
+    for batch in jobs.chunks(context.jobs.max(1)) {
+        let (tx, rx) = mpsc::channel();
+        thread::scope(|scope| {
+            for job in batch.iter().cloned() {
+                let job_id = job.id;
+                let worker_tx = tx.clone();
+                let spawn_result = thread::Builder::new()
+                    .name(format!("deslop-mutant-{job_id}"))
+                    .spawn_scoped(scope, move || {
+                        let action = catch_native_worker_action(job, context, runner);
+                        let _ = worker_tx.send(action);
+                    });
+                if let Err(err) = spawn_result {
+                    let _ = tx.send(NativeMutantAction::Error(NativeMutantError {
+                        id: job_id,
+                        reason: format!("failed to spawn mutation worker: {err}"),
+                    }));
+                }
+            }
+        });
+        drop(tx);
+        for action in rx {
+            drain.apply(action);
+        }
+    }
+    drain.finish()
+}
+
+#[cfg(test)]
+fn score_native_mutants_serial_summary(
+    context: NativeMutationContext<'_>,
+    mutants: Vec<deslop_mutate::Mutant>,
+    runner: &NativeMutantRunner,
+) -> NativeMutationSummary {
+    let mut drain = NativeMutationDrain::default();
+    for job in native_mutant_jobs(mutants) {
+        drain.apply(catch_native_worker_action(job, context, runner));
+    }
+    drain.finish()
+}
+
+fn native_mutant_jobs(mutants: Vec<deslop_mutate::Mutant>) -> Vec<NativeMutantJob> {
+    mutants
+        .into_iter()
+        .enumerate()
+        .map(|(id, mutant)| NativeMutantJob { id, mutant })
+        .collect()
+}
+
+fn catch_native_worker_action(
+    job: NativeMutantJob,
+    context: NativeMutationContext<'_>,
+    runner: &NativeMutantRunner,
+) -> NativeMutantAction {
+    let id = job.id;
+    match panic::catch_unwind(AssertUnwindSafe(|| runner(job, context))) {
+        Ok(action) => action,
+        Err(_) => NativeMutantAction::Error(NativeMutantError {
+            id,
+            reason: "mutation worker panicked".to_string(),
+        }),
+    }
+}
+
+fn default_native_mutant_runner(
+    job: NativeMutantJob,
+    context: NativeMutationContext<'_>,
+) -> NativeMutantAction {
+    let detail = NativeMutantDetail::from(&job);
+    match parse_check_passes(context.source.lang, &job.mutant.mutated_source) {
+        Ok(false) => {
+            return NativeMutantAction::Outcome(NativeMutantOutcome {
+                detail,
+                status: NativeMutantStatus::Unviable,
+            });
+        }
+        Ok(true) => {}
+        Err(err) => {
+            return NativeMutantAction::Error(NativeMutantError {
+                id: job.id,
+                reason: format!("failed to parse mutant: {err}"),
+            });
+        }
+    }
+    let status = match run_mutant_check_cmd_on_temp_copy(
+        context.root,
+        context.source,
+        &job.mutant.mutated_source,
+        context.command,
+        context.timeout,
+        job.id,
+    ) {
+        Ok(MutantCheckOutcome::Survived) => NativeMutantStatus::Survived,
+        Ok(MutantCheckOutcome::Killed) => NativeMutantStatus::Killed,
+        Ok(MutantCheckOutcome::TimedOut) => NativeMutantStatus::TimedOut,
+        Err(err) => {
+            return NativeMutantAction::Error(NativeMutantError {
+                id: job.id,
+                reason: format!("failed to score mutant: {err}"),
+            });
+        }
+    };
+    NativeMutantAction::Outcome(NativeMutantOutcome { detail, status })
+}
+
+impl From<&NativeMutantJob> for NativeMutantDetail {
+    fn from(job: &NativeMutantJob) -> Self {
+        Self {
+            id: job.id,
+            line: job.mutant.line,
+            operator: job.mutant.operator,
+            original: job.mutant.original.to_owned(),
+            mutated: job.mutant.mutated.to_owned(),
         }
     }
 }
@@ -1012,10 +1287,16 @@ fn run_mutant_check_cmd_on_temp_copy(
     mutated_source: &str,
     command: &str,
     timeout: Duration,
+    worker_id: usize,
 ) -> Result<MutantCheckOutcome> {
-    run_mutant_check_cmd_in_temp_project(root, command, timeout, |temp_root| {
-        write_mutated_source(root, temp_root, source, mutated_source)
-    })
+    run_mutant_check_cmd_in_temp_project(
+        root,
+        source.lang,
+        command,
+        timeout,
+        worker_id,
+        |temp_root| write_mutated_source(root, temp_root, source, mutated_source),
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -1033,9 +1314,9 @@ struct RustCargoMutantsProbe {
 impl RustCargoMutantsProbe {
     fn new(config: &MutationConfig) -> Self {
         let mode = match config {
-            MutationConfig::Disabled | MutationConfig::AutoWithTimeout(_) => {
-                MutationProbeMode::Disabled
-            }
+            MutationConfig::Disabled
+            | MutationConfig::AutoWithTimeout(_)
+            | MutationConfig::AutoWithOptions { .. } => MutationProbeMode::Disabled,
             MutationConfig::Auto => MutationProbeMode::Auto {
                 command: "cargo".to_string(),
             },
@@ -1151,9 +1432,9 @@ struct PythonMutationProbe {
 impl PythonMutationProbe {
     fn new(config: &MutationConfig) -> Self {
         let mode = match config {
-            MutationConfig::Disabled | MutationConfig::AutoWithTimeout(_) => {
-                MutationProbeMode::Disabled
-            }
+            MutationConfig::Disabled
+            | MutationConfig::AutoWithTimeout(_)
+            | MutationConfig::AutoWithOptions { .. } => MutationProbeMode::Disabled,
             MutationConfig::Auto => MutationProbeMode::Auto {
                 command: "cosmic-ray".to_string(),
             },
@@ -2938,8 +3219,10 @@ fn run_check_cmd_in_temp_project(
 
 fn run_mutant_check_cmd_in_temp_project(
     root: &Path,
+    lang: Lang,
     command: &str,
     timeout: Duration,
+    worker_id: usize,
     setup: impl FnOnce(&Path) -> Result<()>,
 ) -> Result<MutantCheckOutcome> {
     let temp = TempDir::new().context("failed to create mutation check tempdir")?;
@@ -2949,6 +3232,11 @@ fn run_mutant_check_cmd_in_temp_project(
         .arg("-c")
         .arg(command)
         .current_dir(temp.path())
+        .env("RUST_TEST_THREADS", "1")
+        .env("CARGO_BUILD_JOBS", "1")
+        .env("JULIA_NUM_THREADS", "1")
+        .env("PYTHONHASHSEED", "0")
+        .envs(mutation_worker_env(temp.path(), lang, worker_id))
         .spawn()
         .with_context(|| format!("failed to run check command `{command}`"))?;
     match child.wait_timeout(timeout)? {
@@ -2959,6 +3247,24 @@ fn run_mutant_check_cmd_in_temp_project(
             let _ = child.wait();
             Ok(MutantCheckOutcome::TimedOut)
         }
+    }
+}
+
+fn mutation_worker_env(
+    temp_root: &Path,
+    lang: Lang,
+    worker_id: usize,
+) -> Vec<(&'static str, PathBuf)> {
+    match lang {
+        Lang::Rust => vec![(
+            "CARGO_TARGET_DIR",
+            temp_root.join(format!(".deslop-target-{worker_id}")),
+        )],
+        Lang::Julia => vec![(
+            "JULIA_DEPOT_PATH",
+            temp_root.join(format!(".deslop-julia-depot-{worker_id}")),
+        )],
+        _ => Vec::new(),
     }
 }
 
@@ -3154,6 +3460,10 @@ mod tests {
     use super::*;
     use deslop_protocol::{
         CharacterizationTest, Patch, Region, WorkOrderKind, workorder_region_fingerprint,
+    };
+    use std::sync::{
+        Arc, Barrier,
+        atomic::{AtomicUsize, Ordering},
     };
 
     struct VerifyFixture {
@@ -4067,7 +4377,7 @@ mod tests {
             ),
             test_options_with_mutation(
                 fixture.temp.path(),
-                Some("! grep -q '<=' sample.rs"),
+                Some("! grep -q '<=' sample.rs 2>/dev/null"),
                 MutationConfig::Auto,
             ),
         );
@@ -4086,6 +4396,115 @@ mod tests {
         );
     }
 
+    fn native_parallel_fixture() -> (
+        tempfile::TempDir,
+        SourceFile,
+        WorkOrder,
+        Vec<deslop_mutate::Mutant>,
+    ) {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let file = write_rust_fixture(
+            temp.path(),
+            "fn f(a: i32, b: i32) -> bool {\n    return a < b && true;\n}\n",
+        );
+        let source = SourceFile::read(&file).expect("source");
+        let work_order = manual_work_order(&source, 2);
+        let restrict = BTreeSet::from([2]);
+        let mutants = generate_mutants(&source, Some(&restrict)).expect("mutants");
+        assert!(mutants.len() >= 3, "{mutants:#?}");
+        (temp, source, work_order, mutants)
+    }
+
+    #[test]
+    fn native_parallel_scoring_matches_serial_scoring() {
+        let (temp, source, _work_order, mutants) = native_parallel_fixture();
+        let context = NativeMutationContext {
+            root: temp.path(),
+            source: &source,
+            command: "! grep -q '<=' sample.rs 2>/dev/null",
+            timeout: Duration::from_secs(1),
+            jobs: 2,
+        };
+
+        let serial = score_native_mutants_serial_summary(
+            context,
+            mutants.clone(),
+            &default_native_mutant_runner,
+        );
+        let parallel =
+            score_native_mutants_parallel_summary(context, mutants, &default_native_mutant_runner);
+
+        assert_eq!(parallel, serial);
+        assert_eq!(parallel.status, MutationStatus::Survived);
+    }
+
+    #[test]
+    fn native_parallel_worker_panics_are_errors_not_process_panics() {
+        let (temp, source, _work_order, mutants) = native_parallel_fixture();
+        let context = NativeMutationContext {
+            root: temp.path(),
+            source: &source,
+            command: "true",
+            timeout: Duration::from_secs(1),
+            jobs: 2,
+        };
+        let runner = |job: NativeMutantJob, _context: NativeMutationContext<'_>| {
+            if job.id == 0 {
+                panic!("intentional worker panic");
+            }
+            NativeMutantAction::Outcome(NativeMutantOutcome {
+                detail: NativeMutantDetail::from(&job),
+                status: NativeMutantStatus::Killed,
+            })
+        };
+
+        let summary = score_native_mutants_parallel_summary(context, mutants, &runner);
+
+        assert_eq!(summary.errors, 1);
+        assert_eq!(summary.status, MutationStatus::NoSurvivor);
+    }
+
+    #[test]
+    fn native_parallel_concurrency_is_bounded() {
+        let (temp, source, _work_order, mutants) = native_parallel_fixture();
+        let jobs = 2;
+        let context = NativeMutationContext {
+            root: temp.path(),
+            source: &source,
+            command: "true",
+            timeout: Duration::from_secs(1),
+            jobs,
+        };
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let max_seen = Arc::new(AtomicUsize::new(0));
+        let started = Arc::new(AtomicUsize::new(0));
+        let barrier = Arc::new(Barrier::new(jobs));
+        let runner = {
+            let in_flight = Arc::clone(&in_flight);
+            let max_seen = Arc::clone(&max_seen);
+            let started = Arc::clone(&started);
+            let barrier = Arc::clone(&barrier);
+            move |job: NativeMutantJob, _context: NativeMutationContext<'_>| {
+                let current = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                max_seen.fetch_max(current, Ordering::SeqCst);
+                if started.fetch_add(1, Ordering::SeqCst) < jobs {
+                    barrier.wait();
+                }
+                in_flight.fetch_sub(1, Ordering::SeqCst);
+                NativeMutantAction::Outcome(NativeMutantOutcome {
+                    detail: NativeMutantDetail::from(&job),
+                    status: NativeMutantStatus::Killed,
+                })
+            }
+        };
+
+        let summary = score_native_mutants_parallel_summary(context, mutants, &runner);
+
+        assert_eq!(summary.status, MutationStatus::NoSurvivor);
+        assert!(max_seen.load(Ordering::SeqCst) <= jobs);
+        assert_eq!(max_seen.load(Ordering::SeqCst), jobs);
+    }
+
     #[test]
     fn native_mutation_timeout_counts_as_killed() {
         let fixture = rust_fixture("fn f(a: i32, b: i32) -> bool {\n    return a < b;\n}\n");
@@ -4097,7 +4516,7 @@ mod tests {
             ),
             test_options_with_mutation(
                 fixture.temp.path(),
-                Some("if grep -q '<=' sample.rs; then sleep 1; else true; fi"),
+                Some("if grep -q '<=' sample.rs 2>/dev/null; then sleep 1; else true; fi"),
                 MutationConfig::AutoWithTimeout(Duration::from_millis(10)),
             ),
         );
@@ -4149,9 +4568,10 @@ mod tests {
                 root: temp.path(),
                 source: &source,
                 work_order: &work_order,
-                check_cmd: Some("! grep -q '<=' sample.rs"),
+                check_cmd: Some("! grep -q '<=' sample.rs 2>/dev/null"),
                 coverage: &coverage,
                 timeout: Duration::from_secs(1),
+                jobs: 1,
             })
             .expect("mutation");
 

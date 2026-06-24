@@ -155,8 +155,12 @@ Mutation probes are also registry-driven and opt-in. The default `--mutation` en
 A passing mutant is `survived` and downgrades the verdict; a failing check kills the mutant;
 parse-unviable mutants are excluded; a per-mutant timeout is treated as killed. When coverage data
 is available, native mutation only generates mutants on covered lines in the work-order region;
-with coverage disabled or unknown, it mutates the whole region. Recorded external outcome files are
-still accepted for deterministic tests. `MutationConfig::AutoWithCommand` keeps the previous
+with coverage disabled or unknown, it mutates the whole region. Native scoring is parallelized with
+a bounded `std::thread::scope` worker pool: each worker owns an isolated temp workspace and pushes a
+mutant outcome/error action to a channel, while one serialized drain loop owns all tallies and final
+verdict state. Default concurrency is `std::thread::available_parallelism()` and CLI
+`--mutation-jobs` overrides it for `characterize`, `verify`, and `apply`. Recorded external outcome
+files are still accepted for deterministic tests. `MutationConfig::AutoWithCommand` keeps the previous
 external probes as opt-in paths: Rust `cargo-mutants`, Python Cosmic Ray. Clojure and Julia external
 tools remain documented blockers: JVM bytecode tools such as PITest do not map cleanly to Clojure
 source regions; Heretic is promising and Clojure-specific but currently labels itself
@@ -336,10 +340,10 @@ deslop health   [PATHS…] [--format text|json] [--hotspots-only] [--sigma N] # 
 deslop slop     [PATHS…] [--format text|json]                 # weighted slop score
 deslop fix      [--paths PATH… | --workorders FILE] [--apply] [--characterize] [--allow-unverified] [--coverage MODE] [--provider anthropic|openai] [--base-url URL] [--model M] [--mock recorded.txt] [--check-cmd "CMD"] [--no-backup] # bundled slim consumer; dry-run by default
 deslop propose  [PATHS…] [-o workorders.jsonl] [--julia-external[=staticlint|jet|off]] [--julia-project DIR] # emit work orders
-deslop characterize --patches FILE [-o workorders.jsonl] [--check-cmd "CMD"] [--coverage] [--mutation]
+deslop characterize --patches FILE [-o workorders.jsonl] [--check-cmd "CMD"] [--coverage] [--mutation] [--mutation-jobs N]
 deslop verify-characterization --tests FILE --check-cmd "CMD"
-deslop verify   --patches FILE  [--check-cmd "CMD"] [--coverage] [--mutation] [--characterization-tests FILE] # run the gate; write nothing
-deslop apply    --patches FILE  [--check-cmd "CMD"] [--coverage] [--mutation] [--characterization-tests FILE] [--no-backup] [--yes]   # verify then write
+deslop verify   --patches FILE  [--check-cmd "CMD"] [--coverage] [--mutation] [--mutation-jobs N] [--characterization-tests FILE] # run the gate; write nothing
+deslop apply    --patches FILE  [--check-cmd "CMD"] [--coverage] [--mutation] [--mutation-jobs N] [--characterization-tests FILE] [--no-backup] [--yes]   # verify then write
 deslop-lsp                                                       # synchronous LSP server binary
 deslop baseline write [PATHS…] [-o deslop-baseline.json]
 deslop undo     [PATHS…]
