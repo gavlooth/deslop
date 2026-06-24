@@ -35,12 +35,15 @@ cargo install --path crates/deslop-cli --features mcp   # CLI + MCP server
 | `deslop scan <paths>` | Findings (`text`/`json`/`agent`/`sarif`); `--fail-on <sev>` for CI gating |
 | `deslop slop <paths>` | Slop score + per-rule counts |
 | `deslop metrics` (`health`) | Repo health, hotspots, complexity/expressivity metrics |
+| `deslop graph <paths>` | Agent-ready `deslop.graph/1` dependency graph for refactor planning (`json`/`dot`) |
 | `deslop propose <paths>` | Work orders for non-safe-auto findings |
 | `deslop fix` | The bundled LLM consumer: propose → rewrite → verify → apply |
+| `deslop fix --diff` | Preview deterministic safe-auto edits as a unified diff without writing |
 | `deslop verify` / `apply` | Verify / atomically apply `deslop.patch/1` patches |
 | `deslop characterize` / `verify-characterization` | Generate/accept behavior-pinning tests for risky regions |
 | `deslop baseline` / `scan --baseline` | Snapshot findings; gate only on regressions |
 | `deslop eval` | Run the labeled corpus; per-rule precision/recall |
+| `deslop feedback <fingerprint> --false-positive` | Turn reviewed false positives into eval cases |
 | `deslop undo` · `deslop rules` · `deslop mcp` | Undo safe-auto edits · rule catalog · run MCP server |
 
 ## How findings are graded
@@ -82,17 +85,20 @@ explicitly with `--coverage <mode>` (prove it) or `--allow-unverified` (opt into
 ## Editor & MCP
 
 - **MCP server** (`deslop mcp`, `--features mcp`): tools `scan`, `propose`, `verify`, `apply`,
-  `characterize`, `verify_characterization`, `metrics`, `rules`, and `fix`. The default build is
+  `characterize`, `verify_characterization`, `metrics`, `graph`, `rules`, and `fix`. The default build is
   **network-free**. `fix` defaults to *agent-as-consumer* (returns rewrite prompts + fingerprints;
   the calling agent rewrites and submits patches to `apply`); a server-run LLM mode is available only
-  behind the `slim-llm` feature.
+  behind the `slim-llm` feature. `scan`, `propose`, and prompt-mode `fix` accept a `config` path and
+  inline `analyzer` overrides, including per-language `long_method_nloc`; inline MCP values override
+  the config file for that tool call.
 - **LSP** (`deslop-lsp`): live diagnostics + code actions wired to the fix-safety lattice (only
   safe-auto findings get quickfixes; plus a `source.fixAll`), precise UTF-16 ranges, incremental sync.
 
 ## CI
 
-`deslop scan --format sarif` → upload to GitHub code scanning; `--fail-on major` as an exit-code gate;
-`--baseline` to gate only on new findings. A reusable `action.yml`, an example
+`deslop scan --changed[=<ref>] --format sarif` → upload to GitHub code scanning; `--fail-on major`
+as an exit-code gate; `--baseline` to gate only on new findings; `deslop baseline update` to ratchet
+accepted current findings. A reusable `action.yml`, an example
 `.github/workflows/deslop.yml`, and `.pre-commit-hooks.yaml` are included (see `docs/CI.md`).
 
 ## Configuration
@@ -103,17 +109,49 @@ default**. Sections: `[external]`, `[slim]` (provider/model/base_url/egress_cons
 (min_duplication_tokens/long_method_nloc/min_meaningful_tokens). See `deslop.toml.example` and
 `docs/CONFIG.md`.
 
+`long_method_nloc` defaults to 40 non-comment lines globally and can be overridden per language:
+
+```toml
+[analyzer]
+long_method_nloc = 40
+
+[analyzer.rust]
+long_method_nloc = 45
+
+[analyzer.python]
+long_method_nloc = 35
+
+[analyzer.typescript]
+long_method_nloc = 45
+```
+
+Supported per-language analyzer tables are `rust`, `clojure`, `julia`, `python`, `javascript`,
+`typescript`, and `generic`.
+
+Thresholds are global and blunt; **suppression** is the scalpel. Filter findings by rule and by
+path — unknown rule names and unknown `[analyzer]` keys are errors, not silent no-ops:
+
+```toml
+[analyzer]
+disabled_rules = ["magic-number"]          # drop a rule everywhere
+ignore_paths = ["**/generated/**"]          # skip paths for all rules
+
+[analyzer.rules.duplicate-block]
+ignore_paths = ["**/tests/**"]              # skip one rule on selected paths
+```
+
+See `docs/CONFIG.md` for the full suppression reference.
+
 ## Languages
 
-Full analysis packs for **Rust, Clojure, Julia**, plus the language-agnostic rules that apply to all
-sources. **Python** has coverage + mutation support and language registration, but no Python-specific
-analysis-rules pack yet.
+Full analysis packs for **Rust, Clojure, Julia**, seeded idiom packs for **Python** and
+**JavaScript/TypeScript**, plus the language-agnostic rules that apply to all sources.
 
 ## Workspace
 
-16 crates: `deslop-core` (types) · `deslop-parse` (tree-sitter) · `deslop-lang` (LangPack/Rule/provider
+17 crates: `deslop-core` (types) · `deslop-parse` (tree-sitter) · `deslop-lang` (LangPack/Rule/provider
 traits + registries) · `deslop-analyzer` (rules/packs) · `deslop-external` (clippy/clj-kondo/StaticLint/JET)
-· `deslop-metrics` · `deslop-mutate` (CST mutation operators) · `deslop-verify` (prover, coverage &
+· `deslop-metrics` · `deslop-graph` (refactor dependency graph) · `deslop-mutate` (CST mutation operators) · `deslop-verify` (prover, coverage &
 mutation tiers, apply) · `deslop-protocol` (workorder/patch schemas) · `deslop-report` (text/json/agent/SARIF)
 · `deslop-fix` (deterministic safe-auto fixes) · `deslop-slim` (LLM consumer) · `deslop-mcp` · `deslop-lsp`
 · `deslop-eval` (corpus harness) · `deslop-cli`.
@@ -121,7 +159,7 @@ mutation tiers, apply) · `deslop-protocol` (workorder/patch schemas) · `deslop
 ## Design notes & known gaps
 
 The full design rationale is in `SPEC.md`. Deferred: tree-sitter 0.26 (blocked upstream by the
-Clojure grammar's pin), a Python analysis-rules pack, Clojure/Julia mutation tools (none source-mappable),
-workspace-wide LSP scan, and equivalent-mutant detection (the path to using mutation as an actual slop
-*detector*). The honest scope: deslop's core — deterministic detection + behavior-preserving removal —
-is complete; the surrounding tiers are confirmation/usability layers.
+Clojure grammar's pin), Clojure/Julia mutation tools (none source-mappable), workspace-wide LSP scan,
+and equivalent-mutant detection (the path to using mutation as an actual slop *detector*). The honest
+scope: deslop's core — deterministic detection + behavior-preserving removal — is complete; the
+surrounding tiers are confirmation/usability layers.

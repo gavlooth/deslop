@@ -43,6 +43,13 @@ pub trait LangPack: Send + Sync {
     fn is_long_method_region(&self, _node: Node<'_>, _text: &str) -> bool {
         false
     }
+    /// True when `node` is a named-constant definition (e.g. `const`/`static`,
+    /// Clojure `def`/`defonce`, Julia `const`). The magic-number rule exempts
+    /// numeric literals inside such a definition: binding a literal to a name IS
+    /// the rule's recommended fix, so it must not be flagged in turn.
+    fn is_constant_definition_region(&self, _node: Node<'_>, _text: &str) -> bool {
+        false
+    }
     fn is_duplication_data_region(&self, _node: Node<'_>, _text: &str) -> bool {
         false
     }
@@ -94,6 +101,8 @@ impl Registry {
         registry.register(&CLOJURE_PACK);
         registry.register(&JULIA_PACK);
         registry.register(&PYTHON_PACK);
+        registry.register(&JAVASCRIPT_PACK);
+        registry.register(&TYPESCRIPT_PACK);
         registry.register(&RUST_PACK);
         registry
     }
@@ -141,12 +150,16 @@ pub static GENERIC_PACK: GenericPack = GenericPack;
 pub static CLOJURE_PACK: ClojurePack = ClojurePack;
 pub static JULIA_PACK: JuliaPack = JuliaPack;
 pub static PYTHON_PACK: PythonPack = PythonPack;
+pub static JAVASCRIPT_PACK: JavaScriptPack = JavaScriptPack;
+pub static TYPESCRIPT_PACK: TypeScriptPack = TypeScriptPack;
 pub static RUST_PACK: RustPack = RustPack;
 
 pub struct GenericPack;
 pub struct ClojurePack;
 pub struct JuliaPack;
 pub struct PythonPack;
+pub struct JavaScriptPack;
+pub struct TypeScriptPack;
 pub struct RustPack;
 
 impl LangPack for GenericPack {
@@ -261,6 +274,10 @@ impl LangPack for ClojurePack {
         self.region_class(node, text) == RegionClass::Behavioral
     }
 
+    fn is_constant_definition_region(&self, node: Node<'_>, text: &str) -> bool {
+        node.kind() == "list_lit" && matches!(node_head_token(node, text), Some("def" | "defonce"))
+    }
+
     fn is_duplication_data_region(&self, node: Node<'_>, _text: &str) -> bool {
         matches!(node.kind(), "map_lit" | "set_lit")
     }
@@ -346,6 +363,10 @@ impl LangPack for JuliaPack {
         self.region_class(node, text) == RegionClass::Behavioral
     }
 
+    fn is_constant_definition_region(&self, node: Node<'_>, text: &str) -> bool {
+        node.kind() == "const_statement" || node_head_token(node, text) == Some("const")
+    }
+
     fn is_duplication_data_region(&self, node: Node<'_>, _text: &str) -> bool {
         matches!(
             node.kind(),
@@ -404,6 +425,249 @@ impl LangPack for PythonPack {
 
     fn enclosing_region(&self, _node: Node<'_>, _text: &str) -> Option<RegionSpan> {
         None
+    }
+}
+
+impl LangPack for JavaScriptPack {
+    fn name(&self) -> &'static str {
+        "javascript"
+    }
+
+    fn lang(&self) -> Lang {
+        Lang::JavaScript
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["js", "jsx"]
+    }
+
+    fn grammar(&self) -> Option<tree_sitter::Language> {
+        Some(tree_sitter_javascript::LANGUAGE.into())
+    }
+
+    fn line_comments(&self) -> &'static [&'static str] {
+        &["//"]
+    }
+
+    fn metrics_regions(&self) -> &'static [&'static str] {
+        &[
+            "function_declaration",
+            "function",
+            "arrow_function",
+            "method_definition",
+            "class_declaration",
+        ]
+    }
+
+    fn metrics_branches(&self) -> &'static [&'static str] {
+        &[
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "try_statement",
+            "switch_statement",
+        ]
+    }
+
+    fn metrics_nesting(&self) -> &'static [&'static str] {
+        &[
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "try_statement",
+            "function",
+            "arrow_function",
+            "method_definition",
+            "class_declaration",
+        ]
+    }
+
+    fn metrics_flow_breaks(&self) -> &'static [&'static str] {
+        &[
+            "return_statement",
+            "break_statement",
+            "continue_statement",
+            "throw_statement",
+        ]
+    }
+
+    fn halstead_operator_tokens(&self) -> &'static [&'static str] {
+        &[
+            "=", "+", "-", "*", "/", "%", "===", "!==", "==", "!=", "<", ">", "<=", ">=", "&&",
+            "||", "!", "let", "const", "var", "if", "else", "for", "while", "return", "throw",
+        ]
+    }
+
+    fn region_class(&self, node: Node<'_>, _text: &str) -> RegionClass {
+        match node.kind() {
+            "function_declaration"
+            | "function_expression"
+            | "arrow_function"
+            | "method_definition" => RegionClass::Behavioral,
+            "class_declaration" | "interface_declaration" | "import_statement" => {
+                RegionClass::Declaration
+            }
+            _ => RegionClass::Other,
+        }
+    }
+
+    fn is_long_method_region(&self, node: Node<'_>, _text: &str) -> bool {
+        matches!(
+            node.kind(),
+            "function_declaration" | "function_expression" | "arrow_function" | "method_definition"
+        )
+    }
+
+    fn is_constant_definition_region(&self, node: Node<'_>, text: &str) -> bool {
+        if !matches!(node.kind(), "lexical_declaration" | "variable_declaration") {
+            return false;
+        }
+        node_head_token(node, text).is_some_and(|head| head == "const")
+    }
+
+    fn is_duplication_data_region(&self, node: Node<'_>, _text: &str) -> bool {
+        matches!(
+            node.kind(),
+            "array" | "object" | "object_pattern" | "array_pattern"
+        )
+    }
+
+    fn enclosing_region(&self, node: Node<'_>, text: &str) -> Option<RegionSpan> {
+        let mut node = node;
+        loop {
+            if matches!(
+                node.kind(),
+                "function_declaration"
+                    | "function_expression"
+                    | "arrow_function"
+                    | "method_definition"
+                    | "class_declaration"
+            ) {
+                return Some(region_from_node(node, text));
+            }
+            node = node.parent()?;
+        }
+    }
+}
+
+impl LangPack for TypeScriptPack {
+    fn name(&self) -> &'static str {
+        "typescript"
+    }
+
+    fn lang(&self) -> Lang {
+        Lang::TypeScript
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["ts", "tsx", "mts", "cts"]
+    }
+
+    fn grammar(&self) -> Option<tree_sitter::Language> {
+        Some(tree_sitter_javascript::LANGUAGE.into())
+    }
+
+    fn line_comments(&self) -> &'static [&'static str] {
+        &["//"]
+    }
+
+    fn metrics_regions(&self) -> &'static [&'static str] {
+        &[
+            "function_declaration",
+            "method_definition",
+            "arrow_function",
+            "class_declaration",
+        ]
+    }
+
+    fn metrics_branches(&self) -> &'static [&'static str] {
+        &[
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "try_statement",
+            "switch_statement",
+        ]
+    }
+
+    fn metrics_nesting(&self) -> &'static [&'static str] {
+        &[
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "try_statement",
+            "function_declaration",
+            "arrow_function",
+            "class_declaration",
+            "method_definition",
+        ]
+    }
+
+    fn metrics_flow_breaks(&self) -> &'static [&'static str] {
+        &[
+            "return_statement",
+            "throw_statement",
+            "break_statement",
+            "continue_statement",
+        ]
+    }
+
+    fn halstead_operator_tokens(&self) -> &'static [&'static str] {
+        &[
+            "=", "+", "-", "*", "/", "%", "===", "!==", "==", "!=", "<", ">", "<=", ">=", "&&",
+            "||", "!", "const", "let", "var", "if", "else", "for", "while", "return", "throw",
+        ]
+    }
+
+    fn region_class(&self, node: Node<'_>, _text: &str) -> RegionClass {
+        match node.kind() {
+            "function_declaration"
+            | "function_expression"
+            | "arrow_function"
+            | "method_definition" => RegionClass::Behavioral,
+            "class_declaration" | "interface_declaration" | "import_statement" => {
+                RegionClass::Declaration
+            }
+            _ => RegionClass::Other,
+        }
+    }
+
+    fn is_long_method_region(&self, node: Node<'_>, _text: &str) -> bool {
+        matches!(
+            node.kind(),
+            "function_declaration" | "function_expression" | "arrow_function" | "method_definition"
+        )
+    }
+
+    fn is_constant_definition_region(&self, node: Node<'_>, text: &str) -> bool {
+        if !matches!(node.kind(), "lexical_declaration" | "variable_declaration") {
+            return false;
+        }
+        node_head_token(node, text).is_some_and(|head| head == "const")
+    }
+
+    fn is_duplication_data_region(&self, node: Node<'_>, _text: &str) -> bool {
+        matches!(
+            node.kind(),
+            "array" | "object" | "object_pattern" | "array_pattern"
+        )
+    }
+
+    fn enclosing_region(&self, node: Node<'_>, text: &str) -> Option<RegionSpan> {
+        let mut node = node;
+        loop {
+            if matches!(
+                node.kind(),
+                "function_declaration"
+                    | "function_expression"
+                    | "arrow_function"
+                    | "method_definition"
+                    | "class_declaration"
+            ) {
+                return Some(region_from_node(node, text));
+            }
+            node = node.parent()?;
+        }
     }
 }
 
@@ -484,6 +748,10 @@ impl LangPack for RustPack {
 
     fn is_long_method_region(&self, node: Node<'_>, _text: &str) -> bool {
         node.kind() == "function_item"
+    }
+
+    fn is_constant_definition_region(&self, node: Node<'_>, _text: &str) -> bool {
+        matches!(node.kind(), "const_item" | "static_item")
     }
 
     fn is_duplication_data_region(&self, node: Node<'_>, _text: &str) -> bool {

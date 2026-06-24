@@ -11,6 +11,7 @@ deslop-core.workspace = true
 deslop-external.workspace = true
 deslop-lang.workspace = true
 deslop-parse.workspace = true
+globset.workspace = true
 ignore.workspace = true
 regex.workspace = true
 tree-sitter.workspace = true

@@ -119,44 +119,68 @@ pub fn metrics_source(source: &SourceFile) -> Result<Vec<RegionMetrics>> {
 
 pub fn render_text(report: &MetricsReport, hotspots_only: bool) -> String {
     let mut out = String::new();
-    out.push_str(&format!(
+    out.push_str(&metrics_summary_line(report));
+    if !hotspots_only {
+        out.push_str(&regions_text(&report.functions));
+    }
+    out.push_str(&hotspots_text(&report.hotspots));
+    out
+}
+
+fn metrics_summary_line(report: &MetricsReport) -> String {
+    format!(
         "Repo health: {:.1}/100 ({} region(s), {} hotspot(s))\n",
         report.health_score,
         report.functions.len(),
         report.hotspots.len()
-    ));
-    if !hotspots_only {
-        out.push_str("\nregion                                      cyc cog nest nloc   MI  dens uniq  compr\n");
-        for region in &report.functions {
-            out.push_str(&format!(
-                "{:<43} {:>3.0} {:>3.0} {:>4} {:>4} {:>5.1} {:>5.3} {:>4.2} {:>6.3}\n",
-                short_name(region),
-                region.complexity.cyclomatic,
-                region.complexity.cognitive,
-                region.complexity.max_nesting,
-                region.complexity.nloc,
-                region.complexity.maintainability_index,
-                region.expressivity.decision_density,
-                region.expressivity.unique_token_ratio,
-                region.expressivity.compression_ratio,
-            ));
-        }
+    )
+}
+
+fn regions_text(functions: &[RegionMetrics]) -> String {
+    let mut out = String::from(
+        "\nregion                                      cyc cog nest nloc   MI  dens uniq  compr\n",
+    );
+    for region in functions {
+        out.push_str(&region_text_line(region));
     }
-    out.push_str("\nhotspots\n");
-    if report.hotspots.is_empty() {
+    out
+}
+
+fn region_text_line(region: &RegionMetrics) -> String {
+    format!(
+        "{:<43} {:>3.0} {:>3.0} {:>4} {:>4} {:>5.1} {:>5.3} {:>4.2} {:>6.3}\n",
+        short_name(region),
+        region.complexity.cyclomatic,
+        region.complexity.cognitive,
+        region.complexity.max_nesting,
+        region.complexity.nloc,
+        region.complexity.maintainability_index,
+        region.expressivity.decision_density,
+        region.expressivity.unique_token_ratio,
+        region.expressivity.compression_ratio,
+    )
+}
+
+fn hotspots_text(hotspots: &[Hotspot]) -> String {
+    let mut out = String::from("\nhotspots\n");
+    if hotspots.is_empty() {
         out.push_str("  none\n");
     } else {
-        for hotspot in &report.hotspots {
-            out.push_str(&format!(
-                "  #{:<2} {:<43} score={:.2} {}\n",
-                hotspot.rank,
-                format!("{}:{}", hotspot.path.display(), hotspot.span.start_line),
-                hotspot.score,
-                hotspot.reasons.join(", ")
-            ));
+        for hotspot in hotspots {
+            out.push_str(&hotspot_text_line(hotspot));
         }
     }
     out
+}
+
+fn hotspot_text_line(hotspot: &Hotspot) -> String {
+    format!(
+        "  #{:<2} {:<43} score={:.2} {}\n",
+        hotspot.rank,
+        format!("{}:{}", hotspot.path.display(), hotspot.span.start_line),
+        hotspot.score,
+        hotspot.reasons.join(", ")
+    )
 }
 
 pub fn render_json(report: &MetricsReport) -> Result<String> {
@@ -267,17 +291,7 @@ fn measure_region(pack: &dyn LangPack, source: &SourceFile, region: MetricRegion
         .unwrap_or("");
     let tokens = tokenize(text, pack.line_comments());
     let halstead = halstead(&tokens, pack);
-    let ast = region.node.and_then(|range| {
-        parse_tree(source.lang, &source.text)
-            .ok()
-            .flatten()
-            .and_then(|tree| {
-                let root = tree.root_node();
-                root.descendant_for_byte_range(range.start_byte, range.end_byte)
-                    .map(|node| ast_complexity(node, pack))
-            })
-    });
-    let ast = ast.unwrap_or_default();
+    let ast = ast_stats_for_region(pack, source, region.node);
     let nloc = nloc(text, pack.line_comments());
     let cyclomatic = ast.branch_count as f64 + 1.0;
     let maintainability_index = maintainability_index(halstead.volume, cyclomatic, nloc);
@@ -286,21 +300,52 @@ fn measure_region(pack: &dyn LangPack, source: &SourceFile, region: MetricRegion
         path: source.path.clone(),
         lang: source.lang,
         name: region.name,
-        span: Span::new(
-            region.span.start_line,
-            region.span.end_line,
-            region.span.start_byte,
-            region.span.end_byte,
-        ),
-        complexity: ComplexityMetrics {
-            cyclomatic,
-            cognitive: ast.cognitive as f64,
-            max_nesting: ast.max_nesting,
-            nloc,
-            maintainability_index,
-        },
+        span: span_from_region(region.span),
+        complexity: complexity_metrics(ast, cyclomatic, nloc, maintainability_index),
         expressivity,
         halstead,
+    }
+}
+
+fn ast_stats_for_region(
+    pack: &dyn LangPack,
+    source: &SourceFile,
+    node: Option<NodeRange>,
+) -> AstStats {
+    node.and_then(|range| {
+        parse_tree(source.lang, &source.text)
+            .ok()
+            .flatten()
+            .and_then(|tree| {
+                tree.root_node()
+                    .descendant_for_byte_range(range.start_byte, range.end_byte)
+                    .map(|node| ast_complexity(node, pack))
+            })
+    })
+    .unwrap_or_default()
+}
+
+fn span_from_region(span: RegionSpan) -> Span {
+    Span::new(
+        span.start_line,
+        span.end_line,
+        span.start_byte,
+        span.end_byte,
+    )
+}
+
+fn complexity_metrics(
+    ast: AstStats,
+    cyclomatic: f64,
+    nloc: usize,
+    maintainability_index: f64,
+) -> ComplexityMetrics {
+    ComplexityMetrics {
+        cyclomatic,
+        cognitive: ast.cognitive as f64,
+        max_nesting: ast.max_nesting,
+        nloc,
+        maintainability_index,
     }
 }
 
@@ -534,93 +579,111 @@ fn maintainability_index(volume: f64, cyclomatic: f64, nloc: usize) -> f64 {
 }
 
 fn detect_hotspots(functions: &[RegionMetrics], sigma: f64) -> Vec<Hotspot> {
-    let mut hotspots = Vec::new();
     let distributions = MetricDistributions::new(functions);
-    for region in functions {
-        let mut score = 0.0;
-        let mut reasons = Vec::new();
-        check_high(
+    let mut hotspots = functions
+        .iter()
+        .filter_map(|region| hotspot_for_region(region, &distributions, sigma))
+        .collect::<Vec<_>>();
+    rank_hotspots(&mut hotspots);
+    hotspots
+}
+
+fn hotspot_for_region(
+    region: &RegionMetrics,
+    distributions: &MetricDistributions,
+    sigma: f64,
+) -> Option<Hotspot> {
+    let mut score = 0.0;
+    let mut reasons = Vec::new();
+    check_complexity_hotspots(region, distributions, sigma, &mut score, &mut reasons);
+    check_expressivity_hotspots(region, distributions, sigma, &mut score, &mut reasons);
+    if reasons.is_empty() {
+        return None;
+    }
+    Some(Hotspot {
+        rank: 0,
+        path: region.path.clone(),
+        name: region.name.clone(),
+        span: region.span,
+        score,
+        reasons,
+    })
+}
+
+fn check_complexity_hotspots(
+    region: &RegionMetrics,
+    distributions: &MetricDistributions,
+    sigma: f64,
+    score: &mut f64,
+    reasons: &mut Vec<String>,
+) {
+    let checks = [
+        (
             "cyclomatic",
             region.complexity.cyclomatic,
             distributions.cyclomatic,
-            sigma,
-            &mut score,
-            &mut reasons,
-        );
-        check_high(
+        ),
+        (
             "cognitive",
             region.complexity.cognitive,
             distributions.cognitive,
-            sigma,
-            &mut score,
-            &mut reasons,
-        );
-        check_high(
-            "nloc",
-            region.complexity.nloc as f64,
-            distributions.nloc,
-            sigma,
-            &mut score,
-            &mut reasons,
-        );
-        check_high(
+        ),
+        ("nloc", region.complexity.nloc as f64, distributions.nloc),
+        (
             "halstead-effort",
             region.halstead.effort,
             distributions.effort,
-            sigma,
-            &mut score,
-            &mut reasons,
-        );
-        if region.expressivity.tokens >= 16 {
-            check_low(
+        ),
+    ];
+    for (name, value, distribution) in checks {
+        check_high(name, value, distribution, sigma, score, reasons);
+    }
+}
+
+fn check_expressivity_hotspots(
+    region: &RegionMetrics,
+    distributions: &MetricDistributions,
+    sigma: f64,
+    score: &mut f64,
+    reasons: &mut Vec<String>,
+) {
+    if region.expressivity.tokens >= 16 {
+        let checks = [
+            (
                 "decision-density",
                 region.expressivity.decision_density,
                 distributions.decision_density,
-                sigma,
-                &mut score,
-                &mut reasons,
-            );
-            check_low(
+            ),
+            (
                 "unique-token-ratio",
                 region.expressivity.unique_token_ratio,
                 distributions.unique_token_ratio,
-                sigma,
-                &mut score,
-                &mut reasons,
-            );
-            check_low(
+            ),
+            (
                 "compression-ratio",
                 region.expressivity.compression_ratio,
                 distributions.compression_ratio,
-                sigma,
-                &mut score,
-                &mut reasons,
-            );
-        }
-        check_high(
-            "comment-ratio",
-            region.expressivity.comment_to_code_ratio,
-            distributions.comment_to_code_ratio,
-            sigma,
-            &mut score,
-            &mut reasons,
-        );
-        if !reasons.is_empty() {
-            hotspots.push(Hotspot {
-                rank: 0,
-                path: region.path.clone(),
-                name: region.name.clone(),
-                span: region.span,
-                score,
-                reasons,
-            });
+            ),
+        ];
+        for (name, value, distribution) in checks {
+            check_low(name, value, distribution, sigma, score, reasons);
         }
     }
+    check_high(
+        "comment-ratio",
+        region.expressivity.comment_to_code_ratio,
+        distributions.comment_to_code_ratio,
+        sigma,
+        score,
+        reasons,
+    );
+}
+
+fn rank_hotspots(hotspots: &mut [Hotspot]) {
     hotspots.sort_by(|a, b| b.score.total_cmp(&a.score).then(a.path.cmp(&b.path)));
     for (idx, hotspot) in hotspots.iter_mut().enumerate() {
         hotspot.rank = idx + 1;
     }
-    hotspots
 }
 
 fn check_high(

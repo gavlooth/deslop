@@ -1214,40 +1214,58 @@ fn default_native_mutant_runner(
     context: NativeMutationContext<'_>,
 ) -> NativeMutantAction {
     let detail = NativeMutantDetail::from(&job);
-    match parse_check_passes(context.source.lang, &job.mutant.mutated_source) {
-        Ok(false) => {
-            return NativeMutantAction::Outcome(NativeMutantOutcome {
-                detail,
-                status: NativeMutantStatus::Unviable,
-            });
-        }
-        Ok(true) => {}
-        Err(err) => {
-            return NativeMutantAction::Error(NativeMutantError {
-                id: job.id,
-                reason: format!("failed to parse mutant: {err}"),
-            });
-        }
+    if let Some(action) = native_mutant_parse_action(&job, context.source.lang, &detail) {
+        return action;
     }
-    let status = match run_mutant_check_cmd_on_temp_copy(
+    let status = match score_native_mutant(&job, context) {
+        Ok(status) => status,
+        Err(reason) => {
+            return NativeMutantAction::Error(NativeMutantError { id: job.id, reason });
+        }
+    };
+    NativeMutantAction::Outcome(NativeMutantOutcome { detail, status })
+}
+
+fn native_mutant_parse_action(
+    job: &NativeMutantJob,
+    lang: Lang,
+    detail: &NativeMutantDetail,
+) -> Option<NativeMutantAction> {
+    match parse_check_passes(lang, &job.mutant.mutated_source) {
+        Ok(false) => Some(NativeMutantAction::Outcome(NativeMutantOutcome {
+            detail: detail.clone(),
+            status: NativeMutantStatus::Unviable,
+        })),
+        Ok(true) => None,
+        Err(err) => Some(NativeMutantAction::Error(NativeMutantError {
+            id: job.id,
+            reason: format!("failed to parse mutant: {err}"),
+        })),
+    }
+}
+
+fn score_native_mutant(
+    job: &NativeMutantJob,
+    context: NativeMutationContext<'_>,
+) -> std::result::Result<NativeMutantStatus, String> {
+    run_mutant_check_cmd_on_temp_copy(
         context.root,
         context.source,
         &job.mutant.mutated_source,
         context.command,
         context.timeout,
         job.id,
-    ) {
-        Ok(MutantCheckOutcome::Survived) => NativeMutantStatus::Survived,
-        Ok(MutantCheckOutcome::Killed) => NativeMutantStatus::Killed,
-        Ok(MutantCheckOutcome::TimedOut) => NativeMutantStatus::TimedOut,
-        Err(err) => {
-            return NativeMutantAction::Error(NativeMutantError {
-                id: job.id,
-                reason: format!("failed to score mutant: {err}"),
-            });
-        }
-    };
-    NativeMutantAction::Outcome(NativeMutantOutcome { detail, status })
+    )
+    .map(native_mutant_status)
+    .map_err(|err| format!("failed to score mutant: {err}"))
+}
+
+fn native_mutant_status(outcome: MutantCheckOutcome) -> NativeMutantStatus {
+    match outcome {
+        MutantCheckOutcome::Survived => NativeMutantStatus::Survived,
+        MutantCheckOutcome::Killed => NativeMutantStatus::Killed,
+        MutantCheckOutcome::TimedOut => NativeMutantStatus::TimedOut,
+    }
 }
 
 impl From<&NativeMutantJob> for NativeMutantDetail {
@@ -1585,8 +1603,7 @@ fn cosmic_ray_config(root: &Path) -> Option<PathBuf> {
     .find(|path| path.exists())
 }
 
-fn dump_sqlite_to_json(path: &Path) -> std::result::Result<String, String> {
-    const SCRIPT: &str = r#"
+const COSMIC_RAY_SQLITE_DUMP_SCRIPT: &str = r#"
 import json
 import sqlite3
 import sys
@@ -1616,9 +1633,11 @@ for (table,) in db.execute("select name from sqlite_master where type='table'"):
         rows.append(item)
 print(json.dumps({"cosmic_ray_sqlite": rows}, default=str))
 "#;
+
+fn dump_sqlite_to_json(path: &Path) -> std::result::Result<String, String> {
     let output = Command::new("python3")
         .arg("-c")
-        .arg(SCRIPT)
+        .arg(COSMIC_RAY_SQLITE_DUMP_SCRIPT)
         .arg(path)
         .output()
         .map_err(|err| format!("failed to inspect cosmic-ray sqlite with python3: {err}"))?;
@@ -1928,14 +1947,7 @@ impl RustCargoLlvmCovProvider {
                 Err(reason) => Err(reason),
             });
         }
-        match self.lcov.as_ref().expect("coverage initialized") {
-            Ok(coverage) => Ok(coverage),
-            Err(reason) => Err(CoverageAssessment {
-                status: CoverageStatus::Unknown,
-                reason: Some(reason.to_owned()),
-                covered_lines: None,
-            }),
-        }
+        cached_coverage_assessment(&self.lcov)
     }
 
     fn load_lcov(&self, root: &Path) -> std::result::Result<LcovCoverage, String> {
@@ -1986,39 +1998,49 @@ impl CoverageProvider for RustCargoLlvmCovProvider {
             Err(assessment) => return Ok(assessment),
         };
         let relative = relative_to_root(request.root, &request.source.path)?;
-        Ok(
-            match coverage.region_status(
+        let region = &request.work_order.region;
+        let status = coverage.region_status(
+            &request.source.path,
+            &relative,
+            region.start_line,
+            region.end_line,
+        );
+        Ok(coverage_assessment(provider, status, || {
+            coverage.covered_lines_for_region(
                 &request.source.path,
                 &relative,
-                request.work_order.region.start_line,
-                request.work_order.region.end_line,
-            ) {
-                CoverageStatus::Covered => CoverageAssessment {
-                    status: CoverageStatus::Covered,
-                    reason: Some(format!("coverage provider {provider} exercised region")),
-                    covered_lines: Some(coverage.covered_lines_for_region(
-                        &request.source.path,
-                        &relative,
-                        request.work_order.region.start_line,
-                        request.work_order.region.end_line,
-                    )),
-                },
-                CoverageStatus::Uncovered => CoverageAssessment {
-                    status: CoverageStatus::Uncovered,
-                    reason: Some(format!(
-                        "coverage provider {provider} did not exercise region"
-                    )),
-                    covered_lines: Some(BTreeSet::new()),
-                },
-                CoverageStatus::Unknown => CoverageAssessment {
-                    status: CoverageStatus::Unknown,
-                    reason: Some(format!(
-                        "coverage provider {provider} had no executable lines for region"
-                    )),
-                    covered_lines: None,
-                },
-            },
-        )
+                region.start_line,
+                region.end_line,
+            )
+        }))
+    }
+}
+
+fn coverage_assessment(
+    provider: &str,
+    status: CoverageStatus,
+    covered_lines: impl FnOnce() -> BTreeSet<usize>,
+) -> CoverageAssessment {
+    match status {
+        CoverageStatus::Covered => CoverageAssessment {
+            status: CoverageStatus::Covered,
+            reason: Some(format!("coverage provider {provider} exercised region")),
+            covered_lines: Some(covered_lines()),
+        },
+        CoverageStatus::Uncovered => CoverageAssessment {
+            status: CoverageStatus::Uncovered,
+            reason: Some(format!(
+                "coverage provider {provider} did not exercise region"
+            )),
+            covered_lines: Some(BTreeSet::new()),
+        },
+        CoverageStatus::Unknown => CoverageAssessment {
+            status: CoverageStatus::Unknown,
+            reason: Some(format!(
+                "coverage provider {provider} had no executable lines for region"
+            )),
+            covered_lines: None,
+        },
     }
 }
 
@@ -2061,14 +2083,7 @@ impl ClojureCloverageProvider {
                 Err(reason) => Err(reason),
             });
         }
-        match self.coverage.as_ref().expect("coverage initialized") {
-            Ok(coverage) => Ok(coverage),
-            Err(reason) => Err(CoverageAssessment {
-                status: CoverageStatus::Unknown,
-                reason: Some(reason.to_owned()),
-                covered_lines: None,
-            }),
-        }
+        cached_coverage_assessment(&self.coverage)
     }
 
     fn load_coverage(&self, root: &Path) -> std::result::Result<LineCoverage, String> {
@@ -2153,14 +2168,7 @@ impl JuliaCoverageProvider {
                 Err(reason) => Err(reason),
             });
         }
-        match self.coverage.as_ref().expect("coverage initialized") {
-            Ok(coverage) => Ok(coverage),
-            Err(reason) => Err(CoverageAssessment {
-                status: CoverageStatus::Unknown,
-                reason: Some(reason.to_owned()),
-                covered_lines: None,
-            }),
-        }
+        cached_coverage_assessment(&self.coverage)
     }
 
     fn load_coverage(&self, root: &Path) -> std::result::Result<LineCoverage, String> {
@@ -2208,6 +2216,19 @@ struct PythonCoveragePyProvider {
     coverage: Option<Result<LineCoverage, String>>,
 }
 
+fn cached_coverage_assessment<T>(
+    cache: &Option<Result<T, String>>,
+) -> Result<&T, CoverageAssessment> {
+    match cache.as_ref().expect("coverage initialized") {
+        Ok(coverage) => Ok(coverage),
+        Err(reason) => Err(CoverageAssessment {
+            status: CoverageStatus::Unknown,
+            reason: Some(reason.to_owned()),
+            covered_lines: None,
+        }),
+    }
+}
+
 impl PythonCoveragePyProvider {
     fn new(config: &CoverageConfig) -> Self {
         let mode = match config {
@@ -2242,14 +2263,7 @@ impl PythonCoveragePyProvider {
                 Err(reason) => Err(reason),
             });
         }
-        match self.coverage.as_ref().expect("coverage initialized") {
-            Ok(coverage) => Ok(coverage),
-            Err(reason) => Err(CoverageAssessment {
-                status: CoverageStatus::Unknown,
-                reason: Some(reason.to_owned()),
-                covered_lines: None,
-            }),
-        }
+        cached_coverage_assessment(&self.coverage)
     }
 
     fn load_coverage(&self, root: &Path) -> std::result::Result<LineCoverage, String> {
@@ -2294,39 +2308,21 @@ fn assess_line_coverage(
     request: CoverageRequest<'_>,
 ) -> Result<CoverageAssessment> {
     let relative = relative_to_root(request.root, &request.source.path)?;
-    Ok(
-        match coverage.region_status(
+    let region = &request.work_order.region;
+    let status = coverage.region_status(
+        &request.source.path,
+        &relative,
+        region.start_line,
+        region.end_line,
+    );
+    Ok(coverage_assessment(provider, status, || {
+        coverage.covered_lines_for_region(
             &request.source.path,
             &relative,
-            request.work_order.region.start_line,
-            request.work_order.region.end_line,
-        ) {
-            CoverageStatus::Covered => CoverageAssessment {
-                status: CoverageStatus::Covered,
-                reason: Some(format!("coverage provider {provider} exercised region")),
-                covered_lines: Some(coverage.covered_lines_for_region(
-                    &request.source.path,
-                    &relative,
-                    request.work_order.region.start_line,
-                    request.work_order.region.end_line,
-                )),
-            },
-            CoverageStatus::Uncovered => CoverageAssessment {
-                status: CoverageStatus::Uncovered,
-                reason: Some(format!(
-                    "coverage provider {provider} did not exercise region"
-                )),
-                covered_lines: Some(BTreeSet::new()),
-            },
-            CoverageStatus::Unknown => CoverageAssessment {
-                status: CoverageStatus::Unknown,
-                reason: Some(format!(
-                    "coverage provider {provider} had no executable lines for region"
-                )),
-                covered_lines: None,
-            },
-        },
-    )
+            region.start_line,
+            region.end_line,
+        )
+    }))
 }
 
 fn cargo_llvm_cov_available(command: &str, root: &Path) -> bool {
@@ -3471,6 +3467,13 @@ mod tests {
         work_order: WorkOrder,
     }
 
+    struct ApplyGateFixture {
+        temp: tempfile::TempDir,
+        rust_file: PathBuf,
+        clj_file: PathBuf,
+        work_orders: Vec<WorkOrder>,
+    }
+
     #[derive(Debug, Clone, Copy)]
     enum FixtureKind {
         Clojure,
@@ -3509,6 +3512,30 @@ mod tests {
             .into_values()
             .next()
             .expect("workorder")
+    }
+
+    fn all_work_orders(root: &Path) -> Vec<WorkOrder> {
+        current_work_orders(root)
+            .expect("workorders")
+            .into_values()
+            .collect()
+    }
+
+    fn work_order_containing<'a>(work_orders: &'a [WorkOrder], text: &str) -> &'a WorkOrder {
+        work_orders
+            .iter()
+            .find(|work_order| work_order.region.text.contains(text))
+            .expect("matching workorder")
+    }
+
+    fn work_order_with_path_suffix<'a>(
+        work_orders: &'a [WorkOrder],
+        suffix: &str,
+    ) -> &'a WorkOrder {
+        work_orders
+            .iter()
+            .find(|work_order| work_order.path.ends_with(suffix))
+            .expect("matching workorder path")
     }
 
     fn patch_for(work_order: &WorkOrder, replacement: &str) -> Patch {
@@ -3680,19 +3707,36 @@ mod tests {
     }
 
     fn manual_work_order(source: &SourceFile, line: usize) -> WorkOrder {
+        rewrite_work_order_for_region(source, format!("wo_{}_{}", source.lang, line), line, line)
+    }
+
+    fn rewrite_work_order_for_region(
+        source: &SourceFile,
+        id: impl Into<String>,
+        start_line: usize,
+        end_line: usize,
+    ) -> WorkOrder {
         WorkOrder {
             schema: "deslop.workorder/1".to_string(),
             kind: WorkOrderKind::RewriteRegion,
-            id: format!("wo_{}_{}", source.lang, line),
+            id: id.into(),
             path: source.path.to_path_buf(),
             region: Region {
-                start_line: line,
-                end_line: line,
-                text: source.region_text(line, line),
+                start_line,
+                end_line,
+                text: source.region_text(start_line, end_line),
             },
             findings: Vec::new(),
             instruction: "test".to_string(),
             contract: deslop_protocol::Contract::default(),
+        }
+    }
+
+    fn covered_lines_assessment(lines: impl IntoIterator<Item = usize>) -> CoverageAssessment {
+        CoverageAssessment {
+            status: CoverageStatus::Covered,
+            reason: None,
+            covered_lines: Some(lines.into_iter().collect()),
         }
     }
 
@@ -3750,6 +3794,138 @@ mod tests {
             ),
             VerificationVerdict::UntestedRisky
         );
+    }
+
+    fn assert_cloverage_command(output_dir: &Path) {
+        assert_eq!(
+            cloverage_command("lein", output_dir),
+            CoverageToolCommand::new(
+                "lein",
+                [
+                    "cloverage".to_string(),
+                    "--json".to_string(),
+                    "--output".to_string(),
+                    output_dir.display().to_string(),
+                ],
+            )
+        );
+        assert_eq!(
+            cloverage_command("custom-lein", output_dir).program,
+            "custom-lein"
+        );
+    }
+
+    fn assert_julia_coverage_command() {
+        assert_eq!(
+            julia_coverage_command("julia"),
+            CoverageToolCommand::new(
+                "julia",
+                [
+                    "--startup-file=no".to_string(),
+                    "--code-coverage=user".to_string(),
+                    "-e".to_string(),
+                    "using Pkg; Pkg.test()".to_string(),
+                ],
+            )
+        );
+        assert_eq!(
+            julia_coverage_command("custom-julia").program,
+            "custom-julia"
+        );
+    }
+
+    fn assert_coverage_py_commands(output_path: &Path) {
+        assert_eq!(
+            coverage_py_run_command("coverage"),
+            CoverageToolCommand::new(
+                "coverage",
+                [
+                    "run".to_string(),
+                    "-m".to_string(),
+                    "unittest".to_string(),
+                    "discover".to_string(),
+                ],
+            )
+        );
+        assert_eq!(
+            coverage_py_json_command("coverage", output_path),
+            CoverageToolCommand::new(
+                "coverage",
+                [
+                    "json".to_string(),
+                    "-o".to_string(),
+                    output_path.display().to_string(),
+                ],
+            )
+        );
+        assert_eq!(
+            coverage_py_run_command("custom-coverage").program,
+            "custom-coverage"
+        );
+    }
+
+    fn assert_result_verdict_reason(
+        report: &VerifyReport,
+        index: usize,
+        verdict: VerificationVerdict,
+        reason_fragment: &str,
+    ) {
+        assert_eq!(report.results[index].verdict, verdict);
+        assert!(
+            report.results[index]
+                .reasons
+                .iter()
+                .any(|reason| reason.contains(reason_fragment)),
+            "{:#?}",
+            report.results[index].reasons
+        );
+    }
+
+    fn assess_tree_sitter_mutation(
+        root: &Path,
+        source: &SourceFile,
+        work_order: &WorkOrder,
+        coverage: &CoverageAssessment,
+        check_cmd: &str,
+    ) -> MutationAssessment {
+        TreeSitterMutationProbe
+            .assess(MutationRequest {
+                root,
+                source,
+                work_order,
+                check_cmd: Some(check_cmd),
+                coverage,
+                timeout: Duration::from_secs(1),
+                jobs: 1,
+            })
+            .expect("mutation")
+    }
+
+    fn apply_gate_fixture() -> ApplyGateFixture {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let rust_file = write_rust_fixture(temp.path(), "fn f() -> i32 {\n    return 1;\n}\n");
+        let clj_file = write_fixture(
+            temp.path(),
+            "(= (count xs) 0)\n(assert ok) ; initialize x\n",
+        );
+        let work_orders = all_work_orders(temp.path());
+        assert_eq!(work_orders.len(), 3);
+        ApplyGateFixture {
+            temp,
+            rust_file,
+            clj_file,
+            work_orders,
+        }
+    }
+
+    fn assert_apply_gate_outputs(report: &ApplyReport, rust_file: &Path, clj_file: &Path) {
+        assert_eq!(report.verified.passed_count(), 1);
+        assert_eq!(report.verified.failed_count(), 1);
+        let rust_text = fs::read_to_string(rust_file).expect("read rust");
+        let clj_text = fs::read_to_string(clj_file).expect("read clj");
+        assert!(rust_text.contains("    1"));
+        assert!(clj_text.contains("(assert ok)"));
+        assert!(PathBuf::from(format!("{}.deslop.bak", rust_file.display())).exists());
     }
 
     fn test_options(
@@ -3907,68 +4083,10 @@ mod tests {
     #[test]
     fn non_rust_coverage_auto_commands_are_constructed_deterministically() {
         let output_dir = Path::new("/tmp/deslop-cloverage");
-        assert_eq!(
-            cloverage_command("lein", output_dir),
-            CoverageToolCommand::new(
-                "lein",
-                [
-                    "cloverage".to_string(),
-                    "--json".to_string(),
-                    "--output".to_string(),
-                    output_dir.display().to_string(),
-                ],
-            )
-        );
-        assert_eq!(
-            cloverage_command("custom-lein", output_dir).program,
-            "custom-lein"
-        );
-
-        assert_eq!(
-            julia_coverage_command("julia"),
-            CoverageToolCommand::new(
-                "julia",
-                [
-                    "--startup-file=no".to_string(),
-                    "--code-coverage=user".to_string(),
-                    "-e".to_string(),
-                    "using Pkg; Pkg.test()".to_string(),
-                ],
-            )
-        );
-        assert_eq!(
-            julia_coverage_command("custom-julia").program,
-            "custom-julia"
-        );
-
         let output_path = Path::new("/tmp/deslop-coverage.json");
-        assert_eq!(
-            coverage_py_run_command("coverage"),
-            CoverageToolCommand::new(
-                "coverage",
-                [
-                    "run".to_string(),
-                    "-m".to_string(),
-                    "unittest".to_string(),
-                    "discover".to_string(),
-                ],
-            )
-        );
-        assert_eq!(
-            coverage_py_json_command("coverage", output_path),
-            CoverageToolCommand::new(
-                "coverage",
-                [
-                    "json".to_string(),
-                    "-o".to_string(),
-                    output_path.display().to_string(),
-                ],
-            )
-        );
-        assert_eq!(
-            coverage_py_run_command("custom-coverage").program,
-            "custom-coverage"
-        );
+        assert_cloverage_command(output_dir);
+        assert_julia_coverage_command();
+        assert_coverage_py_commands(output_path);
     }
 
     #[test]
@@ -4194,18 +4312,9 @@ mod tests {
             temp.path(),
             "fn missed() -> i32 {\n    return 1;\n}\nfn caught() -> i32 {\n    return 2;\n}\n",
         );
-        let work_orders: Vec<_> = current_work_orders(temp.path())
-            .expect("workorders")
-            .into_values()
-            .collect();
-        let missed = work_orders
-            .iter()
-            .find(|work_order| work_order.region.text.contains("missed"))
-            .expect("missed workorder");
-        let caught = work_orders
-            .iter()
-            .find(|work_order| work_order.region.text.contains("caught"))
-            .expect("caught workorder");
+        let work_orders = all_work_orders(temp.path());
+        let missed = work_order_containing(&work_orders, "missed");
+        let caught = work_order_containing(&work_orders, "caught");
         let outcomes = cargo_mutants_outcomes_fixture(temp.path(), &rust_file);
 
         let report = verify_patches(
@@ -4221,23 +4330,17 @@ mod tests {
         )
         .expect("verify");
 
-        assert_eq!(
-            report.results[0].verdict,
-            VerificationVerdict::DeadCandidate
+        assert_result_verdict_reason(
+            &report,
+            0,
+            VerificationVerdict::DeadCandidate,
+            "surviving mutant",
         );
-        assert!(
-            report.results[0].reasons[1].contains("surviving mutant"),
-            "{:#?}",
-            report.results[0].reasons
-        );
-        assert_eq!(
-            report.results[1].verdict,
-            VerificationVerdict::CoverageUnknown
-        );
-        assert!(
-            report.results[1].reasons[1].contains("no surviving mutant"),
-            "{:#?}",
-            report.results[1].reasons
+        assert_result_verdict_reason(
+            &report,
+            1,
+            VerificationVerdict::CoverageUnknown,
+            "no surviving mutant",
         );
     }
 
@@ -4543,37 +4646,16 @@ mod tests {
             "fn f(a: i32, b: i32) -> i32 {\n    let _ = a < b;\n    a + b\n}\n",
         );
         let source = SourceFile::read(&file).expect("source");
-        let work_order = WorkOrder {
-            schema: "deslop.workorder/1".to_string(),
-            kind: WorkOrderKind::RewriteRegion,
-            id: "wo_native_mutation_coverage".to_string(),
-            path: source.path.to_path_buf(),
-            region: Region {
-                start_line: 1,
-                end_line: 4,
-                text: source.region_text(1, 4),
-            },
-            findings: Vec::new(),
-            instruction: "test".to_string(),
-            contract: deslop_protocol::Contract::default(),
-        };
-        let coverage = CoverageAssessment {
-            status: CoverageStatus::Covered,
-            reason: None,
-            covered_lines: Some(BTreeSet::from([2])),
-        };
-        let mut probe = TreeSitterMutationProbe;
-        let assessment = probe
-            .assess(MutationRequest {
-                root: temp.path(),
-                source: &source,
-                work_order: &work_order,
-                check_cmd: Some("! grep -q '<=' sample.rs 2>/dev/null"),
-                coverage: &coverage,
-                timeout: Duration::from_secs(1),
-                jobs: 1,
-            })
-            .expect("mutation");
+        let work_order =
+            rewrite_work_order_for_region(&source, "wo_native_mutation_coverage", 1, 4);
+        let coverage = covered_lines_assessment([2]);
+        let assessment = assess_tree_sitter_mutation(
+            temp.path(),
+            &source,
+            &work_order,
+            &coverage,
+            "! grep -q '<=' sample.rs 2>/dev/null",
+        );
 
         assert_eq!(assessment.status, MutationStatus::NoSurvivor);
         assert!(
@@ -4681,26 +4763,16 @@ mod tests {
 
     #[test]
     fn apply_writes_only_removable_patches_by_default() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let rust_file = write_rust_fixture(temp.path(), "fn f() -> i32 {\n    return 1;\n}\n");
-        let clj_file = write_fixture(
-            temp.path(),
-            "(= (count xs) 0)\n(assert ok) ; initialize x\n",
+        let fixture = apply_gate_fixture();
+        let passing = work_order_with_path_suffix(&fixture.work_orders, "sample.rs");
+        let failing = work_order_containing(&fixture.work_orders, "assert");
+        let coverage = lcov_fixture(
+            fixture.temp.path(),
+            "coverage.lcov",
+            &fixture.rust_file,
+            2,
+            1,
         );
-        let work_orders: Vec<_> = current_work_orders(temp.path())
-            .expect("workorders")
-            .into_values()
-            .collect();
-        assert_eq!(work_orders.len(), 3);
-        let passing = work_orders
-            .iter()
-            .find(|work_order| work_order.path.ends_with("sample.rs"))
-            .expect("rust workorder");
-        let failing = work_orders
-            .iter()
-            .find(|work_order| work_order.region.text.contains("assert"))
-            .expect("assert workorder");
-        let coverage = lcov_fixture(temp.path(), "coverage.lcov", &rust_file, 2, 1);
         let patches = vec![
             patch_for(passing, "fn f() -> i32 {\n    1\n}\n"),
             patch_for(failing, "\n"),
@@ -4708,19 +4780,13 @@ mod tests {
         let report = apply_patches(
             &patches,
             &test_options(
-                temp.path(),
+                fixture.temp.path(),
                 Some("true"),
                 CoverageConfig::LcovFile(coverage),
             ),
             true,
         )
         .expect("apply");
-        assert_eq!(report.verified.passed_count(), 1);
-        assert_eq!(report.verified.failed_count(), 1);
-        let rust_text = fs::read_to_string(&rust_file).expect("read rust");
-        let clj_text = fs::read_to_string(&clj_file).expect("read clj");
-        assert!(rust_text.contains("    1"));
-        assert!(clj_text.contains("(assert ok)"));
-        assert!(PathBuf::from(format!("{}.deslop.bak", rust_file.display())).exists());
+        assert_apply_gate_outputs(&report, &fixture.rust_file, &fixture.clj_file);
     }
 }

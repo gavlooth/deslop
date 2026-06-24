@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::scan_file;
 use deslop_core::{FileReport, Finding};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_EPSILON: f64 = 0.0001;
@@ -96,10 +97,7 @@ pub fn run_eval(corpus_root: &Path) -> Result<EvalReport> {
 
 pub fn read_manifest(corpus_root: &Path) -> Result<EvalManifest> {
     let path = corpus_root.join("manifest.json");
-    let text =
-        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
-    let manifest: EvalManifest = serde_json::from_str(&text)
-        .with_context(|| format!("failed to parse {}", path.display()))?;
+    let manifest: EvalManifest = read_json_file(&path)?;
     if manifest.schema != "deslop.eval-manifest/1" {
         bail!("unsupported eval manifest schema `{}`", manifest.schema);
     }
@@ -108,10 +106,7 @@ pub fn read_manifest(corpus_root: &Path) -> Result<EvalManifest> {
 
 pub fn read_baseline(corpus_root: &Path) -> Result<EvalBaseline> {
     let path = corpus_root.join("baseline.json");
-    let text =
-        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
-    let baseline: EvalBaseline = serde_json::from_str(&text)
-        .with_context(|| format!("failed to parse {}", path.display()))?;
+    let baseline: EvalBaseline = read_json_file(&path)?;
     if baseline.schema != "deslop.eval-baseline/1" {
         bail!("unsupported eval baseline schema `{}`", baseline.schema);
     }
@@ -194,59 +189,91 @@ pub fn render_eval_text(report: &EvalReport) -> String {
     out
 }
 
+pub fn append_false_positive_feedback(
+    corpus_root: &Path,
+    report: &FileReport,
+    finding: &Finding,
+) -> Result<PathBuf> {
+    let mut manifest = read_manifest(corpus_root)?;
+    let feedback_dir = corpus_root.join("feedback");
+    fs::create_dir_all(&feedback_dir)
+        .with_context(|| format!("failed to create {}", feedback_dir.display()))?;
+    let extension = report
+        .path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("txt");
+    let relative_case_path = PathBuf::from("feedback").join(format!(
+        "{}.{}",
+        safe_feedback_filename(&finding.fingerprint),
+        extension
+    ));
+    let absolute_case_path = corpus_root.join(&relative_case_path);
+    if !absolute_case_path.exists() {
+        fs::copy(&report.path, &absolute_case_path).with_context(|| {
+            format!(
+                "failed to copy {} to {}",
+                report.path.display(),
+                absolute_case_path.display()
+            )
+        })?;
+    }
+    if !manifest
+        .cases
+        .iter()
+        .any(|case| case.path == relative_case_path)
+    {
+        manifest.cases.push(CorpusCase {
+            path: relative_case_path.clone(),
+            label: QualityLabel::Clean,
+            language: report.lang.to_string(),
+            expectations: vec![RuleExpectation {
+                rule: finding.rule.to_owned(),
+                should_fire: false,
+                start_line: Some(finding.span.start_line),
+                end_line: Some(finding.span.end_line),
+                note: Some(format!(
+                    "false-positive feedback for fingerprint {}",
+                    finding.fingerprint
+                )),
+            }],
+        });
+        write_manifest(corpus_root, &manifest)?;
+    }
+    Ok(relative_case_path)
+}
+
+fn write_manifest(corpus_root: &Path, manifest: &EvalManifest) -> Result<()> {
+    let path = corpus_root.join("manifest.json");
+    let rendered = serde_json::to_string_pretty(manifest)?;
+    fs::write(&path, format!("{rendered}\n"))
+        .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn safe_feedback_filename(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 fn run_eval_with_manifest(corpus_root: &Path, manifest: &EvalManifest) -> Result<EvalReport> {
     let mut rule_counts = BTreeMap::<String, RuleScore>::new();
-    let mut summary = CorpusSummary {
-        cases: manifest.cases.len(),
-        clean_cases: 0,
-        sloppy_cases: 0,
-        languages: BTreeMap::new(),
-        expectations_by_rule: BTreeMap::new(),
-    };
+    let mut summary = empty_corpus_summary(manifest);
 
     for case in &manifest.cases {
-        match case.label {
-            QualityLabel::Clean => summary.clean_cases += 1,
-            QualityLabel::Sloppy => summary.sloppy_cases += 1,
-        }
-        *summary
-            .languages
-            .entry(case.language.to_owned())
-            .or_default() += 1;
-        for expectation in &case.expectations {
-            let counts = summary
-                .expectations_by_rule
-                .entry(expectation.rule.to_owned())
-                .or_default();
-            if expectation.should_fire {
-                counts.should_fire += 1;
-            } else {
-                counts.should_not_fire += 1;
-            }
-            rule_counts
-                .entry(expectation.rule.to_owned())
-                .or_insert_with(|| empty_score(expectation.rule.to_owned()));
-        }
-
-        let report = scan_file(&corpus_root.join(&case.path))
-            .with_context(|| format!("failed to scan corpus case {}", case.path.display()))?;
-        score_case(case, &report, &mut rule_counts);
+        record_case_summary(case, &mut summary, &mut rule_counts);
+        scan_and_score_case(corpus_root, case, &mut rule_counts)?;
     }
 
-    let mut rules = rule_counts.into_values().collect::<Vec<_>>();
-    for score in &mut rules {
-        finalize_score(score);
-    }
-    let mut overall = RuleScore {
-        rule: "overall".to_string(),
-        true_positives: rules.iter().map(|score| score.true_positives).sum(),
-        false_positives: rules.iter().map(|score| score.false_positives).sum(),
-        false_negatives: rules.iter().map(|score| score.false_negatives).sum(),
-        precision: 0.0,
-        recall: 0.0,
-        f1: 0.0,
-    };
-    finalize_score(&mut overall);
+    let rules = finalized_rule_scores(rule_counts);
+    let overall = overall_score(&rules);
 
     Ok(EvalReport {
         schema: "deslop.eval/1".to_string(),
@@ -256,6 +283,63 @@ fn run_eval_with_manifest(corpus_root: &Path, manifest: &EvalManifest) -> Result
     })
 }
 
+fn read_json_file<T>(path: &Path) -> Result<T>
+where
+    T: DeserializeOwned,
+{
+    let text =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+fn empty_corpus_summary(manifest: &EvalManifest) -> CorpusSummary {
+    CorpusSummary {
+        cases: manifest.cases.len(),
+        clean_cases: 0,
+        sloppy_cases: 0,
+        languages: BTreeMap::new(),
+        expectations_by_rule: BTreeMap::new(),
+    }
+}
+
+fn record_case_summary(
+    case: &CorpusCase,
+    summary: &mut CorpusSummary,
+    rule_counts: &mut BTreeMap<String, RuleScore>,
+) {
+    match case.label {
+        QualityLabel::Clean => summary.clean_cases += 1,
+        QualityLabel::Sloppy => summary.sloppy_cases += 1,
+    }
+    *summary
+        .languages
+        .entry(case.language.to_owned())
+        .or_default() += 1;
+    for expectation in &case.expectations {
+        let counts = summary
+            .expectations_by_rule
+            .entry(expectation.rule.to_owned())
+            .or_default();
+        if expectation.should_fire {
+            counts.should_fire += 1;
+        } else {
+            counts.should_not_fire += 1;
+        }
+        ensure_rule_score(rule_counts, &expectation.rule);
+    }
+}
+
+fn scan_and_score_case(
+    corpus_root: &Path,
+    case: &CorpusCase,
+    rule_counts: &mut BTreeMap<String, RuleScore>,
+) -> Result<()> {
+    let report = scan_file(&corpus_root.join(&case.path))
+        .with_context(|| format!("failed to scan corpus case {}", case.path.display()))?;
+    score_case(case, &report, rule_counts);
+    Ok(())
+}
+
 fn score_case(
     case: &CorpusCase,
     report: &FileReport,
@@ -263,41 +347,60 @@ fn score_case(
 ) {
     let mut matched_findings = BTreeSet::new();
     for expectation in &case.expectations {
-        let match_idx = report
-            .findings
-            .iter()
-            .enumerate()
-            .find(|(idx, finding)| {
-                !matched_findings.contains(idx)
-                    && finding.rule == expectation.rule
-                    && expectation_matches_finding(expectation, finding)
-            })
-            .map(|(idx, _)| idx);
-        let score = rule_counts
-            .entry(expectation.rule.to_owned())
-            .or_insert_with(|| empty_score(expectation.rule.to_owned()));
-        match (expectation.should_fire, match_idx) {
-            (true, Some(idx)) => {
-                score.true_positives += 1;
-                matched_findings.insert(idx);
-            }
-            (true, None) => score.false_negatives += 1,
-            (false, Some(idx)) => {
-                score.false_positives += 1;
-                matched_findings.insert(idx);
-            }
-            (false, None) => {}
-        }
+        let match_idx = find_matching_finding(expectation, report, &matched_findings);
+        record_expectation_result(expectation, match_idx, rule_counts, &mut matched_findings);
     }
+    record_unmatched_findings(report, rule_counts, &matched_findings);
+}
 
+fn find_matching_finding(
+    expectation: &RuleExpectation,
+    report: &FileReport,
+    matched_findings: &BTreeSet<usize>,
+) -> Option<usize> {
+    report
+        .findings
+        .iter()
+        .enumerate()
+        .find(|(idx, finding)| {
+            !matched_findings.contains(idx)
+                && finding.rule == expectation.rule
+                && expectation_matches_finding(expectation, finding)
+        })
+        .map(|(idx, _)| idx)
+}
+
+fn record_expectation_result(
+    expectation: &RuleExpectation,
+    match_idx: Option<usize>,
+    rule_counts: &mut BTreeMap<String, RuleScore>,
+    matched_findings: &mut BTreeSet<usize>,
+) {
+    let score = ensure_rule_score(rule_counts, &expectation.rule);
+    match (expectation.should_fire, match_idx) {
+        (true, Some(idx)) => {
+            score.true_positives += 1;
+            matched_findings.insert(idx);
+        }
+        (true, None) => score.false_negatives += 1,
+        (false, Some(idx)) => {
+            score.false_positives += 1;
+            matched_findings.insert(idx);
+        }
+        (false, None) => {}
+    }
+}
+
+fn record_unmatched_findings(
+    report: &FileReport,
+    rule_counts: &mut BTreeMap<String, RuleScore>,
+    matched_findings: &BTreeSet<usize>,
+) {
     for (idx, finding) in report.findings.iter().enumerate() {
         if matched_findings.contains(&idx) {
             continue;
         }
-        rule_counts
-            .entry(finding.rule.to_owned())
-            .or_insert_with(|| empty_score(finding.rule.to_owned()))
-            .false_positives += 1;
+        ensure_rule_score(rule_counts, &finding.rule).false_positives += 1;
     }
 }
 
@@ -314,6 +417,37 @@ fn empty_score(rule: String) -> RuleScore {
         rule,
         ..RuleScore::default()
     }
+}
+
+fn ensure_rule_score<'a>(
+    rule_counts: &'a mut BTreeMap<String, RuleScore>,
+    rule: &str,
+) -> &'a mut RuleScore {
+    rule_counts
+        .entry(rule.to_owned())
+        .or_insert_with(|| empty_score(rule.to_owned()))
+}
+
+fn finalized_rule_scores(rule_counts: BTreeMap<String, RuleScore>) -> Vec<RuleScore> {
+    let mut rules = rule_counts.into_values().collect::<Vec<_>>();
+    for score in &mut rules {
+        finalize_score(score);
+    }
+    rules
+}
+
+fn overall_score(rules: &[RuleScore]) -> RuleScore {
+    let mut overall = RuleScore {
+        rule: "overall".to_string(),
+        true_positives: rules.iter().map(|score| score.true_positives).sum(),
+        false_positives: rules.iter().map(|score| score.false_positives).sum(),
+        false_negatives: rules.iter().map(|score| score.false_negatives).sum(),
+        precision: 0.0,
+        recall: 0.0,
+        f1: 0.0,
+    };
+    finalize_score(&mut overall);
+    overall
 }
 
 fn finalize_score(score: &mut RuleScore) {
@@ -367,5 +501,42 @@ mod tests {
         assert!(render_eval_text(&report).contains("precision"));
         let json = render_eval_json(&report).expect("json");
         assert!(json.contains("\"schema\": \"deslop.eval/1\""));
+    }
+
+    #[test]
+    fn appends_false_positive_feedback_case() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let corpus = temp.path();
+        fs::write(
+            corpus.join("manifest.json"),
+            r#"{"schema":"deslop.eval-manifest/1","cases":[]}"#,
+        )
+        .expect("manifest");
+        let source = corpus.join("sample.py");
+        fs::write(&source, "if value == None:\n    pass\n").expect("source");
+        let report = FileReport {
+            path: source,
+            lang: deslop_core::Lang::Python,
+            findings: Vec::new(),
+        };
+        let finding = Finding {
+            path: report.path.clone(),
+            span: deslop_core::Span::new(1, 1, 0, 17),
+            rule: "py-none-comparison".to_string(),
+            severity: deslop_core::Severity::Minor,
+            safety: deslop_core::SafetyClass::SafeWithPrecondition,
+            detected_by: deslop_core::DetectedBy::Idiom,
+            message: "message".to_string(),
+            suggestion: "suggestion".to_string(),
+            precondition: None,
+            edit: None,
+            fingerprint: "abc123".to_string(),
+        };
+        let case_path =
+            append_false_positive_feedback(corpus, &report, &finding).expect("append feedback");
+        assert_eq!(case_path, PathBuf::from("feedback/abc123.py"));
+        let manifest = read_manifest(corpus).expect("read manifest");
+        assert_eq!(manifest.cases.len(), 1);
+        assert!(!manifest.cases[0].expectations[0].should_fire);
     }
 }

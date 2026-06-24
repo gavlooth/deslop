@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use deslop_analyzer::scan_paths;
+use deslop_analyzer::{AnalyzerConfig, scan_paths_with_config};
 use deslop_parse::SourceFile;
 use deslop_protocol::{
     CharacterizationTest, Patch, WorkOrder, WorkOrderKind, work_orders_for_source,
@@ -49,6 +49,9 @@ pub struct SlimOptions {
     pub model: String,
     pub check_cmd: Option<String>,
     pub backup: bool,
+    /// Analyzer config (thresholds + suppression) used when auto mode scans paths itself.
+    /// Ignored when `workorders` provides a precomputed work-order file.
+    pub analyzer: AnalyzerConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -354,13 +357,63 @@ pub fn run_slim_with_progress(
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<SlimReport> {
     let work_orders = load_or_propose_work_orders(&options)?;
-    let total_rewrites = work_orders
+    emit_started_progress(&work_orders, progress);
+
+    let rewrite = rewrite_work_orders(client, &options, work_orders, progress)?;
+    let verification = verify_rewrites(client, &options, &rewrite.patches, progress)?;
+    let gating = gating_report(
+        &verification.verified,
+        options.apply,
+        options.allow_unverified,
+    );
+    let applied = apply_verified_patches(&options, &rewrite, &verification)?;
+    emit_outcome_progress(
+        &verification.verified,
+        options.apply,
+        options.allow_unverified,
+        progress,
+    );
+    Ok(finish_slim_report(
+        options,
+        rewrite,
+        verification,
+        gating,
+        applied,
+    ))
+}
+
+struct SlimRewriteRun {
+    skipped: Vec<SkippedWorkOrder>,
+    patches: Vec<Patch>,
+}
+
+struct SlimVerificationRun {
+    initial_verified: VerifyReport,
+    final_verify_options: VerifyOptions,
+    verified: VerifyReport,
+    characterization: Option<CharacterizationRun>,
+}
+
+fn rewrite_candidate_count(work_orders: &[WorkOrder]) -> usize {
+    work_orders
         .iter()
         .filter(|work_order| work_order.kind != WorkOrderKind::NeedsCharacterizationTest)
-        .count();
+        .count()
+}
+
+fn emit_started_progress(work_orders: &[WorkOrder], progress: &mut dyn FnMut(SlimProgress)) {
     progress(SlimProgress::Started {
-        work_orders: total_rewrites,
+        work_orders: rewrite_candidate_count(work_orders),
     });
+}
+
+fn rewrite_work_orders(
+    client: &impl LlmClient,
+    options: &SlimOptions,
+    work_orders: Vec<WorkOrder>,
+    progress: &mut dyn FnMut(SlimProgress),
+) -> Result<SlimRewriteRun> {
+    let total_rewrites = rewrite_candidate_count(&work_orders);
     let mut skipped = Vec::new();
     let mut patches = Vec::new();
     let mut rewrite_index = 0;
@@ -373,93 +426,173 @@ pub fn run_slim_with_progress(
             });
             continue;
         }
-        rewrite_index += 1;
-        progress(SlimProgress::Rewriting {
-            index: rewrite_index,
-            total: total_rewrites,
-            workorder_id: work_order.id.to_owned(),
-            path: work_order.path.to_owned(),
-            start_line: work_order.region.start_line,
-            end_line: work_order.region.end_line,
-        });
-        let prompt = build_prompt(&work_order);
-        let replacement = strip_code_fences(&client.rewrite(&prompt)?);
-        patches.push(Patch {
-            schema: "deslop.patch/1".to_string(),
-            workorder_id: work_order.id.to_owned(),
-            region_fingerprint: workorder_region_fingerprint(&work_order),
-            replacement,
-            by: format!("deslop-slim/{}", options.model),
-        });
-    }
 
-    let verify_options = verify_options(&options);
-    let initial_verified = verify_patches(&patches, &verify_options)?;
-    let characterization = if options.characterize {
-        Some(run_characterization_pass(
-            client,
-            &options,
-            &patches,
-            &verify_options,
-            &initial_verified,
-            progress,
-        )?)
-    } else {
-        None
-    };
+        rewrite_index += 1;
+        emit_rewrite_progress(rewrite_index, total_rewrites, &work_order, progress);
+        patches.push(rewrite_patch(client, options, &work_order)?);
+    }
+    Ok(SlimRewriteRun { skipped, patches })
+}
+
+fn emit_rewrite_progress(
+    index: usize,
+    total: usize,
+    work_order: &WorkOrder,
+    progress: &mut dyn FnMut(SlimProgress),
+) {
+    progress(SlimProgress::Rewriting {
+        index,
+        total,
+        workorder_id: work_order.id.to_owned(),
+        path: work_order.path.to_owned(),
+        start_line: work_order.region.start_line,
+        end_line: work_order.region.end_line,
+    });
+}
+
+fn rewrite_patch(
+    client: &impl LlmClient,
+    options: &SlimOptions,
+    work_order: &WorkOrder,
+) -> Result<Patch> {
+    let prompt = build_prompt(work_order);
+    let replacement = strip_code_fences(&client.rewrite(&prompt)?);
+    Ok(Patch {
+        schema: "deslop.patch/1".to_string(),
+        workorder_id: work_order.id.to_owned(),
+        region_fingerprint: workorder_region_fingerprint(work_order),
+        replacement,
+        by: format!("deslop-slim/{}", options.model),
+    })
+}
+
+fn verify_rewrites(
+    client: &impl LlmClient,
+    options: &SlimOptions,
+    patches: &[Patch],
+    progress: &mut dyn FnMut(SlimProgress),
+) -> Result<SlimVerificationRun> {
+    let verify_options = verify_options(options);
+    let initial_verified = verify_patches(patches, &verify_options)?;
+    let characterization =
+        maybe_characterize_rewrites(client, options, patches, &verify_options, progress)?;
     let accepted_tests = characterization
         .as_ref()
         .map(|report| report.accepted_tests.clone())
         .unwrap_or_default();
-    let final_verify_options = verify_options_with_characterization(&options, accepted_tests);
+    let final_verify_options = verify_options_with_characterization(options, accepted_tests);
     let verified = if options.characterize {
-        verify_patches(&patches, &final_verify_options)?
+        verify_patches(patches, &final_verify_options)?
     } else {
         initial_verified.clone()
     };
+    emit_verified_progress(&verified, progress);
+    Ok(SlimVerificationRun {
+        initial_verified,
+        final_verify_options,
+        verified,
+        characterization,
+    })
+}
+
+fn maybe_characterize_rewrites(
+    client: &impl LlmClient,
+    options: &SlimOptions,
+    patches: &[Patch],
+    verify_options: &VerifyOptions,
+    progress: &mut dyn FnMut(SlimProgress),
+) -> Result<Option<CharacterizationRun>> {
+    if !options.characterize {
+        return Ok(None);
+    }
+    Ok(Some(run_characterization_pass(
+        client,
+        options,
+        patches,
+        verify_options,
+        progress,
+    )?))
+}
+
+fn emit_verified_progress(verified: &VerifyReport, progress: &mut dyn FnMut(SlimProgress)) {
     for result in &verified.results {
         progress(SlimProgress::Verified {
             workorder_id: result.workorder_id.to_owned(),
             verdict: result.verdict,
         });
     }
-    let gating = gating_report(&verified, options.apply, options.allow_unverified);
-    let applied = if options.apply {
-        Some(apply_patches(
-            &patches,
-            &final_verify_options,
-            options.backup,
-        )?)
-    } else {
-        None
-    };
-    let progress_outcomes = progress_outcomes(&verified, options.apply, options.allow_unverified);
+}
+
+fn emit_outcome_progress(
+    verified: &VerifyReport,
+    applying: bool,
+    allow_unverified: bool,
+    progress: &mut dyn FnMut(SlimProgress),
+) {
+    let progress_outcomes = progress_outcomes(verified, applying, allow_unverified);
     for (workorder_id, outcome) in &progress_outcomes {
         progress(SlimProgress::Outcome {
             workorder_id: workorder_id.to_owned(),
             outcome: *outcome,
         });
     }
-    let (applied_count, held_count, rejected_count) = progress_outcome_counts(&progress_outcomes);
+    let (applied, held, rejected) = progress_outcome_counts(&progress_outcomes);
     progress(SlimProgress::Finished {
-        applied: applied_count,
-        held: held_count,
-        rejected: rejected_count,
+        applied,
+        held,
+        rejected,
     });
-    let characterization = characterization
-        .map(|report| report.into_public_report(&initial_verified, &verified, options.apply));
+}
 
-    Ok(SlimReport {
+fn apply_verified_patches(
+    options: &SlimOptions,
+    rewrite: &SlimRewriteRun,
+    verification: &SlimVerificationRun,
+) -> Result<Option<ApplyReport>> {
+    if !options.apply {
+        return Ok(None);
+    }
+    apply_patches(
+        &rewrite.patches,
+        &verification.final_verify_options,
+        options.backup,
+    )
+    .map(Some)
+}
+
+fn public_characterization_report(
+    characterization: Option<CharacterizationRun>,
+    initial_verified: &VerifyReport,
+    verified: &VerifyReport,
+    applying: bool,
+) -> Option<SlimCharacterizationReport> {
+    characterization.map(|report| report.into_public_report(initial_verified, verified, applying))
+}
+
+fn finish_slim_report(
+    options: SlimOptions,
+    rewrite: SlimRewriteRun,
+    verification: SlimVerificationRun,
+    gating: SlimGatingReport,
+    applied: Option<ApplyReport>,
+) -> SlimReport {
+    let characterization = public_characterization_report(
+        verification.characterization,
+        &verification.initial_verified,
+        &verification.verified,
+        options.apply,
+    );
+    SlimReport {
         schema: "deslop.slim/1".to_string(),
         dry_run: !options.apply,
         model: options.model,
-        skipped,
-        patches,
-        verified,
+        skipped: rewrite.skipped,
+        patches: rewrite.patches,
+        verified: verification.verified,
         gating,
         characterization,
         applied,
-    })
+    }
 }
 
 pub fn build_prompt(work_order: &WorkOrder) -> SlimPrompt {
@@ -586,7 +719,6 @@ fn run_characterization_pass(
     options: &SlimOptions,
     patches: &[Patch],
     verify_options: &VerifyOptions,
-    _initial_verified: &VerifyReport,
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<CharacterizationRun> {
     let work_orders = characterization_work_orders_for_patches(patches, verify_options)?;
@@ -761,11 +893,21 @@ fn load_or_propose_work_orders(options: &SlimOptions) -> Result<Vec<WorkOrder>> 
     if let Some(path) = &options.workorders {
         return load_workorders_jsonl(path);
     }
-    propose_work_orders(&options.paths)
+    propose_work_orders_with_config(&options.paths, options.analyzer.clone())
 }
 
+/// Propose work orders using the default analyzer config (no suppression, default thresholds).
 pub fn propose_work_orders(paths: &[PathBuf]) -> Result<Vec<WorkOrder>> {
-    let reports = scan_paths(paths)?;
+    propose_work_orders_with_config(paths, AnalyzerConfig::default())
+}
+
+/// Propose work orders honoring an explicit analyzer config, including suppression. Auto-mode
+/// `fix` uses this so disabled rules and ignored paths never reach the rewrite pipeline.
+pub fn propose_work_orders_with_config(
+    paths: &[PathBuf],
+    config: AnalyzerConfig,
+) -> Result<Vec<WorkOrder>> {
+    let reports = scan_paths_with_config(paths, config)?;
     let mut work_orders = Vec::new();
     for report in reports {
         let source = SourceFile::read(&report.path)?;
@@ -846,6 +988,162 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    const ORIGINAL_IDENTITY: &str = "fn identity(value: i32) -> i32 {\n    return value;\n}\n";
+    const REWRITTEN_IDENTITY: &str = "fn identity(value: i32) -> i32 {\n    value\n}";
+
+    struct SlimTestFixture {
+        temp: TempDir,
+        source: PathBuf,
+    }
+
+    impl SlimTestFixture {
+        fn identity() -> Result<Self> {
+            Self::with_source(ORIGINAL_IDENTITY)
+        }
+
+        fn with_source(text: &str) -> Result<Self> {
+            let temp = TempDir::new()?;
+            let source = temp.path().join("sample.rs");
+            fs::write(&source, text)?;
+            Ok(Self { temp, source })
+        }
+
+        fn root(&self) -> PathBuf {
+            self.temp.path().to_path_buf()
+        }
+
+        fn lcov(&self) -> PathBuf {
+            lcov_fixture(self.temp.path(), "coverage.lcov", &self.source, 2, 1)
+        }
+
+        fn recorded_options(
+            &self,
+            apply: bool,
+            allow_unverified: bool,
+            coverage: CoverageConfig,
+        ) -> SlimOptions {
+            self.options(
+                apply,
+                false,
+                allow_unverified,
+                coverage,
+                "recorded",
+                Some("true"),
+            )
+        }
+
+        fn scripted_options(&self, check_cmd: String) -> SlimOptions {
+            self.options(
+                true,
+                true,
+                false,
+                CoverageConfig::Disabled,
+                "scripted",
+                Some(&check_cmd),
+            )
+        }
+
+        fn options(
+            &self,
+            apply: bool,
+            characterize: bool,
+            allow_unverified: bool,
+            coverage: CoverageConfig,
+            model: &str,
+            check_cmd: Option<&str>,
+        ) -> SlimOptions {
+            SlimOptions {
+                root: self.root(),
+                paths: vec![self.root()],
+                workorders: None,
+                apply,
+                characterize,
+                allow_unverified,
+                coverage,
+                model: model.to_string(),
+                check_cmd: check_cmd.map(str::to_string),
+                backup: false,
+                analyzer: AnalyzerConfig::default(),
+            }
+        }
+    }
+
+    fn recorded_client() -> RecordedClient {
+        RecordedClient::new(REWRITTEN_IDENTITY)
+    }
+
+    #[test]
+    fn auto_mode_suppression_drops_work_orders_for_disabled_rule() {
+        // The magic number becomes a (non-safe-auto) rewrite work order by default.
+        let fixture =
+            SlimTestFixture::with_source("fn answer() -> i32 {\n    let x = 4242;\n    x\n}\n")
+                .expect("fixture");
+        let paths = vec![fixture.source.clone()];
+
+        let baseline =
+            propose_work_orders_with_config(&paths, AnalyzerConfig::default()).expect("baseline");
+        assert!(
+            baseline
+                .iter()
+                .any(|wo| wo.findings.iter().any(|f| f.rule == "magic-number")),
+            "baseline should propose a magic-number rewrite"
+        );
+
+        let mut builder = deslop_analyzer::Suppression::builder();
+        builder.disable_rule("magic-number");
+        let analyzer = AnalyzerConfig {
+            suppression: builder.build().expect("build suppression"),
+            ..AnalyzerConfig::default()
+        };
+        let suppressed =
+            propose_work_orders_with_config(&paths, analyzer).expect("suppressed proposal");
+        assert!(
+            suppressed
+                .iter()
+                .all(|wo| wo.findings.iter().all(|f| f.rule != "magic-number")),
+            "disabled rule must not reach the rewrite pipeline"
+        );
+    }
+
+    fn assert_single_result(report: &SlimReport, passed: bool, verdict: VerificationVerdict) {
+        assert_eq!(report.verified.results[0].passed, passed);
+        assert_eq!(report.verified.results[0].verdict, verdict);
+    }
+
+    fn assert_gating_counts(
+        report: &SlimReport,
+        applied: usize,
+        held_unproven: usize,
+        rejected: usize,
+    ) {
+        assert_eq!(report.gating.applied.len(), applied);
+        assert_eq!(report.gating.held_unproven.len(), held_unproven);
+        assert_eq!(report.gating.rejected.len(), rejected);
+    }
+
+    fn assert_written_paths(report: &SlimReport, paths: &[PathBuf]) {
+        assert_eq!(
+            report.applied.as_ref().expect("apply report").written,
+            paths
+        );
+    }
+
+    fn assert_no_written_paths(report: &SlimReport) {
+        assert!(
+            report
+                .applied
+                .as_ref()
+                .expect("apply report")
+                .written
+                .is_empty()
+        );
+    }
+
+    fn assert_fixture_source(fixture: &SlimTestFixture, expected: &str) -> Result<()> {
+        assert_eq!(fs::read_to_string(&fixture.source)?, expected);
+        Ok(())
+    }
 
     #[test]
     fn egress_consent_decision_truth_table() {
@@ -930,82 +1228,41 @@ mod tests {
 
     #[test]
     fn recorded_client_e2e_applies_verified_rewrite() -> Result<()> {
-        let temp = TempDir::new()?;
-        let source = temp.path().join("sample.rs");
-        fs::write(
-            &source,
-            "fn identity(value: i32) -> i32 {\n    return value;\n}\n",
-        )?;
-        let coverage = lcov_fixture(temp.path(), "coverage.lcov", &source, 2, 1);
-        let client = RecordedClient::new("fn identity(value: i32) -> i32 {\n    value\n}\n");
+        let fixture = SlimTestFixture::identity()?;
+        let client = recorded_client();
         let report = run_slim(
             &client,
-            SlimOptions {
-                root: temp.path().to_path_buf(),
-                paths: vec![temp.path().to_path_buf()],
-                workorders: None,
-                apply: true,
-                characterize: false,
-                allow_unverified: false,
-                coverage: CoverageConfig::LcovFile(coverage),
-                model: "recorded".to_string(),
-                check_cmd: Some("true".to_string()),
-                backup: false,
-            },
+            fixture.recorded_options(true, false, CoverageConfig::LcovFile(fixture.lcov())),
         )?;
 
         assert_eq!(report.schema, "deslop.slim/1");
         assert_eq!(report.patches.len(), 1);
         assert_eq!(report.patches[0].schema, "deslop.patch/1");
         assert_eq!(report.patches[0].by, "deslop-slim/recorded");
-        assert!(report.verified.results[0].passed);
-        assert_eq!(
-            report.verified.results[0].verdict,
-            VerificationVerdict::Removable
-        );
-        assert_eq!(report.gating.applied.len(), 1);
-        assert!(report.gating.held_unproven.is_empty());
-        assert!(report.gating.rejected.is_empty());
-        assert_eq!(
-            report.applied.as_ref().expect("apply report").written,
-            vec![source.clone()]
-        );
-        assert_eq!(
-            fs::read_to_string(&source)?,
-            "fn identity(value: i32) -> i32 {\n    value\n}"
-        );
+        assert_single_result(&report, true, VerificationVerdict::Removable);
+        assert_gating_counts(&report, 1, 0, 0);
+        assert_written_paths(&report, &[fixture.source.clone()]);
+        assert_fixture_source(&fixture, REWRITTEN_IDENTITY)?;
         Ok(())
     }
 
     #[test]
     fn progress_sink_records_mock_run_sequence() -> Result<()> {
-        let temp = TempDir::new()?;
-        let source = temp.path().join("sample.rs");
-        fs::write(
-            &source,
-            "fn identity(value: i32) -> i32 {\n    return value;\n}\n",
-        )?;
-        let coverage = lcov_fixture(temp.path(), "coverage.lcov", &source, 2, 1);
-        let client = RecordedClient::new("fn identity(value: i32) -> i32 {\n    value\n}\n");
+        let fixture = SlimTestFixture::identity()?;
+        let client = recorded_client();
         let mut events = Vec::new();
         let report = run_slim_with_progress(
             &client,
-            SlimOptions {
-                root: temp.path().to_path_buf(),
-                paths: vec![temp.path().to_path_buf()],
-                workorders: None,
-                apply: true,
-                characterize: false,
-                allow_unverified: false,
-                coverage: CoverageConfig::LcovFile(coverage),
-                model: "recorded".to_string(),
-                check_cmd: Some("true".to_string()),
-                backup: false,
-            },
+            fixture.recorded_options(true, false, CoverageConfig::LcovFile(fixture.lcov())),
             &mut |event| events.push(event),
         )?;
 
         assert_eq!(report.gating.applied.len(), 1);
+        assert_mock_progress_sequence(&events);
+        Ok(())
+    }
+
+    fn assert_mock_progress_sequence(events: &[SlimProgress]) {
         assert_eq!(events.len(), 5);
         assert!(matches!(
             events[0],
@@ -1043,30 +1300,13 @@ mod tests {
                 rejected: 0
             }
         ));
-        Ok(())
     }
 
     #[test]
     fn progress_sink_does_not_change_final_report() -> Result<()> {
-        let temp = TempDir::new()?;
-        let source = temp.path().join("sample.rs");
-        fs::write(
-            &source,
-            "fn identity(value: i32) -> i32 {\n    return value;\n}\n",
-        )?;
-        let client = RecordedClient::new("fn identity(value: i32) -> i32 {\n    value\n}\n");
-        let options = SlimOptions {
-            root: temp.path().to_path_buf(),
-            paths: vec![temp.path().to_path_buf()],
-            workorders: None,
-            apply: false,
-            characterize: false,
-            allow_unverified: false,
-            coverage: CoverageConfig::Disabled,
-            model: "recorded".to_string(),
-            check_cmd: Some("true".to_string()),
-            backup: false,
-        };
+        let fixture = SlimTestFixture::identity()?;
+        let client = recorded_client();
+        let options = fixture.recorded_options(false, false, CoverageConfig::Disabled);
         let mut events = Vec::new();
         let with_progress =
             run_slim_with_progress(&client, options.clone(), &mut |event| events.push(event))?;
@@ -1082,88 +1322,33 @@ mod tests {
 
     #[test]
     fn default_apply_holds_unproven_coverage_unknown_rewrite() -> Result<()> {
-        let temp = TempDir::new()?;
-        let source = temp.path().join("sample.rs");
-        let original = "fn identity(value: i32) -> i32 {\n    return value;\n}\n";
-        fs::write(&source, original)?;
-        let client = RecordedClient::new("fn identity(value: i32) -> i32 {\n    value\n}\n");
+        let fixture = SlimTestFixture::identity()?;
+        let client = recorded_client();
         let report = run_slim(
             &client,
-            SlimOptions {
-                root: temp.path().to_path_buf(),
-                paths: vec![temp.path().to_path_buf()],
-                workorders: None,
-                apply: true,
-                characterize: false,
-                allow_unverified: false,
-                coverage: CoverageConfig::Disabled,
-                model: "recorded".to_string(),
-                check_cmd: Some("true".to_string()),
-                backup: false,
-            },
+            fixture.recorded_options(true, false, CoverageConfig::Disabled),
         )?;
 
-        assert!(report.verified.results[0].passed);
-        assert_eq!(
-            report.verified.results[0].verdict,
-            VerificationVerdict::CoverageUnknown
-        );
-        assert!(report.gating.applied.is_empty());
-        assert_eq!(report.gating.held_unproven.len(), 1);
-        assert!(report.gating.rejected.is_empty());
-        assert!(
-            report
-                .applied
-                .as_ref()
-                .expect("apply report")
-                .written
-                .is_empty()
-        );
-        assert_eq!(fs::read_to_string(&source)?, original);
+        assert_single_result(&report, true, VerificationVerdict::CoverageUnknown);
+        assert_gating_counts(&report, 0, 1, 0);
+        assert_no_written_paths(&report);
+        assert_fixture_source(&fixture, ORIGINAL_IDENTITY)?;
         Ok(())
     }
 
     #[test]
     fn allow_unverified_applies_coverage_unknown_rewrite() -> Result<()> {
-        let temp = TempDir::new()?;
-        let source = temp.path().join("sample.rs");
-        fs::write(
-            &source,
-            "fn identity(value: i32) -> i32 {\n    return value;\n}\n",
-        )?;
-        let client = RecordedClient::new("fn identity(value: i32) -> i32 {\n    value\n}\n");
+        let fixture = SlimTestFixture::identity()?;
+        let client = recorded_client();
         let report = run_slim(
             &client,
-            SlimOptions {
-                root: temp.path().to_path_buf(),
-                paths: vec![temp.path().to_path_buf()],
-                workorders: None,
-                apply: true,
-                characterize: false,
-                allow_unverified: true,
-                coverage: CoverageConfig::Disabled,
-                model: "recorded".to_string(),
-                check_cmd: Some("true".to_string()),
-                backup: false,
-            },
+            fixture.recorded_options(true, true, CoverageConfig::Disabled),
         )?;
 
-        assert!(report.verified.results[0].passed);
-        assert_eq!(
-            report.verified.results[0].verdict,
-            VerificationVerdict::CoverageUnknown
-        );
-        assert_eq!(report.gating.applied.len(), 1);
-        assert!(report.gating.held_unproven.is_empty());
-        assert!(report.gating.rejected.is_empty());
-        assert_eq!(
-            report.applied.as_ref().expect("apply report").written,
-            vec![source.clone()]
-        );
-        assert_eq!(
-            fs::read_to_string(&source)?,
-            "fn identity(value: i32) -> i32 {\n    value\n}"
-        );
+        assert_single_result(&report, true, VerificationVerdict::CoverageUnknown);
+        assert_gating_counts(&report, 1, 0, 0);
+        assert_written_paths(&report, &[fixture.source.clone()]);
+        assert_fixture_source(&fixture, REWRITTEN_IDENTITY)?;
         Ok(())
     }
 
@@ -1174,75 +1359,29 @@ mod tests {
     }
 
     fn assert_bad_rewrite_blocked(allow_unverified: bool) -> Result<()> {
-        let temp = TempDir::new()?;
-        let source = temp.path().join("sample.rs");
-        let original = "fn identity(value: i32) -> i32 {\n    return value;\n}\n";
-        fs::write(&source, original)?;
+        let fixture = SlimTestFixture::identity()?;
         let client = RecordedClient::new("pub fn added() {}\nfn identity(value: i32) -> i32 {\n");
         let report = run_slim(
             &client,
-            SlimOptions {
-                root: temp.path().to_path_buf(),
-                paths: vec![temp.path().to_path_buf()],
-                workorders: None,
-                apply: true,
-                characterize: false,
-                allow_unverified,
-                coverage: CoverageConfig::Disabled,
-                model: "recorded".to_string(),
-                check_cmd: Some("true".to_string()),
-                backup: false,
-            },
+            fixture.recorded_options(true, allow_unverified, CoverageConfig::Disabled),
         )?;
 
-        assert!(!report.verified.results[0].passed);
-        assert_eq!(
-            report.verified.results[0].verdict,
-            VerificationVerdict::Rejected
-        );
-        assert!(report.gating.applied.is_empty());
-        assert!(report.gating.held_unproven.is_empty());
-        assert_eq!(report.gating.rejected.len(), 1);
-        assert!(
-            report
-                .applied
-                .as_ref()
-                .expect("apply report")
-                .written
-                .is_empty()
-        );
-        assert_eq!(fs::read_to_string(&source)?, original);
+        assert_single_result(&report, false, VerificationVerdict::Rejected);
+        assert_gating_counts(&report, 0, 0, 1);
+        assert_no_written_paths(&report);
+        assert_fixture_source(&fixture, ORIGINAL_IDENTITY)?;
         Ok(())
     }
 
     #[test]
     fn characterize_accepts_test_upgrades_and_applies_rewrite() -> Result<()> {
-        let temp = TempDir::new()?;
-        let source = temp.path().join("sample.rs");
-        fs::write(
-            &source,
-            "fn identity(value: i32) -> i32 {\n    return value;\n}\n",
-        )?;
-        let check_cmd = characterization_check_cmd(temp.path(), "PIN")?;
+        let fixture = SlimTestFixture::identity()?;
+        let check_cmd = characterization_check_cmd(fixture.temp.path(), "PIN")?;
         let client = ScriptedClient {
-            rewrite: "fn identity(value: i32) -> i32 {\n    value\n}\n".to_string(),
+            rewrite: REWRITTEN_IDENTITY.to_string(),
             characterization: "PIN current behavior".to_string(),
         };
-        let report = run_slim(
-            &client,
-            SlimOptions {
-                root: temp.path().to_path_buf(),
-                paths: vec![temp.path().to_path_buf()],
-                workorders: None,
-                apply: true,
-                characterize: true,
-                allow_unverified: false,
-                coverage: CoverageConfig::Disabled,
-                model: "scripted".to_string(),
-                check_cmd: Some(check_cmd),
-                backup: false,
-            },
-        )?;
+        let report = run_slim(&client, fixture.scripted_options(check_cmd))?;
 
         let characterization = report.characterization.as_ref().expect("characterization");
         assert_eq!(characterization.attempts.len(), 1);
@@ -1258,70 +1397,32 @@ mod tests {
             VerificationVerdict::Removable
         );
         assert!(characterization.upgrades[0].applied_after_characterization);
-        assert_eq!(
-            report.verified.results[0].verdict,
-            VerificationVerdict::Removable
-        );
-        assert_eq!(report.gating.applied.len(), 1);
-        assert!(report.gating.held_unproven.is_empty());
-        assert_eq!(
-            report.applied.as_ref().expect("apply report").written,
-            vec![source.clone()]
-        );
-        assert_eq!(
-            fs::read_to_string(&source)?,
-            "fn identity(value: i32) -> i32 {\n    value\n}"
-        );
+        assert_single_result(&report, true, VerificationVerdict::Removable);
+        assert_gating_counts(&report, 1, 0, 0);
+        assert_written_paths(&report, &[fixture.source.clone()]);
+        assert_fixture_source(&fixture, REWRITTEN_IDENTITY)?;
         Ok(())
     }
 
     #[test]
     fn characterize_rejects_failing_test_and_holds_rewrite() -> Result<()> {
-        let temp = TempDir::new()?;
-        let source = temp.path().join("sample.rs");
-        let original = "fn identity(value: i32) -> i32 {\n    return value;\n}\n";
-        fs::write(&source, original)?;
-        let check_cmd = characterization_check_cmd(temp.path(), "PIN")?;
+        let fixture = SlimTestFixture::identity()?;
+        let check_cmd = characterization_check_cmd(fixture.temp.path(), "PIN")?;
         let client = ScriptedClient {
-            rewrite: "fn identity(value: i32) -> i32 {\n    value\n}\n".to_string(),
+            rewrite: REWRITTEN_IDENTITY.to_string(),
             characterization: "WRONG current behavior".to_string(),
         };
-        let report = run_slim(
-            &client,
-            SlimOptions {
-                root: temp.path().to_path_buf(),
-                paths: vec![temp.path().to_path_buf()],
-                workorders: None,
-                apply: true,
-                characterize: true,
-                allow_unverified: false,
-                coverage: CoverageConfig::Disabled,
-                model: "scripted".to_string(),
-                check_cmd: Some(check_cmd),
-                backup: false,
-            },
-        )?;
+        let report = run_slim(&client, fixture.scripted_options(check_cmd))?;
 
         let characterization = report.characterization.as_ref().expect("characterization");
         assert_eq!(characterization.attempts.len(), 1);
         assert!(characterization.accepted.is_empty());
         assert_eq!(characterization.rejected.len(), 1);
         assert!(characterization.upgrades.is_empty());
-        assert_eq!(
-            report.verified.results[0].verdict,
-            VerificationVerdict::CoverageUnknown
-        );
-        assert!(report.gating.applied.is_empty());
-        assert_eq!(report.gating.held_unproven.len(), 1);
-        assert!(
-            report
-                .applied
-                .as_ref()
-                .expect("apply report")
-                .written
-                .is_empty()
-        );
-        assert_eq!(fs::read_to_string(&source)?, original);
+        assert_single_result(&report, true, VerificationVerdict::CoverageUnknown);
+        assert_gating_counts(&report, 0, 1, 0);
+        assert_no_written_paths(&report);
+        assert_fixture_source(&fixture, ORIGINAL_IDENTITY)?;
         Ok(())
     }
 

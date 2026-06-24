@@ -91,8 +91,59 @@ these values.
 min_duplication_tokens = 24
 long_method_nloc = 40
 min_meaningful_tokens = 8
+
+[analyzer.rust]
+long_method_nloc = 45
+
+[analyzer.python]
+long_method_nloc = 35
+
+[analyzer.typescript]
+long_method_nloc = 45
 ```
 
 `min_duplication_tokens` controls duplicate-window size. `long_method_nloc` controls the
 non-comment line threshold for `long-method`. `min_meaningful_tokens` controls the minimum
 meaningful-token count required before token duplication findings are emitted.
+
+Per-language analyzer tables can override `long_method_nloc` for `rust`, `clojure`,
+`julia`, `python`, `javascript`, `typescript`, or `generic` without changing the global fallback.
+
+Unknown keys under `[analyzer]` are rejected, not silently ignored. A typo such as
+`ignore_comments = true` is a hard parse error rather than a no-op.
+
+### Suppression
+
+Token thresholds are global and blunt. Suppression is the scalpel: it filters findings
+*after* they are produced, by rule name and by path. It applies uniformly to every
+analyzer pack and to external-analyzer findings.
+
+```toml
+[analyzer]
+# Drop these rules everywhere. Each name must be a known deslop rule (see `deslop rules`);
+# an unknown name is an error so typos never silently do nothing.
+disabled_rules = ["magic-number", "narrating-comment"]
+
+# Path globs skipped for every rule. Globs match the scanned path; a leading "./" is ignored.
+ignore_paths = ["**/generated/**", "vendor/**"]
+
+# Per-rule controls, keyed by rule name.
+[analyzer.rules.long-method]
+enabled = false                 # same as adding "long-method" to disabled_rules
+
+[analyzer.rules.duplicate-block]
+ignore_paths = ["**/tests/**"]  # skip duplicate-block only under test directories
+```
+
+- `disabled_rules` removes a rule regardless of path.
+- `ignore_paths` (under `[analyzer]`) skips a path for all rules.
+- `[analyzer.rules.<rule>].enabled = false` disables one rule.
+- `[analyzer.rules.<rule>].ignore_paths` skips a path for that one rule only.
+
+Globs use [`globset`](https://docs.rs/globset) syntax (`*`, `**`, `?`, `[...]`). Invalid
+globs and unknown rule names are reported as errors.
+
+MCP `scan`, `propose`, and prompt-mode `fix` accept the same optional `config` path and an
+inline `analyzer` object. The inline object supports `disabled_rules`, `ignore_paths`, and
+`rules` in addition to the threshold keys. Inline analyzer values override values loaded
+from `deslop.toml` for that tool call; suppression from both sources is merged.

@@ -47,6 +47,187 @@ Queue status:
 
 Signature: Codex
 
+## 2026-06-24T13:12:00+02:00 - Per-language analyzer threshold config
+
+Objective: Answer and implement the MCP/config follow-up for `long-method`: make the
+threshold configurable through MCP and per language where useful.
+
+Target:
+- `AnalyzerConfig` long-method threshold handling.
+- CLI `deslop.toml` parsing.
+- MCP `scan`/`propose` tool schemas and execution.
+- Config documentation and example.
+
+Changes:
+- Added `AnalyzerLangConfig` and per-language `long_method_nloc` overrides for Rust,
+  Clojure, Julia, Python, and generic sources.
+- `long-method` now uses `AnalyzerConfig::long_method_nloc_for(source.lang)`, preserving
+  the global default as the fallback.
+- CLI config parsing accepts `[analyzer.rust]`, `[analyzer.clojure]`, `[analyzer.julia]`,
+  `[analyzer.python]`, and `[analyzer.generic]` with `long_method_nloc`.
+- MCP `scan`, `propose`, and prompt-mode `fix` now accept:
+  - `config`: optional `deslop.toml` path for analyzer settings.
+  - `analyzer`: inline overrides, including per-language `long_method_nloc`.
+- Inline MCP analyzer settings override the config file for that tool call.
+- Updated `docs/CONFIG.md` and `deslop.toml.example`.
+
+Verification run:
+- `cargo fmt --all && cargo test -p deslop-analyzer && cargo test -p deslop-cli && cargo test -p deslop-mcp`: pass.
+- `cargo fmt --all --check`: pass.
+- `cargo build --workspace`: pass.
+- `cargo build -p deslop-slim --no-default-features`: pass.
+- `cargo test --workspace`: pass.
+- `cargo test -p deslop-mcp --features slim-llm`: pass.
+- `cargo clippy --workspace -- -D warnings`: pass.
+
+Blockers:
+- None for this config/MCP follow-up.
+
+Next actions:
+- None required. Future analyzer thresholds can follow the same global-plus-language
+  shape if they become language-sensitive.
+
+Signature: Codex
+
+---
+
+# Session Report — Dogfood Refactor Continuation
+
+Date/time: 2026-06-24T12:36:43+02:00 Europe/Madrid
+
+Objective: Continue refactoring deslop's own code after the dogfood cleanup checkpoint,
+preserving behavior and gating each edited area.
+
+Working-copy context:
+- Continued in jj change `ysrptkzp` (`Dogfood debloat refactor pass`).
+- Did not touch analyzer thresholds or detector semantics.
+- Did not chase known false positives in redundant-closure/needless-clone ownership cases.
+
+Changes made in this continuation:
+- `deslop-metrics`: split hotspot detection, ranking, text rendering, and region metric
+  construction into smaller helpers.
+- `deslop-external`: split clippy JSON-line parsing into focused helpers.
+- `deslop-verify`: shared coverage-assessment construction across LCOV/line coverage,
+  split native mutation runner steps, moved the cosmic-ray SQLite script constant, and
+  extracted verify test setup/assertion helpers.
+- `deslop-analyzer`: split path walking/report pushing, token duplicate candidate matching,
+  tokenizer masked-token handling, Rust tree-walk rule collection, Clojure regex capture
+  walking, and analyzer corpus fixture assertions.
+- `deslop-lsp`: split didOpen/didChange/didSave/didClose notification handlers.
+- `deslop-mcp`: extracted tool-schema assertions, propose/result helpers, Rust LCOV fixture
+  setup, and feature-gated slim mock scenario helpers.
+- `deslop-mutate`: compacted exact mutant expectation tests through a shared assertion helper.
+- `deslop-slim`: shared single-result, gating-count, written-path, and source-text assertions.
+- `deslop-parse`: shared region assertion helper in tests.
+
+Measured before/after:
+- Starting checkpoint aggregate: score `7.294818761848697`,
+  `comment-block=1`, `duplicate-block=33`, `long-method=19`,
+  `magic-number=16`, `near-duplicate=55`.
+- Final aggregate: score `5.2988593374181185`,
+  `comment-block=1`, `duplicate-block=21`, `magic-number=16`,
+  `near-duplicate=54`; no `long-method` findings.
+- Honest split:
+  - Real removals: all remaining long-method findings eliminated (`19 -> 0`);
+    duplicate-block count reduced (`33 -> 21`).
+  - Mostly residual/non-removable or low-value: `magic-number=16` unchanged,
+    `comment-block=1` unchanged, near-duplicate only marginally changed (`55 -> 54`).
+
+Focused gates after edits:
+- `cargo fmt --all && cargo test -p deslop-metrics`: pass.
+- `cargo fmt --all && cargo test -p deslop-external`: pass.
+- `cargo fmt --all && cargo test -p deslop-verify`: pass after each verify refactor.
+- `cargo fmt --all && cargo test -p deslop-analyzer`: pass after analyzer refactors.
+- `cargo fmt --all && cargo test -p deslop-lsp`: pass.
+- `cargo fmt --all && cargo test -p deslop-mcp`: pass.
+- `cargo fmt --all && cargo test -p deslop-mutate`: pass.
+- `cargo fmt --all && cargo test -p deslop-slim && cargo build -p deslop-slim --no-default-features`: pass.
+- `cargo fmt --all && cargo test -p deslop-parse`: pass.
+
+Final verification:
+- `cargo fmt --all --check`: pass.
+- `cargo build --workspace`: pass.
+- `cargo build -p deslop-slim --no-default-features`: pass.
+- `cargo test --workspace`: pass.
+- `cargo clippy --workspace -- -D warnings`: pass.
+- `cargo test -p deslop-mcp --features slim-llm`: pass, 11 tests.
+- `cargo run -q -p deslop-cli -- scan crates --format text | rg 'long-method'`: no matches.
+
+Residual hotspots/blockers:
+- No verification blockers.
+- Residual duplicate/near-duplicate clusters are mostly:
+  - rule-table/test assertion structure in analyzer/MCP/slim/verify,
+  - SARIF JSON-path assertions,
+  - intentional provider/client API shape similarities,
+  - low-value tiny test file near-duplicate noise.
+- Further reductions are possible but now skew toward macro-like table compaction,
+  assertion DSLs, or detector false-positive pressure rather than high-value refactoring.
+
+Signature: Codex
+
+## 2026-06-24T11:22:17+02:00 — Dogfood Debloat Refactor Pass
+
+Objective: Deslop the codebase with behavior-preserving refactors, measured before/after and gated by cargo verification.
+
+Change context:
+- Started from jj change `ysrptkzp` on parent `lkrnsqtk` (`Add project README`).
+- Preserved the existing README parent change; this pass only edited Rust sources and this report.
+
+Before measurement:
+- `target/debug/deslop slop crates --format json`
+  - score: 11.982529004741801
+  - comment-block=1
+  - duplicate-block=44
+  - long-method=41
+  - magic-number=16
+  - near-duplicate=59
+
+Refactors completed:
+- `deslop-slim`: split `run_slim_with_progress` orchestration into rewrite, verification, apply/report, and progress helpers; extracted deterministic test fixture setup and progress assertions.
+- `deslop-lsp`: extracted code-action/test JSON-RPC helpers and shared safe action counting.
+- `deslop-analyzer`: table-driven Julia rules; shared Clojure code-line scanning, safe edit construction, redundant-do finding construction, and precondition rule helper.
+- `deslop-fix`: split `fix_paths` into fixable grouping, per-path application, atomic write, temp path, and shared fixable predicate.
+- `deslop-eval`: shared JSON file loading; split corpus summary, case scanning, expectation scoring, unmatched finding scoring, finalized rule scores, and overall score.
+- `deslop-parse`, `deslop-report`, `deslop-mutate`: small helper extractions for repeated test assertions and boolean mutation replacement.
+- `deslop-mcp`: split the long MCP tool catalog into per-tool schema builders, keeping dispatch untouched.
+- `deslop-cli`: split slim progress formatting, analyzer threshold extraction, config test assertions, and the `fix` command path into request resolution and provider execution helpers.
+
+After measurement:
+- `cargo run -q -p deslop-cli -- slop crates --format json`
+  - score: 7.294818761848697
+  - comment-block=1
+  - duplicate-block=33
+  - long-method=19
+  - magic-number=16
+  - near-duplicate=55
+
+Notable file-level improvements:
+- `crates/deslop-analyzer/src/julia.rs`: score 42.37 -> 0.00.
+- `crates/deslop-slim/src/lib.rs`: score 20.29 -> 9.16; long-method 8 -> 0.
+- `crates/deslop-lsp/src/lib.rs`: score 18.13 -> 5.20; long-method 4 -> 1, duplicate-block 4 -> 0.
+- `crates/deslop-eval/src/lib.rs`: score 18.99 -> 3.60; long-method 2 -> 0.
+- `crates/deslop-cli/src/main.rs`: score 11.88 -> 5.81; long-method 4 -> 0.
+- `crates/deslop-fix/src/lib.rs`: score 14.12 -> 5.26; long-method 1 -> 0.
+
+Verification:
+- `cargo fmt --all`: pass.
+- `cargo build --workspace`: pass.
+- `cargo build -p deslop-slim --no-default-features`: pass.
+- `cargo test --workspace`: pass.
+- `cargo clippy --workspace -- -D warnings`: pass.
+- Additional MCP feature check run after MCP schema refactor: `cargo test -p deslop-mcp --features slim-llm`: pass.
+
+Residual hotspots:
+- Remaining aggregate counts are mostly `deslop-verify`, MCP test scenarios, metrics/reporting helpers, exact expected-output vectors, and analyzer/token structural repetition.
+- `magic-number` and `comment-block` counts were intentionally unchanged; these are not meaningful cleanup targets in this pass.
+- Known precision-sensitive residuals such as redundant-closure false positives and harmless structural near-duplicates were not chased.
+
+Blockers:
+- No build/test/clippy blockers.
+- No external-tool blocker affected this pass because verification used deterministic/unit-test surfaces.
+
+Signature: Codex
+
 ## 2026-06-24T09:41:37+02:00 — Native Tree-Sitter Mutation Engine Complete
 
 Objective: Finish `.agents/NEXT_TASK.md` Task 14: native tree-sitter mutation
@@ -3603,3 +3784,512 @@ Blockers:
   helper pass; neither is required for a green finish state.
 
 Signature: Codex
+
+## 2026-06-26 — Per-rule / per-path finding suppression
+
+Objective: Resolve the complaint that deslop's `deslop.toml` had no per-rule suppression —
+keys like `ignore_comments`, `http_status_allowlist`, `[rules.x] ignore_paths` were silently
+ignored, leaving only the blunt global token thresholds (`min_meaningful_tokens` /
+`min_duplication_tokens`) as a "sledgehammer, not a scalpel."
+
+Target: `deslop-analyzer`, `deslop-cli`, `deslop-mcp`, docs.
+
+Changes:
+- `deslop-analyzer`: added `Suppression` (Arc-backed, `Clone`, no-op when empty) +
+  `SuppressionBuilder`, a canonical `KNOWN_RULES` list + `is_known_rule`, and a new
+  `AnalyzerConfig.suppression` field. Findings are filtered *after* production at the three
+  scan chokepoints (`scan_file_with_pack`, `scan_source_with_pack`, agnostic branch of
+  `scan_source_with_config`), so it applies uniformly to every pack and to external-analyzer
+  findings. Globs use `globset` (promoted from transitive `ignore` dep to a direct workspace
+  dep — zero new crates in the build graph). Path matching strips a leading `./`.
+- `deslop-cli`: `[analyzer]` now supports `disabled_rules`, `ignore_paths`, and
+  `[analyzer.rules.<rule>]` (`enabled`, `ignore_paths`). Added `#[serde(deny_unknown_fields)]`
+  to the analyzer config sections so fabricated keys (e.g. `ignore_comments`) are hard parse
+  errors. `analyzer_config[_from_config]` now returns `Result` and builds/validates suppression.
+- `deslop-mcp`: inline `analyzer` object + config-file path now accept the same suppression keys
+  (merged across both sources); schema (`analyzer_schema`) advertises them; unknown keys rejected.
+- Docs: `docs/CONFIG.md`, `deslop.toml.example`, `README.md` document suppression.
+
+Behavior change (intentional): unknown rule names in suppression and unknown `[analyzer]` keys
+are now errors instead of silent no-ops. This is the core fix — the prior silent-ignore is
+exactly what made the earlier preview "fabricated."
+
+Commands run:
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace -- -D warnings` — clean.
+- `cargo build -p deslop-slim --no-default-features` — ok (default MCP/slim stay network-free).
+- `cargo test --workspace` — all green (new: 6 analyzer, 3 CLI, 2 MCP suppression tests).
+- `cargo test -p deslop-mcp --features slim-llm` — 16 passed.
+- Real-binary smoke test confirmed: default fires 4 `consecutive-blank-lines`; `disabled_rules`
+  drops to 0; `ignore_paths`/per-rule globs scope by path; unknown rule name and unknown
+  `[analyzer]` key both exit non-zero with a clear error listing valid values.
+
+Invalidated assumption: the earlier session's belief that `ignore_comments` /
+`http_status_allowlist` / `[rules.x] ignore_paths` were supported — they never were. They are
+now either implemented (`ignore_paths`, per-rule tables) under `[analyzer]`/`[analyzer.rules]`
+or rejected loudly (`ignore_comments`, `http_status_allowlist`).
+
+Current recommendation / next actions:
+- `KNOWN_RULES` is hand-maintained in `deslop-analyzer`; the `RULES` const in `deslop-cli` and
+  the `deslop rules` output remain a separate (slightly incomplete) list. A follow-up could make
+  both derive from one source so they cannot drift.
+- `deslop-slim` auto-mode does not yet thread suppression through its own scan path (it receives
+  reports); MCP prompt-mode and CLI scan/propose are covered. Parity for slim auto is deferred
+  (tracked alongside PLAN Phase 5).
+
+Blockers: none.
+
+Signature: Claude (Opus 4.8), per-rule/per-path suppression implemented + validated end-to-end, 2026-06-26.
+
+## 2026-06-26 — Unify rule registry + slim auto-mode suppression parity
+
+Objective: Follow-ups to the suppression work — (1) make the rule list a single source of
+truth so suppression validation, `deslop rules`, and the MCP `rules` tool cannot drift; (2)
+wire suppression through `deslop-slim` auto-mode so disabled rules / ignored paths never reach
+the rewrite pipeline.
+
+Target: `deslop-core`, `deslop-analyzer`, `deslop-cli`, `deslop-mcp`, `deslop-slim`.
+
+Changes:
+- `deslop-core`: new `pub mod rules` — canonical `RuleInfo` + `RULES` registry (30 rules,
+  the union of internal + external-analyzer rules), `is_known`, `names_csv`, `render_table`.
+  Three unit tests (no dup names, is_known matches registry, table lists every rule).
+- `deslop-analyzer`: deleted the hand-maintained `KNOWN_RULES` const; `is_known_rule` and the
+  suppression error message now delegate to `deslop_core::rules`.
+- `deslop-cli` + `deslop-mcp`: deleted both duplicated `const RULES` text blocks. `deslop rules`
+  and the MCP `rules` tool now render from `deslop_core::rules::render_table()` (dynamic column
+  widths). The previously-missing rules (near-duplicate, needless-clone, redundant-closure,
+  let-and-return, useless-format, needless-return, unused-private-def, unused-namespace,
+  missing-reference) now appear and are suppressable.
+- `deslop-slim`: `SlimOptions` gained an `analyzer: AnalyzerConfig` field; added
+  `propose_work_orders_with_config` and routed `load_or_propose_work_orders` through it
+  (`propose_work_orders` kept as a default-config wrapper). CLI `fix` now passes
+  `analyzer_config(config, ..)?`; MCP `fix mode=auto` passes `mcp_analyzer_config(args)?`. This
+  closes PLAN Phase 5 (slim auto config parity) — auto mode honors thresholds AND suppression.
+
+Commands run (all green):
+- `cargo fmt --all --check`; `cargo clippy --workspace -- -D warnings`.
+- `cargo build -p deslop-slim --no-default-features`.
+- `cargo test --workspace` (new: 3 core rules tests, 1 slim auto-suppression test).
+- `cargo test -p deslop-mcp --features slim-llm` — 16 passed.
+- `deslop rules` renders all 30 rules in one aligned table from the shared registry.
+
+Invalidated assumption: prior report's note that `KNOWN_RULES` was a separate hand-maintained
+list and that slim auto-mode didn't thread suppression — both resolved here.
+
+Current recommendation / next actions:
+- Registry is still manually kept in `deslop-core`; a compile-time check that every emitted
+  rule literal appears in `RULES` would fully prevent drift but needs a rule-name macro/registry
+  at emission sites (larger change, deferred).
+- No blockers.
+
+Signature: Claude (Opus 4.8), unified rule registry in deslop-core + slim auto-mode suppression parity, 2026-06-26.
+
+## 2026-06-26 — magic-number + incompleteness precision (AST masking)
+
+Objective: eliminate structural false positives in the `magic-number` and `incompleteness` rules surfaced while dogfooding deslop on the smart-genie Clojure codebase.
+
+Root causes (crates/deslop-analyzer/src/agnostic.rs): both rules were line/text heuristics. `magic-number` did not exempt literals inside strings/comments or inside named-constant definitions, so (a) numbers in docstrings ("Return 5-20 entities; 16 types") and (b) the VALUE line of a multi-line `(def x\n  64)` were flagged — making the rule's own remedy ("introduce a named constant") un-actionable. `incompleteness` masked strings/comments already, but its `placeholder` alternative matched any identifier containing the substring (e.g. the fn name `placeholders`, bindings `fp-placeholders`).
+
+Changes:
+- deslop-lang: new `LangPack::is_constant_definition_region` (default false); overrides — Clojure `def`/`defonce` list_lit (via node_head_token), Rust `const_item`/`static_item`, Julia `const`.
+- deslop-analyzer: `magic_numbers` now masks byte ranges from `string_comment_ranges` + new `constant_definition_ranges` and checks the literal's absolute byte before flagging; `first_magic_number` returns the byte offset. `incompleteness` regex `placeholder` -> `\bplaceholder\b`.
+- 6 new tests (inline literal still flagged; multi-line const, docstring numbers, Rust multi-line const not flagged; identifier-with-placeholder not flagged; standalone placeholder still flagged).
+
+Verification:
+- `cargo test -p deslop-analyzer`: 32 passed. `cargo test --workspace`: all crates ok, 0 failed. `cargo fmt --all` applied.
+- Dogfood on /srv/biotz/smart-genie/src (debug build vs installed 0.1.0): magic-number 83 -> 64; incompleteness 11 -> 0 (all were false positives); total 228 -> 200.
+
+Notes: changes left UNCOMMITTED alongside pre-existing WIP (long_methods config plumbing in agnostic.rs; .agents/PLAN.md MCP-UX work). Did not bundle into a jj commit to avoid mixing unrelated work — owner to organize/commit.
+
+Signature: Claude (Opus 4.8), magic-number/incompleteness AST masking (FP 83->64, 11->0 on smart-genie), 2026-06-26.
+
+## 2026-06-28 — Readability pass: dedup suppression collection (option A)
+
+Objective: Apply the readability-over-terseness reflection — remove the near-duplicate
+suppression-collection loop and a couple of clever-terse expressions, without changing the
+config schema or the `deny_unknown_fields` guarantee.
+
+Target: `deslop-analyzer`, `deslop-cli`, `deslop-mcp`, `deslop-core`.
+
+Changes:
+- `deslop-analyzer`: new `RuleSuppression<'a>` borrowed view + `SuppressionBuilder::add_section`
+  — the single place that defines what each suppression key means (disabled_rules / explicit
+  `enabled = false` disable a rule; ignore_paths skip paths). `enabled == Some(false)` replaced
+  by `matches!(.., Some(false))`.
+- `deslop-cli::build_suppression` and `deslop-mcp::collect_mcp_suppression`: the ~14-line loop
+  that was duplicated across both crates now adapts its `Option` fields into `add_section`'s
+  borrowed inputs (`as_deref().unwrap_or_default()`); the meaningful logic lives once. Ironic
+  near-duplicate in a slop detector removed.
+- `deslop-core::rules::render_table`: replaced the `.chain(std::iter::once(header.len()))` width
+  trick with a small `longest(cell, header)` closure using `.max(header.len())` — reads as
+  "longest cell, but never narrower than the header."
+
+Behavior: unchanged. `deslop rules` renders the identical 30-rule aligned table; suppression
+semantics identical.
+
+Commands run (all green): `cargo fmt --all --check`; `cargo clippy --workspace -- -D warnings`;
+`cargo test --workspace`; `cargo test -p deslop-mcp --features slim-llm` (16 passed). Existing
+suppression/rules/slim tests still pass with no test changes needed.
+
+Blockers: none. Deferred (offered, not taken): grouping keys under a `[analyzer.suppression]`
+table (option B) — a schema change, only worth it if explicit grouping is wanted later.
+
+Signature: Claude (Opus 4.8), suppression-collection dedup via shared add_section + render_table clarity, 2026-06-28.
+
+## 2026-07-02 — Full-diff review of working tree + improvement plan
+
+Objective: review the uncommitted changeset (~4,350 insertions / ~1,866 deletions, 29 files:
+suppression system, per-language long_method_nloc, rule registry, extraction refactors) and
+produce a prioritized improvement plan. Review only — no source changes this session.
+
+Commands run: git diff (full, per-crate), cargo check (clean), cargo test (all green),
+grep verification of each finding, dogfood scan of crates/deslop-slim/src.
+
+Findings (verified, not speculative):
+- `crates/deslop-mcp/src/spec.rs` is dead code: no `mod spec;` in lib.rs, which keeps its own
+  `tool_definitions()`. It is the unfinished Phase 0 (tool annotations) of the MCP plan.
+  Existing description assertions hold against the spec.rs copies, so wiring is low-risk.
+- CLI and MCP still define field-identical serde config structs (the 2026-06-28 pass dedup'd
+  collection logic via `add_section`, not the struct definitions or threshold plumbing).
+- Extraction sweep hypothesis: no repo-root deslop.toml exists, so dogfooding runs at default
+  long_method_nloc = 40, pressuring degenerate extraction (single-use wrappers, named match
+  arms). Evidence: self-scan of refactored deslop-slim reports NEW near-duplicate findings
+  (lines 920-921 vs 331) — the refactor traded one slop class for another.
+- `code_lines` in clojure.rs allocates Vec<String> per rule call (3x per file) where the prior
+  inline pattern was zero-alloc.
+- Suppression `match_path` only strips `./`; relative globs silently never match findings from
+  absolute scan paths (documented, but surprising).
+- `FixRequest`/`run_fix_request` chain in deslop-cli has no consumer outside main.rs.
+
+Explicitly fine: suppression design, rule registry, deny_unknown_fields, AST masking,
+`cached_coverage_assessment` dedup (removes real 4x duplication), test-helper extraction.
+
+Artifact: prioritized plan appended to `.agents/PLAN.md` ("Review-Driven Improvement Plan
+(2026-07-02)"): P1 wire spec.rs, P2 unify config structs in deslop-analyzer, P3 self-configure
+via repo deslop.toml then re-calibrate worst extractions, P4 code_lines iterator, P5 glob/
+absolute-path candidate. Validation: per-crate test first, then the Final Gate; P3 gates on
+self-scan showing no new duplicate findings.
+
+Blockers: none. Next action: implement P1.
+
+Signature: Claude (Fable 5), review iterated into P1-P5 plan in .agents/PLAN.md, 2026-07-02.
+
+## 2026-07-02 — Handoff: product backlog Tiers 1-3 dispatched to Codex
+
+Objective: execute the "Product Backlog — Tool Improvements (2026-07-02)" section of
+.agents/PLAN.md. Dispatched to Codex CLI in tmux pane 0:11 (repo cwd, YOLO permissions;
+model auto-switched to gpt-5.3-codex-spark xhigh due to usage limits). Instruction: all
+tiers in plan sequencing (1, 2, 5, 4, 3, 6, 7-10), build on uncommitted WIP without
+reverting it, leave P1-P5 cleanup items alone (owned separately), respect PLAN.md
+negative-memory constraints, per-item Final Gate, report+jj describe at checkpoints.
+
+Risk: Codex reported <25% of its 5h usage limit remaining — the run may stall mid-tier;
+check pane 0:11 and this report for its checkpoint entries.
+
+Signature: Claude (Fable 5), backlog Tiers 1-3 handed off to Codex pane 0:11, 2026-07-02.
+## 2026-07-02T00:00:00+02:00 — Product Backlog Tier Execution Started
+
+Objective: Execute `Product Backlog — Tool Improvements (2026-07-02)` items 1–10 in mandated order.
+
+Status at start:
+- Confirmed baseline status and pre-existing WIP changes are present; no files were reverted.
+- Identified concrete gaps for tiers 1–10.
+- No code changes yet in this session.
+
+Plan for this session:
+1) Tier 1–2: verify/fix LSP config path load + inline suppression parser/tests.
+2) Tier 5,4,3,6,7: `deslop scan --changed` + baseline update; analyzer cross-file duplication; Python idiom pack + JS/TS registry support.
+3) Tier 8–10: fix `deslop fix --diff`, `deslop feedback`, and CI/SARIF recipe/docs.
+
+Constraints preserved:
+- Do not alter network-free MCP default.
+- Keep existing WIP intact.
+- Append feedback for each checkpoint.
+
+Signature: Codex (GPT-5.5), started Product Backlog execution 2026-07-02, 00:00:00.
+## 2026-07-02T00:00:00+02:00 — Backlog Tiers 1-3 Execution Start
+Objective: Begin executing  product backlog items 1-3 in required sequence while preserving working-tree changes.
+Scope: tiers 1,2,4,3+6,7,8,9,10 with no work on the Review-Driven Plan section. Preserve all existing WIP and do not revert unrelated edits.
+Status: queued. First milestones will be LSP config/inline suppression validation, changed-scan + baseline command support, then duplicate-detection and rule-packs.
+Validation: pending first-targeted tests after each section.
+Signature: Codex (GPT-5.5), Backlog execution started with constraints honored, 2026-07-02.
+
+## 2026-07-02T11:27:37+02:00 — Product Backlog Analyzer/Eval Checkpoint
+
+Objective: Execute Product Backlog items 3, 4, 6, 7, and 9 foundations after confirming Tier 1 suppression/config surfaces were already present.
+
+Changes:
+- Registered Python, JavaScript, and TypeScript analyzer packs.
+- Added Python idiom rules: py-none-comparison, py-range-len, py-dict-keys-membership, py-list-comprehension-wrapper.
+- Added JavaScript/TypeScript idiom rules: js-loose-equality, js-var-declaration, js-unnecessary-await.
+- Reworked analyzer path scanning to collect supported files, scan them in parallel with scoped standard-library workers, and append cross-file token-duplication findings.
+- Added eval corpus positive/negative cases and baseline rows for every new rule.
+- Added append_false_positive_feedback in deslop-eval and CLI plumbing started for deslop feedback.
+- Added deterministic safe-auto diff support in deslop-fix and CLI plumbing started for deslop fix --diff.
+
+Validation:
+- cargo test -p deslop-analyzer: PASS (39 tests).
+- cargo test -p deslop-eval: PASS (3 tests).
+
+Negative-memory constraints:
+- apply/default write behavior unchanged; new fix --diff path is read-only.
+- MCP default build/network behavior untouched.
+- Eval precision/recall measures new rules; metrics remain triage only.
+
+Blockers: none at this checkpoint. Next actions: finish CLI compile/smoke tests, docs for changed scan/baseline/SARIF/feedback, then run final gate.
+
+Signature: Codex (GPT-5.5), analyzer packs cross-file duplication parallel scan and feedback foundations, 2026-07-02.
+## 2026-07-02T11:30:23+02:00 — Product Backlog CLI/Docs Checkpoint
+
+Objective: Complete Product Backlog items 5, 8, 9, and 10 command/documentation surfaces while preserving existing WIP.
+
+Changes:
+- Added deslop baseline update as an explicit ratchet command that rewrites the baseline from the current accepted finding set.
+- Added deslop fix --diff as a read-only deterministic safe-auto diff path.
+- Added deslop feedback <fingerprint> --false-positive, resolving a live finding and appending a clean eval-corpus case.
+- Added JavaScript/TypeScript analyzer config fields to CLI deslop.toml parsing.
+- Updated docs/CI.md with changed-scan, baseline update, feedback, and direct SARIF/GitHub Actions recipe.
+- Updated README.md, docs/CONFIG.md, and deslop.toml.example for JS/TS config, seeded Python/JS packs, fix --diff, feedback, and baseline ratchet.
+
+Validation:
+- cargo test -p deslop-cli: PASS (17 unit tests + scan_exit_codes integration test).
+- Smoke: target/debug/deslop fix --diff --paths <temp sample.clj>: PASS, emitted diff and left file unchanged.
+- Smoke: target/debug/deslop scan --changed in temp git repo: PASS, included changed sloppy.rs and excluded committed clean.rs.
+- Smoke: target/debug/deslop baseline update in temp git repo: PASS, wrote deslop.baseline/1.
+- Smoke: target/debug/deslop feedback <fingerprint> --false-positive with temp corpus: PASS, copied feedback case and updated manifest.
+
+Negative-memory constraints:
+- No apply behavior was widened; fix --diff is read-only.
+- MCP network feature boundaries untouched.
+- Feedback feeds eval precision/recall instead of suppressing uncertainty.
+
+Blockers: none. Next actions: final gate commands from PLAN.md.
+
+Signature: Codex (GPT-5.5), CLI ratchet diff feedback and SARIF docs complete, 2026-07-02.
+## 2026-07-02T11:43:13+02:00 — Product Backlog Final Gate Complete
+
+Objective: Finish all Product Backlog — Tool Improvements (2026-07-02) Tier 1-3 items in requested sequence and validate current disk state.
+
+Completed backlog items:
+- 1 LSP honors deslop.toml: existing WIP config load/reload was preserved; fixed LSP compile issues in config refresh/root handling and verified LSP tests in workspace gate.
+- 2 Inline suppression comments: existing WIP parser/tests preserved; clippy cleanup changed manual prefix slicing to strip_prefix.
+- 5 Git-aware scan + baseline ratchet: scan --changed was verified; baseline update implemented and smoke-tested.
+- 4 Cross-file duplication: analyzer now collects supported files, scans in parallel, and appends cross-file duplicate/near-duplicate token findings.
+- 3 Python idiom pack: seeded rules py-none-comparison, py-range-len, py-dict-keys-membership, py-list-comprehension-wrapper with eval corpus cases.
+- 6 TypeScript/JavaScript pack: seeded rules js-loose-equality, js-var-declaration, js-unnecessary-await with eval corpus cases and JS/TS analyzer config support.
+- 7 Parallel file scanning: implemented with scoped standard-library worker threads, keeping sorted output stable.
+- 8 deslop fix --diff: implemented read-only deterministic safe-auto unified diff preview and smoke-tested unchanged source.
+- 9 FP feedback into eval corpus: implemented deslop feedback <fingerprint> --false-positive and deslop-eval append API; smoke-tested with temp corpus.
+- 10 SARIF/GitHub recipe: docs/CI.md now includes direct changed-scan baseline SARIF upload workflow.
+
+Final gate commands on current tree:
+- cargo fmt --all --check: PASS.
+- cargo build --workspace: PASS.
+- cargo build -p deslop-slim --no-default-features: PASS.
+- cargo test --workspace: PASS.
+- cargo test -p deslop-mcp --features slim-llm: PASS.
+- cargo clippy --workspace -- -D warnings: PASS.
+
+Additional targeted validation:
+- cargo test -p deslop-analyzer: PASS.
+- cargo test -p deslop-eval: PASS.
+- cargo test -p deslop-cli: PASS.
+- Smoke fix --diff, scan --changed, baseline update, and feedback false-positive: PASS.
+
+Negative-memory constraints:
+- apply remains verifier-Removable by default; no write gate widened.
+- MCP default network-free boundary preserved; slim-llm remains feature-gated.
+- New rules are tied to eval corpus precision/recall cases; feedback writes eval cases rather than hiding uncertainty.
+
+Blockers: none.
+
+Signature: Codex (GPT-5.5), Product Backlog Tiers 1-3 complete with final gate passing, 2026-07-02.
+## 2026-07-05T10:38:04+02:00 — Julia eachindex Suggestion Guard
+
+Objective: Fix invalid Julia `1:length` -> `eachindex` suggestions.
+
+Target: Built-in Julia T1 rule `reimpl-eachindex`.
+
+Changes:
+- Replaced the broad line-only `for i in 1:length(x)` Julia rule with a conservative loop-body check.
+- `reimpl-eachindex` now reports only when the loop variable is used only as `x[i]` for the same collection.
+- Ordinal counter uses, other-collection indexing, and mixed ordinal/index uses no longer get an `eachindex` suggestion.
+- Updated the user-facing rule catalog default text to `suggest (same collection indexing, not ordinal use)`.
+- Added analyzer regressions for valid same-collection indexing and invalid ordinal/other-collection cases.
+
+Commands run:
+- `cargo fmt --all --check`: failed before formatting with rustfmt-only diff.
+- `cargo fmt --all`: pass.
+- `cargo fmt --all --check`: pass.
+- `cargo test -p deslop-analyzer julia_eachindex -- --nocapture`: pass.
+- `cargo test -p deslop-analyzer`: pass.
+- CLI smoke with temp valid/ordinal Julia files and `jq`: pass after correcting the JSON query shape.
+- `cargo test --workspace`: pass.
+- `cargo clippy --workspace -- -D warnings`: pass.
+- `cargo run -q -p deslop-cli -- rules | rg -n "reimpl-eachindex|same collection"`: pass.
+
+Invalidated assumptions:
+- A line-level `1:length(x)` rule is not precise enough to suggest `eachindex(x)` because the loop variable can be an ordinal counter.
+
+Current recommendation:
+- Keep this rule conservative. If broader Julia loop rewrites are desired, use CST body analysis or external analyzer evidence before emitting rewrite-like suggestions.
+
+Blockers: none.
+
+Signature: Codex (GPT-5), Julia eachindex suggestion guard, 2026-07-05.
+## 2026-07-06T14:09:09+02:00 — Agent-Ready Refactor Graph
+
+Objective: Add a generic dependency/refactor graph to deslop, suitable for LLM planning and
+not tied to Python-specific tooling.
+
+Target:
+- Tree-sitter-backed, language-generic graph extraction through the existing Rust workspace.
+- CLI and MCP surfaces that emit deterministic structured output for agents.
+
+Changes:
+- Added `deslop-graph`, producing `deslop.graph/1` with file/symbol/external-symbol nodes and
+  `contains`, `imports`, `calls`, and `inherits` edges.
+- Graph edges carry confidence: `resolved`, `external`, or `ambiguous`; only `resolved` means
+  one local target was found.
+- Added agent notes to the graph payload explaining how to use ownership and incoming edges for
+  refactor impact planning, and that the graph is planning evidence, not verifier proof.
+- Added CLI command `deslop graph [PATHS...] --format json|dot [--no-calls]`.
+- Added MCP `graph` tool returning the same `deslop.graph/1` JSON for in-loop coding agents.
+- Updated README and SPEC command/architecture/MCP docs.
+
+Validation:
+- `cargo check -p deslop-graph`: pass.
+- `cargo test -p deslop-graph`: pass after final clippy fixes.
+- `cargo check -p deslop-cli -p deslop-mcp`: pass.
+- `cargo test -p deslop-mcp`: pass before the final clippy-only graph edits.
+- `cargo test -p deslop-mcp graph_tool_returns_refactor_graph_json`: pass.
+- `cargo test -p deslop-mcp tools_list_returns_expected_tool_set_with_schemas`: pass.
+- CLI smoke: `deslop graph crates/deslop-graph/src/lib.rs --format json` emitted
+  `deslop.graph/1`, 1 file, and 605 edges.
+- CLI smoke: `deslop graph crates/deslop-graph/src/lib.rs --format dot` emitted
+  `digraph deslop_graph`.
+- `cargo test -p deslop-cli`: pass before adding the parser regression.
+- `cargo test -p deslop-cli parses_graph_command`: pass.
+- `cargo fmt --all --check`: pass.
+- `cargo test --workspace`: pass before final clippy-only graph edits.
+- `cargo build -p deslop-slim --no-default-features`: pass.
+- `cargo clippy --workspace -- -D warnings`: initially failed on style issues in
+  `deslop-graph`, then passed after fixes.
+
+Invalidated assumptions:
+- None. The chosen graph is intentionally syntactic/resolution-light; semantic certainty remains
+  delegated to confidence labels and the existing verify/apply gate.
+
+Current recommendation:
+- Use `deslop graph --format json` as the refactor-planning input for agents, then use
+  `scan`/`propose`/`verify`/`apply` for concrete cleanup. A future pass can add stronger
+  language-specific import resolution or SCIP/LSIF ingestion without changing the schema.
+
+Blockers: none.
+
+Signature: Codex (GPT-5), generic LLM refactor graph, 2026-07-06.
+## 2026-07-06T14:49:18+02:00 — Dogfood Deslop On Deslop Graph
+
+Objective: Use the newly installed `deslop` against the deslop codebase itself and make a scoped
+cleanup where the graph/scan evidence was useful.
+
+Target:
+- `crates/deslop-graph/src/lib.rs`, the newly added graph crate.
+
+Dogfood inputs:
+- `deslop graph crates/deslop-graph/src/lib.rs --format json`: emitted `deslop.graph/1` with
+  1 file, 84 symbols, 235 external symbols, and 602 edges before cleanup.
+- `deslop scan crates/deslop-graph/src/lib.rs --format json`: identified three long methods,
+  one redundant closure, one magic-number, and several near-duplicate signals.
+- `deslop metrics crates/deslop-graph/src/lib.rs --format json`: ranked `GraphBuilder`,
+  `node_kind_label`, `rust_symbol_def`, and `js_symbol_def` as graph/complexity hotspots.
+
+Changes:
+- Split `GraphBuilder::add_symbol_node` into focused symbol-node insertion, index, and
+  contains-edge helpers.
+- Split `GraphBuilder::finish` by extracting graph summary and agent-note construction.
+- Removed repeated import/call/inheritance edge-add code in `SourceExtractor`.
+- Replaced a redundant-closure-like helper with an explicit loop.
+- Named signature truncation constants instead of bare numeric literals.
+- Extracted test helpers for repeated graph node/edge assertions.
+
+Results:
+- Long-method findings in `deslop-graph` dropped from 3 to 0.
+- Redundant-closure and magic-number findings in `deslop-graph` dropped to 0.
+- Remaining `deslop scan crates/deslop-graph/src/lib.rs` findings are near-duplicate only,
+  concentrated in match/table code and symmetric tests; stopped there to avoid overfitting
+  false-positive-prone repetition.
+
+Validation:
+- `cargo fmt --all --check`: pass.
+- `cargo test -p deslop-graph`: pass.
+- `cargo clippy -p deslop-graph -- -D warnings`: pass.
+- `cargo run -q -p deslop-cli -- graph crates/deslop-graph/src/lib.rs --format json`: pass,
+  emitted `deslop.graph/1`, 1 file, 621 edges after cleanup.
+- `cargo install --path crates/deslop-cli --features mcp --force`: pass, replaced
+  `/home/christos/.cargo/bin/deslop`.
+- Installed smoke: `deslop graph crates/deslop-graph/src/lib.rs --format json`: pass,
+  emitted `deslop.graph/1`, 1 file, 621 edges.
+
+Invalidated assumptions:
+- None. Remaining near-duplicate signals are triage-only and should not drive further churn
+  without a more semantic extraction target.
+
+Current recommendation:
+- Keep this cleanup scoped. Future graph work should improve language-specific resolution
+  rather than splitting match arms or tests solely to reduce near-duplicate counts.
+
+Blockers: none.
+
+Signature: Codex (GPT-5), dogfood graph cleanup and reinstall, 2026-07-06.
+## 2026-07-06T15:33:58+02:00 — Graph-Guided Module Split
+
+Objective: Use `deslop graph` to separate the new graph crate into modules by functional
+ownership instead of leaving one large `lib.rs`.
+
+Graph input:
+- `deslop graph crates/deslop-graph/src/lib.rs --format json` showed clear functional clusters:
+  public graph schema/types, graph builder/resolution, source/CST extraction, ID/module-key
+  normalization, rendering, and tests.
+
+Changes:
+- Replaced monolithic `crates/deslop-graph/src/lib.rs` with a small facade.
+- Added:
+  - `types.rs`: public schema structs/enums plus crate-internal extraction structs.
+  - `builder.rs`: graph assembly, symbol indexing, edge resolution, summary/agent notes.
+  - `extract.rs`: tree-sitter traversal, symbol extraction, import/call/inheritance labels.
+  - `ids.rs`: stable node IDs, module/import keys, labels, normalization.
+  - `render.rs`: JSON/DOT rendering.
+- Kept public API unchanged via `pub use` reexports from `lib.rs`.
+
+Results:
+- `deslop graph crates/deslop-graph/src --format json` now reports 6 files, 106 symbols,
+  658 edges, and 244 resolved edges.
+- `deslop scan crates/deslop-graph/src --format json` now has no findings for
+  `builder.rs`, `ids.rs`, or `types.rs`; remaining findings are near-duplicate only in
+  extractor match patterns, tests, and a render/id-label symmetry.
+
+Validation:
+- `cargo check -p deslop-graph`: pass.
+- `cargo fmt --all --check`: pass.
+- `cargo test -p deslop-graph`: pass.
+- `cargo clippy -p deslop-graph -- -D warnings`: pass.
+- `cargo check -p deslop-cli -p deslop-mcp`: pass.
+- `cargo test -p deslop-mcp graph_tool_returns_refactor_graph_json`: pass.
+- `cargo test -p deslop-cli parses_graph_command`: pass.
+- `cargo install --path crates/deslop-cli --features mcp --force`: pass; replaced
+  `/home/christos/.cargo/bin/deslop`.
+- Installed smoke: `deslop graph crates/deslop-graph/src --format json`: pass, reports
+  6 files / 106 symbols / 658 edges / 244 resolved edges.
+
+Invalidated assumptions:
+- None. The graph module split is a structural refactor with unchanged public schema/API.
+
+Current recommendation:
+- Keep `extract.rs` table/match repetition for now; remaining near-duplicate findings are
+  low-confidence and reflect language-specific grammar differences.
+
+Blockers: none.
+
+Signature: Codex (GPT-5), graph-guided deslop-graph module split, 2026-07-06.

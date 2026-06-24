@@ -1,10 +1,14 @@
-#[cfg(feature = "slim-llm")]
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use deslop_analyzer::{AnalyzerConfig, scan_paths_with_config};
+use deslop_analyzer::{
+    AnalyzerConfig, AnalyzerLangConfig, RuleSuppression, Suppression, SuppressionBuilder,
+    scan_paths_with_config,
+};
+use deslop_graph::{GraphConfig, graph_paths};
 use deslop_metrics::{MetricsConfig, metrics_paths};
 use deslop_parse::SourceFile;
 use deslop_protocol::{
@@ -24,7 +28,6 @@ use deslop_verify::{
     characterization_work_orders_for_patches, parse_coverage_mode, verify_characterization_tests,
     verify_patches,
 };
-#[cfg(feature = "slim-llm")]
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -97,93 +100,186 @@ fn initialize_result() -> Value {
 
 fn tools_list_result() -> Value {
     json!({
-        "tools": [
-            tool("scan", "Scan paths and return deslop.findings/1 JSON.", object_schema(json!({
-                    "paths": paths_schema(),
-                    "format": { "type": "string", "enum": ["json"], "default": "json" }
-            }))),
-            tool("propose", "Return deslop.workorder/1 JSONL-compatible work orders.", object_schema(json!({
-                    "paths": paths_schema()
-            }))),
-            tool("fix", "Return deslop-slim rewrite prompts by default (mode=prompts). With deslop-mcp built using --features slim-llm, mode=auto runs deslop-slim server-side and returns deslop.slim/1.", object_schema(json!({
-                    "mode": {
-                        "type": "string",
-                        "enum": ["prompts", "auto"],
-                        "default": "prompts",
-                        "description": "prompts returns deslop.fix/1 for agent-as-consumer. auto requires deslop-mcp --features slim-llm and runs deslop-slim server-side."
-                    },
-                    "paths": paths_schema(),
-                    "provider": {
-                        "type": "string",
-                        "enum": ["anthropic", "openai"],
-                        "default": "anthropic",
-                        "description": "auto mode only; API keys are read from environment variables, never MCP arguments."
-                    },
-                    "model": {
-                        "type": "string",
-                        "description": "auto mode only; defaults via DESLOP_SLIM_MODEL or deslop-slim's built-in default."
-                    },
-                    "base_url": {
-                        "type": "string",
-                        "description": "auto mode only; OpenAI-compatible base URL."
-                    },
-                    "apply": { "type": "boolean", "default": false },
-                    "allow_unverified": { "type": "boolean", "default": false },
-                    "coverage": {
-                        "type": "string",
-                        "default": "disabled",
-                        "description": "auto mode only; disabled, auto, auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>, or coverage-py:<path>."
-                    },
-                    "check_cmd": { "type": "string" },
-                    "characterize": { "type": "boolean", "default": false },
-                    "mock": {
-                        "type": "string",
-                        "description": "auto mode only; path to a recorded response for deterministic no-network runs."
-                    },
-                    "consent": {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "auto mode real providers only; explicit source-egress consent. Mock runs bypass consent."
-                    },
-                    "config": {
-                        "type": "string",
-                        "default": "deslop.toml",
-                        "description": "auto mode only; deslop.toml path used for [slim] egress_consent."
-                    }
-            }))),
-            tool("verify", "Verify deslop.patch/1 patches without writing files.", required_schema(&["patches"], json!({
-                    "patches": patches_schema(),
-                    "check_cmd": { "type": "string" },
-                    "coverage": coverage_schema(),
-                    "mutation": { "type": "boolean", "default": false },
-                    "characterization_tests": characterization_tests_schema()
-            }))),
-            tool("characterize", "Emit deslop.workorder/1 requests for weak-oracle regions.", required_schema(&["patches"], json!({
-                    "patches": patches_schema(),
-                    "check_cmd": { "type": "string" },
-                    "coverage": { "type": "boolean", "default": false },
-                    "mutation": { "type": "boolean", "default": false }
-            }))),
-            tool("verify_characterization", "Accept generated characterization tests only if they pass current code.", required_schema(&["tests", "check_cmd"], json!({
-                    "tests": characterization_tests_schema(),
-                    "check_cmd": { "type": "string" }
-            }))),
-            tool("apply", "Verify and atomically apply deslop.patch/1 patches.", required_schema(&["patches"], json!({
-                    "patches": patches_schema(),
-                    "check_cmd": { "type": "string" },
-                    "coverage": coverage_schema(),
-                    "mutation": { "type": "boolean", "default": false },
-                    "characterization_tests": characterization_tests_schema(),
-                    "allow_non_removable": { "type": "boolean", "default": false },
-                    "no_backup": { "type": "boolean", "default": false }
-            }))),
-            tool("metrics", "Return deslop.metrics/1 JSON with hotspots.", object_schema(json!({
-                    "paths": paths_schema(),
-                    "sigma": { "type": "number", "default": 2.0 }
-            }))),
-            tool("rules", "Return the built-in rule catalog.", object_schema(json!({}))),
-        ]
+        "tools": tool_definitions()
     })
+}
+
+fn tool_definitions() -> Vec<Value> {
+    vec![
+        scan_tool_spec(),
+        propose_tool_spec(),
+        fix_tool_spec(),
+        verify_tool_spec(),
+        characterize_tool_spec(),
+        verify_characterization_tool_spec(),
+        apply_tool_spec(),
+        metrics_tool_spec(),
+        graph_tool_spec(),
+        rules_tool_spec(),
+    ]
+}
+
+fn scan_tool_spec() -> Value {
+    tool(
+        "scan",
+        "Scan paths and return deslop.findings/1 JSON.",
+        object_schema(json!({
+            "paths": paths_schema(),
+            "format": { "type": "string", "enum": ["json"], "default": "json" },
+            "config": config_schema("Optional deslop.toml path for [analyzer] scan settings."),
+            "analyzer": analyzer_schema()
+        })),
+    )
+}
+
+fn propose_tool_spec() -> Value {
+    tool(
+        "propose",
+        "Return deslop.workorder/1 JSONL-compatible work orders.",
+        object_schema(json!({
+            "paths": paths_schema(),
+            "config": config_schema("Optional deslop.toml path for [analyzer] propose settings."),
+            "analyzer": analyzer_schema()
+        })),
+    )
+}
+
+fn fix_tool_spec() -> Value {
+    tool(
+        "fix",
+        "Return deslop-slim rewrite prompts by default (mode=prompts). With deslop-mcp built using --features slim-llm, mode=auto runs deslop-slim server-side and returns deslop.slim/1.",
+        object_schema(fix_tool_properties()),
+    )
+}
+
+fn fix_tool_properties() -> Value {
+    json!({
+        "mode": {
+            "type": "string",
+            "enum": ["prompts", "auto"],
+            "default": "prompts",
+            "description": "prompts returns deslop.fix/1 for agent-as-consumer. auto requires deslop-mcp --features slim-llm and runs deslop-slim server-side."
+        },
+        "paths": paths_schema(),
+        "analyzer": analyzer_schema(),
+        "provider": {
+            "type": "string",
+            "enum": ["anthropic", "openai"],
+            "default": "anthropic",
+            "description": "auto mode only; API keys are read from environment variables, never MCP arguments."
+        },
+        "model": string_schema("auto mode only; defaults via DESLOP_SLIM_MODEL or deslop-slim's built-in default."),
+        "base_url": string_schema("auto mode only; OpenAI-compatible base URL."),
+        "apply": { "type": "boolean", "default": false },
+        "allow_unverified": { "type": "boolean", "default": false },
+        "coverage": {
+            "type": "string",
+            "default": "disabled",
+            "description": "auto mode only; disabled, auto, auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>, or coverage-py:<path>."
+        },
+        "check_cmd": { "type": "string" },
+        "characterize": { "type": "boolean", "default": false },
+        "mock": string_schema("auto mode only; path to a recorded response for deterministic no-network runs."),
+        "consent": {
+            "type": "boolean",
+            "default": false,
+            "description": "auto mode real providers only; explicit source-egress consent. Mock runs bypass consent."
+        },
+        "config": {
+            "type": "string",
+            "default": "deslop.toml",
+            "description": "deslop.toml path used for prompt-mode [analyzer] settings and auto-mode [slim] egress_consent."
+        }
+    })
+}
+
+fn verify_tool_spec() -> Value {
+    tool(
+        "verify",
+        "Verify deslop.patch/1 patches without writing files.",
+        required_schema(&["patches"], patch_verification_properties()),
+    )
+}
+
+fn characterize_tool_spec() -> Value {
+    tool(
+        "characterize",
+        "Emit deslop.workorder/1 requests for weak-oracle regions.",
+        required_schema(
+            &["patches"],
+            json!({
+                "patches": patches_schema(),
+                "check_cmd": { "type": "string" },
+                "coverage": { "type": "boolean", "default": false },
+                "mutation": { "type": "boolean", "default": false }
+            }),
+        ),
+    )
+}
+
+fn verify_characterization_tool_spec() -> Value {
+    tool(
+        "verify_characterization",
+        "Accept generated characterization tests only if they pass current code.",
+        required_schema(
+            &["tests", "check_cmd"],
+            json!({
+                "tests": characterization_tests_schema(),
+                "check_cmd": { "type": "string" }
+            }),
+        ),
+    )
+}
+
+fn apply_tool_spec() -> Value {
+    let mut properties = patch_verification_properties();
+    properties["allow_non_removable"] = json!({ "type": "boolean", "default": false });
+    properties["no_backup"] = json!({ "type": "boolean", "default": false });
+    tool(
+        "apply",
+        "Verify and atomically apply deslop.patch/1 patches.",
+        required_schema(&["patches"], properties),
+    )
+}
+
+fn patch_verification_properties() -> Value {
+    json!({
+        "patches": patches_schema(),
+        "check_cmd": { "type": "string" },
+        "coverage": coverage_schema(),
+        "mutation": { "type": "boolean", "default": false },
+        "characterization_tests": characterization_tests_schema()
+    })
+}
+
+fn metrics_tool_spec() -> Value {
+    tool(
+        "metrics",
+        "Return deslop.metrics/1 JSON with hotspots.",
+        object_schema(json!({
+            "paths": paths_schema(),
+            "sigma": { "type": "number", "default": 2.0 }
+        })),
+    )
+}
+
+fn graph_tool_spec() -> Value {
+    tool(
+        "graph",
+        "Return deslop.graph/1 JSON: deterministic file/symbol nodes plus contains/imports/calls/inherits edges for LLM refactor planning. Read-only; no writes, no network.",
+        object_schema(json!({
+            "paths": paths_schema(),
+            "include_calls": { "type": "boolean", "default": true }
+        })),
+    )
+}
+
+fn rules_tool_spec() -> Value {
+    tool(
+        "rules",
+        "Return the built-in rule catalog.",
+        object_schema(json!({})),
+    )
 }
 
 fn tool(name: &str, description: &str, input_schema: Value) -> Value {
@@ -206,6 +302,86 @@ fn required_schema(required: &[&str], properties: Value) -> Value {
     let mut schema = object_schema(properties);
     schema["required"] = json!(required);
     schema
+}
+
+fn string_schema(description: &str) -> Value {
+    json!({
+        "type": "string",
+        "description": description
+    })
+}
+
+fn config_schema(description: &str) -> Value {
+    json!({
+        "type": "string",
+        "default": "deslop.toml",
+        "description": description
+    })
+}
+
+fn analyzer_schema() -> Value {
+    let lang_schema = || {
+        json!({
+            "type": "object",
+            "properties": {
+                "long_method_nloc": {
+                    "type": "integer",
+                    "description": "Per-language non-comment line threshold for long-method."
+                }
+            },
+            "additionalProperties": false
+        })
+    };
+    let rule_schema = || {
+        json!({
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Set false to disable the rule, same as listing it in disabled_rules."
+                },
+                "ignore_paths": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Path globs skipped for this rule only."
+                }
+            },
+            "additionalProperties": false
+        })
+    };
+    json!({
+        "type": "object",
+        "description": "Analyzer overrides. Global values apply first; per-language long_method_nloc overrides the global threshold for that language. Suppression (disabled_rules, ignore_paths, rules) filters findings after they are produced; unknown rule names are rejected.",
+        "properties": {
+            "min_duplication_tokens": { "type": "integer" },
+            "long_method_nloc": {
+                "type": "integer",
+                "description": "Global non-comment line threshold for long-method."
+            },
+            "min_meaningful_tokens": { "type": "integer" },
+            "disabled_rules": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Rule names to drop entirely. Must be known deslop rules."
+            },
+            "ignore_paths": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Path globs skipped for every rule (e.g. \"**/generated/**\")."
+            },
+            "rules": {
+                "type": "object",
+                "description": "Per-rule controls keyed by rule name.",
+                "additionalProperties": rule_schema()
+            },
+            "rust": lang_schema(),
+            "clojure": lang_schema(),
+            "julia": lang_schema(),
+            "python": lang_schema(),
+            "generic": lang_schema()
+        },
+        "additionalProperties": false
+    })
 }
 
 fn paths_schema() -> Value {
@@ -286,7 +462,8 @@ fn tools_call_result(params: &Value) -> Result<Value> {
         "verify_characterization" => verify_characterization_tool(args)?,
         "apply" => apply_tool(args)?,
         "metrics" => metrics_tool(args)?,
-        "rules" => json!({ "rules": RULES }),
+        "graph" => graph_tool(args)?,
+        "rules" => json!({ "rules": deslop_core::rules::render_table() }),
         other => bail!("unknown tool `{other}`"),
     };
     tool_result(payload)
@@ -367,6 +544,7 @@ fn fix_auto_tool(args: &Value) -> Result<Value> {
         model: model.to_owned(),
         check_cmd: optional_string(args, "check_cmd"),
         backup: true,
+        analyzer: mcp_analyzer_config(args)?,
     };
     let report = if let Some(path) = optional_string(args, "mock") {
         let client = RecordedClient::from_path(path)?;
@@ -391,11 +569,13 @@ fn fix_auto_tool(args: &Value) -> Result<Value> {
     Ok(serde_json::to_value(report)?)
 }
 
-#[cfg(feature = "slim-llm")]
 #[derive(Debug, Default, Deserialize)]
 struct McpDeslopConfig {
+    #[cfg(feature = "slim-llm")]
     #[serde(default)]
     slim: Option<McpSlimConfig>,
+    #[serde(default)]
+    analyzer: Option<McpAnalyzerConfig>,
 }
 
 #[cfg(feature = "slim-llm")]
@@ -403,6 +583,49 @@ struct McpDeslopConfig {
 struct McpSlimConfig {
     #[serde(default)]
     egress_consent: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct McpAnalyzerConfig {
+    #[serde(default)]
+    min_duplication_tokens: Option<usize>,
+    #[serde(default)]
+    long_method_nloc: Option<usize>,
+    #[serde(default)]
+    min_meaningful_tokens: Option<usize>,
+    #[serde(default)]
+    disabled_rules: Option<Vec<String>>,
+    #[serde(default)]
+    ignore_paths: Option<Vec<String>>,
+    #[serde(default)]
+    rules: Option<BTreeMap<String, McpRuleConfig>>,
+    #[serde(default)]
+    rust: Option<McpAnalyzerLangConfig>,
+    #[serde(default)]
+    clojure: Option<McpAnalyzerLangConfig>,
+    #[serde(default)]
+    julia: Option<McpAnalyzerLangConfig>,
+    #[serde(default)]
+    python: Option<McpAnalyzerLangConfig>,
+    #[serde(default)]
+    generic: Option<McpAnalyzerLangConfig>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct McpRuleConfig {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    ignore_paths: Option<Vec<String>>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct McpAnalyzerLangConfig {
+    #[serde(default)]
+    long_method_nloc: Option<usize>,
 }
 
 #[cfg(feature = "slim-llm")]
@@ -429,19 +652,21 @@ fn require_mcp_egress_consent(
 
 #[cfg(feature = "slim-llm")]
 fn mcp_config_egress_consent(args: &Value) -> Result<bool> {
-    let path = optional_string(args, "config").unwrap_or_else(|| "deslop.toml".to_string());
-    let path = PathBuf::from(path);
-    if !path.exists() {
-        return Ok(false);
-    }
-    let text =
-        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
-    let config: McpDeslopConfig =
-        toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))?;
-    Ok(config
+    Ok(mcp_deslop_config(args)?
         .slim
         .and_then(|slim| slim.egress_consent)
         .unwrap_or(false))
+}
+
+fn mcp_deslop_config(args: &Value) -> Result<McpDeslopConfig> {
+    let path = optional_string(args, "config").unwrap_or_else(|| "deslop.toml".to_string());
+    let path = PathBuf::from(path);
+    if !path.exists() {
+        return Ok(McpDeslopConfig::default());
+    }
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
 }
 
 #[cfg(feature = "slim-llm")]
@@ -491,7 +716,66 @@ fn proposed_work_orders(args: &Value) -> Result<Vec<WorkOrder>> {
 
 fn scan_reports(args: &Value) -> Result<Vec<deslop_core::FileReport>> {
     let paths = paths_arg(args)?;
-    scan_paths_with_config(&paths, AnalyzerConfig::default())
+    scan_paths_with_config(&paths, mcp_analyzer_config(args)?)
+}
+
+fn mcp_analyzer_config(args: &Value) -> Result<AnalyzerConfig> {
+    let mut config = AnalyzerConfig::default();
+    let mut suppression = Suppression::builder();
+    if let Some(analyzer) = mcp_deslop_config(args)?.analyzer {
+        apply_mcp_analyzer_config(&mut config, &analyzer);
+        collect_mcp_suppression(&mut suppression, &analyzer);
+    }
+    if let Some(value) = args.get("analyzer") {
+        let analyzer: McpAnalyzerConfig =
+            serde_json::from_value(value.to_owned()).context("invalid analyzer config")?;
+        apply_mcp_analyzer_config(&mut config, &analyzer);
+        collect_mcp_suppression(&mut suppression, &analyzer);
+    }
+    config.suppression = suppression.build()?;
+    Ok(config)
+}
+
+fn collect_mcp_suppression(builder: &mut SuppressionBuilder, analyzer: &McpAnalyzerConfig) {
+    builder.add_section(
+        analyzer.disabled_rules.as_deref().unwrap_or_default(),
+        analyzer.ignore_paths.as_deref().unwrap_or_default(),
+        analyzer.rules.iter().flatten().map(|(rule, rule_config)| {
+            (
+                rule.as_str(),
+                RuleSuppression {
+                    enabled: rule_config.enabled,
+                    ignore_paths: rule_config.ignore_paths.as_deref().unwrap_or_default(),
+                },
+            )
+        }),
+    );
+}
+
+fn apply_mcp_analyzer_config(config: &mut AnalyzerConfig, analyzer: &McpAnalyzerConfig) {
+    if let Some(value) = analyzer.min_duplication_tokens {
+        config.min_duplication_tokens = value;
+    }
+    if let Some(value) = analyzer.long_method_nloc {
+        config.long_method_nloc = value;
+    }
+    if let Some(value) = analyzer.min_meaningful_tokens {
+        config.min_meaningful_tokens = value;
+    }
+    apply_mcp_lang_config(&mut config.rust, analyzer.rust.as_ref());
+    apply_mcp_lang_config(&mut config.clojure, analyzer.clojure.as_ref());
+    apply_mcp_lang_config(&mut config.julia, analyzer.julia.as_ref());
+    apply_mcp_lang_config(&mut config.python, analyzer.python.as_ref());
+    apply_mcp_lang_config(&mut config.generic, analyzer.generic.as_ref());
+}
+
+fn apply_mcp_lang_config(
+    config: &mut AnalyzerLangConfig,
+    analyzer: Option<&McpAnalyzerLangConfig>,
+) {
+    if let Some(value) = analyzer.and_then(|analyzer| analyzer.long_method_nloc) {
+        config.long_method_nloc = Some(value);
+    }
 }
 
 fn verify_tool(args: &Value) -> Result<Value> {
@@ -584,6 +868,20 @@ fn metrics_tool(args: &Value) -> Result<Value> {
     Ok(serde_json::to_value(report)?)
 }
 
+fn graph_tool(args: &Value) -> Result<Value> {
+    let paths = paths_arg(args)?;
+    let graph = graph_paths(
+        &paths,
+        GraphConfig {
+            include_calls: args
+                .get("include_calls")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
+        },
+    )?;
+    Ok(serde_json::to_value(graph)?)
+}
+
 fn paths_arg(args: &Value) -> Result<Vec<PathBuf>> {
     if !args.is_object() && !args.is_null() {
         bail!("tool arguments must be an object");
@@ -668,33 +966,11 @@ pub fn patch_for_workorder(
     }
 }
 
-const RULES: &str = "\
-rule                    safety                  default
-consecutive-blank-lines safe-auto               fix
-reimpl-not=             safe-auto               fix
-reimpl-some?            safe-auto               fix
-reimpl-boolean          safe-auto               fix
-redundant-do            safe-auto               fix
-reimpl-empty?           safe-with-precondition  suggest (finite/countable collection)
-reimpl-seq              safe-with-precondition  suggest (finite/countable collection)
-reimpl-vec              safe-with-precondition  suggest (finite collection)
-reimpl-isempty          safe-with-precondition  suggest (standard collection semantics)
-reimpl-eachindex        safe-with-precondition  suggest (1-based positional indexing)
-reimpl-isnothing        risky-suggest           suggest
-single-use-binding      risky-suggest           suggest
-incompleteness          llm-only                propose
-magic-number            risky-suggest           suggest
-long-method             llm-only                propose
-slop-score              report                  deslop slop
-narrating-comment       llm-only                propose
-comment-block           llm-only                propose
-duplicate-block         llm-only                propose
-";
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::Path;
     use std::sync::{Mutex, MutexGuard};
 
     static TEMP_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -713,6 +989,12 @@ mod tests {
         work_order: WorkOrder,
     }
 
+    struct RustLongMethodFixture {
+        _guard: MutexGuard<'static, ()>,
+        temp: tempfile::TempDir,
+        source: PathBuf,
+    }
+
     #[cfg(feature = "slim-llm")]
     struct RustSlimFixture {
         _guard: MutexGuard<'static, ()>,
@@ -727,13 +1009,26 @@ mod tests {
 
     #[test]
     fn tools_list_returns_expected_tool_set_with_schemas() {
-        let response = handle_request(&json!({
+        let response = tools_list_response();
+        let tools = response["result"]["tools"].as_array().expect("tools");
+        assert_expected_tool_names(tools);
+        assert!(tools.iter().all(|tool| tool.get("inputSchema").is_some()));
+        assert_scan_analyzer_schema(tool_by_name(tools, "scan"));
+        assert_scan_analyzer_schema(tool_by_name(tools, "propose"));
+        assert_verify_coverage_schema(tool_by_name(tools, "verify"));
+        assert_fix_tool_schema(tool_by_name(tools, "fix"));
+    }
+
+    fn tools_list_response() -> Value {
+        handle_request(&json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/list"
         }))
-        .expect("response");
-        let tools = response["result"]["tools"].as_array().expect("tools");
+        .expect("response")
+    }
+
+    fn assert_expected_tool_names(tools: &[Value]) {
         let names = tools
             .iter()
             .map(|tool| tool["name"].as_str().unwrap())
@@ -749,14 +1044,20 @@ mod tests {
                 "verify_characterization",
                 "apply",
                 "metrics",
+                "graph",
                 "rules"
             ]
         );
-        assert!(tools.iter().all(|tool| tool.get("inputSchema").is_some()));
-        let verify = tools
+    }
+
+    fn tool_by_name<'a>(tools: &'a [Value], name: &str) -> &'a Value {
+        tools
             .iter()
-            .find(|tool| tool["name"] == "verify")
-            .expect("verify tool");
+            .find(|tool| tool["name"] == name)
+            .expect("tool")
+    }
+
+    fn assert_verify_coverage_schema(verify: &Value) {
         let coverage = &verify["inputSchema"]["properties"]["coverage"];
         assert_eq!(coverage["default"], false);
         assert!(coverage["anyOf"].as_array().expect("anyOf").len() == 2);
@@ -766,10 +1067,27 @@ mod tests {
                 .expect("description")
                 .contains("lcov:<path>")
         );
-        let fix = tools
-            .iter()
-            .find(|tool| tool["name"] == "fix")
-            .expect("fix tool");
+    }
+
+    fn assert_scan_analyzer_schema(tool: &Value) {
+        let properties = &tool["inputSchema"]["properties"];
+        assert_eq!(properties["config"]["default"], "deslop.toml");
+        assert_eq!(
+            properties["analyzer"]["properties"]["rust"]["properties"]["long_method_nloc"]["type"],
+            "integer"
+        );
+        assert_eq!(
+            properties["analyzer"]["description"],
+            "Analyzer overrides. Global values apply first; per-language long_method_nloc overrides the global threshold for that language. Suppression (disabled_rules, ignore_paths, rules) filters findings after they are produced; unknown rule names are rejected."
+        );
+        assert_eq!(
+            properties["analyzer"]["properties"]["rules"]["additionalProperties"]["properties"]["ignore_paths"]
+                ["type"],
+            "array"
+        );
+    }
+
+    fn assert_fix_tool_schema(fix: &Value) {
         let mode = &fix["inputSchema"]["properties"]["mode"];
         assert_eq!(mode["default"], "prompts");
         assert_eq!(mode["enum"], json!(["prompts", "auto"]));
@@ -780,6 +1098,11 @@ mod tests {
         assert_eq!(
             fix["inputSchema"]["properties"]["config"]["default"],
             "deslop.toml"
+        );
+        assert_eq!(
+            fix["inputSchema"]["properties"]["analyzer"]["properties"]["rust"]["properties"]["long_method_nloc"]
+                ["type"],
+            "integer"
         );
         assert!(
             fix["description"]
@@ -806,14 +1129,170 @@ mod tests {
     }
 
     #[test]
+    fn graph_tool_returns_refactor_graph_json() {
+        let _guard = temp_test_lock();
+        let temp = tempfile::tempdir_in(".").expect("tempdir");
+        let path = repo_relative_temp_path(&temp, "sample.rs");
+        fs::write(&path, "fn helper() {}\nfn run() {\n    helper();\n}\n")
+            .expect("rust graph fixture");
+
+        let response = call_tool("graph", json!({ "paths": [path] })).expect("graph");
+        let content = structured_content(&response);
+        assert_eq!(content["schema"], "deslop.graph/1");
+        assert!(
+            content["agent_notes"]
+                .as_array()
+                .expect("agent notes")
+                .len()
+                >= 2
+        );
+        assert!(
+            content["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .any(|node| node["kind"] == "function" && node["name"] == "run")
+        );
+        assert!(
+            content["edges"]
+                .as_array()
+                .expect("edges")
+                .iter()
+                .any(|edge| {
+                    edge["kind"] == "calls"
+                        && edge["confidence"] == "resolved"
+                        && edge["label"] == "helper"
+                }),
+            "{content:#}"
+        );
+    }
+
+    #[test]
+    fn scan_accepts_per_language_analyzer_override() {
+        let fixture = rust_long_method_fixture(25);
+        let response = call_tool(
+            "scan",
+            json!({
+                "paths": [fixture.source],
+                "analyzer": {
+                    "long_method_nloc": 100,
+                    "rust": { "long_method_nloc": 20 }
+                }
+            }),
+        )
+        .expect("scan");
+        assert_scan_has_rule(&response, "long-method");
+    }
+
+    #[test]
+    fn scan_inline_disabled_rule_suppresses_finding() {
+        let fixture = sample_fixture();
+        let baseline =
+            call_tool("scan", json!({ "paths": [&fixture.path] })).expect("baseline scan");
+        assert_scan_has_rule(&baseline, "reimpl-empty?");
+
+        let response = call_tool(
+            "scan",
+            json!({
+                "paths": [&fixture.path],
+                "analyzer": { "disabled_rules": ["reimpl-empty?"] }
+            }),
+        )
+        .expect("scan");
+        let reports = structured_content(&response)["reports"]
+            .as_array()
+            .expect("reports");
+        assert!(
+            reports.iter().all(|report| report["findings"]
+                .as_array()
+                .expect("findings")
+                .iter()
+                .all(|finding| finding["rule"] != "reimpl-empty?")),
+            "{response:#}"
+        );
+    }
+
+    #[test]
+    fn scan_inline_unknown_disabled_rule_is_rejected() {
+        let fixture = sample_fixture();
+        let err = call_tool(
+            "scan",
+            json!({
+                "paths": [&fixture.path],
+                "analyzer": { "disabled_rules": ["ignore-comments"] }
+            }),
+        )
+        .expect_err("unknown rule must error");
+        assert!(
+            err.to_string().contains("unknown rule 'ignore-comments'"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn propose_reads_per_language_analyzer_config_file() {
+        let fixture = rust_long_method_fixture(25);
+        let config = repo_relative_temp_path(&fixture.temp, "deslop.toml");
+        fs::write(
+            &config,
+            "[analyzer]\nlong_method_nloc = 100\n\n[analyzer.rust]\nlong_method_nloc = 20\n",
+        )
+        .expect("write config");
+        let proposed = call_tool(
+            "propose",
+            json!({
+                "paths": [fixture.source],
+                "config": config
+            }),
+        )
+        .expect("propose");
+        assert!(
+            structured_content(&proposed)["workorders"]
+                .as_array()
+                .expect("workorders")
+                .iter()
+                .any(|work_order| work_order["findings"]
+                    .as_array()
+                    .expect("findings")
+                    .iter()
+                    .any(|finding| finding["rule"] == "long-method")),
+            "{proposed:#}"
+        );
+    }
+
+    #[test]
+    fn fix_prompts_accept_per_language_analyzer_override() {
+        let fixture = rust_long_method_fixture(25);
+        let response = call_tool(
+            "fix",
+            json!({
+                "paths": [fixture.source],
+                "analyzer": {
+                    "long_method_nloc": 100,
+                    "rust": { "long_method_nloc": 20 }
+                }
+            }),
+        )
+        .expect("fix prompts");
+        assert!(
+            structured_content(&response)["prompts"]
+                .as_array()
+                .expect("prompts")
+                .iter()
+                .any(|prompt| prompt["findings"]
+                    .as_array()
+                    .expect("findings")
+                    .iter()
+                    .any(|finding| finding["rule"] == "long-method")),
+            "{response:#}"
+        );
+    }
+
+    #[test]
     fn propose_verify_roundtrip_accepts_clean_and_rejects_stale_patch() {
         let fixture = sample_fixture();
 
-        let proposed = call_tool("propose", json!({ "paths": [fixture.path] })).expect("propose");
-        let work_order: deslop_protocol::WorkOrder =
-            serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
-                .expect("workorder");
-
+        let work_order = propose_first_work_order(&fixture.path);
         let patch = patch_for_workorder(&work_order, "(empty? xs)\n");
         let verified = call_tool("verify", json!({ "patches": [patch] })).expect("verify");
         assert_eq!(first_tool_result(&verified)["passed"], true, "{verified:#}");
@@ -830,23 +1309,13 @@ mod tests {
     fn verify_coverage_boolean_back_compat_and_default() {
         let fixture = sample_fixture();
 
-        let proposed =
-            call_tool("propose", json!({ "paths": [fixture.path.clone()] })).expect("propose");
-        let work_order: deslop_protocol::WorkOrder =
-            serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
-                .expect("workorder");
+        let work_order = propose_first_work_order(&fixture.path);
         let patch = patch_for_workorder(&work_order, "(empty? xs)\n");
 
         let absent =
             call_tool("verify", json!({ "patches": [patch.clone()] })).expect("verify absent");
         assert_eq!(first_tool_result(&absent)["verdict"], "coverage-unknown");
-        assert!(
-            first_tool_result(&absent)["reasons"]
-                .as_array()
-                .expect("reasons")
-                .iter()
-                .any(|reason| reason.as_str().unwrap().contains("coverage disabled"))
-        );
+        assert_first_tool_reason_contains(&absent, "coverage disabled");
 
         let disabled = call_tool(
             "verify",
@@ -857,13 +1326,7 @@ mod tests {
         )
         .expect("verify false");
         assert_eq!(first_tool_result(&disabled)["verdict"], "coverage-unknown");
-        assert!(
-            first_tool_result(&disabled)["reasons"]
-                .as_array()
-                .expect("reasons")
-                .iter()
-                .any(|reason| reason.as_str().unwrap().contains("coverage disabled"))
-        );
+        assert_first_tool_reason_contains(&disabled, "coverage disabled");
 
         let enabled = call_tool(
             "verify",
@@ -874,13 +1337,7 @@ mod tests {
         )
         .expect("verify true");
         assert_eq!(first_tool_result(&enabled)["verdict"], "coverage-unknown");
-        assert!(
-            first_tool_result(&enabled)["reasons"]
-                .as_array()
-                .expect("reasons")
-                .iter()
-                .any(|reason| reason.as_str().unwrap().contains("coverage-unknown"))
-        );
+        assert_first_tool_reason_contains(&enabled, "coverage-unknown");
     }
 
     #[test]
@@ -915,10 +1372,7 @@ mod tests {
     #[test]
     fn verify_rejects_bad_coverage_mode_string() {
         let fixture = sample_fixture();
-        let proposed = call_tool("propose", json!({ "paths": [fixture.path] })).expect("propose");
-        let work_order: deslop_protocol::WorkOrder =
-            serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
-                .expect("workorder");
+        let work_order = propose_first_work_order(&fixture.path);
         let patch = patch_for_workorder(&work_order, "(empty? xs)\n");
 
         let error = call_tool(
@@ -941,11 +1395,7 @@ mod tests {
     fn fix_tool_returns_slim_prompts_for_agent_consumer() {
         let fixture = sample_fixture();
 
-        let proposed =
-            call_tool("propose", json!({ "paths": [fixture.path.clone()] })).expect("propose");
-        let work_order: deslop_protocol::WorkOrder =
-            serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
-                .expect("workorder");
+        let work_order = propose_first_work_order(&fixture.path);
         let fixed = call_tool("fix", json!({ "paths": [fixture.path] })).expect("fix");
         let content = structured_content(&fixed);
         let prompts = content["prompts"].as_array().expect("prompts");
@@ -1023,58 +1473,8 @@ mod tests {
     #[cfg(feature = "slim-llm")]
     #[test]
     fn fix_auto_mock_applies_verified_and_blocks_rejected_rewrite() {
-        {
-            let applied = rust_slim_fixture();
-            let good_mock = repo_relative_temp_path(&applied._temp, "good-response.txt");
-            fs::write(&good_mock, "fn unfinished() -> i32 {\n    1\n}\n").expect("good mock");
-            let response = call_tool(
-                "fix",
-                json!({
-                    "mode": "auto",
-                    "paths": [applied.source.clone()],
-                    "mock": good_mock,
-                    "apply": true,
-                    "check_cmd": "true",
-                    "coverage": format!("lcov:{}", applied.coverage.display())
-                }),
-            )
-            .expect("fix auto apply");
-            let content = structured_content(&response);
-            assert_eq!(content["schema"], "deslop.slim/1");
-            assert_eq!(content["dry_run"], false);
-            assert_eq!(content["verified"]["results"][0]["verdict"], "removable");
-            assert_eq!(content["gating"]["applied"].as_array().unwrap().len(), 1);
-            assert_eq!(
-                fs::read_to_string(&applied.source).expect("read applied source"),
-                "fn unfinished() -> i32 {\n    1\n}"
-            );
-        }
-
-        let rejected = rust_slim_fixture();
-        let bad_mock = repo_relative_temp_path(&rejected._temp, "bad-response.txt");
-        fs::write(&bad_mock, "pub fn added() {}\nfn unfinished() -> i32 {\n").expect("bad mock");
-        let response = call_tool(
-            "fix",
-            json!({
-                "mode": "auto",
-                "paths": [rejected.source.clone()],
-                "mock": bad_mock,
-                "apply": true,
-                "allow_unverified": true,
-                "check_cmd": "true",
-                "coverage": "disabled"
-            }),
-        )
-        .expect("fix auto rejected");
-        let content = structured_content(&response);
-        assert_eq!(content["schema"], "deslop.slim/1");
-        assert_eq!(content["verified"]["results"][0]["verdict"], "rejected");
-        assert_eq!(content["gating"]["rejected"].as_array().unwrap().len(), 1);
-        assert!(content["applied"]["written"].as_array().unwrap().is_empty());
-        assert_eq!(
-            fs::read_to_string(&rejected.source).expect("read rejected source"),
-            RUST_SLIM_ORIGINAL
-        );
+        assert_fix_auto_mock_applies_verified_rewrite();
+        assert_fix_auto_mock_blocks_rejected_rewrite();
     }
 
     #[test]
@@ -1110,6 +1510,36 @@ mod tests {
         &structured_content(response)["results"][0]
     }
 
+    fn assert_scan_has_rule(response: &Value, rule: &str) {
+        let reports = structured_content(response)["reports"]
+            .as_array()
+            .expect("reports");
+        assert!(
+            reports.iter().any(|report| report["findings"]
+                .as_array()
+                .expect("findings")
+                .iter()
+                .any(|finding| finding["rule"] == rule)),
+            "{response:#}"
+        );
+    }
+
+    fn assert_first_tool_reason_contains(response: &Value, fragment: &str) {
+        assert!(
+            first_tool_result(response)["reasons"]
+                .as_array()
+                .expect("reasons")
+                .iter()
+                .any(|reason| reason.as_str().unwrap().contains(fragment))
+        );
+    }
+
+    fn propose_first_work_order(path: &Path) -> WorkOrder {
+        let proposed = call_tool("propose", json!({ "paths": [path] })).expect("propose");
+        serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
+            .expect("workorder")
+    }
+
     fn sample_fixture() -> SampleFixture {
         let guard = temp_test_lock();
         let temp = tempfile::tempdir_in(".").expect("tempdir");
@@ -1124,18 +1554,9 @@ mod tests {
     fn rust_coverage_fixture() -> RustCoverageFixture {
         let guard = temp_test_lock();
         let temp = tempfile::tempdir_in(".").expect("tempdir");
-        let source = repo_relative_temp_path(&temp, "sample.rs");
-        fs::write(&source, "fn f() -> i32 {\n    return 1;\n}\n").expect("rust fixture");
-        let coverage = repo_relative_temp_path(&temp, "coverage.lcov");
-        fs::write(
-            &coverage,
-            format!("TN:\nSF:{}\nDA:2,1\nend_of_record\n", source.display()),
-        )
-        .expect("coverage fixture");
-        let proposed = call_tool("propose", json!({ "paths": [source.clone()] })).expect("propose");
-        let work_order: WorkOrder =
-            serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
-                .expect("workorder");
+        let (source, coverage) =
+            rust_source_with_lcov(&temp, "fn f() -> i32 {\n    return 1;\n}\n");
+        let work_order = propose_first_work_order(&source);
         RustCoverageFixture {
             _guard: guard,
             _temp: temp,
@@ -1145,24 +1566,107 @@ mod tests {
         }
     }
 
+    fn rust_long_method_fixture(nloc: usize) -> RustLongMethodFixture {
+        let guard = temp_test_lock();
+        let temp = tempfile::tempdir_in(".").expect("tempdir");
+        let source = repo_relative_temp_path(&temp, "sample.rs");
+        fs::write(&source, rust_long_method_text(nloc)).expect("rust fixture");
+        RustLongMethodFixture {
+            _guard: guard,
+            temp,
+            source,
+        }
+    }
+
+    fn rust_long_method_text(nloc: usize) -> String {
+        let mut text = String::from("fn longish() {\n");
+        for idx in 0..nloc.saturating_sub(2) {
+            text.push_str(&format!("    let _v{idx} = {idx};\n"));
+        }
+        text.push_str("}\n");
+        text
+    }
+
     #[cfg(feature = "slim-llm")]
     fn rust_slim_fixture() -> RustSlimFixture {
         let guard = temp_test_lock();
         let temp = tempfile::tempdir_in(".").expect("tempdir");
-        let source = repo_relative_temp_path(&temp, "sample.rs");
-        fs::write(&source, RUST_SLIM_ORIGINAL).expect("rust fixture");
-        let coverage = repo_relative_temp_path(&temp, "coverage.lcov");
-        fs::write(
-            &coverage,
-            format!("TN:\nSF:{}\nDA:2,1\nend_of_record\n", source.display()),
-        )
-        .expect("coverage fixture");
+        let (source, coverage) = rust_source_with_lcov(&temp, RUST_SLIM_ORIGINAL);
         RustSlimFixture {
             _guard: guard,
             _temp: temp,
             source,
             coverage,
         }
+    }
+
+    fn rust_source_with_lcov(temp: &tempfile::TempDir, text: &str) -> (PathBuf, PathBuf) {
+        let source = repo_relative_temp_path(temp, "sample.rs");
+        fs::write(&source, text).expect("rust fixture");
+        let coverage = repo_relative_temp_path(temp, "coverage.lcov");
+        fs::write(
+            &coverage,
+            format!("TN:\nSF:{}\nDA:2,1\nend_of_record\n", source.display()),
+        )
+        .expect("coverage fixture");
+        (source, coverage)
+    }
+
+    #[cfg(feature = "slim-llm")]
+    fn assert_fix_auto_mock_applies_verified_rewrite() {
+        let applied = rust_slim_fixture();
+        let good_mock = repo_relative_temp_path(&applied._temp, "good-response.txt");
+        fs::write(&good_mock, "fn unfinished() -> i32 {\n    1\n}\n").expect("good mock");
+        let response = call_tool(
+            "fix",
+            json!({
+                "mode": "auto",
+                "paths": [applied.source.clone()],
+                "mock": good_mock,
+                "apply": true,
+                "check_cmd": "true",
+                "coverage": format!("lcov:{}", applied.coverage.display())
+            }),
+        )
+        .expect("fix auto apply");
+        let content = structured_content(&response);
+        assert_eq!(content["schema"], "deslop.slim/1");
+        assert_eq!(content["dry_run"], false);
+        assert_eq!(content["verified"]["results"][0]["verdict"], "removable");
+        assert_eq!(content["gating"]["applied"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            fs::read_to_string(&applied.source).expect("read applied source"),
+            "fn unfinished() -> i32 {\n    1\n}"
+        );
+    }
+
+    #[cfg(feature = "slim-llm")]
+    fn assert_fix_auto_mock_blocks_rejected_rewrite() {
+        let rejected = rust_slim_fixture();
+        let bad_mock = repo_relative_temp_path(&rejected._temp, "bad-response.txt");
+        fs::write(&bad_mock, "pub fn added() {}\nfn unfinished() -> i32 {\n").expect("bad mock");
+        let response = call_tool(
+            "fix",
+            json!({
+                "mode": "auto",
+                "paths": [rejected.source.clone()],
+                "mock": bad_mock,
+                "apply": true,
+                "allow_unverified": true,
+                "check_cmd": "true",
+                "coverage": "disabled"
+            }),
+        )
+        .expect("fix auto rejected");
+        let content = structured_content(&response);
+        assert_eq!(content["schema"], "deslop.slim/1");
+        assert_eq!(content["verified"]["results"][0]["verdict"], "rejected");
+        assert_eq!(content["gating"]["rejected"].as_array().unwrap().len(), 1);
+        assert!(content["applied"]["written"].as_array().unwrap().is_empty());
+        assert_eq!(
+            fs::read_to_string(&rejected.source).expect("read rejected source"),
+            RUST_SLIM_ORIGINAL
+        );
     }
 
     fn call_tool(name: &str, arguments: Value) -> Result<Value> {

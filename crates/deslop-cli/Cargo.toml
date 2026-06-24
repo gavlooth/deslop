@@ -16,6 +16,7 @@ deslop-analyzer.workspace = true
 deslop-core.workspace = true
 deslop-eval.workspace = true
 deslop-fix.workspace = true
+deslop-graph.workspace = true
 deslop-metrics.workspace = true
 deslop-mcp = { workspace = true, optional = true }
 deslop-protocol.workspace = true

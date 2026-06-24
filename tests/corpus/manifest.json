@@ -60,6 +60,27 @@
       ]
     },
     {
+      "path": "sloppy/python_idioms.py",
+      "label": "sloppy",
+      "language": "python",
+      "expectations": [
+        { "rule": "py-none-comparison", "should_fire": true, "start_line": 2, "end_line": 2, "note": "None equality" },
+        { "rule": "py-range-len", "should_fire": true, "start_line": 4, "end_line": 4, "note": "range len iteration" },
+        { "rule": "py-dict-keys-membership", "should_fire": true, "start_line": 6, "end_line": 6, "note": "dict keys membership" },
+        { "rule": "py-list-comprehension-wrapper", "should_fire": true, "start_line": 7, "end_line": 7, "note": "list around list comprehension" }
+      ]
+    },
+    {
+      "path": "sloppy/javascript_idioms.js",
+      "label": "sloppy",
+      "language": "javascript",
+      "expectations": [
+        { "rule": "js-var-declaration", "should_fire": true, "start_line": 1, "end_line": 1, "note": "var declaration" },
+        { "rule": "js-loose-equality", "should_fire": true, "start_line": 4, "end_line": 4, "note": "loose equality" },
+        { "rule": "js-unnecessary-await", "should_fire": true, "start_line": 7, "end_line": 7, "note": "return await" }
+      ]
+    },
+    {
       "path": "sloppy/duplication.rs",
       "label": "sloppy",
       "language": "rust",
@@ -173,6 +194,27 @@
         { "rule": "needless-return", "should_fire": false, "start_line": 23, "end_line": 23, "note": "early return guard" },
         { "rule": "duplicate-block", "should_fire": false, "start_line": 29, "end_line": 68, "note": "enum mapping boilerplate is not removable duplication" },
         { "rule": "near-duplicate", "should_fire": false, "start_line": 29, "end_line": 68, "note": "enum mapping boilerplate is not removable duplication" }
+      ]
+    },
+    {
+      "path": "clean/python_clean.py",
+      "label": "clean",
+      "language": "python",
+      "expectations": [
+        { "rule": "py-none-comparison", "should_fire": false, "start_line": 1, "end_line": 8, "note": "idiomatic None identity" },
+        { "rule": "py-range-len", "should_fire": false, "start_line": 1, "end_line": 8, "note": "enumerate iteration" },
+        { "rule": "py-dict-keys-membership", "should_fire": false, "start_line": 1, "end_line": 8, "note": "direct dict membership" },
+        { "rule": "py-list-comprehension-wrapper", "should_fire": false, "start_line": 1, "end_line": 8, "note": "no list wrapper around comprehension" }
+      ]
+    },
+    {
+      "path": "clean/typescript_clean.ts",
+      "label": "clean",
+      "language": "typescript",
+      "expectations": [
+        { "rule": "js-var-declaration", "should_fire": false, "start_line": 1, "end_line": 8, "note": "let declaration" },
+        { "rule": "js-loose-equality", "should_fire": false, "start_line": 1, "end_line": 8, "note": "strict equality" },
+        { "rule": "js-unnecessary-await", "should_fire": false, "start_line": 1, "end_line": 8, "note": "direct promise return" }
       ]
     },
     {

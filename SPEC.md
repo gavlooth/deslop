@@ -338,6 +338,7 @@ deslop scan     [PATHS…] [--format text|json|sarif|agent] [--baseline FILE] [-
 deslop metrics  [PATHS…] [--format text|json] [--hotspots-only] [--sigma N]
 deslop health   [PATHS…] [--format text|json] [--hotspots-only] [--sigma N] # alias
 deslop slop     [PATHS…] [--format text|json]                 # weighted slop score
+deslop graph    [PATHS…] [--format json|dot] [--no-calls]      # file/symbol dependency graph for refactor planning
 deslop fix      [--paths PATH… | --workorders FILE] [--apply] [--characterize] [--allow-unverified] [--coverage MODE] [--provider anthropic|openai] [--base-url URL] [--model M] [--mock recorded.txt] [--check-cmd "CMD"] [--no-backup] # bundled slim consumer; dry-run by default
 deslop propose  [PATHS…] [-o workorders.jsonl] [--julia-external[=staticlint|jet|off]] [--julia-project DIR] # emit work orders
 deslop characterize --patches FILE [-o workorders.jsonl] [--check-cmd "CMD"] [--coverage] [--mutation] [--mutation-jobs N]
@@ -357,6 +358,11 @@ deslop rules                                                   # class, precondi
   `julia --project=...`.
 - **`metrics`/`health`**: computes per-region complexity and expressivity metrics, ranks
   repo-relative bloat hotspots, and emits text or JSON.
+- **`graph`**: emits `deslop.graph/1`, a deterministic Tree-sitter-derived dependency graph
+  for LLM refactor planning. Nodes are files, symbols, and explicit external symbols; edges are
+  `contains`, `imports`, `calls`, and `inherits`. Only `confidence=resolved` means deslop found
+  one local target; `external` and `ambiguous` edges are planning signals that still need normal
+  verification before edits.
 - **`fix`**: the bundled `deslop-slim` consumer. It proposes work orders from `--paths` or
   reads JSONL from `--workorders`, builds prompts, asks a swappable `LlmClient`, converts
   rewrites into `deslop.patch/1`, verifies them, and prints a dry-run JSON report unless
@@ -377,7 +383,7 @@ deslop rules                                                   # class, precondi
 - **`propose`/`verify`/`apply`**: the swappable-LLM loop (§4). `verify`/`apply` are the
   trust boundary; they run with **no network** and need no model.
 - **`mcp`**: feature-gated stdio MCP server exposing `scan`, `propose`, `verify`,
-  `apply`, `metrics`, and `rules` as tools for in-loop agents.
+  `apply`, `metrics`, `graph`, and `rules` as tools for in-loop agents.
 
 ---
 
@@ -415,7 +421,7 @@ It implements the core JSON-RPC MCP methods needed by coding agents:
 `initialize`, `tools/list`, and `tools/call`. Tool payloads reuse the existing
 `deslop.findings/1`, `deslop.workorder/1`, `deslop.fix/1`, `deslop.patch/1`,
 `deslop.characterization-test/1`, `deslop.verify/1`, `deslop.apply/1`, and
-`deslop.metrics/1` schemas. The `fix` tool scans/proposes work orders, reuses
+`deslop.metrics/1`/`deslop.graph/1` schemas. The `fix` tool scans/proposes work orders, reuses
 `deslop_slim::build_prompt`, and returns prompt entries containing `workorder_id`, `path`,
 line range, `region_fingerprint`, contract, findings, and prompt text. The caller rewrites
 the region and submits `deslop.patch/1` patches through `apply`, so the existing
@@ -480,6 +486,7 @@ crates/
   deslop-mutate/     # pure tree-sitter CST mutant generation
   deslop-analyzer/   # T1: scope graph, duplication, complexity, idiom rules
   deslop-metrics/    # per-region complexity/expressivity + hotspot ranking
+  deslop-graph/      # file/symbol dependency graph for refactor planning
   deslop-external/   # T2: clj-kondo / clippy / StaticLint/JET adapters (subprocess; graceful degrade)
   deslop-fix/        # safe-auto / analyzer-confirmed CST edits (ropey)
   deslop-protocol/   # work-order + patch schemas (serde); --format agent

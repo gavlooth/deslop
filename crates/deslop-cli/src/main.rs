@@ -5,10 +5,16 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use deslop_analyzer::{AnalyzerConfig, JuliaExternal, scan_paths, scan_paths_with_config};
+use deslop_analyzer::{
+    AnalyzerConfig, AnalyzerLangConfig, JuliaExternal, RuleSuppression, Suppression, scan_paths,
+    scan_paths_with_config,
+};
 use deslop_core::{FileReport, Severity};
-use deslop_eval::{render_eval_json, render_eval_text, run_eval};
-use deslop_fix::undo_paths;
+use deslop_eval::{append_false_positive_feedback, render_eval_json, render_eval_text, run_eval};
+use deslop_fix::{diff_paths, undo_paths};
+use deslop_graph::{
+    GraphConfig, graph_paths, render_dot as render_graph_dot, render_json as render_graph_json,
+};
 use deslop_metrics::{
     MetricsConfig, metrics_paths, render_json as render_metrics_json,
     render_text as render_metrics_text,
@@ -16,9 +22,9 @@ use deslop_metrics::{
 use deslop_report::{render_agent, render_json, render_sarif, render_text};
 use deslop_slim::{
     AnthropicClient, DEFAULT_MODEL, EgressDecision, EgressSummary, OpenAiClient, RecordedClient,
-    SlimOptions, SlimProgress, SlimProgressOutcome, egress_consent_error, egress_prompt_message,
-    egress_summary, env_egress_consent, provider_base_url, resolve_egress_consent,
-    run_slim_with_progress,
+    SlimOptions, SlimProgress, SlimProgressOutcome, SlimReport, egress_consent_error,
+    egress_prompt_message, egress_summary, env_egress_consent, provider_base_url,
+    resolve_egress_consent, run_slim_with_progress,
 };
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
@@ -50,11 +56,13 @@ enum Command {
     Scan(ScanArgs),
     #[command(alias = "health")]
     Metrics(MetricsArgs),
+    Graph(GraphArgs),
     #[cfg(feature = "mcp")]
     Mcp,
     Fix(FixArgs),
     Propose(ProposeArgs),
     Eval(EvalArgs),
+    Feedback(FeedbackArgs),
     Slop(SlopArgs),
     Characterize(CharacterizeArgs),
     VerifyCharacterization(VerifyCharacterizationArgs),
@@ -85,8 +93,8 @@ struct ScanArgs {
     #[arg(long, value_enum)]
     fail_on: Option<SeverityArg>,
 
-    #[arg(long)]
-    since: Option<String>,
+    #[arg(long, alias = "since", num_args = 0..=1, default_missing_value = "HEAD")]
+    changed: Option<String>,
 
     #[arg(long)]
     rust_external: bool,
@@ -141,6 +149,9 @@ struct FixArgs {
 
     #[arg(long)]
     quiet: bool,
+
+    #[arg(long)]
+    diff: bool,
 }
 
 #[derive(Debug, Args)]
@@ -177,12 +188,38 @@ struct MetricsArgs {
 }
 
 #[derive(Debug, Args)]
+struct GraphArgs {
+    #[arg(default_value = ".")]
+    paths: Vec<PathBuf>,
+
+    #[arg(long, value_enum, default_value_t = GraphFormat::Json)]
+    format: GraphFormat,
+
+    #[arg(long)]
+    no_calls: bool,
+}
+
+#[derive(Debug, Args)]
 struct EvalArgs {
     #[arg(default_value = "tests/corpus")]
     corpus: PathBuf,
 
     #[arg(long, value_enum, default_value_t = MetricsFormat::Text)]
     format: MetricsFormat,
+}
+
+#[derive(Debug, Args)]
+struct FeedbackArgs {
+    fingerprint: String,
+
+    #[arg(long)]
+    false_positive: bool,
+
+    #[arg(long, default_value = "tests/corpus")]
+    corpus: PathBuf,
+
+    #[arg(default_value = ".")]
+    paths: Vec<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -287,6 +324,13 @@ enum BaselineCommand {
         #[arg(short, long, default_value = "deslop-baseline.json")]
         output: PathBuf,
     },
+    Update {
+        #[arg(default_value = ".")]
+        paths: Vec<PathBuf>,
+
+        #[arg(short, long, default_value = "deslop-baseline.json")]
+        output: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -301,6 +345,12 @@ enum Format {
 enum MetricsFormat {
     Text,
     Json,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum GraphFormat {
+    Json,
+    Dot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ValueEnum)]
@@ -423,6 +473,7 @@ struct ScanConfig {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AnalyzerConfigSection {
     #[serde(default)]
     min_duplication_tokens: Option<usize>,
@@ -430,6 +481,48 @@ struct AnalyzerConfigSection {
     long_method_nloc: Option<usize>,
     #[serde(default)]
     min_meaningful_tokens: Option<usize>,
+    /// Rules to disable entirely. Validated against known rule names.
+    #[serde(default)]
+    disabled_rules: Option<Vec<String>>,
+    /// Path globs skipped for every rule.
+    #[serde(default)]
+    ignore_paths: Option<Vec<String>>,
+    /// Per-rule controls, keyed by rule name.
+    #[serde(default)]
+    rules: Option<BTreeMap<String, RuleConfigSection>>,
+    #[serde(default)]
+    rust: Option<AnalyzerLangConfigSection>,
+    #[serde(default)]
+    clojure: Option<AnalyzerLangConfigSection>,
+    #[serde(default)]
+    julia: Option<AnalyzerLangConfigSection>,
+    #[serde(default)]
+    python: Option<AnalyzerLangConfigSection>,
+    #[serde(default)]
+    javascript: Option<AnalyzerLangConfigSection>,
+    #[serde(default)]
+    typescript: Option<AnalyzerLangConfigSection>,
+    #[serde(default)]
+    generic: Option<AnalyzerLangConfigSection>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnalyzerLangConfigSection {
+    #[serde(default)]
+    long_method_nloc: Option<usize>,
+}
+
+/// `[analyzer.rules.<rule>]` table: scope a single rule.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RuleConfigSection {
+    /// Set false to disable the rule (same as listing it in `disabled_rules`).
+    #[serde(default)]
+    enabled: Option<bool>,
+    /// Path globs skipped for this rule only.
+    #[serde(default)]
+    ignore_paths: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -463,11 +556,13 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Scan(args) => scan(args, &config),
         Command::Metrics(args) => metrics(args),
+        Command::Graph(args) => graph(args),
         #[cfg(feature = "mcp")]
         Command::Mcp => deslop_mcp::run_stdio(),
         Command::Fix(args) => fix(args, &config),
         Command::Propose(args) => propose(args, &config),
         Command::Eval(args) => eval(args),
+        Command::Feedback(args) => feedback(args, &config),
         Command::Slop(args) => slop(args),
         Command::Characterize(args) => characterize(args),
         Command::VerifyCharacterization(args) => verify_characterization(args),
@@ -489,14 +584,29 @@ fn metrics(args: MetricsArgs) -> Result<()> {
     Ok(())
 }
 
+fn graph(args: GraphArgs) -> Result<()> {
+    let report = graph_paths(
+        &args.paths,
+        GraphConfig {
+            include_calls: !args.no_calls,
+        },
+    )?;
+    let rendered = match args.format {
+        GraphFormat::Json => render_graph_json(&report)?,
+        GraphFormat::Dot => render_graph_dot(&report),
+    };
+    print!("{rendered}");
+    Ok(())
+}
+
 fn scan(args: ScanArgs, config: &DeslopConfig) -> Result<()> {
-    let paths = paths_since(args.paths, args.since)?;
+    let paths = paths_since(args.paths, args.changed)?;
     let analyzer = analyzer_config(
         config,
         args.rust_external,
         args.julia_external,
         args.julia_project,
-    );
+    )?;
     let mut reports = scan_paths_with_config(&paths, analyzer)?;
     if let Some(path) = resolve_scan_baseline(args.baseline, config) {
         let baseline = Baseline::read(&path)?;
@@ -524,6 +634,27 @@ fn scan(args: ScanArgs, config: &DeslopConfig) -> Result<()> {
 }
 
 fn fix(args: FixArgs, config: &DeslopConfig) -> Result<()> {
+    if args.diff {
+        print!("{}", diff_paths(&args.paths)?);
+        return Ok(());
+    }
+    let request = resolve_fix_request(args, config)?;
+    let mut progress = slim_progress_sink(!request.quiet && io::stderr().is_terminal());
+    let report = run_fix_request(request, &mut progress)?;
+    print_pretty_json(&report)?;
+    Ok(())
+}
+
+struct FixRequest {
+    options: SlimOptions,
+    provider: SlimProvider,
+    base_url: Option<String>,
+    mock: Option<PathBuf>,
+    explicit_consent: bool,
+    quiet: bool,
+}
+
+fn resolve_fix_request(args: FixArgs, config: &DeslopConfig) -> Result<FixRequest> {
     let model = resolve_slim_model(args.model, std::env::var("DESLOP_SLIM_MODEL").ok(), config);
     let paths = if args.paths.is_empty() {
         vec![PathBuf::from(".")]
@@ -537,44 +668,62 @@ fn fix(args: FixArgs, config: &DeslopConfig) -> Result<()> {
     let base_url = resolve_slim_base_url(args.base_url, config);
     let explicit_consent =
         resolve_slim_egress_consent(args.yes, std::env::var("DESLOP_SLIM_CONSENT").ok(), config);
-    let options = SlimOptions {
-        root: PathBuf::from("."),
-        paths,
-        workorders: args.workorders,
-        apply: args.apply,
-        characterize: args.characterize,
-        allow_unverified,
-        coverage,
-        model: model.to_owned(),
-        check_cmd,
-        backup: !args.no_backup,
-    };
-    let mut progress = slim_progress_sink(!args.quiet && io::stderr().is_terminal());
-    let report = if let Some(path) = args.mock {
+    let analyzer = analyzer_config(config, false, None, None)?;
+    Ok(FixRequest {
+        options: SlimOptions {
+            root: PathBuf::from("."),
+            paths,
+            workorders: args.workorders,
+            apply: args.apply,
+            characterize: args.characterize,
+            allow_unverified,
+            coverage,
+            model,
+            check_cmd,
+            backup: !args.no_backup,
+            analyzer,
+        },
+        provider,
+        base_url,
+        mock: args.mock,
+        explicit_consent,
+        quiet: args.quiet,
+    })
+}
+
+fn run_fix_request(
+    request: FixRequest,
+    progress: &mut dyn FnMut(SlimProgress),
+) -> Result<SlimReport> {
+    if let Some(path) = request.mock {
         let client = RecordedClient::from_path(path)?;
-        run_slim_with_progress(&client, options, &mut progress)?
-    } else {
-        let provider_name = provider.as_str();
-        let destination = provider_base_url(provider_name, base_url.as_deref());
-        require_cli_egress_consent(
-            provider_name,
-            &destination,
-            egress_summary(&options)?,
-            explicit_consent,
-        )?;
-        match provider {
-            SlimProvider::Anthropic => {
-                let client = AnthropicClient::from_env(model.clone())?;
-                run_slim_with_progress(&client, options, &mut progress)?
-            }
-            SlimProvider::Openai => {
-                let client = OpenAiClient::from_env(model.clone(), base_url)?;
-                run_slim_with_progress(&client, options, &mut progress)?
-            }
+        return run_slim_with_progress(&client, request.options, progress);
+    }
+    run_real_provider_fix(request, progress)
+}
+
+fn run_real_provider_fix(
+    request: FixRequest,
+    progress: &mut dyn FnMut(SlimProgress),
+) -> Result<SlimReport> {
+    let provider_name = request.provider.as_str();
+    let destination = provider_base_url(provider_name, request.base_url.as_deref());
+    require_cli_egress_consent(
+        provider_name,
+        &destination,
+        egress_summary(&request.options)?,
+        request.explicit_consent,
+    )?;
+    match request.provider {
+        SlimProvider::Anthropic => {
+            let client = AnthropicClient::from_env(request.options.model.clone())?;
+            run_slim_with_progress(&client, request.options, progress)
         }
-    };
-    print_pretty_json(&report)?;
-    Ok(())
+        SlimProvider::Openai => {
+            let client = OpenAiClient::from_env(request.options.model.clone(), request.base_url)?;
+            run_slim_with_progress(&client, request.options, progress)
+        }
+    }
 }
 
 fn require_cli_egress_consent(
@@ -621,9 +770,7 @@ fn write_slim_progress(event: &SlimProgress, writer: &mut impl Write) -> Result<
 
 fn slim_progress_line(event: &SlimProgress) -> String {
     match event {
-        SlimProgress::Started { work_orders } => {
-            format!("deslop fix: {work_orders} rewrite region(s)")
-        }
+        SlimProgress::Started { work_orders } => started_progress_line(*work_orders),
         SlimProgress::Rewriting {
             index,
             total,
@@ -631,36 +778,63 @@ fn slim_progress_line(event: &SlimProgress) -> String {
             start_line,
             end_line,
             ..
-        } => format!(
-            "[{index}/{total}] rewriting {}:{start_line}-{end_line}",
-            path.display()
-        ),
-        SlimProgress::Characterizing { workorder_id } => {
-            format!("characterizing {workorder_id}")
-        }
+        } => rewrite_progress_line(*index, *total, path, *start_line, *end_line),
+        SlimProgress::Characterizing { workorder_id } => characterizing_progress_line(workorder_id),
         SlimProgress::Verified {
             workorder_id,
             verdict,
-        } => {
-            format!("verified {workorder_id}: {verdict:?}")
-        }
+        } => verified_progress_line(workorder_id, verdict),
         SlimProgress::Outcome {
             workorder_id,
             outcome,
-        } => {
-            let outcome = match outcome {
-                SlimProgressOutcome::Applied => "applied",
-                SlimProgressOutcome::Held => "held",
-                SlimProgressOutcome::Rejected => "rejected",
-            };
-            format!("outcome {workorder_id}: {outcome}")
-        }
+        } => outcome_progress_line(workorder_id, *outcome),
         SlimProgress::Finished {
             applied,
             held,
             rejected,
-        } => format!("finished: applied={applied} held={held} rejected={rejected}"),
+        } => finished_progress_line(*applied, *held, *rejected),
     }
+}
+
+fn started_progress_line(work_orders: usize) -> String {
+    format!("deslop fix: {work_orders} rewrite region(s)")
+}
+
+fn rewrite_progress_line(
+    index: usize,
+    total: usize,
+    path: &Path,
+    start_line: usize,
+    end_line: usize,
+) -> String {
+    format!(
+        "[{index}/{total}] rewriting {}:{start_line}-{end_line}",
+        path.display()
+    )
+}
+
+fn characterizing_progress_line(workorder_id: &str) -> String {
+    format!("characterizing {workorder_id}")
+}
+
+fn verified_progress_line(
+    workorder_id: &str,
+    verdict: &deslop_verify::VerificationVerdict,
+) -> String {
+    format!("verified {workorder_id}: {verdict:?}")
+}
+
+fn outcome_progress_line(workorder_id: &str, outcome: SlimProgressOutcome) -> String {
+    let outcome = match outcome {
+        SlimProgressOutcome::Applied => "applied",
+        SlimProgressOutcome::Held => "held",
+        SlimProgressOutcome::Rejected => "rejected",
+    };
+    format!("outcome {workorder_id}: {outcome}")
+}
+
+fn finished_progress_line(applied: usize, held: usize, rejected: usize) -> String {
+    format!("finished: applied={applied} held={held} rejected={rejected}")
 }
 
 fn propose(args: ProposeArgs, config: &DeslopConfig) -> Result<()> {
@@ -669,7 +843,7 @@ fn propose(args: ProposeArgs, config: &DeslopConfig) -> Result<()> {
         args.rust_external,
         args.julia_external,
         args.julia_project,
-    );
+    )?;
     let reports = scan_paths_with_config(&args.paths, analyzer)?;
     let rendered = render_agent(&reports)?;
     if let Some(output) = args.output {
@@ -692,6 +866,33 @@ fn eval(args: EvalArgs) -> Result<()> {
         println!();
     }
     Ok(())
+}
+
+fn feedback(args: FeedbackArgs, config: &DeslopConfig) -> Result<()> {
+    if !args.false_positive {
+        bail!("feedback currently requires --false-positive");
+    }
+    let analyzer = analyzer_config(config, false, None, None)?;
+    let reports = scan_paths_with_config(&args.paths, analyzer)?;
+    for report in &reports {
+        if let Some(finding) = report
+            .findings
+            .iter()
+            .find(|finding| finding.fingerprint == args.fingerprint)
+        {
+            let case_path = append_false_positive_feedback(&args.corpus, report, finding)?;
+            println!(
+                "appended false-positive corpus case {} for {}",
+                case_path.display(),
+                finding.rule
+            );
+            return Ok(());
+        }
+    }
+    bail!(
+        "no finding with fingerprint {} in scanned paths",
+        args.fingerprint
+    )
 }
 
 #[derive(Debug, Serialize)]
@@ -819,7 +1020,7 @@ fn analyzer_config(
     rust_external: bool,
     julia_external: Option<JuliaExternalArg>,
     julia_project: Option<PathBuf>,
-) -> AnalyzerConfig {
+) -> Result<AnalyzerConfig> {
     analyzer_config_from_config(config, rust_external, julia_external, julia_project)
 }
 
@@ -828,7 +1029,7 @@ fn analyzer_config_from_config(
     rust_external: bool,
     julia_external: Option<JuliaExternalArg>,
     julia_project: Option<PathBuf>,
-) -> AnalyzerConfig {
+) -> Result<AnalyzerConfig> {
     let external = config.external.as_ref();
     let configured_julia = external
         .and_then(|external| external.julia_analyzer)
@@ -838,32 +1039,78 @@ fn analyzer_config_from_config(
     let configured_clippy = external
         .and_then(|external| external.clippy)
         .is_some_and(|value| value == ClippyConfig::On);
-    let default = AnalyzerConfig::default();
-    let min_duplication_tokens = config
-        .analyzer
-        .as_ref()
-        .and_then(|analyzer| analyzer.min_duplication_tokens)
-        .unwrap_or(default.min_duplication_tokens);
-    let long_method_nloc = config
-        .analyzer
-        .as_ref()
-        .and_then(|analyzer| analyzer.long_method_nloc)
-        .unwrap_or(default.long_method_nloc);
-    let min_meaningful_tokens = config
-        .analyzer
-        .as_ref()
-        .and_then(|analyzer| analyzer.min_meaningful_tokens)
-        .unwrap_or(default.min_meaningful_tokens);
+    let thresholds = analyzer_thresholds(config);
 
-    AnalyzerConfig {
-        min_duplication_tokens,
-        long_method_nloc,
-        min_meaningful_tokens,
+    Ok(AnalyzerConfig {
+        min_duplication_tokens: thresholds.min_duplication_tokens,
+        long_method_nloc: thresholds.long_method_nloc,
+        min_meaningful_tokens: thresholds.min_meaningful_tokens,
+        rust: thresholds.rust,
+        clojure: thresholds.clojure,
+        julia: thresholds.julia,
+        python: thresholds.python,
+        javascript: thresholds.javascript,
+        typescript: thresholds.typescript,
+        generic: thresholds.generic,
         rust_external: rust_external || configured_clippy,
         julia_external: julia_external
             .map(JuliaExternal::from)
             .unwrap_or(configured_julia),
         julia_project: julia_project.or(configured_project),
+        suppression: build_suppression(config.analyzer.as_ref())?,
+    })
+}
+
+/// Compile `[analyzer]` suppression keys into a [`Suppression`]. Unknown rule names and
+/// invalid globs are reported as errors rather than silently ignored.
+fn build_suppression(section: Option<&AnalyzerConfigSection>) -> Result<Suppression> {
+    let Some(section) = section else {
+        return Ok(Suppression::default());
+    };
+    let mut builder = Suppression::builder();
+    builder.add_section(
+        section.disabled_rules.as_deref().unwrap_or_default(),
+        section.ignore_paths.as_deref().unwrap_or_default(),
+        section.rules.iter().flatten().map(|(rule, rule_config)| {
+            (
+                rule.as_str(),
+                RuleSuppression {
+                    enabled: rule_config.enabled,
+                    ignore_paths: rule_config.ignore_paths.as_deref().unwrap_or_default(),
+                },
+            )
+        }),
+    );
+    builder.build()
+}
+
+fn analyzer_thresholds(config: &DeslopConfig) -> AnalyzerConfig {
+    let default = AnalyzerConfig::default();
+    let configured = config.analyzer.as_ref();
+    AnalyzerConfig {
+        min_duplication_tokens: configured
+            .and_then(|analyzer| analyzer.min_duplication_tokens)
+            .unwrap_or(default.min_duplication_tokens),
+        long_method_nloc: configured
+            .and_then(|analyzer| analyzer.long_method_nloc)
+            .unwrap_or(default.long_method_nloc),
+        min_meaningful_tokens: configured
+            .and_then(|analyzer| analyzer.min_meaningful_tokens)
+            .unwrap_or(default.min_meaningful_tokens),
+        rust: lang_threshold(configured.and_then(|analyzer| analyzer.rust.as_ref())),
+        clojure: lang_threshold(configured.and_then(|analyzer| analyzer.clojure.as_ref())),
+        julia: lang_threshold(configured.and_then(|analyzer| analyzer.julia.as_ref())),
+        python: lang_threshold(configured.and_then(|analyzer| analyzer.python.as_ref())),
+        javascript: lang_threshold(configured.and_then(|analyzer| analyzer.javascript.as_ref())),
+        typescript: lang_threshold(configured.and_then(|analyzer| analyzer.typescript.as_ref())),
+        generic: lang_threshold(configured.and_then(|analyzer| analyzer.generic.as_ref())),
+        ..default
+    }
+}
+
+fn lang_threshold(configured: Option<&AnalyzerLangConfigSection>) -> AnalyzerLangConfig {
+    AnalyzerLangConfig {
+        long_method_nloc: configured.and_then(|lang| lang.long_method_nloc),
     }
 }
 
@@ -1076,18 +1323,25 @@ fn write_pretty_json<T: Serialize>(value: &T, writer: &mut impl Write) -> Result
 fn baseline(args: BaselineArgs) -> Result<()> {
     match args.command {
         BaselineCommand::Write { paths, output } => {
-            let reports = scan_paths(&paths)?;
-            let baseline = Baseline::from_reports(&reports);
-            let rendered = serde_json::to_string_pretty(&baseline)?;
-            fs::write(&output, rendered)
-                .with_context(|| format!("failed to write {}", output.display()))?;
-            println!(
-                "wrote {} fingerprint(s) to {}",
-                baseline.fingerprints.len(),
-                output.display()
-            );
+            write_baseline(&paths, &output, "wrote")?;
+        }
+        BaselineCommand::Update { paths, output } => {
+            write_baseline(&paths, &output, "updated")?;
         }
     }
+    Ok(())
+}
+
+fn write_baseline(paths: &[PathBuf], output: &Path, verb: &str) -> Result<()> {
+    let reports = scan_paths(paths)?;
+    let baseline = Baseline::from_reports(&reports);
+    let rendered = serde_json::to_string_pretty(&baseline)?;
+    fs::write(output, rendered).with_context(|| format!("failed to write {}", output.display()))?;
+    println!(
+        "{verb} {} fingerprint(s) to {}",
+        baseline.fingerprints.len(),
+        output.display()
+    );
     Ok(())
 }
 
@@ -1100,7 +1354,7 @@ fn undo(args: PathArgs) -> Result<()> {
 }
 
 fn rules() -> Result<()> {
-    io::stdout().write_all(RULES.as_bytes())?;
+    io::stdout().write_all(deslop_core::rules::render_table().as_bytes())?;
     Ok(())
 }
 
@@ -1162,8 +1416,20 @@ impl Baseline {
 #[cfg(test)]
 mod tests {
     use clap::CommandFactory;
+    use deslop_core::Lang;
 
     use super::*;
+
+    #[test]
+    fn parses_graph_command() {
+        let cli = Cli::parse_from(["deslop", "graph", "src", "--format", "dot", "--no-calls"]);
+        let Command::Graph(args) = cli.command else {
+            panic!("expected graph command");
+        };
+        assert_eq!(args.paths, vec![PathBuf::from("src")]);
+        assert!(matches!(args.format, GraphFormat::Dot));
+        assert!(args.no_calls);
+    }
 
     #[test]
     fn parses_external_config() {
@@ -1176,7 +1442,8 @@ mod tests {
             "#,
         )
         .expect("parse config");
-        let analyzer = analyzer_config_from_config(&config, false, None, None);
+        let analyzer =
+            analyzer_config_from_config(&config, false, None, None).expect("build analyzer config");
         assert!(analyzer.rust_external);
         assert_eq!(analyzer.julia_external, JuliaExternal::StaticLint);
         assert_eq!(analyzer.julia_project, Some(PathBuf::from("julia-env")));
@@ -1184,62 +1451,103 @@ mod tests {
 
     #[test]
     fn parses_all_config_sections() {
-        let config: DeslopConfig = toml::from_str(
+        let config = full_config_fixture();
+
+        assert_slim_config(&config);
+        assert_fix_config(&config);
+        assert_scan_config(&config);
+        assert_analyzer_config(&config);
+    }
+
+    fn full_config_fixture() -> DeslopConfig {
+        toml::from_str(
             r#"
-            [slim]
-            provider = "openai"
-            model = "configured-model"
-            base_url = "http://localhost:11434/v1"
-            egress_consent = true
+        [slim]
+        provider = "openai"
+        model = "configured-model"
+        base_url = "http://localhost:11434/v1"
+        egress_consent = true
 
-            [fix]
-            check_cmd = "cargo test -p configured"
-            coverage = "lcov:coverage.lcov"
-            allow_unverified = true
+        [fix]
+        check_cmd = "cargo test -p configured"
+        coverage = "lcov:coverage.lcov"
+        allow_unverified = true
 
-            [scan]
-            fail_on = "major"
-            baseline = "deslop-baseline.json"
+        [scan]
+        fail_on = "major"
+        baseline = "deslop-baseline.json"
 
-            [analyzer]
-            min_duplication_tokens = 42
-            long_method_nloc = 30
-            min_meaningful_tokens = 5
+        [analyzer]
+        min_duplication_tokens = 42
+        long_method_nloc = 30
+        min_meaningful_tokens = 5
 
-            [external]
-            clippy = "on"
-            julia_analyzer = "jet"
-            julia_project = "julia-env"
-            "#,
+        [analyzer.rust]
+        long_method_nloc = 55
+
+        [analyzer.clojure]
+        long_method_nloc = 35
+
+        [analyzer.python]
+        long_method_nloc = 34
+
+        [analyzer.javascript]
+        long_method_nloc = 36
+
+        [analyzer.typescript]
+        long_method_nloc = 37
+
+        [external]
+        clippy = "on"
+        julia_analyzer = "jet"
+        julia_project = "julia-env"
+        "#,
         )
-        .expect("parse config");
+        .expect("parse config")
+    }
 
-        assert_eq!(resolve_slim_provider(None, &config), SlimProvider::Openai);
-        assert_eq!(resolve_slim_model(None, None, &config), "configured-model");
+    fn assert_slim_config(config: &DeslopConfig) {
+        assert_eq!(resolve_slim_provider(None, config), SlimProvider::Openai);
+        assert_eq!(resolve_slim_model(None, None, config), "configured-model");
         assert_eq!(
-            resolve_slim_base_url(None, &config).as_deref(),
+            resolve_slim_base_url(None, config).as_deref(),
             Some("http://localhost:11434/v1")
         );
-        assert!(resolve_slim_egress_consent(false, None, &config));
+        assert!(resolve_slim_egress_consent(false, None, config));
+    }
+
+    fn assert_fix_config(config: &DeslopConfig) {
         assert_eq!(
-            resolve_fix_check_cmd(None, &config).as_deref(),
+            resolve_fix_check_cmd(None, config).as_deref(),
             Some("cargo test -p configured")
         );
-        assert!(resolve_fix_allow_unverified(None, &config));
+        assert!(resolve_fix_allow_unverified(None, config));
         assert!(matches!(
-            resolve_fix_coverage(None, &config).expect("parse coverage"),
+            resolve_fix_coverage(None, config).expect("parse coverage"),
             CoverageConfig::LcovFile(path) if path == PathBuf::from("coverage.lcov")
         ));
+    }
+
+    fn assert_scan_config(config: &DeslopConfig) {
         assert_eq!(
-            resolve_scan_baseline(None, &config),
+            resolve_scan_baseline(None, config),
             Some(PathBuf::from("deslop-baseline.json"))
         );
-        assert_eq!(resolve_scan_fail_on(None, &config), Some(Severity::Major));
+        assert_eq!(resolve_scan_fail_on(None, config), Some(Severity::Major));
+    }
 
-        let analyzer = analyzer_config_from_config(&config, false, None, None);
+    fn assert_analyzer_config(config: &DeslopConfig) {
+        let analyzer =
+            analyzer_config_from_config(config, false, None, None).expect("build analyzer config");
         assert_eq!(analyzer.min_duplication_tokens, 42);
         assert_eq!(analyzer.long_method_nloc, 30);
         assert_eq!(analyzer.min_meaningful_tokens, 5);
+        assert_eq!(analyzer.long_method_nloc_for(Lang::Rust), 55);
+        assert_eq!(analyzer.long_method_nloc_for(Lang::Clojure), 35);
+        assert_eq!(analyzer.long_method_nloc_for(Lang::Julia), 30);
+        assert_eq!(analyzer.long_method_nloc_for(Lang::Python), 34);
+        assert_eq!(analyzer.long_method_nloc_for(Lang::JavaScript), 36);
+        assert_eq!(analyzer.long_method_nloc_for(Lang::TypeScript), 37);
         assert!(analyzer.rust_external);
         assert_eq!(analyzer.julia_external, JuliaExternal::Jet);
         assert_eq!(analyzer.julia_project, Some(PathBuf::from("julia-env")));
@@ -1260,9 +1568,49 @@ mod tests {
             false,
             Some(JuliaExternalArg::Off),
             Some(PathBuf::from("cli-project")),
-        );
+        )
+        .expect("build analyzer config");
         assert_eq!(analyzer.julia_external, JuliaExternal::Off);
         assert_eq!(analyzer.julia_project, Some(PathBuf::from("cli-project")));
+    }
+
+    #[test]
+    fn analyzer_suppression_config_parses_and_validates() {
+        let config: DeslopConfig = toml::from_str(
+            r#"
+            [analyzer]
+            disabled_rules = ["magic-number"]
+            ignore_paths = ["**/generated/**"]
+
+            [analyzer.rules.long-method]
+            enabled = false
+
+            [analyzer.rules.duplicate-block]
+            ignore_paths = ["tests/**"]
+            "#,
+        )
+        .expect("parse config");
+        let analyzer =
+            analyzer_config_from_config(&config, false, None, None).expect("build analyzer config");
+        assert!(!analyzer.suppression.is_empty());
+    }
+
+    #[test]
+    fn analyzer_suppression_rejects_unknown_rule() {
+        let config: DeslopConfig =
+            toml::from_str("[analyzer]\ndisabled_rules = [\"ignore-comments\"]\n")
+                .expect("parse config");
+        let err = analyzer_config_from_config(&config, false, None, None)
+            .expect_err("unknown rule must error");
+        assert!(err.to_string().contains("unknown rule 'ignore-comments'"));
+    }
+
+    #[test]
+    fn unknown_analyzer_keys_are_rejected_not_silently_ignored() {
+        // The exact keys from the bug report used to be silently ignored; now they error.
+        let err = toml::from_str::<DeslopConfig>("[analyzer]\nignore_comments = true\n")
+            .expect_err("unknown analyzer key must error");
+        assert!(err.to_string().contains("ignore_comments"));
     }
 
     #[test]
@@ -1398,6 +1746,7 @@ mod tests {
             "--mock",
             "--yes",
             "--check-cmd",
+            "--diff",
             "--quiet",
         ] {
             assert!(help.contains(flag), "{flag} missing from help:\n{help}");
@@ -1517,29 +1866,25 @@ mod tests {
         };
         assert_eq!(args.allow_unverified, Some(false));
     }
-}
 
-const RULES: &str = "\
-rule                    safety                  default
-consecutive-blank-lines safe-auto               fix
-reimpl-not=             safe-auto               fix
-reimpl-some?            safe-auto               fix
-reimpl-boolean          safe-auto               fix
-redundant-do            safe-auto               fix
-reimpl-empty?           safe-with-precondition  suggest (finite/countable collection)
-reimpl-seq              safe-with-precondition  suggest (finite/countable collection)
-reimpl-vec              safe-with-precondition  suggest (finite collection)
-reimpl-isempty          safe-with-precondition  suggest (standard collection semantics)
-reimpl-eachindex        safe-with-precondition  suggest (1-based positional indexing)
-reimpl-isnothing        risky-suggest           suggest
-unused-arg             analyzer-confirmed      fix only with StaticLint confirmation
-unused-binding         analyzer-confirmed      fix only with external analyzer confirmation
-single-use-binding      risky-suggest           suggest
-incompleteness          llm-only                propose
-magic-number            risky-suggest           suggest
-long-method             llm-only                propose
-slop-score              report                  deslop slop
-narrating-comment       llm-only                propose
-comment-block           llm-only                propose
-duplicate-block         llm-only                propose
-";
+    #[test]
+    fn parses_feedback_false_positive_command() {
+        let cli = Cli::try_parse_from([
+            "deslop",
+            "feedback",
+            "abc123",
+            "--false-positive",
+            "--corpus",
+            "tests/corpus",
+            "src",
+        ])
+        .expect("parse cli");
+        let Command::Feedback(args) = cli.command else {
+            panic!("expected feedback command");
+        };
+        assert_eq!(args.fingerprint, "abc123");
+        assert!(args.false_positive);
+        assert_eq!(args.corpus, PathBuf::from("tests/corpus"));
+        assert_eq!(args.paths, vec![PathBuf::from("src")]);
+    }
+}

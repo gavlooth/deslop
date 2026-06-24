@@ -11,7 +11,10 @@ pub(crate) fn findings(source: &SourceFile, config: &AnalyzerConfig) -> Vec<Find
     out.extend(blank_runs(source));
     out.extend(incompleteness(source));
     out.extend(magic_numbers(source));
-    out.extend(long_methods(source, config.long_method_nloc));
+    out.extend(long_methods(
+        source,
+        config.long_method_nloc_for(source.lang),
+    ));
     out.extend(narrating_comments(source));
     out.extend(comment_blocks(source));
     out.extend(needless_tail_returns(source));
@@ -22,7 +25,7 @@ pub(crate) fn findings(source: &SourceFile, config: &AnalyzerConfig) -> Vec<Find
 fn incompleteness(source: &SourceFile) -> Vec<Finding> {
     let mut out = Vec::new();
     let stub = Regex::new(
-        r#"(?i)(todo!\s*\(|unimplemented!\s*\(|TODO\s*:?\s*implement|throw\b.*TODO|error\s*\(\s*["']TODO|@assert\s+false|not\s+implemented|placeholder)"#,
+        r#"(?i)(todo!\s*\(|unimplemented!\s*\(|TODO\s*:?\s*implement|throw\b.*TODO|error\s*\(\s*["']TODO|@assert\s+false|not\s+implemented|\bplaceholder\b)"#,
     )
     .expect("valid regex");
     let masked = string_comment_ranges(source);
@@ -83,12 +86,21 @@ fn byte_in_ranges(byte: usize, ranges: &[(usize, usize)]) -> bool {
 
 fn magic_numbers(source: &SourceFile) -> Vec<Finding> {
     let mut out = Vec::new();
+    // Suppress literals that live inside strings/comments (e.g. numbers in a
+    // docstring) or inside a named-constant definition (binding a literal to a
+    // name is the rule's own fix, so flagging it there would be un-actionable).
+    let mut masked = string_comment_ranges(source);
+    masked.extend(constant_definition_ranges(source));
     for (idx, line) in source.lines().iter().enumerate() {
         let code = code_before_comment(line, source.lang);
         if should_skip_magic_number_line(code) {
             continue;
         }
-        if first_magic_number(code).is_some() {
+        if let Some(offset) = first_magic_number(code) {
+            let byte = source.line_start_byte(idx + 1) + offset;
+            if byte_in_ranges(byte, &masked) {
+                continue;
+            }
             out.push(finding(
                 source,
                 idx + 1,
@@ -108,6 +120,37 @@ fn magic_numbers(source: &SourceFile) -> Vec<Finding> {
     out
 }
 
+/// Byte ranges of named-constant definitions (`const`/`static`, Clojure
+/// `def`/`defonce`, Julia `const`), so the magic-number rule does not flag a
+/// literal that is itself the named constant. Empty when the language has no
+/// tree-sitter grammar.
+fn constant_definition_ranges(source: &SourceFile) -> Vec<(usize, usize)> {
+    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+        return Vec::new();
+    };
+    let registry = LangRegistry::default();
+    let pack = registry.pack_for_lang(source.lang);
+    let mut ranges = Vec::new();
+    collect_constant_regions(tree.root_node(), &source.text, pack, &mut ranges);
+    ranges
+}
+
+fn collect_constant_regions(
+    node: Node,
+    text: &str,
+    pack: &dyn LangPack,
+    ranges: &mut Vec<(usize, usize)>,
+) {
+    if pack.is_constant_definition_region(node, text) {
+        ranges.push((node.start_byte(), node.end_byte()));
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_constant_regions(child, text, pack, ranges);
+    }
+}
+
 fn should_skip_magic_number_line(code: &str) -> bool {
     let trimmed = code.trim();
     trimmed.is_empty()
@@ -122,7 +165,8 @@ fn should_skip_magic_number_line(code: &str) -> bool {
         || trimmed.contains("::")
 }
 
-fn first_magic_number(code: &str) -> Option<&str> {
+/// Byte offset (within `code`) of the first inline magic number, if any.
+fn first_magic_number(code: &str) -> Option<usize> {
     let bytes = code.as_bytes();
     let mut idx = 0;
     while idx < bytes.len() {
@@ -144,7 +188,7 @@ fn first_magic_number(code: &str) -> Option<&str> {
         }
         let literal = &code[start..idx];
         if !is_allowed_small_number(literal) {
-            return Some(&code[digit_start..idx]);
+            return Some(digit_start);
         }
     }
     None

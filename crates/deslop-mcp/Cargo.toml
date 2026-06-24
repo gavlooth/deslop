@@ -9,6 +9,7 @@ repository.workspace = true
 anyhow.workspace = true
 deslop-analyzer.workspace = true
 deslop-core.workspace = true
+deslop-graph.workspace = true
 deslop-metrics.workspace = true
 deslop-parse.workspace = true
 deslop-protocol.workspace = true

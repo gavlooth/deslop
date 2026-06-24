@@ -256,6 +256,7 @@ dependencies = [
  "deslop-external",
  "deslop-lang",
  "deslop-parse",
+ "globset",
  "ignore",
  "regex",
  "tempfile",
@@ -272,6 +273,7 @@ dependencies = [
  "deslop-core",
  "deslop-eval",
  "deslop-fix",
+ "deslop-graph",
  "deslop-mcp",
  "deslop-metrics",
  "deslop-protocol",
@@ -300,6 +302,7 @@ dependencies = [
  "deslop-core",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -327,6 +330,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "deslop-graph"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "deslop-core",
+ "deslop-lang",
+ "deslop-parse",
+ "ignore",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tree-sitter",
+]
+
+[[package]]
 name = "deslop-lang"
 version = "0.1.0"
 dependencies = [
@@ -334,6 +352,7 @@ dependencies = [
  "deslop-core",
  "tree-sitter",
  "tree-sitter-clojure",
+ "tree-sitter-javascript",
  "tree-sitter-julia",
  "tree-sitter-python",
  "tree-sitter-rust",
@@ -350,7 +369,9 @@ dependencies = [
  "deslop-parse",
  "lsp-server",
  "lsp-types",
+ "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
@@ -360,6 +381,7 @@ dependencies = [
  "anyhow",
  "deslop-analyzer",
  "deslop-core",
+ "deslop-graph",
  "deslop-metrics",
  "deslop-parse",
  "deslop-protocol",
@@ -1222,6 +1244,16 @@ checksum = "4004884cc509449a1d78fa3e1f02b4e953d0a8065984445304795e72e885338c"
 dependencies = [
  "cc",
  "tree-sitter",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-javascript"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68204f2abc0627a90bdf06e605f5c470aa26fdcb2081ea553a04bdad756693f5"
+dependencies = [
+ "cc",
  "tree-sitter-language",
 ]
 

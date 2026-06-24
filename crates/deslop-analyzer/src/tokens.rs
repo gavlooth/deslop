@@ -1,6 +1,8 @@
 use deslop_core::{DetectedBy, Finding, Lang, SafetyClass, Severity};
 use deslop_lang::{LangPack, RegionClass, Registry as LangRegistry};
 use deslop_parse::{SourceFile, parse_tree};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use tree_sitter::Node;
 
 use crate::{AnalyzerConfig, finding};
@@ -54,57 +56,235 @@ pub(crate) fn duplicate_token_sequences(
             if j < reported_until {
                 continue;
             }
-            let left = &tokens[i..i + min_tokens];
-            let right = &tokens[j..j + min_tokens];
-            if !disjoint_ranges(left, right) {
-                continue;
-            }
-            let meaningful_count = meaningful_count(left).min(meaningful_count(right));
-            if meaningful_count < min_meaningful_tokens
-                || !single_segment(left)
-                || !single_segment(right)
-            {
-                continue;
-            }
-            let exact_match = token_windows_match(left, right, |token| token.exact.as_str());
-            let normalized_match =
-                token_windows_match(left, right, |token| token.normalized.as_str());
-            let rule = if exact_match {
-                "duplicate-block"
-            } else if normalized_match {
-                "near-duplicate"
-            } else {
+            let Some(match_info) =
+                duplicate_match(&tokens, i, j, min_tokens, min_meaningful_tokens)
+            else {
                 continue;
             };
-            if rust_tree.as_ref().is_some_and(|tree| {
-                non_removable_rust_mapping_rhyme(source, tree.root_node(), left, right)
-            }) {
+            if non_removable_rust_match(source, &rust_tree, match_info.left, match_info.right) {
                 continue;
             }
-            let start_line = source.line_for_byte(tokens[j].start_byte);
-            let end_line = source.line_for_byte(tokens[j + min_tokens - 1].end_byte);
-            out.push(finding(
-                source,
-                start_line,
-                end_line,
-                rule,
-                Severity::Major,
-                SafetyClass::LlmOnly,
-                DetectedBy::Duplication,
-                &format!(
-                    "{} meaningful tokens duplicate the block at line {}",
-                    meaningful_count,
-                    source.line_for_byte(tokens[i].start_byte)
-                ),
-                "extract a shared function or helper",
-                None,
-                None,
-            ));
+            out.push(duplicate_finding(source, &tokens, match_info));
             reported_until = j + min_tokens;
             break;
         }
     }
     out
+}
+
+pub(crate) fn cross_file_duplicate_findings(
+    sources: &[SourceFile],
+    config: &AnalyzerConfig,
+) -> Vec<Finding> {
+    let min_tokens = config.min_duplication_tokens;
+    if min_tokens == 0 || sources.len() < 2 {
+        return Vec::new();
+    }
+    let tokenized = sources
+        .iter()
+        .map(|source| (source, tokenize(source)))
+        .collect::<Vec<_>>();
+    let mut exact_windows = HashMap::<Vec<String>, CrossFileWindow>::new();
+    let mut normalized_windows = HashMap::<Vec<String>, CrossFileWindow>::new();
+    let mut out = Vec::new();
+    for (source_index, (source, tokens)) in tokenized.iter().enumerate() {
+        if tokens.len() < min_tokens {
+            continue;
+        }
+        for start in 0..=(tokens.len() - min_tokens) {
+            let window = &tokens[start..start + min_tokens];
+            if !single_segment(window)
+                || meaningful_count(window) < config.min_meaningful_tokens
+                || already_reported_cross_file(&out, source, window)
+            {
+                continue;
+            }
+            let exact_key = token_key(window, |token| token.exact.as_str());
+            if let Some(first) = exact_windows.get(&exact_key)
+                && first.source_index != source_index
+            {
+                out.push(cross_file_finding(
+                    source,
+                    tokens,
+                    start,
+                    min_tokens,
+                    "duplicate-block",
+                    first,
+                    meaningful_count(window),
+                ));
+                continue;
+            }
+            exact_windows.entry(exact_key).or_insert_with(|| {
+                CrossFileWindow::new(source_index, source.path.to_path_buf(), source, window)
+            });
+
+            let normalized_key = token_key(window, |token| token.normalized.as_str());
+            if let Some(first) = normalized_windows.get(&normalized_key)
+                && first.source_index != source_index
+            {
+                out.push(cross_file_finding(
+                    source,
+                    tokens,
+                    start,
+                    min_tokens,
+                    "near-duplicate",
+                    first,
+                    meaningful_count(window),
+                ));
+                continue;
+            }
+            normalized_windows.entry(normalized_key).or_insert_with(|| {
+                CrossFileWindow::new(source_index, source.path.to_path_buf(), source, window)
+            });
+        }
+    }
+    out
+}
+
+#[derive(Debug, Clone)]
+struct CrossFileWindow {
+    source_index: usize,
+    path: PathBuf,
+    start_line: usize,
+}
+
+impl CrossFileWindow {
+    fn new(source_index: usize, path: PathBuf, source: &SourceFile, tokens: &[Token]) -> Self {
+        Self {
+            source_index,
+            path,
+            start_line: source.line_for_byte(tokens[0].start_byte),
+        }
+    }
+}
+
+fn token_key(tokens: &[Token], field: impl Fn(&Token) -> &str) -> Vec<String> {
+    tokens
+        .iter()
+        .map(|token| field(token).to_string())
+        .collect()
+}
+
+fn already_reported_cross_file(out: &[Finding], source: &SourceFile, window: &[Token]) -> bool {
+    let start_line = source.line_for_byte(window[0].start_byte);
+    let end_line = source.line_for_byte(window[window.len() - 1].end_byte);
+    out.iter().any(|finding| {
+        finding.path == source.path
+            && finding.span.start_line <= end_line
+            && finding.span.end_line >= start_line
+            && matches!(finding.rule.as_str(), "duplicate-block" | "near-duplicate")
+    })
+}
+
+fn cross_file_finding(
+    source: &SourceFile,
+    tokens: &[Token],
+    start: usize,
+    len: usize,
+    rule: &str,
+    first: &CrossFileWindow,
+    meaningful_count: usize,
+) -> Finding {
+    let start_line = source.line_for_byte(tokens[start].start_byte);
+    let end_line = source.line_for_byte(tokens[start + len - 1].end_byte);
+    finding(
+        source,
+        start_line,
+        end_line,
+        rule,
+        Severity::Major,
+        SafetyClass::LlmOnly,
+        DetectedBy::Duplication,
+        &format!(
+            "{meaningful_count} meaningful tokens duplicate the block at {}:{}",
+            first.path.display(),
+            first.start_line
+        ),
+        "extract a shared function or helper",
+        None,
+        None,
+    )
+}
+
+struct DuplicateMatch<'a> {
+    left_index: usize,
+    right_index: usize,
+    left: &'a [Token],
+    right: &'a [Token],
+    rule: &'static str,
+    meaningful_count: usize,
+}
+
+fn duplicate_match<'a>(
+    tokens: &'a [Token],
+    left_index: usize,
+    right_index: usize,
+    min_tokens: usize,
+    min_meaningful_tokens: usize,
+) -> Option<DuplicateMatch<'a>> {
+    let left = &tokens[left_index..left_index + min_tokens];
+    let right = &tokens[right_index..right_index + min_tokens];
+    if !disjoint_ranges(left, right) || !single_segment(left) || !single_segment(right) {
+        return None;
+    }
+    let meaningful_count = meaningful_count(left).min(meaningful_count(right));
+    let rule = duplicate_rule(left, right)?;
+    (meaningful_count >= min_meaningful_tokens).then_some(DuplicateMatch {
+        left_index,
+        right_index,
+        left,
+        right,
+        rule,
+        meaningful_count,
+    })
+}
+
+fn duplicate_rule(left: &[Token], right: &[Token]) -> Option<&'static str> {
+    if token_windows_match(left, right, |token| token.exact.as_str()) {
+        Some("duplicate-block")
+    } else if token_windows_match(left, right, |token| token.normalized.as_str()) {
+        Some("near-duplicate")
+    } else {
+        None
+    }
+}
+
+fn non_removable_rust_match(
+    source: &SourceFile,
+    rust_tree: &Option<tree_sitter::Tree>,
+    left: &[Token],
+    right: &[Token],
+) -> bool {
+    rust_tree
+        .as_ref()
+        .is_some_and(|tree| non_removable_rust_mapping_rhyme(source, tree.root_node(), left, right))
+}
+
+fn duplicate_finding(
+    source: &SourceFile,
+    tokens: &[Token],
+    match_info: DuplicateMatch<'_>,
+) -> Finding {
+    let start_line = source.line_for_byte(tokens[match_info.right_index].start_byte);
+    let end_line =
+        source.line_for_byte(tokens[match_info.right_index + match_info.right.len() - 1].end_byte);
+    finding(
+        source,
+        start_line,
+        end_line,
+        match_info.rule,
+        Severity::Major,
+        SafetyClass::LlmOnly,
+        DetectedBy::Duplication,
+        &format!(
+            "{} meaningful tokens duplicate the block at line {}",
+            match_info.meaningful_count,
+            source.line_for_byte(tokens[match_info.left_index].start_byte)
+        ),
+        "extract a shared function or helper",
+        None,
+        None,
+    )
 }
 
 fn tokenize(source: &SourceFile) -> Vec<Token> {
@@ -119,19 +299,7 @@ fn tokenize(source: &SourceFile) -> Vec<Token> {
             continue;
         }
         if let Some(mask) = mask_for_byte(&masks, start) {
-            match mask.kind {
-                MaskKind::String if start == mask.start_byte => {
-                    if let Some(segment) = segment_for_byte(&segments, start) {
-                        out.push(string_token_from_range(
-                            &source.text,
-                            mask.start_byte,
-                            mask.end_byte,
-                            segment.id,
-                        ));
-                    }
-                }
-                _ => {}
-            }
+            push_masked_token(&mut out, &source.text, &segments, mask, start);
             skip_until_byte(&mut iter, mask.end_byte);
             continue;
         }
@@ -146,6 +314,26 @@ fn tokenize(source: &SourceFile) -> Vec<Token> {
         out.push(next_token(&source.text, &mut iter, start, ch, segment.id));
     }
     out
+}
+
+fn push_masked_token(
+    out: &mut Vec<Token>,
+    text: &str,
+    segments: &[Segment],
+    mask: MaskRange,
+    start: usize,
+) {
+    if mask.kind == MaskKind::String
+        && start == mask.start_byte
+        && let Some(segment) = segment_for_byte(segments, start)
+    {
+        out.push(string_token_from_range(
+            text,
+            mask.start_byte,
+            mask.end_byte,
+            segment.id,
+        ));
+    }
 }
 
 type CharIter<'a> = std::iter::Peekable<std::str::CharIndices<'a>>;

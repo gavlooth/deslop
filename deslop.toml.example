@@ -26,3 +26,26 @@
 # min_duplication_tokens = 24
 # long_method_nloc = 40
 # min_meaningful_tokens = 8
+
+# Per-language long-method thresholds override [analyzer].long_method_nloc.
+# Supported tables: rust, clojure, julia, python, javascript, typescript, generic.
+# [analyzer.rust]
+# long_method_nloc = 45
+#
+# [analyzer.python]
+# long_method_nloc = 35
+#
+# [analyzer.typescript]
+# long_method_nloc = 45
+
+# Suppression filters findings after they are produced, by rule and by path.
+# Unknown rule names and invalid globs are errors, not silent no-ops.
+# disabled_rules = ["magic-number", "narrating-comment"]  # drop these rules everywhere
+# ignore_paths = ["**/generated/**", "vendor/**"]         # skip these paths for all rules
+
+# Per-rule controls (rule name -> table). Run `deslop rules` for the rule list.
+# [analyzer.rules.long-method]
+# enabled = false                                         # disable a single rule
+#
+# [analyzer.rules.duplicate-block]
+# ignore_paths = ["**/tests/**"]                          # skip one rule on these paths
