@@ -833,7 +833,10 @@ struct MutationRegistry {
 impl MutationRegistry {
     fn new(config: &MutationConfig) -> Self {
         Self {
-            probes: vec![Box::new(RustCargoMutantsProbe::new(config))],
+            probes: vec![
+                Box::new(RustCargoMutantsProbe::new(config)),
+                Box::new(PythonMutationProbe::new(config)),
+            ],
             disabled: matches!(config, MutationConfig::Disabled),
         }
     }
@@ -982,12 +985,213 @@ impl MutationProbe for RustCargoMutantsProbe {
     }
 }
 
+struct PythonMutationProbe {
+    mode: MutationProbeMode,
+    outcomes: Option<Result<MutantOutcomes, String>>,
+}
+
+impl PythonMutationProbe {
+    fn new(config: &MutationConfig) -> Self {
+        let mode = match config {
+            MutationConfig::Disabled => MutationProbeMode::Disabled,
+            MutationConfig::Auto => MutationProbeMode::Auto {
+                command: "cosmic-ray".to_string(),
+            },
+            MutationConfig::AutoWithCommand(command) => MutationProbeMode::Auto {
+                command: command.to_owned(),
+            },
+            MutationConfig::OutcomesFile(path) => {
+                MutationProbeMode::OutcomesFile(path.to_path_buf())
+            }
+        };
+        Self {
+            mode,
+            outcomes: None,
+        }
+    }
+
+    fn outcomes(&mut self, root: &Path) -> Result<&MutantOutcomes, MutationAssessment> {
+        if self.outcomes.is_none() {
+            self.outcomes = Some(match self.load_outcomes(root) {
+                Ok(outcomes) => Ok(outcomes),
+                Err(reason) => Err(reason),
+            });
+        }
+        match self.outcomes.as_ref().expect("mutation initialized") {
+            Ok(outcomes) => Ok(outcomes),
+            Err(reason) => Err(MutationAssessment {
+                status: MutationStatus::Unknown,
+                reason: Some(reason.to_owned()),
+            }),
+        }
+    }
+
+    fn load_outcomes(&self, root: &Path) -> std::result::Result<MutantOutcomes, String> {
+        match &self.mode {
+            MutationProbeMode::Disabled => Err("mutation disabled".to_string()),
+            MutationProbeMode::OutcomesFile(path) => {
+                let text = read_report_text(path, "cosmic-ray outcomes")?;
+                MutantOutcomes::parse(&text).map_err(|err| err.to_string())
+            }
+            MutationProbeMode::Auto { command } => run_cosmic_ray(command, root),
+        }
+    }
+}
+
+impl MutationProbe for PythonMutationProbe {
+    fn name(&self) -> &'static str {
+        "cosmic-ray"
+    }
+
+    fn supports(&self, source: &SourceFile) -> bool {
+        source.lang == Lang::Python
+    }
+
+    fn assess(&mut self, request: MutationRequest<'_>) -> Result<MutationAssessment> {
+        let outcomes = match self.outcomes(request.root) {
+            Ok(outcomes) => outcomes,
+            Err(assessment) => return Ok(assessment),
+        };
+        let relative = relative_to_root(request.root, &request.source.path)?;
+        if outcomes.has_surviving_mutant(
+            &request.source.path,
+            &relative,
+            request.work_order.region.start_line,
+            request.work_order.region.end_line,
+        ) {
+            Ok(MutationAssessment {
+                status: MutationStatus::Survived,
+                reason: Some(format!(
+                    "mutation probe {} found surviving mutant in region",
+                    self.name()
+                )),
+            })
+        } else {
+            Ok(MutationAssessment {
+                status: MutationStatus::NoSurvivor,
+                reason: Some(format!(
+                    "mutation probe {} found no surviving mutant in region",
+                    self.name()
+                )),
+            })
+        }
+    }
+}
+
 fn cargo_mutants_available(command: &str, root: &Path) -> bool {
     Command::new(command)
         .args(["mutants", "--version"])
         .current_dir(root)
         .output()
         .is_ok_and(|output| output.status.success())
+}
+
+fn cosmic_ray_available(command: &str, root: &Path) -> bool {
+    Command::new(command)
+        .arg("--version")
+        .current_dir(root)
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+
+fn run_cosmic_ray(command: &str, root: &Path) -> std::result::Result<MutantOutcomes, String> {
+    if !cosmic_ray_available(command, root) {
+        return Err("mutation-unknown: cosmic-ray not available".to_string());
+    }
+    let config = cosmic_ray_config(root)
+        .ok_or_else(|| "mutation-unknown: cosmic-ray config not found".to_string())?;
+    let temp = TempDir::new().map_err(|err| format!("failed to create mutation tempdir: {err}"))?;
+    let session = temp.path().join("cosmic-ray.sqlite");
+    let init = Command::new(command)
+        .arg("init")
+        .arg(&config)
+        .arg(&session)
+        .current_dir(root)
+        .output()
+        .map_err(|err| format!("failed to run cosmic-ray init: {err}"))?;
+    if !init.status.success() {
+        return Err(
+            command_failure_reason("cosmic-ray init", init.status, &init.stderr)
+                .replace("coverage unknown", "mutation unknown"),
+        );
+    }
+    let exec = Command::new(command)
+        .arg("exec")
+        .arg(&config)
+        .arg(&session)
+        .current_dir(root)
+        .output()
+        .map_err(|err| format!("failed to run cosmic-ray exec: {err}"))?;
+    if !exec.status.success() {
+        return Err(
+            command_failure_reason("cosmic-ray exec", exec.status, &exec.stderr)
+                .replace("coverage unknown", "mutation unknown"),
+        );
+    }
+    let text = dump_sqlite_to_json(&session)?;
+    MutantOutcomes::parse(&text).map_err(|err| err.to_string())
+}
+
+fn cosmic_ray_config(root: &Path) -> Option<PathBuf> {
+    [
+        "cosmic-ray.toml",
+        "cosmic_ray.toml",
+        "cosmic-ray.ini",
+        "cosmic_ray.ini",
+    ]
+    .iter()
+    .map(|name| root.join(name))
+    .find(|path| path.exists())
+}
+
+fn dump_sqlite_to_json(path: &Path) -> std::result::Result<String, String> {
+    const SCRIPT: &str = r#"
+import json
+import sqlite3
+import sys
+
+def quote_ident(name):
+    return '"' + name.replace('"', '""') + '"'
+
+def decode(value):
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("{") or text.startswith("["):
+            try:
+                return json.loads(text)
+            except Exception:
+                return value
+    return value
+
+db = sqlite3.connect(sys.argv[1])
+rows = []
+for (table,) in db.execute("select name from sqlite_master where type='table'"):
+    cols = [row[1] for row in db.execute("pragma table_info(%s)" % quote_ident(table))]
+    for row in db.execute("select * from %s" % quote_ident(table)):
+        item = {"__table": table}
+        item.update({col: decode(value) for col, value in zip(cols, row)})
+        rows.append(item)
+print(json.dumps({"cosmic_ray_sqlite": rows}, default=str))
+"#;
+    let output = Command::new("python3")
+        .arg("-c")
+        .arg(SCRIPT)
+        .arg(path)
+        .output()
+        .map_err(|err| format!("failed to inspect cosmic-ray sqlite with python3: {err}"))?;
+    if output.status.success() {
+        String::from_utf8(output.stdout)
+            .map_err(|err| format!("cosmic-ray sqlite dump was not utf8: {err}"))
+    } else {
+        Err(command_failure_reason(
+            "python3 cosmic-ray sqlite dump",
+            output.status,
+            &output.stderr,
+        )
+        .replace("coverage unknown", "mutation unknown"))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1043,6 +1247,8 @@ fn collect_outcome_entries<'a>(
             if map.contains_key("outcome")
                 || map.contains_key("status")
                 || map.contains_key("result")
+                || map.contains_key("test_outcome")
+                || map.contains_key("test-outcome")
             {
                 entries.push(value);
                 return;
@@ -1079,10 +1285,28 @@ fn mutant_outcome(value: &serde_json::Value) -> Option<MutantOutcome> {
     let kind = outcome_kind(outcome_text(value)?)?;
     let path = PathBuf::from(find_string_by_keys(
         value,
-        &["source_file", "source_path", "filename", "file", "path"],
+        &[
+            "source_file",
+            "source_path",
+            "module_path",
+            "module-path",
+            "filename",
+            "file",
+            "path",
+        ],
     )?);
-    let start_line = find_usize_by_keys(value, &["start_line", "line_start", "line"])?;
-    let end_line = find_usize_by_keys(value, &["end_line", "line_end"]).unwrap_or(start_line);
+    let start_line = find_usize_by_keys(
+        value,
+        &[
+            "start_line",
+            "line_start",
+            "line_number",
+            "line-number",
+            "line",
+        ],
+    )?;
+    let end_line = find_usize_by_keys(value, &["end_line", "line_end", "end_line_number"])
+        .unwrap_or(start_line);
     Some(MutantOutcome {
         path,
         start_line,
@@ -1092,14 +1316,23 @@ fn mutant_outcome(value: &serde_json::Value) -> Option<MutantOutcome> {
 }
 
 fn outcome_text(value: &serde_json::Value) -> Option<&str> {
-    find_string_by_keys(value, &["outcome", "status", "result"])
+    find_string_by_keys(
+        value,
+        &[
+            "outcome",
+            "status",
+            "result",
+            "test_outcome",
+            "test-outcome",
+        ],
+    )
 }
 
 fn outcome_kind(text: &str) -> Option<MutantOutcomeKind> {
     let text = text.to_ascii_lowercase();
     if matches!(text.as_str(), "missed" | "survived" | "surviving") {
         Some(MutantOutcomeKind::Missed)
-    } else if matches!(text.as_str(), "caught" | "killed") {
+    } else if matches!(text.as_str(), "caught" | "killed" | "detected") {
         Some(MutantOutcomeKind::Caught)
     } else {
         Some(MutantOutcomeKind::Other)
@@ -2551,6 +2784,7 @@ mod tests {
     #[derive(Debug, Clone, Copy)]
     enum FixtureKind {
         Clojure,
+        Python,
         Rust,
     }
 
@@ -2562,6 +2796,12 @@ mod tests {
 
     fn write_rust_fixture(root: &Path, text: &str) -> PathBuf {
         let file = root.join("sample.rs");
+        fs::write(&file, text).expect("write");
+        file
+    }
+
+    fn write_python_fixture(root: &Path, text: &str) -> PathBuf {
+        let file = root.join("sample.py");
         fs::write(&file, text).expect("write");
         file
     }
@@ -2632,10 +2872,16 @@ mod tests {
         only_work_order(root)
     }
 
+    fn python_work_order_from_fixture(root: &Path, text: &str) -> WorkOrder {
+        write_python_fixture(root, text);
+        only_work_order(root)
+    }
+
     fn verify_fixture(kind: FixtureKind, text: &str) -> VerifyFixture {
         let temp = tempfile::tempdir().expect("tempdir");
         let work_order = match kind {
             FixtureKind::Clojure => work_order_from_fixture(temp.path(), text),
+            FixtureKind::Python => python_work_order_from_fixture(temp.path(), text),
             FixtureKind::Rust => rust_work_order_from_fixture(temp.path(), text),
         };
         VerifyFixture { temp, work_order }
@@ -2647,6 +2893,10 @@ mod tests {
 
     fn rust_fixture(text: &str) -> VerifyFixture {
         verify_fixture(FixtureKind::Rust, text)
+    }
+
+    fn python_fixture(text: &str) -> VerifyFixture {
+        verify_fixture(FixtureKind::Python, text)
     }
 
     fn lcov_fixture(root: &Path, name: &str, source: &Path, line: usize, count: usize) -> PathBuf {
@@ -2693,6 +2943,29 @@ mod tests {
             ),
         )
         .expect("write outcomes");
+        path
+    }
+
+    fn cosmic_ray_outcomes_fixture(root: &Path, source: &Path, outcome: &str) -> PathBuf {
+        let path = root.join(format!("cosmic-ray-{outcome}.json"));
+        fs::write(
+            &path,
+            format!(
+                r#"{{
+  "cosmic_ray_version": "fixture",
+  "jobs": [
+    {{
+      "module_path": "{}",
+      "line_number": 2,
+      "test_outcome": "{}"
+    }}
+  ]
+}}"#,
+                source.display(),
+                outcome
+            ),
+        )
+        .expect("write cosmic-ray outcomes");
         path
     }
 
@@ -3091,6 +3364,84 @@ mod tests {
             "{:#?}",
             report.results[1].reasons
         );
+    }
+
+    #[test]
+    fn cosmic_ray_fixture_survivor_downgrades_python_patch() {
+        let fixture = python_fixture("def f():\n    value = 'TODO: implement'\n    return value\n");
+        let source = fixture.temp.path().join("sample.py");
+        let outcomes = cosmic_ray_outcomes_fixture(fixture.temp.path(), &source, "survived");
+        let report = verify_single_with_options(
+            fixture.temp.path(),
+            patch_for(&fixture.work_order, "    value = 1\n"),
+            test_options_with_mutation(
+                fixture.temp.path(),
+                Some("true"),
+                MutationConfig::OutcomesFile(outcomes),
+            ),
+        );
+
+        assert_eq!(
+            report.results[0].verdict,
+            VerificationVerdict::UntestedRisky
+        );
+        assert!(
+            report.results[0].reasons[1].contains("cosmic-ray"),
+            "{:#?}",
+            report.results[0].reasons
+        );
+        assert!(
+            report.results[0].reasons[1].contains("surviving mutant"),
+            "{:#?}",
+            report.results[0].reasons
+        );
+    }
+
+    #[test]
+    fn cosmic_ray_fixture_without_survivor_does_not_downgrade_python_patch() {
+        let fixture = python_fixture("def f():\n    value = 'TODO: implement'\n    return value\n");
+        let source = fixture.temp.path().join("sample.py");
+        let outcomes = cosmic_ray_outcomes_fixture(fixture.temp.path(), &source, "killed");
+        let report = verify_single_with_options(
+            fixture.temp.path(),
+            patch_for(&fixture.work_order, "    value = 1\n"),
+            test_options_with_mutation(
+                fixture.temp.path(),
+                Some("true"),
+                MutationConfig::OutcomesFile(outcomes),
+            ),
+        );
+
+        assert_eq!(
+            report.results[0].verdict,
+            VerificationVerdict::CoverageUnknown
+        );
+        assert!(
+            report.results[0].reasons[1].contains("no surviving mutant"),
+            "{:#?}",
+            report.results[0].reasons
+        );
+    }
+
+    #[test]
+    fn absent_cosmic_ray_degrades_without_rejecting_python_patch() {
+        let fixture = python_fixture("def f():\n    value = 'TODO: implement'\n    return value\n");
+        let report = verify_single_with_options(
+            fixture.temp.path(),
+            patch_for(&fixture.work_order, "    value = 1\n"),
+            test_options_with_mutation(
+                fixture.temp.path(),
+                Some("true"),
+                MutationConfig::AutoWithCommand("__deslop_missing_cosmic_ray__".to_string()),
+            ),
+        );
+
+        assert_eq!(report.passed_count(), 1);
+        assert_eq!(
+            report.results[0].verdict,
+            VerificationVerdict::CoverageUnknown
+        );
+        assert!(report.results[0].reasons[1].contains("cosmic-ray"));
     }
 
     #[test]

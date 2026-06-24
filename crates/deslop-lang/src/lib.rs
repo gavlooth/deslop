@@ -93,6 +93,7 @@ impl Registry {
         let mut registry = Self::new(&GENERIC_PACK);
         registry.register(&CLOJURE_PACK);
         registry.register(&JULIA_PACK);
+        registry.register(&PYTHON_PACK);
         registry.register(&RUST_PACK);
         registry
     }
@@ -139,11 +140,13 @@ pub fn is_supported_source(path: &Path) -> bool {
 pub static GENERIC_PACK: GenericPack = GenericPack;
 pub static CLOJURE_PACK: ClojurePack = ClojurePack;
 pub static JULIA_PACK: JuliaPack = JuliaPack;
+pub static PYTHON_PACK: PythonPack = PythonPack;
 pub static RUST_PACK: RustPack = RustPack;
 
 pub struct GenericPack;
 pub struct ClojurePack;
 pub struct JuliaPack;
+pub struct PythonPack;
 pub struct RustPack;
 
 impl LangPack for GenericPack {
@@ -352,6 +355,55 @@ impl LangPack for JuliaPack {
 
     fn enclosing_region(&self, node: Node<'_>, text: &str) -> Option<RegionSpan> {
         enclosing_julia_block(node, text)
+    }
+}
+
+impl LangPack for PythonPack {
+    fn name(&self) -> &'static str {
+        "python"
+    }
+
+    fn lang(&self) -> Lang {
+        Lang::Python
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["py"]
+    }
+
+    fn grammar(&self) -> Option<tree_sitter::Language> {
+        None
+    }
+
+    fn line_comments(&self) -> &'static [&'static str] {
+        &["#"]
+    }
+
+    fn metrics_regions(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    fn metrics_branches(&self) -> &'static [&'static str] {
+        &["if", "elif", "for", "while", "except"]
+    }
+
+    fn metrics_nesting(&self) -> &'static [&'static str] {
+        &["if", "for", "while", "try"]
+    }
+
+    fn metrics_flow_breaks(&self) -> &'static [&'static str] {
+        &["return", "break", "continue", "raise"]
+    }
+
+    fn halstead_operator_tokens(&self) -> &'static [&'static str] {
+        &[
+            "=", "+", "-", "*", "/", "%", "==", "!=", "<", ">", "<=", ">=", "and", "or", "not",
+            "if", "elif", "else", "for", "while", "return", "raise",
+        ]
+    }
+
+    fn enclosing_region(&self, _node: Node<'_>, _text: &str) -> Option<RegionSpan> {
+        None
     }
 }
 

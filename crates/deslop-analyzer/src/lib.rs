@@ -77,6 +77,7 @@ impl AnalyzerRegistry {
         let mut registry = Self::new();
         registry.register(&CLOJURE_PACK);
         registry.register(&JULIA_PACK);
+        registry.register(&PYTHON_PACK);
         registry.register(&packs::rust::RUST_PACK);
         registry
     }
@@ -128,14 +129,17 @@ static AGNOSTIC_RULES: [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>; 
     [&AGNOSTIC_RULE];
 static CLOJURE_RULES: [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>; 1] = [&CLOJURE_RULE];
 static JULIA_RULES: [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>; 1] = [&JULIA_RULE];
+static PYTHON_RULES: [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>; 0] = [];
 
 struct AgnosticPack;
 struct ClojurePack;
 struct JuliaPack;
+struct PythonPack;
 
 static AGNOSTIC_PACK: AgnosticPack = AgnosticPack;
 static CLOJURE_PACK: ClojurePack = ClojurePack;
 static JULIA_PACK: JuliaPack = JuliaPack;
+static PYTHON_PACK: PythonPack = PythonPack;
 
 macro_rules! analysis_pack {
     ($type:ty, $name:literal, $lang:expr, $rules:ident, $external:expr) => {
@@ -183,6 +187,7 @@ analysis_pack!(
     JULIA_RULES,
     julia_external_analyzer
 );
+analysis_pack!(PythonPack, "python", Lang::Python, PYTHON_RULES, |_| None);
 
 fn julia_external_analyzer(
     config: &AnalyzerConfig,

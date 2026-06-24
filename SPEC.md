@@ -145,6 +145,19 @@ strings are `disabled`/`off`/`none`, `auto`, `auto:<cmd>`, `lcov:<path>`,
 `cloverage:<path>`, `julia-cov:<path>`/`julia:<path>`, and
 `coverage-py:<path>`/`coverage.py:<path>`/`python:<path>`.
 
+Mutation probes are also registry-driven and opt-in. Rust uses `cargo-mutants` outcomes. Python
+uses Cosmic Ray because it has a project configuration, a durable SQLite session, and reports that
+can be reduced to source path + line + killed/survived status; deslop's live mode runs
+`cosmic-ray init`/`exec` when a Cosmic Ray config is present and degrades to `mutation-unknown`
+when the command/config/session inspection is unavailable. Recorded outcome files are accepted for
+deterministic tests. Clojure and Julia are intentionally not wired until their source-mappable
+contracts are stable enough for region gating: JVM bytecode tools such as PITest do not map cleanly
+to Clojure source regions; Heretic is promising and Clojure-specific but currently labels itself
+experimental/not released, so its JSON/EDN contract is not yet a stable verifier input. Julia's
+older Vimes.jl path reports patches/diffs but is legacy, while Gremlins.jl is a new 0.x
+source-splicing project; both are deferred until a maintained, source-line machine-readable report
+contract is proven.
+
 ---
 
 ## 5. Agent-ready output / protocol (`deslop-protocol`)  *(new, first-class)*

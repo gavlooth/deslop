@@ -1,5 +1,70 @@
 # Session Report
 
+## 2026-06-24T07:38:00+02:00 — Python Mutation Probe
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 9 only: add a real non-Rust mutation
+probe where upstream tooling supports it, document Clojure/Julia blockers honestly, and
+do not start queued items 10-13.
+
+Changes:
+- Started new jj change `mvnszkqq` on top of `mtxlzmys`.
+- Added `PythonMutationProbe` in `deslop-verify`, registered alongside
+  `RustCargoMutantsProbe` in `MutationRegistry`.
+- Chose Cosmic Ray for Python because it is a Python mutation-testing tool with a project
+  config, durable SQLite session, and source path/line outcome data that deslop can reduce
+  to the existing `MutantOutcomes` region contract.
+- Added live-mode behavior:
+  - checks `cosmic-ray --version`
+  - looks for a project Cosmic Ray config (`cosmic-ray.toml`, `cosmic_ray.toml`,
+    `cosmic-ray.ini`, or `cosmic_ray.ini`)
+  - runs `cosmic-ray init` and `cosmic-ray exec`
+  - dumps the resulting SQLite session through Python stdlib `sqlite3`
+  - degrades to `mutation-unknown` when the command/config/session inspection is absent or
+    failing.
+- Added recorded fixture parsing for Cosmic Ray-shaped source path/line outcomes.
+- Added minimal Python language-pack registration so verifier work-order discovery can see
+  `.py` fixtures; no Python-specific analyzer rules were added.
+- Updated `SPEC.md` with mutation-tier coverage for Rust/Python and the Clojure/Julia
+  deferrals.
+- Touched `.agents/HEARTBEAT.md`.
+
+Tests:
+- Added deterministic Python mutation tests:
+  - recorded Cosmic Ray survivor in region downgrades the passing patch to
+    `UntestedRisky`
+  - recorded killed/no-survivor outcome leaves the verdict at `CoverageUnknown`
+  - absent Cosmic Ray auto command returns a mutation notice and does not reject the patch.
+- Kept the existing cargo-mutants mutation tests green.
+
+Clojure/Julia investigation:
+- Clojure:
+  - PITest-style JVM bytecode mutation does not provide the source-region contract deslop
+    needs.
+  - Heretic is Clojure-specific and promising, with JSON/EDN reporting, but the upstream
+    README currently marks it experimental/not released and warns not to depend on the API
+    or behavior. Deferred until its source-line machine-readable contract is stable enough
+    for verifier gating.
+- Julia:
+  - Vimes.jl is the older mutation-testing path and reports patch diffs, but is legacy.
+  - Gremlins.jl is a new 0.x source-splicing project announced in June 2026; it looks
+    promising, but its report contract is too new for a stable verifier input. Deferred.
+
+Verification:
+- Focused gate passed:
+  - `cargo fmt --all && cargo test -p deslop-verify`
+- Full required gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+
+Not started:
+- Queued items 10-13.
+
+Blockers:
+- None for Python.
+- Clojure/Julia mutation probes are blocked on stable, maintained, source-mappable
+  machine-readable report contracts.
+
+Signature: Codex
+
 ## 2026-06-24T07:21:54+02:00 — Analyzer Threshold Config
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 8 only: move the remaining analyzer
