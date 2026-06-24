@@ -69,8 +69,10 @@ these values.
 ```toml
 [analyzer]
 min_duplication_tokens = 24
+long_method_nloc = 40
+min_meaningful_tokens = 8
 ```
 
-Only `min_duplication_tokens` is exposed because it is the only threshold currently
-represented in `AnalyzerConfig`. Long-method thresholds and similar constants are not
-configurable until the analyzer owns those knobs directly.
+`min_duplication_tokens` controls duplicate-window size. `long_method_nloc` controls the
+non-comment line threshold for `long-method`. `min_meaningful_tokens` controls the minimum
+meaningful-token count required before token duplication findings are emitted.

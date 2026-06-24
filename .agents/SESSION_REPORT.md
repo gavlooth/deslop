@@ -1,5 +1,55 @@
 # Session Report
 
+## 2026-06-24T07:21:54+02:00 — Analyzer Threshold Config
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 8 only: move the remaining analyzer
+threshold constants into `AnalyzerConfig` and expose them through `deslop.toml [analyzer]`.
+Do not start queued items 9-13.
+
+Changes:
+- Started new jj change `mtxlzmys` on top of `svrplorq`.
+- Added `AnalyzerConfig` fields:
+  - `long_method_nloc: usize`, default `40`
+  - `min_meaningful_tokens: usize`, default `8`
+  - existing `min_duplication_tokens` remains default `24`.
+- Replaced `agnostic.rs` `LONG_METHOD_NLOC` usage with `config.long_method_nloc`.
+- Replaced `tokens.rs` `MIN_MEANINGFUL_TOKENS` usage with
+  `config.min_meaningful_tokens`.
+- Threaded `&AnalyzerConfig` through agnostic duplicate-token calls so tokens can read both
+  duplication thresholds from the same config.
+- Extended CLI `[analyzer]` config parsing to accept:
+  - `min_duplication_tokens`
+  - `long_method_nloc`
+  - `min_meaningful_tokens`
+- Updated `deslop.toml.example`, `docs/CONFIG.md`, and `SPEC.md`.
+- Touched `.agents/HEARTBEAT.md`.
+
+Tests:
+- Added analyzer default-preservation test for `24/40/8`.
+- Added long-method config behavior test:
+  - 39-NLOC Rust function is not flagged at default `long_method_nloc = 40`
+  - same source is flagged when `long_method_nloc = 20`.
+- Added duplicate-token config behavior test:
+  - small duplicate fixture is suppressed with default `min_meaningful_tokens = 8`
+  - same fixture emits `duplicate-block` when `min_meaningful_tokens = 1`.
+- Extended CLI all-sections TOML parse test to assert all three analyzer threshold values
+  reach `AnalyzerConfig`.
+
+Verification:
+- Focused checks passed:
+  - `cargo test -p deslop-analyzer`
+  - `cargo test -p deslop-cli`
+- Full gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+
+Not started:
+- Queued items 9-13.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-24T07:08:19+02:00 — MCP Fix Auto Mode
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 7 only: add opt-in MCP `fix`

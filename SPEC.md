@@ -473,7 +473,8 @@ default features disabled for prompt construction. `slim` is isolated and only i
 - **Config** `deslop.toml`: `--config <path>` loads project defaults with CLI > env >
   config > built-in precedence. Implemented sections are `[scan] fail_on/baseline`,
   `[fix] check_cmd/coverage/allow_unverified`, `[slim] provider/model/base_url`,
-  `[external] clippy/julia_analyzer/julia_project`, and `[analyzer] min_duplication_tokens`.
+  `[external] clippy/julia_analyzer/julia_project`, and analyzer thresholds
+  `[analyzer] min_duplication_tokens/long_method_nloc/min_meaningful_tokens`.
   API keys are env-only. Inline `deslop-ignore` remains deferred.
 - **Safety:** `verify` owns the gate; `*.deslop.bak` + `undo`; `git`/`jj` dirty check;
   atomic temp+rename; `region_fingerprint` guards against stale patches.

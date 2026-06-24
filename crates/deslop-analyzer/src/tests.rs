@@ -46,6 +46,23 @@ fn duplicate_rules(report: &FileReport) -> Vec<&str> {
         .collect()
 }
 
+fn long_method_source(nloc: usize) -> SourceFile {
+    let mut text = String::from("fn longish() {\n");
+    for idx in 0..nloc.saturating_sub(2) {
+        text.push_str(&format!("    let _v{idx} = {idx};\n"));
+    }
+    text.push_str("}\n");
+    source("sample.rs", &text)
+}
+
+#[test]
+fn analyzer_config_defaults_preserve_thresholds() {
+    let config = AnalyzerConfig::default();
+    assert_eq!(config.min_duplication_tokens, 24);
+    assert_eq!(config.long_method_nloc, 40);
+    assert_eq!(config.min_meaningful_tokens, 8);
+}
+
 #[test]
 fn clojure_safe_auto_rules_have_edits() {
     let source = clojure_source(
@@ -110,6 +127,48 @@ fn token_duplication_ignores_non_clones() {
             .iter()
             .all(|finding| !matches!(finding.rule.as_str(), "duplicate-block" | "near-duplicate"))
     );
+}
+
+#[test]
+fn lowered_meaningful_token_floor_enables_smaller_duplicate_finding() {
+    let fixture = source(
+        "sample.rs",
+        "fn a() {\n    if true {\n    }\n}\nfn b() {\n    if true {\n    }\n}\n",
+    );
+    let default = scan_source_with_config(
+        &fixture,
+        AnalyzerConfig {
+            min_duplication_tokens: 6,
+            ..AnalyzerConfig::default()
+        },
+    );
+    assert!(duplicate_rules(&default).is_empty());
+
+    let lowered = scan_source_with_config(
+        &fixture,
+        AnalyzerConfig {
+            min_duplication_tokens: 6,
+            min_meaningful_tokens: 1,
+            ..AnalyzerConfig::default()
+        },
+    );
+    assert_eq!(duplicate_rules(&lowered), vec!["duplicate-block"]);
+}
+
+#[test]
+fn lowered_long_method_threshold_flags_below_default_nloc() {
+    let fixture = long_method_source(39);
+    let default = scan_source(&fixture);
+    assert!(!has_rule(&default, "long-method"));
+
+    let lowered = scan_source_with_config(
+        &fixture,
+        AnalyzerConfig {
+            long_method_nloc: 20,
+            ..AnalyzerConfig::default()
+        },
+    );
+    assert!(has_rule(&lowered, "long-method"));
 }
 
 #[test]

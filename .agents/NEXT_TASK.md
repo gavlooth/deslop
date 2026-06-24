@@ -1,43 +1,50 @@
-# TASK 8/queue — Analyzer threshold knobs in config (move consts into AnalyzerConfig)
+# TASK 9/queue — non-Rust mutation probes (honest scope: add what has real tooling, document the rest)
 
-Make the remaining rule thresholds configurable via `AnalyzerConfig` + `deslop.toml [analyzer]`.
-Behavior-preserving by default. Start with `jj new` (separate change on top of svrplorq).
+`MutationRegistry` only has `RustCargoMutantsProbe`. Add non-Rust `MutationProbe`s WHERE a viable
+upstream mutation tool exists; where none does, DOCUMENT the blocker — do NOT force a bad adapter.
+Start with `jj new` (separate change on top of mtxlzmys).
 
-## The consts to migrate (only these two; `min_duplication_tokens` is already configurable)
-- `crates/deslop-analyzer/src/agnostic.rs:9` `const LONG_METHOD_NLOC: usize = 40` (long-method).
-- `crates/deslop-analyzer/src/tokens.rs:8` `const MIN_MEANINGFUL_TOKENS: usize = 8`
-  (near-duplicate / duplicate-block meaningful-token floor).
-
-`AnalyzerConfig` currently: `min_duplication_tokens` (default 24), `rust_external`, `julia_external`,
-`julia_project`. Rules already receive `&AnalyzerConfig` via `Rule::check(source, config)`.
+## Pattern to follow (deslop-verify/src/lib.rs)
+- `trait MutationProbe { name; supports(&SourceFile) -> bool; run(...) }` (~line 201).
+- `enum MutationConfig { Disabled, Auto, OutcomesFile(PathBuf) }` (~174) — `OutcomesFile` is the
+  recorded-fixture mode for deterministic tests.
+- `enum MutationStatus { Survived, NoSurvivor, Unknown }`.
+- `RustCargoMutantsProbe` (~869): Auto runs `cargo mutants`; OutcomesFile parses a recorded report;
+  maps MISSED/surviving mutants by path+line to work-order regions; survivor downgrades the verdict.
+- `MutationRegistry` (~828) holds the probe list.
 
 ## Do
-1. Add to `AnalyzerConfig`: `long_method_nloc: usize` (Default 40) and `min_meaningful_tokens: usize`
-   (Default 8). Keep the `Default` impl producing the SAME values as today (40 / 8 / 24) — no
-   behavior change unless configured.
-2. Replace the const usages with `config.long_method_nloc` / `config.min_meaningful_tokens`. Thread
-   `&AnalyzerConfig` (or just the needed usize) into the token/duplication functions in `tokens.rs`
-   if they don't already receive it — minimal plumbing, no logic change. Remove the now-unused consts.
-3. Extend the CLI `[analyzer]` config section (currently only `min_duplication_tokens`) to also
-   accept `long_method_nloc` and `min_meaningful_tokens`, wiring them into the `AnalyzerConfig` the
-   CLI builds. Precedence stays CLI/flags > config > default (there may be no CLI flag for these — if
-   not, config > default is fine; do NOT add new flags unless trivial).
-4. Update `deslop.toml.example` + `docs/CONFIG.md` with the new `[analyzer]` keys.
+1. **Python — add a probe** (this language HAS real tooling). Choose the tool with the cleanest
+   machine-readable output — prefer **cosmic-ray** (structured/JSON report) over mutmut if its output
+   is easier to parse deterministically; justify the choice. Implement `PythonMutationProbe`:
+   - `supports` → Python sources.
+   - Auto mode: run the tool, parse surviving mutants, map by path+line to regions; degrade
+     gracefully (MutationStatus::Unknown + a notice) when the tool is absent — mirror the Rust probe.
+   - OutcomesFile mode: parse a RECORDED report fixture (for tests, no tool needed).
+   - Register it in `MutationRegistry` alongside the Rust probe.
+2. **Clojure & Julia — investigate, then document honestly.** Check (briefly, e.g. via Context7 /
+   crates-or-package search) whether a maintained, source-mappable mutation tool exists:
+   - Clojure: JVM-bytecode mutators (PITest) don't map cleanly back to Clojure source regions; if you
+     find no source-level tool, record it as a documented blocker (which tools exist, why they don't
+     fit region mapping).
+   - Julia: if no maintained mutation-testing tool exists, record it as a documented blocker.
+   Put these in SPEC.md (mutation-tier coverage) and the report — do NOT add a non-functional probe.
 
-## Tests (deterministic)
-- Default preserved: existing analyzer/corpus tests stay green (defaults 40/8/24 unchanged).
-- `long_method_nloc`: a method just under the default (e.g. 40 lines) is NOT flagged at default but
-  IS flagged when `long_method_nloc` is lowered; assert the finding count changes with config.
-- `min_meaningful_tokens`: changing it changes near-duplicate/duplicate-block findings on a fixture
-  (lower floor → more/looser matches). Assert via `scan_source_with_config`.
-- Config parse: a `[analyzer]` section with all three keys deserializes and reaches `AnalyzerConfig`.
+## Tests (deterministic, NO tool/network)
+- Python OutcomesFile fixture: a recorded report with a surviving (MISSED) mutant in a covered
+  region → `MutationStatus::Survived` and the verdict downgrades (mirror the existing cargo-mutants
+  recorded-fixture test). A "no survivor" fixture → not downgraded.
+- Absent-tool degrade for the Python Auto path (tool missing → Unknown + notice, verdict unchanged) —
+  mirror the Rust absent-tool test.
+- Keep existing mutation tests green.
 
 ## Constraints / gate
-No rule LOGIC change — only the threshold source. MCP stays network-free (default build). Do NOT
-touch `deslop/*.py`. Gate after each change:
+Registry-driven, no central `match Lang`. MCP stays network-free (default build). Do NOT touch
+`deslop/*.py` source files of THIS repo (you may add test FIXTURE files under tests/). Gate after
+each change:
 `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
 
 ## Report
-fields added + defaults; the const→config replacement (and any plumbing into tokens.rs); the
-`[analyzer]` config keys; the threshold tests (default-preserving + config-changes-behavior); docs.
-`jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`. Do NOT start queued items 9-13.
+the Python probe + tool choice (with why); the recorded-fixture + absent-tool tests; the
+Clojure/Julia blocker writeups (tools considered, why deferred); SPEC.md mutation-tier update.
+`jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`. Do NOT start queued items 10-13.

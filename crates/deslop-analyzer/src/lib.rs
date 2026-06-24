@@ -34,6 +34,8 @@ pub enum JuliaExternal {
 #[derive(Debug, Clone)]
 pub struct AnalyzerConfig {
     pub min_duplication_tokens: usize,
+    pub long_method_nloc: usize,
+    pub min_meaningful_tokens: usize,
     pub rust_external: bool,
     pub julia_external: JuliaExternal,
     pub julia_project: Option<PathBuf>,
@@ -43,6 +45,8 @@ impl Default for AnalyzerConfig {
     fn default() -> Self {
         Self {
             min_duplication_tokens: 24,
+            long_method_nloc: 40,
+            min_meaningful_tokens: 8,
             rust_external: false,
             julia_external: JuliaExternal::Off,
             julia_project: None,
@@ -390,7 +394,7 @@ fn run_rules(
 }
 
 fn agnostic_findings(source: &SourceFile, config: &AnalyzerConfig) -> Vec<Finding> {
-    agnostic::findings(source, config.min_duplication_tokens)
+    agnostic::findings(source, config)
 }
 
 fn clojure_findings_rule(source: &SourceFile, _config: &AnalyzerConfig) -> Vec<Finding> {

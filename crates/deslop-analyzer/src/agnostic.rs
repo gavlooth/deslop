@@ -4,23 +4,18 @@ use deslop_parse::{SourceFile, parse_tree};
 use regex::Regex;
 use tree_sitter::Node;
 
-use crate::{finding, tokens};
+use crate::{AnalyzerConfig, finding, tokens};
 
-const LONG_METHOD_NLOC: usize = 40;
-
-pub(crate) fn findings(source: &SourceFile, min_duplication_tokens: usize) -> Vec<Finding> {
+pub(crate) fn findings(source: &SourceFile, config: &AnalyzerConfig) -> Vec<Finding> {
     let mut out = Vec::new();
     out.extend(blank_runs(source));
     out.extend(incompleteness(source));
     out.extend(magic_numbers(source));
-    out.extend(long_methods(source));
+    out.extend(long_methods(source, config.long_method_nloc));
     out.extend(narrating_comments(source));
     out.extend(comment_blocks(source));
     out.extend(needless_tail_returns(source));
-    out.extend(tokens::duplicate_token_sequences(
-        source,
-        min_duplication_tokens,
-    ));
+    out.extend(tokens::duplicate_token_sequences(source, config));
     out
 }
 
@@ -167,7 +162,7 @@ fn is_allowed_small_number(value: &str) -> bool {
     matches!(value, "-1" | "0" | "1" | "2" | "0.0" | "1.0" | "2.0")
 }
 
-fn long_methods(source: &SourceFile) -> Vec<Finding> {
+fn long_methods(source: &SourceFile, long_method_nloc: usize) -> Vec<Finding> {
     let registry = LangRegistry::default();
     let pack = registry.pack_for_lang(source.lang);
     if pack.metrics_regions().is_empty() {
@@ -180,7 +175,7 @@ fn long_methods(source: &SourceFile) -> Vec<Finding> {
         return Vec::new();
     }
     let mut out = Vec::new();
-    collect_long_methods(source, tree.root_node(), pack, &mut out);
+    collect_long_methods(source, tree.root_node(), pack, long_method_nloc, &mut out);
     out
 }
 
@@ -188,6 +183,7 @@ fn collect_long_methods(
     source: &SourceFile,
     node: Node<'_>,
     pack: &dyn LangPack,
+    long_method_nloc: usize,
     out: &mut Vec<Finding>,
 ) {
     if pack.is_long_method_region(node, &source.text) {
@@ -195,7 +191,7 @@ fn collect_long_methods(
         let end_line = node.end_position().row + 1;
         let text = source.region_text(start_line, end_line);
         let nloc = nloc(&text, pack.line_comments());
-        if nloc >= LONG_METHOD_NLOC {
+        if nloc >= long_method_nloc {
             out.push(finding(
                 source,
                 start_line,
@@ -214,7 +210,7 @@ fn collect_long_methods(
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_long_methods(source, child, pack, out);
+        collect_long_methods(source, child, pack, long_method_nloc, out);
     }
 }
 

@@ -3,9 +3,7 @@ use deslop_lang::{LangPack, RegionClass, Registry as LangRegistry};
 use deslop_parse::{SourceFile, parse_tree};
 use tree_sitter::Node;
 
-use crate::finding;
-
-const MIN_MEANINGFUL_TOKENS: usize = 8;
+use crate::{AnalyzerConfig, finding};
 
 #[derive(Debug, Clone)]
 struct Token {
@@ -38,7 +36,12 @@ struct MaskRange {
     kind: MaskKind,
 }
 
-pub(crate) fn duplicate_token_sequences(source: &SourceFile, min_tokens: usize) -> Vec<Finding> {
+pub(crate) fn duplicate_token_sequences(
+    source: &SourceFile,
+    config: &AnalyzerConfig,
+) -> Vec<Finding> {
+    let min_tokens = config.min_duplication_tokens;
+    let min_meaningful_tokens = config.min_meaningful_tokens;
     let tokens = tokenize(source);
     if min_tokens == 0 || tokens.len() < min_tokens * 2 {
         return Vec::new();
@@ -57,7 +60,7 @@ pub(crate) fn duplicate_token_sequences(source: &SourceFile, min_tokens: usize) 
                 continue;
             }
             let meaningful_count = meaningful_count(left).min(meaningful_count(right));
-            if meaningful_count < MIN_MEANINGFUL_TOKENS
+            if meaningful_count < min_meaningful_tokens
                 || !single_segment(left)
                 || !single_segment(right)
             {

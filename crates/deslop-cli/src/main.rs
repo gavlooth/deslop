@@ -397,6 +397,10 @@ struct ScanConfig {
 struct AnalyzerConfigSection {
     #[serde(default)]
     min_duplication_tokens: Option<usize>,
+    #[serde(default)]
+    long_method_nloc: Option<usize>,
+    #[serde(default)]
+    min_meaningful_tokens: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -714,9 +718,21 @@ fn analyzer_config_from_config(
         .as_ref()
         .and_then(|analyzer| analyzer.min_duplication_tokens)
         .unwrap_or(default.min_duplication_tokens);
+    let long_method_nloc = config
+        .analyzer
+        .as_ref()
+        .and_then(|analyzer| analyzer.long_method_nloc)
+        .unwrap_or(default.long_method_nloc);
+    let min_meaningful_tokens = config
+        .analyzer
+        .as_ref()
+        .and_then(|analyzer| analyzer.min_meaningful_tokens)
+        .unwrap_or(default.min_meaningful_tokens);
 
     AnalyzerConfig {
         min_duplication_tokens,
+        long_method_nloc,
+        min_meaningful_tokens,
         rust_external: rust_external || configured_clippy,
         julia_external: julia_external
             .map(JuliaExternal::from)
@@ -1031,6 +1047,8 @@ mod tests {
 
             [analyzer]
             min_duplication_tokens = 42
+            long_method_nloc = 30
+            min_meaningful_tokens = 5
 
             [external]
             clippy = "on"
@@ -1063,6 +1081,8 @@ mod tests {
 
         let analyzer = analyzer_config_from_config(&config, false, None, None);
         assert_eq!(analyzer.min_duplication_tokens, 42);
+        assert_eq!(analyzer.long_method_nloc, 30);
+        assert_eq!(analyzer.min_meaningful_tokens, 5);
         assert!(analyzer.rust_external);
         assert_eq!(analyzer.julia_external, JuliaExternal::Jet);
         assert_eq!(analyzer.julia_project, Some(PathBuf::from("julia-env")));

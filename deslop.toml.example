@@ -23,3 +23,5 @@
 
 [analyzer]
 # min_duplication_tokens = 24
+# long_method_nloc = 40
+# min_meaningful_tokens = 8
