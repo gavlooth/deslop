@@ -26,3 +26,11 @@
 # min_duplication_tokens = 24
 # long_method_nloc = 40
 # min_meaningful_tokens = 8
+
+# Per-language long-method thresholds override [analyzer].long_method_nloc.
+# Supported tables: rust, clojure, julia, python, generic.
+# [analyzer.rust]
+# long_method_nloc = 45
+#
+# [analyzer.python]
+# long_method_nloc = 35

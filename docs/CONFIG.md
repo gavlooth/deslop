@@ -91,8 +91,21 @@ these values.
 min_duplication_tokens = 24
 long_method_nloc = 40
 min_meaningful_tokens = 8
+
+[analyzer.rust]
+long_method_nloc = 45
+
+[analyzer.python]
+long_method_nloc = 35
 ```
 
 `min_duplication_tokens` controls duplicate-window size. `long_method_nloc` controls the
 non-comment line threshold for `long-method`. `min_meaningful_tokens` controls the minimum
 meaningful-token count required before token duplication findings are emitted.
+
+Per-language analyzer tables can override `long_method_nloc` for `rust`, `clojure`,
+`julia`, `python`, or `generic` without changing the global fallback.
+
+MCP `scan`, `propose`, and prompt-mode `fix` accept the same optional `config` path and an
+inline `analyzer` object. Inline analyzer values override values loaded from `deslop.toml`
+for that tool call.

@@ -177,9 +177,9 @@ mod tests {
                 .len(),
             reports[0].findings.len()
         );
-        assert_eq!(value["runs"][0]["results"][0]["level"], "error");
-        assert_eq!(value["runs"][0]["results"][1]["level"], "warning");
-        assert_eq!(value["runs"][0]["results"][2]["level"], "note");
+        assert_json_eq(&value, &["runs", "0", "results", "0", "level"], "error");
+        assert_json_eq(&value, &["runs", "0", "results", "1", "level"], "warning");
+        assert_json_eq(&value, &["runs", "0", "results", "2", "level"], "note");
         assert_eq!(
             value["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]
                 ["uri"],
@@ -193,6 +193,17 @@ mod tests {
             value["runs"][0]["tool"]["driver"]["rules"][0]["properties"]["safety"],
             "llm-only"
         );
+    }
+
+    fn assert_json_eq(value: &serde_json::Value, path: &[&str], expected: &str) {
+        let mut current = value;
+        for segment in path {
+            current = match segment.parse::<usize>() {
+                Ok(index) => &current[index],
+                Err(_) => &current[*segment],
+            };
+        }
+        assert_eq!(current, expected);
     }
 
     fn finding(rule: &str, severity: Severity, line: usize) -> Finding {

@@ -36,9 +36,19 @@ pub struct AnalyzerConfig {
     pub min_duplication_tokens: usize,
     pub long_method_nloc: usize,
     pub min_meaningful_tokens: usize,
+    pub rust: AnalyzerLangConfig,
+    pub clojure: AnalyzerLangConfig,
+    pub julia: AnalyzerLangConfig,
+    pub python: AnalyzerLangConfig,
+    pub generic: AnalyzerLangConfig,
     pub rust_external: bool,
     pub julia_external: JuliaExternal,
     pub julia_project: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AnalyzerLangConfig {
+    pub long_method_nloc: Option<usize>,
 }
 
 impl Default for AnalyzerConfig {
@@ -47,10 +57,28 @@ impl Default for AnalyzerConfig {
             min_duplication_tokens: 24,
             long_method_nloc: 40,
             min_meaningful_tokens: 8,
+            rust: AnalyzerLangConfig::default(),
+            clojure: AnalyzerLangConfig::default(),
+            julia: AnalyzerLangConfig::default(),
+            python: AnalyzerLangConfig::default(),
+            generic: AnalyzerLangConfig::default(),
             rust_external: false,
             julia_external: JuliaExternal::Off,
             julia_project: None,
         }
+    }
+}
+
+impl AnalyzerConfig {
+    pub fn long_method_nloc_for(&self, lang: Lang) -> usize {
+        let override_value = match lang {
+            Lang::Clojure => self.clojure.long_method_nloc,
+            Lang::Julia => self.julia.long_method_nloc,
+            Lang::Python => self.python.long_method_nloc,
+            Lang::Rust => self.rust.long_method_nloc,
+            Lang::Generic => self.generic.long_method_nloc,
+        };
+        override_value.unwrap_or(self.long_method_nloc)
     }
 }
 
@@ -227,43 +255,51 @@ pub fn scan_paths_with_config(
 
     let mut reports = Vec::new();
     for path in paths {
-        if path.is_file() {
-            push_supported_report(
-                &mut reports,
-                &path,
-                &lang_registry,
-                &analyzer_registry,
-                &config,
-            )?;
-            continue;
-        }
-
-        let walker = WalkBuilder::new(&path)
-            .hidden(false)
-            .filter_entry(|entry| {
-                let name = entry.file_name().to_string_lossy();
-                !matches!(name.as_ref(), ".git" | ".jj" | "target" | "__pycache__")
-            })
-            .build();
-
-        for entry in walker {
-            let entry = entry.with_context(|| format!("failed to walk {}", path.display()))?;
-            let file_type = entry.file_type();
-            if !file_type.is_some_and(|kind| kind.is_file()) {
-                continue;
-            }
-            let path = entry.into_path();
-            push_supported_report(
-                &mut reports,
-                &path,
-                &lang_registry,
-                &analyzer_registry,
-                &config,
-            )?;
-        }
+        push_reports_for_path(
+            &mut reports,
+            &path,
+            &lang_registry,
+            &analyzer_registry,
+            &config,
+        )?;
     }
     reports.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(reports)
+}
+
+fn push_reports_for_path(
+    reports: &mut Vec<FileReport>,
+    path: &Path,
+    lang_registry: &LangRegistry,
+    analyzer_registry: &AnalyzerRegistry,
+    config: &AnalyzerConfig,
+) -> Result<()> {
+    if path.is_file() {
+        return push_supported_report(reports, path, lang_registry, analyzer_registry, config);
+    }
+
+    let walker = WalkBuilder::new(path)
+        .hidden(false)
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            !matches!(name.as_ref(), ".git" | ".jj" | "target" | "__pycache__")
+        })
+        .build();
+
+    for entry in walker {
+        let entry = entry.with_context(|| format!("failed to walk {}", path.display()))?;
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+            continue;
+        }
+        push_supported_report(
+            reports,
+            &entry.into_path(),
+            lang_registry,
+            analyzer_registry,
+            config,
+        )?;
+    }
+    Ok(())
 }
 
 fn push_supported_report(

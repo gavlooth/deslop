@@ -147,11 +147,7 @@ impl MutationPack for ClojureMutationPack {
     }
 
     fn boolean_replacement(&self, token: &str) -> Option<&'static str> {
-        match token {
-            "true" => Some("false"),
-            "false" => Some("true"),
-            _ => None,
-        }
+        lowercase_bool_replacement(token)
     }
 
     fn operators(&self) -> &'static [&'static dyn MutationOperator] {
@@ -181,11 +177,7 @@ impl MutationPack for JuliaMutationPack {
     }
 
     fn boolean_replacement(&self, token: &str) -> Option<&'static str> {
-        match token {
-            "true" => Some("false"),
-            "false" => Some("true"),
-            _ => None,
-        }
+        lowercase_bool_replacement(token)
     }
 
     fn operators(&self) -> &'static [&'static dyn MutationOperator] {
@@ -218,9 +210,7 @@ impl MutationPack for PythonMutationPack {
         match token {
             "True" => Some("False"),
             "False" => Some("True"),
-            "true" => Some("false"),
-            "false" => Some("true"),
-            _ => None,
+            _ => lowercase_bool_replacement(token),
         }
     }
 
@@ -251,15 +241,19 @@ impl MutationPack for RustMutationPack {
     }
 
     fn boolean_replacement(&self, token: &str) -> Option<&'static str> {
-        match token {
-            "true" => Some("false"),
-            "false" => Some("true"),
-            _ => None,
-        }
+        lowercase_bool_replacement(token)
     }
 
     fn operators(&self) -> &'static [&'static dyn MutationOperator] {
         &INFIX_OPERATORS
+    }
+}
+
+fn lowercase_bool_replacement(token: &str) -> Option<&'static str> {
+    match token {
+        "true" => Some("false"),
+        "false" => Some("true"),
+        _ => None,
     }
 }
 
@@ -551,101 +545,89 @@ mod tests {
             .collect()
     }
 
+    fn assert_mutants(path: &str, text: &str, expected: &[(usize, &'static str, &str, &str)]) {
+        let expected = expected
+            .iter()
+            .map(|(line, operator, original, mutated)| {
+                (*line, *operator, original.to_string(), mutated.to_string())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(mutated_texts(path, text), expected);
+    }
+
     #[test]
     fn rust_generates_exact_portable_mutants() {
-        let mutants = mutated_texts(
+        assert_mutants(
             "sample.rs",
             "fn f(a: i32, b: i32) -> bool {\n    if a < b && true { a + b } else { a * b } == 0\n}\n",
-        );
-        assert_eq!(
-            mutants,
-            vec![
-                (
-                    2,
-                    "condition-negation",
-                    "a < b && true".into(),
-                    "!(a < b && true)".into()
-                ),
-                (2, "relational-swap", "<".into(), "<=".into()),
-                (2, "logical-swap", "&&".into(), "||".into()),
-                (2, "boolean-flip", "true".into(), "false".into()),
-                (2, "arithmetic-swap", "+".into(), "-".into()),
-                (2, "arithmetic-swap", "*".into(), "/".into()),
-                (2, "relational-swap", "==".into(), "!=".into()),
-            ]
+            &[
+                (2, "condition-negation", "a < b && true", "!(a < b && true)"),
+                (2, "relational-swap", "<", "<="),
+                (2, "logical-swap", "&&", "||"),
+                (2, "boolean-flip", "true", "false"),
+                (2, "arithmetic-swap", "+", "-"),
+                (2, "arithmetic-swap", "*", "/"),
+                (2, "relational-swap", "==", "!="),
+            ],
         );
     }
 
     #[test]
     fn clojure_generates_exact_prefix_mutants() {
-        let mutants = mutated_texts(
+        assert_mutants(
             "sample.clj",
             "(defn f [a b]\n  (if (and (< a b) true) (+ a b) (* a b)))\n",
-        );
-        assert_eq!(
-            mutants,
-            vec![
+            &[
                 (
                     2,
                     "condition-negation",
-                    "(and (< a b) true)".into(),
-                    "(not (and (< a b) true))".into()
+                    "(and (< a b) true)",
+                    "(not (and (< a b) true))",
                 ),
-                (2, "logical-swap", "and".into(), "or".into()),
-                (2, "relational-swap", "<".into(), "<=".into()),
-                (2, "boolean-flip", "true".into(), "false".into()),
-                (2, "arithmetic-swap", "+".into(), "-".into()),
-                (2, "arithmetic-swap", "*".into(), "/".into()),
-            ]
+                (2, "logical-swap", "and", "or"),
+                (2, "relational-swap", "<", "<="),
+                (2, "boolean-flip", "true", "false"),
+                (2, "arithmetic-swap", "+", "-"),
+                (2, "arithmetic-swap", "*", "/"),
+            ],
         );
     }
 
     #[test]
     fn julia_generates_exact_portable_mutants() {
-        let mutants = mutated_texts(
+        assert_mutants(
             "sample.jl",
             "function f(a, b)\n    if a < b && true\n        a + b\n    else\n        a * b\n    end\nend\n",
-        );
-        assert_eq!(
-            mutants,
-            vec![
-                (
-                    2,
-                    "condition-negation",
-                    "a < b && true".into(),
-                    "!(a < b && true)".into()
-                ),
-                (2, "relational-swap", "<".into(), "<=".into()),
-                (2, "logical-swap", "&&".into(), "||".into()),
-                (2, "boolean-flip", "true".into(), "false".into()),
-                (3, "arithmetic-swap", "+".into(), "-".into()),
-                (5, "arithmetic-swap", "*".into(), "/".into()),
-            ]
+            &[
+                (2, "condition-negation", "a < b && true", "!(a < b && true)"),
+                (2, "relational-swap", "<", "<="),
+                (2, "logical-swap", "&&", "||"),
+                (2, "boolean-flip", "true", "false"),
+                (3, "arithmetic-swap", "+", "-"),
+                (5, "arithmetic-swap", "*", "/"),
+            ],
         );
     }
 
     #[test]
     fn python_generates_exact_portable_mutants() {
-        let mutants = mutated_texts(
+        assert_mutants(
             "sample.py",
             "def f(a, b):\n    if a < b and True:\n        return a + b\n    return a * b == 0\n",
-        );
-        assert_eq!(
-            mutants,
-            vec![
+            &[
                 (
                     2,
                     "condition-negation",
-                    "a < b and True".into(),
-                    "not (a < b and True)".into()
+                    "a < b and True",
+                    "not (a < b and True)",
                 ),
-                (2, "relational-swap", "<".into(), "<=".into()),
-                (2, "logical-swap", "and".into(), "or".into()),
-                (2, "boolean-flip", "True".into(), "False".into()),
-                (3, "arithmetic-swap", "+".into(), "-".into()),
-                (4, "arithmetic-swap", "*".into(), "/".into()),
-                (4, "relational-swap", "==".into(), "!=".into()),
-            ]
+                (2, "relational-swap", "<", "<="),
+                (2, "logical-swap", "and", "or"),
+                (2, "boolean-flip", "True", "False"),
+                (3, "arithmetic-swap", "+", "-"),
+                (4, "arithmetic-swap", "*", "/"),
+                (4, "relational-swap", "==", "!="),
+            ],
         );
     }
 

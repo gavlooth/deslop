@@ -85,7 +85,9 @@ explicitly with `--coverage <mode>` (prove it) or `--allow-unverified` (opt into
   `characterize`, `verify_characterization`, `metrics`, `rules`, and `fix`. The default build is
   **network-free**. `fix` defaults to *agent-as-consumer* (returns rewrite prompts + fingerprints;
   the calling agent rewrites and submits patches to `apply`); a server-run LLM mode is available only
-  behind the `slim-llm` feature.
+  behind the `slim-llm` feature. `scan`, `propose`, and prompt-mode `fix` accept a `config` path and
+  inline `analyzer` overrides, including per-language `long_method_nloc`; inline MCP values override
+  the config file for that tool call.
 - **LSP** (`deslop-lsp`): live diagnostics + code actions wired to the fix-safety lattice (only
   safe-auto findings get quickfixes; plus a `source.fixAll`), precise UTF-16 ranges, incremental sync.
 
@@ -102,6 +104,21 @@ default**. Sections: `[external]`, `[slim]` (provider/model/base_url/egress_cons
 (check_cmd/coverage/allow_unverified), `[scan]` (fail_on/baseline), `[analyzer]`
 (min_duplication_tokens/long_method_nloc/min_meaningful_tokens). See `deslop.toml.example` and
 `docs/CONFIG.md`.
+
+`long_method_nloc` defaults to 40 non-comment lines globally and can be overridden per language:
+
+```toml
+[analyzer]
+long_method_nloc = 40
+
+[analyzer.rust]
+long_method_nloc = 45
+
+[analyzer.python]
+long_method_nloc = 35
+```
+
+Supported per-language analyzer tables are `rust`, `clojure`, `julia`, `python`, and `generic`.
 
 ## Languages
 

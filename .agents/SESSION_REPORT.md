@@ -47,6 +47,187 @@ Queue status:
 
 Signature: Codex
 
+## 2026-06-24T13:12:00+02:00 - Per-language analyzer threshold config
+
+Objective: Answer and implement the MCP/config follow-up for `long-method`: make the
+threshold configurable through MCP and per language where useful.
+
+Target:
+- `AnalyzerConfig` long-method threshold handling.
+- CLI `deslop.toml` parsing.
+- MCP `scan`/`propose` tool schemas and execution.
+- Config documentation and example.
+
+Changes:
+- Added `AnalyzerLangConfig` and per-language `long_method_nloc` overrides for Rust,
+  Clojure, Julia, Python, and generic sources.
+- `long-method` now uses `AnalyzerConfig::long_method_nloc_for(source.lang)`, preserving
+  the global default as the fallback.
+- CLI config parsing accepts `[analyzer.rust]`, `[analyzer.clojure]`, `[analyzer.julia]`,
+  `[analyzer.python]`, and `[analyzer.generic]` with `long_method_nloc`.
+- MCP `scan`, `propose`, and prompt-mode `fix` now accept:
+  - `config`: optional `deslop.toml` path for analyzer settings.
+  - `analyzer`: inline overrides, including per-language `long_method_nloc`.
+- Inline MCP analyzer settings override the config file for that tool call.
+- Updated `docs/CONFIG.md` and `deslop.toml.example`.
+
+Verification run:
+- `cargo fmt --all && cargo test -p deslop-analyzer && cargo test -p deslop-cli && cargo test -p deslop-mcp`: pass.
+- `cargo fmt --all --check`: pass.
+- `cargo build --workspace`: pass.
+- `cargo build -p deslop-slim --no-default-features`: pass.
+- `cargo test --workspace`: pass.
+- `cargo test -p deslop-mcp --features slim-llm`: pass.
+- `cargo clippy --workspace -- -D warnings`: pass.
+
+Blockers:
+- None for this config/MCP follow-up.
+
+Next actions:
+- None required. Future analyzer thresholds can follow the same global-plus-language
+  shape if they become language-sensitive.
+
+Signature: Codex
+
+---
+
+# Session Report — Dogfood Refactor Continuation
+
+Date/time: 2026-06-24T12:36:43+02:00 Europe/Madrid
+
+Objective: Continue refactoring deslop's own code after the dogfood cleanup checkpoint,
+preserving behavior and gating each edited area.
+
+Working-copy context:
+- Continued in jj change `ysrptkzp` (`Dogfood debloat refactor pass`).
+- Did not touch analyzer thresholds or detector semantics.
+- Did not chase known false positives in redundant-closure/needless-clone ownership cases.
+
+Changes made in this continuation:
+- `deslop-metrics`: split hotspot detection, ranking, text rendering, and region metric
+  construction into smaller helpers.
+- `deslop-external`: split clippy JSON-line parsing into focused helpers.
+- `deslop-verify`: shared coverage-assessment construction across LCOV/line coverage,
+  split native mutation runner steps, moved the cosmic-ray SQLite script constant, and
+  extracted verify test setup/assertion helpers.
+- `deslop-analyzer`: split path walking/report pushing, token duplicate candidate matching,
+  tokenizer masked-token handling, Rust tree-walk rule collection, Clojure regex capture
+  walking, and analyzer corpus fixture assertions.
+- `deslop-lsp`: split didOpen/didChange/didSave/didClose notification handlers.
+- `deslop-mcp`: extracted tool-schema assertions, propose/result helpers, Rust LCOV fixture
+  setup, and feature-gated slim mock scenario helpers.
+- `deslop-mutate`: compacted exact mutant expectation tests through a shared assertion helper.
+- `deslop-slim`: shared single-result, gating-count, written-path, and source-text assertions.
+- `deslop-parse`: shared region assertion helper in tests.
+
+Measured before/after:
+- Starting checkpoint aggregate: score `7.294818761848697`,
+  `comment-block=1`, `duplicate-block=33`, `long-method=19`,
+  `magic-number=16`, `near-duplicate=55`.
+- Final aggregate: score `5.2988593374181185`,
+  `comment-block=1`, `duplicate-block=21`, `magic-number=16`,
+  `near-duplicate=54`; no `long-method` findings.
+- Honest split:
+  - Real removals: all remaining long-method findings eliminated (`19 -> 0`);
+    duplicate-block count reduced (`33 -> 21`).
+  - Mostly residual/non-removable or low-value: `magic-number=16` unchanged,
+    `comment-block=1` unchanged, near-duplicate only marginally changed (`55 -> 54`).
+
+Focused gates after edits:
+- `cargo fmt --all && cargo test -p deslop-metrics`: pass.
+- `cargo fmt --all && cargo test -p deslop-external`: pass.
+- `cargo fmt --all && cargo test -p deslop-verify`: pass after each verify refactor.
+- `cargo fmt --all && cargo test -p deslop-analyzer`: pass after analyzer refactors.
+- `cargo fmt --all && cargo test -p deslop-lsp`: pass.
+- `cargo fmt --all && cargo test -p deslop-mcp`: pass.
+- `cargo fmt --all && cargo test -p deslop-mutate`: pass.
+- `cargo fmt --all && cargo test -p deslop-slim && cargo build -p deslop-slim --no-default-features`: pass.
+- `cargo fmt --all && cargo test -p deslop-parse`: pass.
+
+Final verification:
+- `cargo fmt --all --check`: pass.
+- `cargo build --workspace`: pass.
+- `cargo build -p deslop-slim --no-default-features`: pass.
+- `cargo test --workspace`: pass.
+- `cargo clippy --workspace -- -D warnings`: pass.
+- `cargo test -p deslop-mcp --features slim-llm`: pass, 11 tests.
+- `cargo run -q -p deslop-cli -- scan crates --format text | rg 'long-method'`: no matches.
+
+Residual hotspots/blockers:
+- No verification blockers.
+- Residual duplicate/near-duplicate clusters are mostly:
+  - rule-table/test assertion structure in analyzer/MCP/slim/verify,
+  - SARIF JSON-path assertions,
+  - intentional provider/client API shape similarities,
+  - low-value tiny test file near-duplicate noise.
+- Further reductions are possible but now skew toward macro-like table compaction,
+  assertion DSLs, or detector false-positive pressure rather than high-value refactoring.
+
+Signature: Codex
+
+## 2026-06-24T11:22:17+02:00 — Dogfood Debloat Refactor Pass
+
+Objective: Deslop the codebase with behavior-preserving refactors, measured before/after and gated by cargo verification.
+
+Change context:
+- Started from jj change `ysrptkzp` on parent `lkrnsqtk` (`Add project README`).
+- Preserved the existing README parent change; this pass only edited Rust sources and this report.
+
+Before measurement:
+- `target/debug/deslop slop crates --format json`
+  - score: 11.982529004741801
+  - comment-block=1
+  - duplicate-block=44
+  - long-method=41
+  - magic-number=16
+  - near-duplicate=59
+
+Refactors completed:
+- `deslop-slim`: split `run_slim_with_progress` orchestration into rewrite, verification, apply/report, and progress helpers; extracted deterministic test fixture setup and progress assertions.
+- `deslop-lsp`: extracted code-action/test JSON-RPC helpers and shared safe action counting.
+- `deslop-analyzer`: table-driven Julia rules; shared Clojure code-line scanning, safe edit construction, redundant-do finding construction, and precondition rule helper.
+- `deslop-fix`: split `fix_paths` into fixable grouping, per-path application, atomic write, temp path, and shared fixable predicate.
+- `deslop-eval`: shared JSON file loading; split corpus summary, case scanning, expectation scoring, unmatched finding scoring, finalized rule scores, and overall score.
+- `deslop-parse`, `deslop-report`, `deslop-mutate`: small helper extractions for repeated test assertions and boolean mutation replacement.
+- `deslop-mcp`: split the long MCP tool catalog into per-tool schema builders, keeping dispatch untouched.
+- `deslop-cli`: split slim progress formatting, analyzer threshold extraction, config test assertions, and the `fix` command path into request resolution and provider execution helpers.
+
+After measurement:
+- `cargo run -q -p deslop-cli -- slop crates --format json`
+  - score: 7.294818761848697
+  - comment-block=1
+  - duplicate-block=33
+  - long-method=19
+  - magic-number=16
+  - near-duplicate=55
+
+Notable file-level improvements:
+- `crates/deslop-analyzer/src/julia.rs`: score 42.37 -> 0.00.
+- `crates/deslop-slim/src/lib.rs`: score 20.29 -> 9.16; long-method 8 -> 0.
+- `crates/deslop-lsp/src/lib.rs`: score 18.13 -> 5.20; long-method 4 -> 1, duplicate-block 4 -> 0.
+- `crates/deslop-eval/src/lib.rs`: score 18.99 -> 3.60; long-method 2 -> 0.
+- `crates/deslop-cli/src/main.rs`: score 11.88 -> 5.81; long-method 4 -> 0.
+- `crates/deslop-fix/src/lib.rs`: score 14.12 -> 5.26; long-method 1 -> 0.
+
+Verification:
+- `cargo fmt --all`: pass.
+- `cargo build --workspace`: pass.
+- `cargo build -p deslop-slim --no-default-features`: pass.
+- `cargo test --workspace`: pass.
+- `cargo clippy --workspace -- -D warnings`: pass.
+- Additional MCP feature check run after MCP schema refactor: `cargo test -p deslop-mcp --features slim-llm`: pass.
+
+Residual hotspots:
+- Remaining aggregate counts are mostly `deslop-verify`, MCP test scenarios, metrics/reporting helpers, exact expected-output vectors, and analyzer/token structural repetition.
+- `magic-number` and `comment-block` counts were intentionally unchanged; these are not meaningful cleanup targets in this pass.
+- Known precision-sensitive residuals such as redundant-closure false positives and harmless structural near-duplicates were not chased.
+
+Blockers:
+- No build/test/clippy blockers.
+- No external-tool blocker affected this pass because verification used deterministic/unit-test surfaces.
+
+Signature: Codex
+
 ## 2026-06-24T09:41:37+02:00 — Native Tree-Sitter Mutation Engine Complete
 
 Objective: Finish `.agents/NEXT_TASK.md` Task 14: native tree-sitter mutation

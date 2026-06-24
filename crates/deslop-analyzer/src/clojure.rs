@@ -49,37 +49,37 @@ struct SimpleRule {
 
 fn simple_safe_rule(source: &SourceFile, rule: SimpleRule) -> Vec<Finding> {
     let regex = Regex::new(rule.pattern).expect("valid regex");
+    findings_from_captures(source, &regex, |line_no, caps, matched| {
+        let edit = safe_auto_edit(source, line_no, matched, (rule.replacement)(caps));
+        Some(finding(
+            source,
+            line_no,
+            line_no,
+            rule.rule,
+            Severity::Minor,
+            SafetyClass::SafeAuto,
+            DetectedBy::Idiom,
+            rule.message,
+            rule.suggestion,
+            None,
+            Some(edit),
+        ))
+    })
+}
+
+fn findings_from_captures(
+    source: &SourceFile,
+    regex: &Regex,
+    mut build: impl FnMut(usize, &regex::Captures<'_>, regex::Match<'_>) -> Option<Finding>,
+) -> Vec<Finding> {
     let mut out = Vec::new();
-    for (idx, line) in source.lines().iter().enumerate() {
-        let line_no = idx + 1;
-        let code = strip_comment(line);
-        for caps in regex.captures_iter(code) {
-            let Some(matched) = caps.get(0) else {
-                continue;
-            };
-            let start = source.line_start_byte(line_no) + matched.start();
-            let end = source.line_start_byte(line_no) + matched.end();
-            let edit = Edit {
-                kind: EditKind::SafeAuto,
-                splices: vec![Splice {
-                    start_byte: start,
-                    end_byte: end,
-                    replacement: (rule.replacement)(&caps),
-                }],
-            };
-            out.push(finding(
-                source,
-                line_no,
-                line_no,
-                rule.rule,
-                Severity::Minor,
-                SafetyClass::SafeAuto,
-                DetectedBy::Idiom,
-                rule.message,
-                rule.suggestion,
-                None,
-                Some(edit),
-            ));
+    for (line_no, code) in code_lines(source) {
+        for caps in regex.captures_iter(&code) {
+            if let Some(matched) = caps.get(0)
+                && let Some(finding) = build(line_no, &caps, matched)
+            {
+                out.push(finding);
+            }
         }
     }
     out
@@ -88,86 +88,43 @@ fn simple_safe_rule(source: &SourceFile, rule: SimpleRule) -> Vec<Finding> {
 fn redundant_do(source: &SourceFile) -> Vec<Finding> {
     let regex =
         Regex::new(r"\((when(?:-not)?)\s+([^()\n]+?)\s+\(do\s+(.+?)\)\)").expect("valid regex");
-    let mut out = Vec::new();
-    for (idx, line) in source.lines().iter().enumerate() {
-        let line_no = idx + 1;
-        let code = strip_comment(line);
-        for caps in regex.captures_iter(code) {
-            let Some(matched) = caps.get(0) else {
-                continue;
-            };
-            let body = caps[3].trim();
-            if body.is_empty() {
-                continue;
-            }
-            let start = source.line_start_byte(line_no) + matched.start();
-            let end = source.line_start_byte(line_no) + matched.end();
-            let edit = Edit {
-                kind: EditKind::SafeAuto,
-                splices: vec![Splice {
-                    start_byte: start,
-                    end_byte: end,
-                    replacement: format!("({} {} {})", &caps[1], caps[2].trim(), body),
-                }],
-            };
-            out.push(finding(
-                source,
-                line_no,
-                line_no,
-                "redundant-do",
-                Severity::Minor,
-                SafetyClass::SafeAuto,
-                DetectedBy::Idiom,
-                "(when ... (do ...)) uses a redundant do",
-                "drop the inner (do ...)",
-                None,
-                Some(edit),
-            ));
+    findings_from_captures(source, &regex, |line_no, caps, matched| {
+        let body = caps[3].trim();
+        if body.is_empty() {
+            return None;
         }
-    }
-    out
+        let replacement = format!("({} {} {})", &caps[1], caps[2].trim(), body);
+        let edit = safe_auto_edit(source, line_no, matched, replacement);
+        Some(redundant_do_finding(source, line_no, edit))
+    })
 }
 
 fn precondition_rules(source: &SourceFile) -> Vec<Finding> {
     let rules = [
-        (
-            Regex::new(r"\(=\s+\(count\s+([^()]+?)\)\s+0\)").expect("valid regex"),
+        PreconditionRule::new(
+            r"\(=\s+\(count\s+([^()]+?)\)\s+0\)",
             "reimpl-empty?",
             "(= (count x) 0) reimplements empty?",
             "use (empty? x) only for finite/countable collections",
         ),
-        (
-            Regex::new(r"\(>\s+\(count\s+([^()]+?)\)\s+0\)").expect("valid regex"),
+        PreconditionRule::new(
+            r"\(>\s+\(count\s+([^()]+?)\)\s+0\)",
             "reimpl-seq",
             "(> (count x) 0) reimplements seq",
             "use (seq x) only for finite/countable collections",
         ),
-        (
-            Regex::new(r"\(reduce\s+conj\s+\[\]\s").expect("valid regex"),
+        PreconditionRule::new(
+            r"\(reduce\s+conj\s+\[\]\s",
             "reimpl-vec",
             "(reduce conj [] coll) reimplements vec/into",
             "use (vec coll) or (into [] coll) only for finite collections",
         ),
     ];
     let mut out = Vec::new();
-    for (idx, line) in source.lines().iter().enumerate() {
-        let line_no = idx + 1;
-        let code = strip_comment(line);
-        for (regex, rule, message, suggestion) in &rules {
-            if regex.is_match(code) {
-                out.push(finding(
-                    source,
-                    line_no,
-                    line_no,
-                    rule,
-                    Severity::Minor,
-                    SafetyClass::SafeWithPrecondition,
-                    DetectedBy::Idiom,
-                    message,
-                    suggestion,
-                    Some("collection is finite/countable and strictness change is acceptable"),
-                    None,
-                ));
+    for (line_no, code) in code_lines(source) {
+        for rule in &rules {
+            if rule.regex.is_match(&code) {
+                out.push(rule.finding(source, line_no));
             }
         }
     }
@@ -178,10 +135,8 @@ fn single_use_let(source: &SourceFile) -> Vec<Finding> {
     let regex = Regex::new(r"\(let\s+\[\s*([A-Za-z_][\w\-?!*+./<>=]*)\s+([^\]\n]+)\]\s+([^)]+)\)")
         .expect("valid regex");
     let mut out = Vec::new();
-    for (idx, line) in source.lines().iter().enumerate() {
-        let line_no = idx + 1;
-        let code = strip_comment(line);
-        for caps in regex.captures_iter(code) {
+    for (line_no, code) in code_lines(source) {
+        for caps in regex.captures_iter(&code) {
             let sym = &caps[1];
             let body = &caps[3];
             if count_symbol_uses(body, sym) == 1 {
@@ -202,6 +157,88 @@ fn single_use_let(source: &SourceFile) -> Vec<Finding> {
         }
     }
     out
+}
+
+struct PreconditionRule {
+    regex: Regex,
+    rule: &'static str,
+    message: &'static str,
+    suggestion: &'static str,
+}
+
+impl PreconditionRule {
+    fn new(
+        pattern: &'static str,
+        rule: &'static str,
+        message: &'static str,
+        suggestion: &'static str,
+    ) -> Self {
+        Self {
+            regex: Regex::new(pattern).expect("valid regex"),
+            rule,
+            message,
+            suggestion,
+        }
+    }
+
+    fn finding(&self, source: &SourceFile, line_no: usize) -> Finding {
+        finding(
+            source,
+            line_no,
+            line_no,
+            self.rule,
+            Severity::Minor,
+            SafetyClass::SafeWithPrecondition,
+            DetectedBy::Idiom,
+            self.message,
+            self.suggestion,
+            Some("collection is finite/countable and strictness change is acceptable"),
+            None,
+        )
+    }
+}
+
+fn code_lines(source: &SourceFile) -> Vec<(usize, String)> {
+    source
+        .lines()
+        .iter()
+        .enumerate()
+        .map(|(idx, line)| (idx + 1, strip_comment(line).to_string()))
+        .collect()
+}
+
+fn safe_auto_edit(
+    source: &SourceFile,
+    line_no: usize,
+    matched: regex::Match<'_>,
+    replacement: String,
+) -> Edit {
+    let start = source.line_start_byte(line_no) + matched.start();
+    let end = source.line_start_byte(line_no) + matched.end();
+    Edit {
+        kind: EditKind::SafeAuto,
+        splices: vec![Splice {
+            start_byte: start,
+            end_byte: end,
+            replacement,
+        }],
+    }
+}
+
+fn redundant_do_finding(source: &SourceFile, line_no: usize, edit: Edit) -> Finding {
+    finding(
+        source,
+        line_no,
+        line_no,
+        "redundant-do",
+        Severity::Minor,
+        SafetyClass::SafeAuto,
+        DetectedBy::Idiom,
+        "(when ... (do ...)) uses a redundant do",
+        "drop the inner (do ...)",
+        None,
+        Some(edit),
+    )
 }
 
 fn strip_comment(line: &str) -> &str {

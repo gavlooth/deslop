@@ -161,41 +161,73 @@ fn handle_notification(
         DidOpenTextDocument::METHOD => {
             let params: DidOpenTextDocumentParams =
                 serde_json::from_value(notification.params).context("invalid didOpen params")?;
-            let uri = params.text_document.uri;
-            state.open(
-                uri.clone(),
-                params.text_document.text,
-                Some(params.text_document.version),
-            );
-            publish_document_diagnostics(connection, &uri, state)?;
+            handle_did_open(connection, state, params)?;
         }
         DidChangeTextDocument::METHOD => {
             let params: DidChangeTextDocumentParams =
                 serde_json::from_value(notification.params).context("invalid didChange params")?;
-            let uri = params.text_document.uri;
-            state.change(
-                uri.clone(),
-                params.content_changes,
-                Some(params.text_document.version),
-            )?;
-            publish_document_diagnostics(connection, &uri, state)?;
+            handle_did_change(connection, state, params)?;
         }
         DidSaveTextDocument::METHOD => {
             let params: DidSaveTextDocumentParams =
                 serde_json::from_value(notification.params).context("invalid didSave params")?;
-            let uri = params.text_document.uri;
-            state.save(&uri, params.text);
-            publish_document_diagnostics(connection, &uri, state)?;
+            handle_did_save(connection, state, params)?;
         }
         DidCloseTextDocument::METHOD => {
             let params: DidCloseTextDocumentParams =
                 serde_json::from_value(notification.params).context("invalid didClose params")?;
-            state.close(&params.text_document.uri);
-            publish_diagnostics(connection, params.text_document.uri, Vec::new(), None)?;
+            handle_did_close(connection, state, params)?;
         }
         _ => {}
     }
     Ok(())
+}
+
+fn handle_did_open(
+    connection: &Connection,
+    state: &mut LspState,
+    params: DidOpenTextDocumentParams,
+) -> Result<()> {
+    let uri = params.text_document.uri;
+    state.open(
+        uri.clone(),
+        params.text_document.text,
+        Some(params.text_document.version),
+    );
+    publish_document_diagnostics(connection, &uri, state)
+}
+
+fn handle_did_change(
+    connection: &Connection,
+    state: &mut LspState,
+    params: DidChangeTextDocumentParams,
+) -> Result<()> {
+    let uri = params.text_document.uri;
+    state.change(
+        uri.clone(),
+        params.content_changes,
+        Some(params.text_document.version),
+    )?;
+    publish_document_diagnostics(connection, &uri, state)
+}
+
+fn handle_did_save(
+    connection: &Connection,
+    state: &mut LspState,
+    params: DidSaveTextDocumentParams,
+) -> Result<()> {
+    let uri = params.text_document.uri;
+    state.save(&uri, params.text);
+    publish_document_diagnostics(connection, &uri, state)
+}
+
+fn handle_did_close(
+    connection: &Connection,
+    state: &mut LspState,
+    params: DidCloseTextDocumentParams,
+) -> Result<()> {
+    state.close(&params.text_document.uri);
+    publish_diagnostics(connection, params.text_document.uri, Vec::new(), None)
 }
 
 fn publish_document_diagnostics(
@@ -482,12 +514,23 @@ mod tests {
         Uri::from_str("file:///sample.clj").expect("uri")
     }
 
+    fn sample_source(text: &str) -> SourceFile {
+        SourceFile::new(PathBuf::from("sample.clj"), text.to_string())
+    }
+
+    fn sample_findings(text: &str) -> Vec<Finding> {
+        scan_source(&sample_source(text)).findings
+    }
+
+    fn requested_range() -> Range {
+        Range::new(Position::new(0, 0), Position::new(10, 0))
+    }
+
     #[test]
     fn maps_finding_to_diagnostic() {
         let text = "(not (= a b))\n";
-        let source = SourceFile::new(PathBuf::from("sample.clj"), text.to_string());
-        let report = scan_source(&source);
-        let diagnostic = diagnostics_for_findings(text, &report.findings)
+        let findings = sample_findings(text);
+        let diagnostic = diagnostics_for_findings(text, &findings)
             .into_iter()
             .find(|diagnostic| {
                 diagnostic.code == Some(NumberOrString::String("reimpl-not=".to_string()))
@@ -537,10 +580,8 @@ mod tests {
     #[test]
     fn code_actions_only_offer_safe_fixable_findings() -> Result<()> {
         let text = "(not (= a b))\n(= (count xs) 0)\n";
-        let source = SourceFile::new(PathBuf::from("sample.clj"), text.to_string());
-        let report = scan_source(&source);
-        let safe = report
-            .findings
+        let findings = sample_findings(text);
+        let safe = findings
             .iter()
             .find(|finding| finding.rule == "reimpl-not=")
             .expect("safe finding")
@@ -554,28 +595,14 @@ mod tests {
             ..safe.clone()
         };
 
-        let requested = Range::new(Position::new(0, 0), Position::new(10, 0));
-        let safe_actions = code_actions(uri(), text, &[safe], requested)?;
+        let safe_actions =
+            code_actions(uri(), text, std::slice::from_ref(&safe), requested_range())?;
         assert_eq!(safe_actions.len(), 2);
-        let action = safe_actions
-            .iter()
-            .filter_map(|action| match action {
-                CodeActionOrCommand::CodeAction(action)
-                    if action.kind == Some(CodeActionKind::QUICKFIX) =>
-                {
-                    Some(action)
-                }
-                _ => None,
-            })
-            .next()
-            .expect("quickfix");
-        let CodeActionOrCommand::CodeAction(_) = &safe_actions[0] else {
-            panic!("expected code action");
-        };
+        let action = first_action_with_kind(&safe_actions, CodeActionKind::QUICKFIX);
         assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
         assert!(action.edit.is_some());
 
-        let risky_actions = code_actions(uri(), text, &[llm_only], requested)?;
+        let risky_actions = code_actions(uri(), text, &[llm_only], requested_range())?;
         assert!(risky_actions.is_empty());
         Ok(())
     }
@@ -583,56 +610,28 @@ mod tests {
     #[test]
     fn code_actions_include_fix_all_for_safe_findings_only() -> Result<()> {
         let text = "(not (= a b))\n(not (nil? x))\n(= (count xs) 0)\n";
-        let source = SourceFile::new(PathBuf::from("sample.clj"), text.to_string());
-        let report = scan_source(&source);
-        let requested = Range::new(Position::new(0, 0), Position::new(10, 0));
-        let actions = code_actions(uri(), text, &report.findings, requested)?;
+        let findings = sample_findings(text);
+        let actions = code_actions(uri(), text, &findings, requested_range())?;
 
-        let fix_all = actions
-            .iter()
-            .filter_map(|action| match action {
-                CodeActionOrCommand::CodeAction(action)
-                    if action.kind == Some(CodeActionKind::SOURCE_FIX_ALL) =>
-                {
-                    Some(action)
-                }
-                _ => None,
-            })
-            .next()
-            .expect("fix all");
-        let quickfix_count = actions
-            .iter()
-            .filter(|action| match action {
-                CodeActionOrCommand::CodeAction(action) => {
-                    action.kind == Some(CodeActionKind::QUICKFIX)
-                }
-                _ => false,
-            })
-            .count();
-        assert_eq!(quickfix_count, 2);
+        let fix_all = first_action_with_kind(&actions, CodeActionKind::SOURCE_FIX_ALL);
+        assert_eq!(action_kind_count(&actions, CodeActionKind::QUICKFIX), 2);
 
         let fixed = first_replacement_text(fix_all);
         assert!(fixed.contains("(not= a b)"));
         assert!(fixed.contains("(some? x)"));
         assert!(fixed.contains("(= (count xs) 0)"));
 
-        let risky_source = SourceFile::new(
-            PathBuf::from("sample.clj"),
-            "(= (count xs) 0)\n".to_string(),
-        );
-        let risky_report = scan_source(&risky_source);
+        let risky_text = "(= (count xs) 0)\n";
         let risky_actions = code_actions(
             uri(),
-            "(= (count xs) 0)\n",
-            &risky_report.findings,
-            requested,
+            risky_text,
+            &sample_findings(risky_text),
+            requested_range(),
         )?;
-        assert!(risky_actions.iter().all(|action| match action {
-            CodeActionOrCommand::CodeAction(action) => {
-                action.kind != Some(CodeActionKind::SOURCE_FIX_ALL)
-            }
-            _ => true,
-        }));
+        assert_eq!(
+            action_kind_count(&risky_actions, CodeActionKind::SOURCE_FIX_ALL),
+            0
+        );
         Ok(())
     }
 
@@ -663,6 +662,31 @@ mod tests {
         text_edit.new_text.clone()
     }
 
+    fn first_action_with_kind(
+        actions: &[CodeActionOrCommand],
+        kind: CodeActionKind,
+    ) -> &CodeAction {
+        actions
+            .iter()
+            .find_map(|action| match action {
+                CodeActionOrCommand::CodeAction(action) if action.kind == Some(kind.clone()) => {
+                    Some(action)
+                }
+                _ => None,
+            })
+            .expect("code action")
+    }
+
+    fn action_kind_count(actions: &[CodeActionOrCommand], kind: CodeActionKind) -> usize {
+        actions
+            .iter()
+            .filter(|action| match action {
+                CodeActionOrCommand::CodeAction(action) => action.kind == Some(kind.clone()),
+                _ => false,
+            })
+            .count()
+    }
+
     #[test]
     fn json_rpc_loop_publishes_diagnostics_and_code_actions() {
         let (server, client) = Connection::memory();
@@ -670,42 +694,52 @@ mod tests {
         let uri = uri();
         let text = "(not (= a b))\n";
 
-        client
-            .sender
-            .send(Message::Request(Request {
-                id: 1.into(),
-                method: "initialize".to_string(),
-                params: json!({ "capabilities": {} }),
-            }))
-            .expect("send initialize");
-        let initialize = recv_response(&client);
+        initialize(&client);
+        open_document(&client, &uri, text);
+        let diagnostics = assert_reimpl_not_diagnostics(&client, &uri);
+        let actions = request_code_actions(&client, &uri, diagnostics.diagnostics);
+        assert!(action_kind_count(&actions, CodeActionKind::QUICKFIX) > 0);
+        assert!(action_kind_count(&actions, CodeActionKind::SOURCE_FIX_ALL) > 0);
+
+        shutdown(&client, server_thread);
+    }
+
+    fn initialize(connection: &Connection) {
+        send_request(
+            connection,
+            1,
+            "initialize",
+            json!({ "capabilities": {} }),
+            "send initialize",
+        );
+        let initialize = recv_response(connection);
         assert!(initialize.error.is_none(), "{initialize:#?}");
         assert!(initialize.result.is_some());
+        send_notification(connection, "initialized", json!({}), "send initialized");
+    }
 
-        client
-            .sender
-            .send(Message::Notification(Notification {
-                method: "initialized".to_string(),
-                params: json!({}),
-            }))
-            .expect("send initialized");
-        client
-            .sender
-            .send(Message::Notification(Notification {
-                method: DidOpenTextDocument::METHOD.to_string(),
-                params: json!({
-                    "textDocument": {
-                        "uri": uri,
-                        "languageId": "clojure",
-                        "version": 1,
-                        "text": text
-                    }
-                }),
-            }))
-            .expect("send didOpen");
+    fn open_document(connection: &Connection, uri: &Uri, text: &str) {
+        send_notification(
+            connection,
+            DidOpenTextDocument::METHOD,
+            json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": "clojure",
+                    "version": 1,
+                    "text": text
+                }
+            }),
+            "send didOpen",
+        );
+    }
 
-        let diagnostics = recv_publish_diagnostics(&client);
-        assert_eq!(diagnostics.uri, uri);
+    fn assert_reimpl_not_diagnostics(
+        connection: &Connection,
+        uri: &Uri,
+    ) -> PublishDiagnosticsParams {
+        let diagnostics = recv_publish_diagnostics(connection);
+        assert_eq!(&diagnostics.uri, uri);
         assert!(
             diagnostics
                 .diagnostics
@@ -714,59 +748,77 @@ mod tests {
                     == Some(NumberOrString::String("reimpl-not=".to_string()))),
             "{diagnostics:#?}"
         );
+        diagnostics
+    }
 
-        client
-            .sender
-            .send(Message::Request(Request {
-                id: 2.into(),
-                method: CodeActionRequest::METHOD.to_string(),
-                params: json!({
-                    "textDocument": { "uri": uri },
-                    "range": {
-                        "start": { "line": 0, "character": 0 },
-                        "end": { "line": 0, "character": 20 }
-                    },
-                    "context": { "diagnostics": diagnostics.diagnostics }
-                }),
-            }))
-            .expect("send codeAction");
-        let code_action_response = recv_response(&client);
-        assert!(
-            code_action_response.error.is_none(),
-            "{code_action_response:#?}"
+    fn request_code_actions(
+        connection: &Connection,
+        uri: &Uri,
+        diagnostics: Vec<Diagnostic>,
+    ) -> Vec<CodeActionOrCommand> {
+        send_request(
+            connection,
+            2,
+            CodeActionRequest::METHOD,
+            json!({
+                "textDocument": { "uri": uri },
+                "range": {
+                    "start": { "line": 0, "character": 0 },
+                    "end": { "line": 0, "character": 20 }
+                },
+                "context": { "diagnostics": diagnostics }
+            }),
+            "send codeAction",
         );
-        let actions: Vec<CodeActionOrCommand> =
-            serde_json::from_value(code_action_response.result.expect("codeAction result"))
-                .expect("actions");
-        assert!(actions.iter().any(|action| matches!(
-            action,
-            CodeActionOrCommand::CodeAction(action)
-                if action.kind == Some(CodeActionKind::QUICKFIX)
-        )));
-        assert!(actions.iter().any(|action| matches!(
-            action,
-            CodeActionOrCommand::CodeAction(action)
-                if action.kind == Some(CodeActionKind::SOURCE_FIX_ALL)
-        )));
+        let response = recv_response(connection);
+        assert!(response.error.is_none(), "{response:#?}");
+        serde_json::from_value(response.result.expect("codeAction result")).expect("actions")
+    }
 
-        client
+    fn shutdown(connection: &Connection, server_thread: thread::JoinHandle<()>) {
+        send_request(
+            connection,
+            3,
+            "shutdown",
+            serde_json::Value::Null,
+            "send shutdown",
+        );
+        let shutdown = recv_response(connection);
+        assert!(shutdown.error.is_none(), "{shutdown:#?}");
+        send_notification(connection, "exit", serde_json::Value::Null, "send exit");
+        server_thread.join().expect("join server");
+    }
+
+    fn send_request(
+        connection: &Connection,
+        id: i32,
+        method: &str,
+        params: serde_json::Value,
+        context: &str,
+    ) {
+        connection
             .sender
             .send(Message::Request(Request {
-                id: 3.into(),
-                method: "shutdown".to_string(),
-                params: serde_json::Value::Null,
+                id: id.into(),
+                method: method.to_string(),
+                params,
             }))
-            .expect("send shutdown");
-        let shutdown = recv_response(&client);
-        assert!(shutdown.error.is_none(), "{shutdown:#?}");
-        client
+            .expect(context);
+    }
+
+    fn send_notification(
+        connection: &Connection,
+        method: &str,
+        params: serde_json::Value,
+        context: &str,
+    ) {
+        connection
             .sender
             .send(Message::Notification(Notification {
-                method: "exit".to_string(),
-                params: serde_json::Value::Null,
+                method: method.to_string(),
+                params,
             }))
-            .expect("send exit");
-        server_thread.join().expect("join server");
+            .expect(context);
     }
 
     fn recv_response(connection: &Connection) -> Response {

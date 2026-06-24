@@ -79,36 +79,79 @@ fn rust_findings(source: &SourceFile) -> Vec<Finding> {
 }
 
 fn redundant_closures(source: &SourceFile) -> Vec<Finding> {
+    node_rule_findings(
+        source,
+        &RustNodeRule {
+            rule: "redundant-closure",
+            safety: SafetyClass::RiskySuggest,
+            message: "closure forwards its argument directly to a function",
+            suggestion: "replace with function item only after inference remains valid",
+            matches: is_redundant_closure_node,
+        },
+    )
+}
+
+fn needless_clones(source: &SourceFile) -> Vec<Finding> {
+    node_rule_findings(
+        source,
+        &RustNodeRule {
+            rule: "needless-clone",
+            safety: SafetyClass::LlmOnly,
+            message: "clone may be unnecessary if a borrow suffices",
+            suggestion: "remove clone only with ownership/typecheck confirmation",
+            matches: is_needless_clone_node,
+        },
+    )
+}
+
+struct RustNodeRule {
+    rule: &'static str,
+    safety: SafetyClass,
+    message: &'static str,
+    suggestion: &'static str,
+    matches: for<'tree> fn(&SourceFile, Node<'tree>) -> bool,
+}
+
+fn node_rule_findings(source: &SourceFile, rule: &RustNodeRule) -> Vec<Finding> {
     let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
         return Vec::new();
     };
     let mut out = Vec::new();
-    collect_redundant_closures(source, tree.root_node(), &mut out);
+    collect_node_rule_findings(source, tree.root_node(), rule, &mut out);
     out
 }
 
-fn collect_redundant_closures(source: &SourceFile, node: Node<'_>, out: &mut Vec<Finding>) {
-    if node.kind() == "closure_expression" && closure_forwards_single_arg(source, node) {
+fn collect_node_rule_findings(
+    source: &SourceFile,
+    node: Node<'_>,
+    rule: &RustNodeRule,
+    out: &mut Vec<Finding>,
+) {
+    if (rule.matches)(source, node) {
         let start_line = node.start_position().row + 1;
         let end_line = node.end_position().row + 1;
         out.push(finding(
             source,
             start_line,
             end_line,
-            "redundant-closure",
+            rule.rule,
             Severity::Minor,
-            SafetyClass::RiskySuggest,
+            rule.safety,
             DetectedBy::Idiom,
-            "closure forwards its argument directly to a function",
-            "replace with function item only after inference remains valid",
+            rule.message,
+            rule.suggestion,
             None,
         ));
     }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_redundant_closures(source, child, out);
+        collect_node_rule_findings(source, child, rule, out);
     }
+}
+
+fn is_redundant_closure_node(source: &SourceFile, node: Node<'_>) -> bool {
+    node.kind() == "closure_expression" && closure_forwards_single_arg(source, node)
 }
 
 fn closure_forwards_single_arg(source: &SourceFile, closure: Node<'_>) -> bool {
@@ -179,37 +222,8 @@ fn call_single_argument_text(source: &SourceFile, call: Node<'_>) -> Option<Stri
         .map(str::to_string)
 }
 
-fn needless_clones(source: &SourceFile) -> Vec<Finding> {
-    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    collect_needless_clones(source, tree.root_node(), &mut out);
-    out
-}
-
-fn collect_needless_clones(source: &SourceFile, node: Node<'_>, out: &mut Vec<Finding>) {
-    if reference_borrows_clone(source, node) || call_iterates_clone(source, node) {
-        let start_line = node.start_position().row + 1;
-        let end_line = node.end_position().row + 1;
-        out.push(finding(
-            source,
-            start_line,
-            end_line,
-            "needless-clone",
-            Severity::Minor,
-            SafetyClass::LlmOnly,
-            DetectedBy::Idiom,
-            "clone may be unnecessary if a borrow suffices",
-            "remove clone only with ownership/typecheck confirmation",
-            None,
-        ));
-    }
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_needless_clones(source, child, out);
-    }
+fn is_needless_clone_node(source: &SourceFile, node: Node<'_>) -> bool {
+    reference_borrows_clone(source, node) || call_iterates_clone(source, node)
 }
 
 fn reference_borrows_clone(source: &SourceFile, node: Node<'_>) -> bool {

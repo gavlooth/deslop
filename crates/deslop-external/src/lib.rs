@@ -475,51 +475,72 @@ fn diagnostic_location_message(
 pub fn findings_from_clippy_json(source: &SourceFile, jsonl: &str) -> Result<Vec<Finding>> {
     let mut out = Vec::new();
     for (idx, line) in jsonl.lines().enumerate() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
+        if let Some(finding) = clippy_finding_from_json_line(source, idx, line)? {
+            out.push(finding);
         }
-        let value: serde_json::Value = serde_json::from_str(line)
-            .with_context(|| format!("failed to parse clippy JSON line {}", idx + 1))?;
-        if value.get("reason").and_then(|reason| reason.as_str()) != Some("compiler-message") {
-            continue;
-        }
-        let message = &value["message"];
-        let Some(code) = message
-            .get("code")
-            .and_then(|code| code.get("code"))
-            .and_then(|code| code.as_str())
-        else {
-            continue;
-        };
-        let Some(rule) = map_clippy_code(code) else {
-            continue;
-        };
-        let line = message
-            .get("spans")
-            .and_then(|spans| spans.as_array())
-            .and_then(|spans| spans.first())
-            .and_then(|span| span.get("line_start"))
-            .and_then(|line| line.as_u64())
-            .map(|line| line as usize)
-            .unwrap_or(1);
-        let text = message
-            .get("message")
-            .and_then(|message| message.as_str())
-            .unwrap_or(rule)
-            .to_string();
-        out.push(make_finding(
-            source,
-            line,
-            rule,
-            Severity::Minor,
-            text,
-            suggestion_for_rust(rule),
-            DetectedBy::RustAnalyzer,
-            None,
-        ));
     }
     Ok(out)
+}
+
+fn clippy_finding_from_json_line(
+    source: &SourceFile,
+    idx: usize,
+    line: &str,
+) -> Result<Option<Finding>> {
+    let line = line.trim();
+    if line.is_empty() {
+        return Ok(None);
+    }
+    let value: serde_json::Value = serde_json::from_str(line)
+        .with_context(|| format!("failed to parse clippy JSON line {}", idx + 1))?;
+    let Some(message) = clippy_compiler_message(&value) else {
+        return Ok(None);
+    };
+    let Some(rule) = clippy_rule(message) else {
+        return Ok(None);
+    };
+    Ok(Some(make_finding(
+        source,
+        clippy_line(message),
+        rule,
+        Severity::Minor,
+        clippy_message_text(message, rule),
+        suggestion_for_rust(rule),
+        DetectedBy::RustAnalyzer,
+        None,
+    )))
+}
+
+fn clippy_compiler_message(value: &serde_json::Value) -> Option<&serde_json::Value> {
+    (value.get("reason").and_then(|reason| reason.as_str()) == Some("compiler-message"))
+        .then(|| &value["message"])
+}
+
+fn clippy_rule(message: &serde_json::Value) -> Option<&'static str> {
+    let code = message
+        .get("code")
+        .and_then(|code| code.get("code"))
+        .and_then(|code| code.as_str())?;
+    map_clippy_code(code)
+}
+
+fn clippy_line(message: &serde_json::Value) -> usize {
+    message
+        .get("spans")
+        .and_then(|spans| spans.as_array())
+        .and_then(|spans| spans.first())
+        .and_then(|span| span.get("line_start"))
+        .and_then(|line| line.as_u64())
+        .map(|line| line as usize)
+        .unwrap_or(1)
+}
+
+fn clippy_message_text(message: &serde_json::Value, rule: &str) -> String {
+    message
+        .get("message")
+        .and_then(|message| message.as_str())
+        .unwrap_or(rule)
+        .to_string()
 }
 
 fn run_command(mut command: Command, timeout: Option<Duration>) -> std::io::Result<Option<Output>> {

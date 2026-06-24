@@ -11,7 +11,10 @@ pub(crate) fn findings(source: &SourceFile, config: &AnalyzerConfig) -> Vec<Find
     out.extend(blank_runs(source));
     out.extend(incompleteness(source));
     out.extend(magic_numbers(source));
-    out.extend(long_methods(source, config.long_method_nloc));
+    out.extend(long_methods(
+        source,
+        config.long_method_nloc_for(source.lang),
+    ));
     out.extend(narrating_comments(source));
     out.extend(comment_blocks(source));
     out.extend(needless_tail_returns(source));

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::scan_paths;
-use deslop_core::{Finding, SafetyClass, Splice};
+use deslop_core::{FileReport, Finding, SafetyClass, Splice};
 
 #[derive(Debug, Clone, Copy)]
 pub struct FixOptions {
@@ -21,72 +21,89 @@ pub struct FixOutcome {
 
 pub fn fix_paths(paths: &[PathBuf], options: FixOptions) -> Result<Vec<FixOutcome>> {
     let reports = scan_paths(paths)?;
-    let mut by_path: BTreeMap<PathBuf, Vec<Finding>> = BTreeMap::new();
+    let by_path = fixable_findings_by_path(reports);
+    let mut outcomes = Vec::new();
+    for (path, findings) in by_path {
+        outcomes.push(apply_fix_to_path(path, findings, options)?);
+    }
+    Ok(outcomes)
+}
+
+fn fixable_findings_by_path(reports: Vec<FileReport>) -> BTreeMap<PathBuf, Vec<Finding>> {
+    let mut by_path = BTreeMap::new();
     for report in reports {
-        let fixable: Vec<_> = report
+        let fixable = report
             .findings
             .into_iter()
-            .filter(|finding| {
-                matches!(
-                    finding.safety,
-                    SafetyClass::SafeAuto | SafetyClass::AnalyzerConfirmed
-                ) && finding
-                    .edit
-                    .as_ref()
-                    .is_some_and(|edit| !edit.splices.is_empty())
-            })
-            .collect();
+            .filter(is_fixable_finding)
+            .collect::<Vec<_>>();
         if !fixable.is_empty() {
             by_path.insert(report.path, fixable);
         }
     }
+    by_path
+}
 
-    let mut outcomes = Vec::new();
-    for (path, findings) in by_path {
-        let text = fs::read_to_string(&path)
-            .with_context(|| format!("failed to read {}", path.display()))?;
-        let fixed = apply_findings_to_text(&text, &findings)?;
-        let changed = fixed != text;
-        if changed && !options.dry_run {
-            if options.backup {
-                let backup = backup_path(&path);
-                fs::write(&backup, &text)
-                    .with_context(|| format!("failed to write {}", backup.display()))?;
-            }
-            let tmp = path.with_extension(format!(
-                "{}deslop.tmp",
-                path.extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(|ext| format!("{ext}."))
-                    .unwrap_or_default()
-            ));
-            fs::write(&tmp, fixed).with_context(|| format!("failed to write {}", tmp.display()))?;
-            fs::rename(&tmp, &path).with_context(|| {
-                format!(
-                    "failed to replace {} with {}",
-                    path.display(),
-                    tmp.display()
-                )
-            })?;
-        }
-        outcomes.push(FixOutcome {
-            path,
-            applied: findings.len(),
-            changed,
-        });
+fn apply_fix_to_path(
+    path: PathBuf,
+    findings: Vec<Finding>,
+    options: FixOptions,
+) -> Result<FixOutcome> {
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let fixed = apply_findings_to_text(&text, &findings)?;
+    let changed = fixed != text;
+    if changed && !options.dry_run {
+        write_changed_text(&path, &text, fixed, options.backup)?;
     }
-    Ok(outcomes)
+    Ok(FixOutcome {
+        path,
+        applied: findings.len(),
+        changed,
+    })
+}
+
+fn write_changed_text(path: &Path, original: &str, fixed: String, backup: bool) -> Result<()> {
+    if backup {
+        let backup = backup_path(path);
+        fs::write(&backup, original)
+            .with_context(|| format!("failed to write {}", backup.display()))?;
+    }
+    let tmp = temp_path(path);
+    fs::write(&tmp, fixed).with_context(|| format!("failed to write {}", tmp.display()))?;
+    fs::rename(&tmp, path).with_context(|| {
+        format!(
+            "failed to replace {} with {}",
+            path.display(),
+            tmp.display()
+        )
+    })
+}
+
+fn temp_path(path: &Path) -> PathBuf {
+    path.with_extension(format!(
+        "{}deslop.tmp",
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| format!("{ext}."))
+            .unwrap_or_default()
+    ))
+}
+
+fn is_fixable_finding(finding: &Finding) -> bool {
+    matches!(
+        finding.safety,
+        SafetyClass::SafeAuto | SafetyClass::AnalyzerConfirmed
+    ) && finding
+        .edit
+        .as_ref()
+        .is_some_and(|edit| !edit.splices.is_empty())
 }
 
 pub fn apply_findings_to_text(text: &str, findings: &[Finding]) -> Result<String> {
     let mut splices: Vec<Splice> = findings
         .iter()
-        .filter(|finding| {
-            matches!(
-                finding.safety,
-                SafetyClass::SafeAuto | SafetyClass::AnalyzerConfirmed
-            )
-        })
+        .filter(|finding| is_fixable_finding(finding))
         .filter_map(|finding| finding.edit.as_ref())
         .flat_map(|edit| edit.splices.iter().cloned())
         .collect();

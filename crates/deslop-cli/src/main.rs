@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use deslop_analyzer::{AnalyzerConfig, JuliaExternal, scan_paths, scan_paths_with_config};
+use deslop_analyzer::{
+    AnalyzerConfig, AnalyzerLangConfig, JuliaExternal, scan_paths, scan_paths_with_config,
+};
 use deslop_core::{FileReport, Severity};
 use deslop_eval::{render_eval_json, render_eval_text, run_eval};
 use deslop_fix::undo_paths;
@@ -16,9 +18,9 @@ use deslop_metrics::{
 use deslop_report::{render_agent, render_json, render_sarif, render_text};
 use deslop_slim::{
     AnthropicClient, DEFAULT_MODEL, EgressDecision, EgressSummary, OpenAiClient, RecordedClient,
-    SlimOptions, SlimProgress, SlimProgressOutcome, egress_consent_error, egress_prompt_message,
-    egress_summary, env_egress_consent, provider_base_url, resolve_egress_consent,
-    run_slim_with_progress,
+    SlimOptions, SlimProgress, SlimProgressOutcome, SlimReport, egress_consent_error,
+    egress_prompt_message, egress_summary, env_egress_consent, provider_base_url,
+    resolve_egress_consent, run_slim_with_progress,
 };
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
@@ -430,6 +432,22 @@ struct AnalyzerConfigSection {
     long_method_nloc: Option<usize>,
     #[serde(default)]
     min_meaningful_tokens: Option<usize>,
+    #[serde(default)]
+    rust: Option<AnalyzerLangConfigSection>,
+    #[serde(default)]
+    clojure: Option<AnalyzerLangConfigSection>,
+    #[serde(default)]
+    julia: Option<AnalyzerLangConfigSection>,
+    #[serde(default)]
+    python: Option<AnalyzerLangConfigSection>,
+    #[serde(default)]
+    generic: Option<AnalyzerLangConfigSection>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct AnalyzerLangConfigSection {
+    #[serde(default)]
+    long_method_nloc: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -524,6 +542,23 @@ fn scan(args: ScanArgs, config: &DeslopConfig) -> Result<()> {
 }
 
 fn fix(args: FixArgs, config: &DeslopConfig) -> Result<()> {
+    let request = resolve_fix_request(args, config)?;
+    let mut progress = slim_progress_sink(!request.quiet && io::stderr().is_terminal());
+    let report = run_fix_request(request, &mut progress)?;
+    print_pretty_json(&report)?;
+    Ok(())
+}
+
+struct FixRequest {
+    options: SlimOptions,
+    provider: SlimProvider,
+    base_url: Option<String>,
+    mock: Option<PathBuf>,
+    explicit_consent: bool,
+    quiet: bool,
+}
+
+fn resolve_fix_request(args: FixArgs, config: &DeslopConfig) -> Result<FixRequest> {
     let model = resolve_slim_model(args.model, std::env::var("DESLOP_SLIM_MODEL").ok(), config);
     let paths = if args.paths.is_empty() {
         vec![PathBuf::from(".")]
@@ -537,44 +572,60 @@ fn fix(args: FixArgs, config: &DeslopConfig) -> Result<()> {
     let base_url = resolve_slim_base_url(args.base_url, config);
     let explicit_consent =
         resolve_slim_egress_consent(args.yes, std::env::var("DESLOP_SLIM_CONSENT").ok(), config);
-    let options = SlimOptions {
-        root: PathBuf::from("."),
-        paths,
-        workorders: args.workorders,
-        apply: args.apply,
-        characterize: args.characterize,
-        allow_unverified,
-        coverage,
-        model: model.to_owned(),
-        check_cmd,
-        backup: !args.no_backup,
-    };
-    let mut progress = slim_progress_sink(!args.quiet && io::stderr().is_terminal());
-    let report = if let Some(path) = args.mock {
+    Ok(FixRequest {
+        options: SlimOptions {
+            root: PathBuf::from("."),
+            paths,
+            workorders: args.workorders,
+            apply: args.apply,
+            characterize: args.characterize,
+            allow_unverified,
+            coverage,
+            model,
+            check_cmd,
+            backup: !args.no_backup,
+        },
+        provider,
+        base_url,
+        mock: args.mock,
+        explicit_consent,
+        quiet: args.quiet,
+    })
+}
+
+fn run_fix_request(
+    request: FixRequest,
+    progress: &mut dyn FnMut(SlimProgress),
+) -> Result<SlimReport> {
+    if let Some(path) = request.mock {
         let client = RecordedClient::from_path(path)?;
-        run_slim_with_progress(&client, options, &mut progress)?
-    } else {
-        let provider_name = provider.as_str();
-        let destination = provider_base_url(provider_name, base_url.as_deref());
-        require_cli_egress_consent(
-            provider_name,
-            &destination,
-            egress_summary(&options)?,
-            explicit_consent,
-        )?;
-        match provider {
-            SlimProvider::Anthropic => {
-                let client = AnthropicClient::from_env(model.clone())?;
-                run_slim_with_progress(&client, options, &mut progress)?
-            }
-            SlimProvider::Openai => {
-                let client = OpenAiClient::from_env(model.clone(), base_url)?;
-                run_slim_with_progress(&client, options, &mut progress)?
-            }
+        return run_slim_with_progress(&client, request.options, progress);
+    }
+    run_real_provider_fix(request, progress)
+}
+
+fn run_real_provider_fix(
+    request: FixRequest,
+    progress: &mut dyn FnMut(SlimProgress),
+) -> Result<SlimReport> {
+    let provider_name = request.provider.as_str();
+    let destination = provider_base_url(provider_name, request.base_url.as_deref());
+    require_cli_egress_consent(
+        provider_name,
+        &destination,
+        egress_summary(&request.options)?,
+        request.explicit_consent,
+    )?;
+    match request.provider {
+        SlimProvider::Anthropic => {
+            let client = AnthropicClient::from_env(request.options.model.clone())?;
+            run_slim_with_progress(&client, request.options, progress)
         }
-    };
-    print_pretty_json(&report)?;
-    Ok(())
+        SlimProvider::Openai => {
+            let client = OpenAiClient::from_env(request.options.model.clone(), request.base_url)?;
+            run_slim_with_progress(&client, request.options, progress)
+        }
+    }
 }
 
 fn require_cli_egress_consent(
@@ -621,9 +672,7 @@ fn write_slim_progress(event: &SlimProgress, writer: &mut impl Write) -> Result<
 
 fn slim_progress_line(event: &SlimProgress) -> String {
     match event {
-        SlimProgress::Started { work_orders } => {
-            format!("deslop fix: {work_orders} rewrite region(s)")
-        }
+        SlimProgress::Started { work_orders } => started_progress_line(*work_orders),
         SlimProgress::Rewriting {
             index,
             total,
@@ -631,36 +680,63 @@ fn slim_progress_line(event: &SlimProgress) -> String {
             start_line,
             end_line,
             ..
-        } => format!(
-            "[{index}/{total}] rewriting {}:{start_line}-{end_line}",
-            path.display()
-        ),
-        SlimProgress::Characterizing { workorder_id } => {
-            format!("characterizing {workorder_id}")
-        }
+        } => rewrite_progress_line(*index, *total, path, *start_line, *end_line),
+        SlimProgress::Characterizing { workorder_id } => characterizing_progress_line(workorder_id),
         SlimProgress::Verified {
             workorder_id,
             verdict,
-        } => {
-            format!("verified {workorder_id}: {verdict:?}")
-        }
+        } => verified_progress_line(workorder_id, verdict),
         SlimProgress::Outcome {
             workorder_id,
             outcome,
-        } => {
-            let outcome = match outcome {
-                SlimProgressOutcome::Applied => "applied",
-                SlimProgressOutcome::Held => "held",
-                SlimProgressOutcome::Rejected => "rejected",
-            };
-            format!("outcome {workorder_id}: {outcome}")
-        }
+        } => outcome_progress_line(workorder_id, *outcome),
         SlimProgress::Finished {
             applied,
             held,
             rejected,
-        } => format!("finished: applied={applied} held={held} rejected={rejected}"),
+        } => finished_progress_line(*applied, *held, *rejected),
     }
+}
+
+fn started_progress_line(work_orders: usize) -> String {
+    format!("deslop fix: {work_orders} rewrite region(s)")
+}
+
+fn rewrite_progress_line(
+    index: usize,
+    total: usize,
+    path: &Path,
+    start_line: usize,
+    end_line: usize,
+) -> String {
+    format!(
+        "[{index}/{total}] rewriting {}:{start_line}-{end_line}",
+        path.display()
+    )
+}
+
+fn characterizing_progress_line(workorder_id: &str) -> String {
+    format!("characterizing {workorder_id}")
+}
+
+fn verified_progress_line(
+    workorder_id: &str,
+    verdict: &deslop_verify::VerificationVerdict,
+) -> String {
+    format!("verified {workorder_id}: {verdict:?}")
+}
+
+fn outcome_progress_line(workorder_id: &str, outcome: SlimProgressOutcome) -> String {
+    let outcome = match outcome {
+        SlimProgressOutcome::Applied => "applied",
+        SlimProgressOutcome::Held => "held",
+        SlimProgressOutcome::Rejected => "rejected",
+    };
+    format!("outcome {workorder_id}: {outcome}")
+}
+
+fn finished_progress_line(applied: usize, held: usize, rejected: usize) -> String {
+    format!("finished: applied={applied} held={held} rejected={rejected}")
 }
 
 fn propose(args: ProposeArgs, config: &DeslopConfig) -> Result<()> {
@@ -838,32 +914,50 @@ fn analyzer_config_from_config(
     let configured_clippy = external
         .and_then(|external| external.clippy)
         .is_some_and(|value| value == ClippyConfig::On);
-    let default = AnalyzerConfig::default();
-    let min_duplication_tokens = config
-        .analyzer
-        .as_ref()
-        .and_then(|analyzer| analyzer.min_duplication_tokens)
-        .unwrap_or(default.min_duplication_tokens);
-    let long_method_nloc = config
-        .analyzer
-        .as_ref()
-        .and_then(|analyzer| analyzer.long_method_nloc)
-        .unwrap_or(default.long_method_nloc);
-    let min_meaningful_tokens = config
-        .analyzer
-        .as_ref()
-        .and_then(|analyzer| analyzer.min_meaningful_tokens)
-        .unwrap_or(default.min_meaningful_tokens);
+    let thresholds = analyzer_thresholds(config);
 
     AnalyzerConfig {
-        min_duplication_tokens,
-        long_method_nloc,
-        min_meaningful_tokens,
+        min_duplication_tokens: thresholds.min_duplication_tokens,
+        long_method_nloc: thresholds.long_method_nloc,
+        min_meaningful_tokens: thresholds.min_meaningful_tokens,
+        rust: thresholds.rust,
+        clojure: thresholds.clojure,
+        julia: thresholds.julia,
+        python: thresholds.python,
+        generic: thresholds.generic,
         rust_external: rust_external || configured_clippy,
         julia_external: julia_external
             .map(JuliaExternal::from)
             .unwrap_or(configured_julia),
         julia_project: julia_project.or(configured_project),
+    }
+}
+
+fn analyzer_thresholds(config: &DeslopConfig) -> AnalyzerConfig {
+    let default = AnalyzerConfig::default();
+    let configured = config.analyzer.as_ref();
+    AnalyzerConfig {
+        min_duplication_tokens: configured
+            .and_then(|analyzer| analyzer.min_duplication_tokens)
+            .unwrap_or(default.min_duplication_tokens),
+        long_method_nloc: configured
+            .and_then(|analyzer| analyzer.long_method_nloc)
+            .unwrap_or(default.long_method_nloc),
+        min_meaningful_tokens: configured
+            .and_then(|analyzer| analyzer.min_meaningful_tokens)
+            .unwrap_or(default.min_meaningful_tokens),
+        rust: lang_threshold(configured.and_then(|analyzer| analyzer.rust.as_ref())),
+        clojure: lang_threshold(configured.and_then(|analyzer| analyzer.clojure.as_ref())),
+        julia: lang_threshold(configured.and_then(|analyzer| analyzer.julia.as_ref())),
+        python: lang_threshold(configured.and_then(|analyzer| analyzer.python.as_ref())),
+        generic: lang_threshold(configured.and_then(|analyzer| analyzer.generic.as_ref())),
+        ..default
+    }
+}
+
+fn lang_threshold(configured: Option<&AnalyzerLangConfigSection>) -> AnalyzerLangConfig {
+    AnalyzerLangConfig {
+        long_method_nloc: configured.and_then(|lang| lang.long_method_nloc),
     }
 }
 
@@ -1162,6 +1256,7 @@ impl Baseline {
 #[cfg(test)]
 mod tests {
     use clap::CommandFactory;
+    use deslop_core::Lang;
 
     use super::*;
 
@@ -1184,62 +1279,90 @@ mod tests {
 
     #[test]
     fn parses_all_config_sections() {
-        let config: DeslopConfig = toml::from_str(
+        let config = full_config_fixture();
+
+        assert_slim_config(&config);
+        assert_fix_config(&config);
+        assert_scan_config(&config);
+        assert_analyzer_config(&config);
+    }
+
+    fn full_config_fixture() -> DeslopConfig {
+        toml::from_str(
             r#"
-            [slim]
-            provider = "openai"
-            model = "configured-model"
-            base_url = "http://localhost:11434/v1"
-            egress_consent = true
+        [slim]
+        provider = "openai"
+        model = "configured-model"
+        base_url = "http://localhost:11434/v1"
+        egress_consent = true
 
-            [fix]
-            check_cmd = "cargo test -p configured"
-            coverage = "lcov:coverage.lcov"
-            allow_unverified = true
+        [fix]
+        check_cmd = "cargo test -p configured"
+        coverage = "lcov:coverage.lcov"
+        allow_unverified = true
 
-            [scan]
-            fail_on = "major"
-            baseline = "deslop-baseline.json"
+        [scan]
+        fail_on = "major"
+        baseline = "deslop-baseline.json"
 
-            [analyzer]
-            min_duplication_tokens = 42
-            long_method_nloc = 30
-            min_meaningful_tokens = 5
+        [analyzer]
+        min_duplication_tokens = 42
+        long_method_nloc = 30
+        min_meaningful_tokens = 5
 
-            [external]
-            clippy = "on"
-            julia_analyzer = "jet"
-            julia_project = "julia-env"
-            "#,
+        [analyzer.rust]
+        long_method_nloc = 55
+
+        [analyzer.clojure]
+        long_method_nloc = 35
+
+        [external]
+        clippy = "on"
+        julia_analyzer = "jet"
+        julia_project = "julia-env"
+        "#,
         )
-        .expect("parse config");
+        .expect("parse config")
+    }
 
-        assert_eq!(resolve_slim_provider(None, &config), SlimProvider::Openai);
-        assert_eq!(resolve_slim_model(None, None, &config), "configured-model");
+    fn assert_slim_config(config: &DeslopConfig) {
+        assert_eq!(resolve_slim_provider(None, config), SlimProvider::Openai);
+        assert_eq!(resolve_slim_model(None, None, config), "configured-model");
         assert_eq!(
-            resolve_slim_base_url(None, &config).as_deref(),
+            resolve_slim_base_url(None, config).as_deref(),
             Some("http://localhost:11434/v1")
         );
-        assert!(resolve_slim_egress_consent(false, None, &config));
+        assert!(resolve_slim_egress_consent(false, None, config));
+    }
+
+    fn assert_fix_config(config: &DeslopConfig) {
         assert_eq!(
-            resolve_fix_check_cmd(None, &config).as_deref(),
+            resolve_fix_check_cmd(None, config).as_deref(),
             Some("cargo test -p configured")
         );
-        assert!(resolve_fix_allow_unverified(None, &config));
+        assert!(resolve_fix_allow_unverified(None, config));
         assert!(matches!(
-            resolve_fix_coverage(None, &config).expect("parse coverage"),
+            resolve_fix_coverage(None, config).expect("parse coverage"),
             CoverageConfig::LcovFile(path) if path == PathBuf::from("coverage.lcov")
         ));
+    }
+
+    fn assert_scan_config(config: &DeslopConfig) {
         assert_eq!(
-            resolve_scan_baseline(None, &config),
+            resolve_scan_baseline(None, config),
             Some(PathBuf::from("deslop-baseline.json"))
         );
-        assert_eq!(resolve_scan_fail_on(None, &config), Some(Severity::Major));
+        assert_eq!(resolve_scan_fail_on(None, config), Some(Severity::Major));
+    }
 
-        let analyzer = analyzer_config_from_config(&config, false, None, None);
+    fn assert_analyzer_config(config: &DeslopConfig) {
+        let analyzer = analyzer_config_from_config(config, false, None, None);
         assert_eq!(analyzer.min_duplication_tokens, 42);
         assert_eq!(analyzer.long_method_nloc, 30);
         assert_eq!(analyzer.min_meaningful_tokens, 5);
+        assert_eq!(analyzer.long_method_nloc_for(Lang::Rust), 55);
+        assert_eq!(analyzer.long_method_nloc_for(Lang::Clojure), 35);
+        assert_eq!(analyzer.long_method_nloc_for(Lang::Julia), 30);
         assert!(analyzer.rust_external);
         assert_eq!(analyzer.julia_external, JuliaExternal::Jet);
         assert_eq!(analyzer.julia_project, Some(PathBuf::from("julia-env")));

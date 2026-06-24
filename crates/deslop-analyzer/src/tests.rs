@@ -5,6 +5,42 @@ use deslop_parse::SourceFile;
 
 use super::*;
 
+type TextFixture = (&'static str, &'static str);
+
+const CLEAN_DUPLICATION_FIXTURES: &[TextFixture] = &[
+    (
+        "tests/fixtures/clean/structural.rs",
+        include_str!("../../../tests/fixtures/clean/structural.rs"),
+    ),
+    (
+        "tests/fixtures/clean/precision_fp.rs",
+        include_str!("../../../tests/fixtures/clean/precision_fp.rs"),
+    ),
+    (
+        "tests/fixtures/clean/structural.clj",
+        include_str!("../../../tests/fixtures/clean/structural.clj"),
+    ),
+    (
+        "tests/fixtures/clean/structural.jl",
+        include_str!("../../../tests/fixtures/clean/structural.jl"),
+    ),
+];
+
+const BEHAVIORAL_DUPLICATION_FIXTURES: &[TextFixture] = &[
+    (
+        "tests/fixtures/dup/behavior.rs",
+        include_str!("../../../tests/fixtures/dup/behavior.rs"),
+    ),
+    (
+        "tests/fixtures/dup/behavior.clj",
+        include_str!("../../../tests/fixtures/dup/behavior.clj"),
+    ),
+    (
+        "tests/fixtures/dup/behavior.jl",
+        include_str!("../../../tests/fixtures/dup/behavior.jl"),
+    ),
+];
+
 fn source(path: &str, text: &str) -> SourceFile {
     SourceFile::new(PathBuf::from(path), text.into())
 }
@@ -44,6 +80,26 @@ fn duplicate_rules(report: &FileReport) -> Vec<&str> {
             _ => None,
         })
         .collect()
+}
+
+fn assert_duplication_findings(fixtures: &[TextFixture], expected: bool) {
+    for (path, text) in fixtures {
+        let source = source(path, text);
+        let report = scan_source(&source);
+        let rules = duplicate_rules(&report);
+        if expected {
+            assert!(
+                !rules.is_empty(),
+                "{path} should retain behavioral duplication findings"
+            );
+        } else {
+            assert_eq!(
+                rules,
+                Vec::<&str>::new(),
+                "{path} should not have structural duplication findings"
+            );
+        }
+    }
 }
 
 fn long_method_source(nloc: usize) -> SourceFile {
@@ -172,58 +228,29 @@ fn lowered_long_method_threshold_flags_below_default_nloc() {
 }
 
 #[test]
+fn per_language_long_method_threshold_overrides_global() {
+    let fixture = long_method_source(39);
+    let report = scan_source_with_config(
+        &fixture,
+        AnalyzerConfig {
+            long_method_nloc: 100,
+            rust: AnalyzerLangConfig {
+                long_method_nloc: Some(20),
+            },
+            ..AnalyzerConfig::default()
+        },
+    );
+    assert!(has_rule(&report, "long-method"));
+}
+
+#[test]
 fn fp_corpus_clean_structural_code_has_no_duplication_findings() {
-    for (path, text) in [
-        (
-            "tests/fixtures/clean/structural.rs",
-            include_str!("../../../tests/fixtures/clean/structural.rs"),
-        ),
-        (
-            "tests/fixtures/clean/precision_fp.rs",
-            include_str!("../../../tests/fixtures/clean/precision_fp.rs"),
-        ),
-        (
-            "tests/fixtures/clean/structural.clj",
-            include_str!("../../../tests/fixtures/clean/structural.clj"),
-        ),
-        (
-            "tests/fixtures/clean/structural.jl",
-            include_str!("../../../tests/fixtures/clean/structural.jl"),
-        ),
-    ] {
-        let source = source(path, text);
-        let report = scan_source(&source);
-        assert_eq!(
-            duplicate_rules(&report),
-            Vec::<&str>::new(),
-            "{path} should not have structural duplication findings"
-        );
-    }
+    assert_duplication_findings(CLEAN_DUPLICATION_FIXTURES, false);
 }
 
 #[test]
 fn tp_corpus_behavioral_duplicates_still_flagged() {
-    for (path, text) in [
-        (
-            "tests/fixtures/dup/behavior.rs",
-            include_str!("../../../tests/fixtures/dup/behavior.rs"),
-        ),
-        (
-            "tests/fixtures/dup/behavior.clj",
-            include_str!("../../../tests/fixtures/dup/behavior.clj"),
-        ),
-        (
-            "tests/fixtures/dup/behavior.jl",
-            include_str!("../../../tests/fixtures/dup/behavior.jl"),
-        ),
-    ] {
-        let source = source(path, text);
-        let report = scan_source(&source);
-        assert!(
-            !duplicate_rules(&report).is_empty(),
-            "{path} should retain behavioral duplication findings"
-        );
-    }
+    assert_duplication_findings(BEHAVIORAL_DUPLICATION_FIXTURES, true);
 }
 
 #[test]

@@ -168,15 +168,7 @@ mod tests {
             "(ns sample)\n\n(defn f [xs]\n  (when xs\n    (= (count xs) 0)))\n\n(defn g [] true)\n"
                 .into(),
         );
-        let line = 5;
-        let region = source.enclosing_region_for_span(line, line);
-        assert_eq!(region.start_line, 3);
-        assert_eq!(region.end_line, 5);
-        assert!(
-            source
-                .region_text(region.start_line, region.end_line)
-                .contains("defn f")
-        );
+        assert_enclosing_region(&source, 5, 3, 5, "defn f");
     }
 
     #[test]
@@ -186,14 +178,7 @@ mod tests {
             "module Demo\n\nfunction f(xs)\n    length(xs) == 0\nend\n\nstruct Box\n    x\nend\nend\n"
                 .into(),
         );
-        let region = source.enclosing_region_for_span(4, 4);
-        assert_eq!(region.start_line, 3);
-        assert_eq!(region.end_line, 5);
-        assert!(
-            source
-                .region_text(region.start_line, region.end_line)
-                .contains("function f")
-        );
+        assert_enclosing_region(&source, 4, 3, 5, "function f");
     }
 
     #[test]
@@ -203,13 +188,27 @@ mod tests {
             "mod demo {\n    fn f(xs: Vec<i32>) -> usize {\n        return xs.len();\n    }\n}\n"
                 .into(),
         );
-        let region = source.enclosing_region_for_span(3, 3);
-        assert_eq!(region.start_line, 2);
-        assert_eq!(region.end_line, 4);
+        assert_enclosing_region(&source, 3, 2, 4, "fn f");
+    }
+
+    fn assert_enclosing_region(
+        source: &SourceFile,
+        line: usize,
+        start_line: usize,
+        end_line: usize,
+        expected: &str,
+    ) {
+        let region = source.enclosing_region_for_span(line, line);
+        assert_eq!(region.start_line, start_line);
+        assert_eq!(region.end_line, end_line);
+        assert_region_contains(source, region, expected);
+    }
+
+    fn assert_region_contains(source: &SourceFile, region: RegionSpan, expected: &str) {
         assert!(
             source
                 .region_text(region.start_line, region.end_line)
-                .contains("fn f")
+                .contains(expected)
         );
     }
 }
