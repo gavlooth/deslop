@@ -1,11 +1,13 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::scan_paths;
 use deslop_core::Lang;
+use deslop_mutate::generate_mutants;
 use deslop_parse::{SourceFile, parses_without_errors};
 use deslop_protocol::{
     CharacterizationTest, Patch, WorkOrder, characterization_work_order_for,
@@ -14,6 +16,7 @@ use deslop_protocol::{
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
+use wait_timeout::ChildExt;
 
 #[derive(Debug, Clone)]
 pub struct VerifyOptions {
@@ -156,6 +159,7 @@ pub enum CoverageStatus {
 pub struct CoverageAssessment {
     pub status: CoverageStatus,
     pub reason: Option<String>,
+    pub covered_lines: Option<BTreeSet<usize>>,
 }
 
 pub struct CoverageRequest<'a> {
@@ -175,6 +179,7 @@ pub enum MutationConfig {
     #[default]
     Disabled,
     Auto,
+    AutoWithTimeout(Duration),
     AutoWithCommand(String),
     OutcomesFile(PathBuf),
 }
@@ -196,6 +201,9 @@ pub struct MutationRequest<'a> {
     pub root: &'a Path,
     pub source: &'a SourceFile,
     pub work_order: &'a WorkOrder,
+    pub check_cmd: Option<&'a str>,
+    pub coverage: &'a CoverageAssessment,
+    pub timeout: Duration,
 }
 
 pub trait MutationProbe {
@@ -497,7 +505,8 @@ fn assess_patch_signals(
     };
 
     let coverage = assess_coverage_if_clean(options, source, work_order, reasons, coverage)?;
-    let mutation = assess_mutation_if_clean(options, source, work_order, reasons, mutation)?;
+    let mutation =
+        assess_mutation_if_clean(options, source, work_order, reasons, mutation, &coverage)?;
 
     Ok(PatchSignals {
         coverage,
@@ -530,12 +539,16 @@ fn assess_mutation_if_clean(
     work_order: &WorkOrder,
     reasons: &[String],
     mutation: &mut MutationRegistry,
+    coverage: &CoverageAssessment,
 ) -> Result<MutationAssessment> {
     if reasons.is_empty() {
         mutation.assess(MutationRequest {
             root: &options.root,
             source,
             work_order,
+            check_cmd: selected_check_cmd(options, work_order),
+            coverage,
+            timeout: mutation.timeout,
         })
     } else {
         Ok(unknown_mutation_assessment())
@@ -546,6 +559,7 @@ fn unknown_coverage_assessment() -> CoverageAssessment {
     CoverageAssessment {
         status: CoverageStatus::Unknown,
         reason: None,
+        covered_lines: None,
     }
 }
 
@@ -828,16 +842,28 @@ fn verdict_for_passing_patch(
 struct MutationRegistry {
     probes: Vec<Box<dyn MutationProbe>>,
     disabled: bool,
+    timeout: Duration,
 }
 
 impl MutationRegistry {
     fn new(config: &MutationConfig) -> Self {
+        let timeout = mutation_timeout(config);
+        let probes: Vec<Box<dyn MutationProbe>> = match config {
+            MutationConfig::Disabled => Vec::new(),
+            MutationConfig::Auto | MutationConfig::AutoWithTimeout(_) => {
+                vec![Box::new(TreeSitterMutationProbe)]
+            }
+            MutationConfig::AutoWithCommand(_) | MutationConfig::OutcomesFile(_) => {
+                vec![
+                    Box::new(RustCargoMutantsProbe::new(config)),
+                    Box::new(PythonMutationProbe::new(config)),
+                ]
+            }
+        };
         Self {
-            probes: vec![
-                Box::new(RustCargoMutantsProbe::new(config)),
-                Box::new(PythonMutationProbe::new(config)),
-            ],
+            probes,
             disabled: matches!(config, MutationConfig::Disabled),
+            timeout,
         }
     }
 
@@ -862,6 +888,136 @@ impl MutationRegistry {
     }
 }
 
+fn mutation_timeout(config: &MutationConfig) -> Duration {
+    match config {
+        MutationConfig::AutoWithTimeout(timeout) => *timeout,
+        _ => Duration::from_secs(10),
+    }
+}
+
+struct TreeSitterMutationProbe;
+
+impl MutationProbe for TreeSitterMutationProbe {
+    fn name(&self) -> &'static str {
+        "tree-sitter-native"
+    }
+
+    fn supports(&self, source: &SourceFile) -> bool {
+        source.lang != Lang::Generic
+    }
+
+    fn assess(&mut self, request: MutationRequest<'_>) -> Result<MutationAssessment> {
+        let Some(command) = request.check_cmd else {
+            return Ok(MutationAssessment {
+                status: MutationStatus::Unknown,
+                reason: Some("native mutation requires --check-cmd".to_string()),
+            });
+        };
+        let restrict_lines = mutation_restrict_lines(&request);
+        if restrict_lines.is_empty() {
+            return Ok(MutationAssessment {
+                status: MutationStatus::Unknown,
+                reason: Some("native mutation skipped: no covered lines in region".to_string()),
+            });
+        }
+        let mutants = generate_mutants(request.source, Some(&restrict_lines))?;
+        if mutants.is_empty() {
+            return Ok(MutationAssessment {
+                status: MutationStatus::Unknown,
+                reason: Some("native mutation found no applicable mutants in region".to_string()),
+            });
+        }
+
+        let mut viable = 0usize;
+        let mut killed = 0usize;
+        let mut unviable = 0usize;
+        let mut timed_out = 0usize;
+        for mutant in mutants {
+            if !parse_check_passes(request.source.lang, &mutant.mutated_source)? {
+                unviable += 1;
+                continue;
+            }
+            viable += 1;
+            match run_mutant_check_cmd_on_temp_copy(
+                request.root,
+                request.source,
+                &mutant.mutated_source,
+                command,
+                request.timeout,
+            )? {
+                MutantCheckOutcome::Survived => {
+                    return Ok(MutationAssessment {
+                        status: MutationStatus::Survived,
+                        reason: Some(format!(
+                            "mutation probe {} found surviving mutant: {} line {} {} -> {}",
+                            self.name(),
+                            mutant.operator,
+                            mutant.line,
+                            mutant.original,
+                            mutant.mutated
+                        )),
+                    });
+                }
+                MutantCheckOutcome::Killed => {
+                    killed += 1;
+                }
+                MutantCheckOutcome::TimedOut => {
+                    killed += 1;
+                    timed_out += 1;
+                }
+            }
+        }
+
+        if viable == 0 {
+            Ok(MutationAssessment {
+                status: MutationStatus::Unknown,
+                reason: Some(format!(
+                    "native mutation found no viable mutants in region ({unviable} unviable)"
+                )),
+            })
+        } else {
+            Ok(MutationAssessment {
+                status: MutationStatus::NoSurvivor,
+                reason: Some(format!(
+                    "mutation probe {} found no surviving mutant in region ({killed}/{viable} killed, {timed_out} timed out, {unviable} unviable)",
+                    self.name()
+                )),
+            })
+        }
+    }
+}
+
+fn mutation_restrict_lines(request: &MutationRequest<'_>) -> BTreeSet<usize> {
+    let region_lines = BTreeSet::from_iter(
+        request.work_order.region.start_line..=request.work_order.region.end_line,
+    );
+    match &request.coverage.covered_lines {
+        Some(covered_lines) => region_lines
+            .intersection(covered_lines)
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        None => region_lines,
+    }
+}
+
+enum MutantCheckOutcome {
+    Survived,
+    Killed,
+    TimedOut,
+}
+
+fn run_mutant_check_cmd_on_temp_copy(
+    root: &Path,
+    source: &SourceFile,
+    mutated_source: &str,
+    command: &str,
+    timeout: Duration,
+) -> Result<MutantCheckOutcome> {
+    run_mutant_check_cmd_in_temp_project(root, command, timeout, |temp_root| {
+        write_mutated_source(root, temp_root, source, mutated_source)
+    })
+}
+
 #[derive(Debug, Clone)]
 enum MutationProbeMode {
     Disabled,
@@ -877,7 +1033,9 @@ struct RustCargoMutantsProbe {
 impl RustCargoMutantsProbe {
     fn new(config: &MutationConfig) -> Self {
         let mode = match config {
-            MutationConfig::Disabled => MutationProbeMode::Disabled,
+            MutationConfig::Disabled | MutationConfig::AutoWithTimeout(_) => {
+                MutationProbeMode::Disabled
+            }
             MutationConfig::Auto => MutationProbeMode::Auto {
                 command: "cargo".to_string(),
             },
@@ -993,7 +1151,9 @@ struct PythonMutationProbe {
 impl PythonMutationProbe {
     fn new(config: &MutationConfig) -> Self {
         let mode = match config {
-            MutationConfig::Disabled => MutationProbeMode::Disabled,
+            MutationConfig::Disabled | MutationConfig::AutoWithTimeout(_) => {
+                MutationProbeMode::Disabled
+            }
             MutationConfig::Auto => MutationProbeMode::Auto {
                 command: "cosmic-ray".to_string(),
             },
@@ -1423,6 +1583,7 @@ impl CoverageRegistry {
             return Ok(CoverageAssessment {
                 status: CoverageStatus::Unknown,
                 reason: Some("coverage disabled".to_string()),
+                covered_lines: None,
             });
         }
         let Some(provider) = self
@@ -1433,6 +1594,7 @@ impl CoverageRegistry {
             return Ok(CoverageAssessment {
                 status: CoverageStatus::Unknown,
                 reason: Some("no coverage provider for language".to_string()),
+                covered_lines: None,
             });
         };
         provider.assess(request)
@@ -1490,6 +1652,7 @@ impl RustCargoLlvmCovProvider {
             Err(reason) => Err(CoverageAssessment {
                 status: CoverageStatus::Unknown,
                 reason: Some(reason.to_owned()),
+                covered_lines: None,
             }),
         }
     }
@@ -1536,6 +1699,7 @@ impl CoverageProvider for RustCargoLlvmCovProvider {
     }
 
     fn assess(&mut self, request: CoverageRequest<'_>) -> Result<CoverageAssessment> {
+        let provider = self.name();
         let coverage = match self.lcov(request.root) {
             Ok(coverage) => coverage,
             Err(assessment) => return Ok(assessment),
@@ -1550,24 +1714,27 @@ impl CoverageProvider for RustCargoLlvmCovProvider {
             ) {
                 CoverageStatus::Covered => CoverageAssessment {
                     status: CoverageStatus::Covered,
-                    reason: Some(format!(
-                        "coverage provider {} exercised region",
-                        self.name()
+                    reason: Some(format!("coverage provider {provider} exercised region")),
+                    covered_lines: Some(coverage.covered_lines_for_region(
+                        &request.source.path,
+                        &relative,
+                        request.work_order.region.start_line,
+                        request.work_order.region.end_line,
                     )),
                 },
                 CoverageStatus::Uncovered => CoverageAssessment {
                     status: CoverageStatus::Uncovered,
                     reason: Some(format!(
-                        "coverage provider {} did not exercise region",
-                        self.name()
+                        "coverage provider {provider} did not exercise region"
                     )),
+                    covered_lines: Some(BTreeSet::new()),
                 },
                 CoverageStatus::Unknown => CoverageAssessment {
                     status: CoverageStatus::Unknown,
                     reason: Some(format!(
-                        "coverage provider {} had no executable lines for region",
-                        self.name()
+                        "coverage provider {provider} had no executable lines for region"
                     )),
+                    covered_lines: None,
                 },
             },
         )
@@ -1618,6 +1785,7 @@ impl ClojureCloverageProvider {
             Err(reason) => Err(CoverageAssessment {
                 status: CoverageStatus::Unknown,
                 reason: Some(reason.to_owned()),
+                covered_lines: None,
             }),
         }
     }
@@ -1709,6 +1877,7 @@ impl JuliaCoverageProvider {
             Err(reason) => Err(CoverageAssessment {
                 status: CoverageStatus::Unknown,
                 reason: Some(reason.to_owned()),
+                covered_lines: None,
             }),
         }
     }
@@ -1797,6 +1966,7 @@ impl PythonCoveragePyProvider {
             Err(reason) => Err(CoverageAssessment {
                 status: CoverageStatus::Unknown,
                 reason: Some(reason.to_owned()),
+                covered_lines: None,
             }),
         }
     }
@@ -1853,18 +2023,26 @@ fn assess_line_coverage(
             CoverageStatus::Covered => CoverageAssessment {
                 status: CoverageStatus::Covered,
                 reason: Some(format!("coverage provider {provider} exercised region")),
+                covered_lines: Some(coverage.covered_lines_for_region(
+                    &request.source.path,
+                    &relative,
+                    request.work_order.region.start_line,
+                    request.work_order.region.end_line,
+                )),
             },
             CoverageStatus::Uncovered => CoverageAssessment {
                 status: CoverageStatus::Uncovered,
                 reason: Some(format!(
                     "coverage provider {provider} did not exercise region"
                 )),
+                covered_lines: Some(BTreeSet::new()),
             },
             CoverageStatus::Unknown => CoverageAssessment {
                 status: CoverageStatus::Unknown,
                 reason: Some(format!(
                     "coverage provider {provider} had no executable lines for region"
                 )),
+                covered_lines: None,
             },
         },
     )
@@ -2205,6 +2383,18 @@ impl LineCoverage {
         coverage_status_for_lines(&file.lines, start_line, end_line)
     }
 
+    fn covered_lines_for_region(
+        &self,
+        absolute_path: &Path,
+        relative_path: &Path,
+        start_line: usize,
+        end_line: usize,
+    ) -> BTreeSet<usize> {
+        self.file_for(absolute_path, relative_path)
+            .map(|file| covered_lines_for_region(&file.lines, start_line, end_line))
+            .unwrap_or_default()
+    }
+
     fn file_for(&self, absolute_path: &Path, relative_path: &Path) -> Option<&LineCoverageFile> {
         self.files
             .iter()
@@ -2237,6 +2427,17 @@ fn coverage_status_for_lines(
     } else {
         CoverageStatus::Unknown
     }
+}
+
+fn covered_lines_for_region(
+    lines: &BTreeMap<usize, usize>,
+    start_line: usize,
+    end_line: usize,
+) -> BTreeSet<usize> {
+    lines
+        .range(start_line..=end_line)
+        .filter_map(|(line, count)| (*count > 0).then_some(*line))
+        .collect()
 }
 
 fn collect_line_files_from_json(value: &serde_json::Value, files: &mut Vec<LineCoverageFile>) {
@@ -2505,6 +2706,18 @@ impl LcovCoverage {
         coverage_status_for_lines(&file.lines, start_line, end_line)
     }
 
+    fn covered_lines_for_region(
+        &self,
+        absolute_path: &Path,
+        relative_path: &Path,
+        start_line: usize,
+        end_line: usize,
+    ) -> BTreeSet<usize> {
+        self.file_for(absolute_path, relative_path)
+            .map(|file| covered_lines_for_region(&file.lines, start_line, end_line))
+            .unwrap_or_default()
+    }
+
     fn file_for(&self, absolute_path: &Path, relative_path: &Path) -> Option<&LcovFile> {
         self.files.iter().find(|file| {
             file.path == absolute_path
@@ -2723,6 +2936,32 @@ fn run_check_cmd_in_temp_project(
     Ok(())
 }
 
+fn run_mutant_check_cmd_in_temp_project(
+    root: &Path,
+    command: &str,
+    timeout: Duration,
+    setup: impl FnOnce(&Path) -> Result<()>,
+) -> Result<MutantCheckOutcome> {
+    let temp = TempDir::new().context("failed to create mutation check tempdir")?;
+    copy_project_for_check(root, temp.path())?;
+    setup(temp.path())?;
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(temp.path())
+        .spawn()
+        .with_context(|| format!("failed to run check command `{command}`"))?;
+    match child.wait_timeout(timeout)? {
+        Some(status) if status.success() => Ok(MutantCheckOutcome::Survived),
+        Some(_) => Ok(MutantCheckOutcome::Killed),
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            Ok(MutantCheckOutcome::TimedOut)
+        }
+    }
+}
+
 fn write_patched_source(
     root: &Path,
     temp_root: &Path,
@@ -2733,6 +2972,18 @@ fn write_patched_source(
     let temp_file = temp_root.join(relative);
     fs::write(&temp_file, candidate)
         .with_context(|| format!("failed to write temp patched file {}", temp_file.display()))
+}
+
+fn write_mutated_source(
+    root: &Path,
+    temp_root: &Path,
+    source: &SourceFile,
+    mutated_source: &str,
+) -> Result<()> {
+    let relative = relative_to_root(root, &source.path)?;
+    let temp_file = temp_root.join(relative);
+    fs::write(&temp_file, mutated_source)
+        .with_context(|| format!("failed to write temp mutated file {}", temp_file.display()))
 }
 
 fn write_characterization_test(temp_root: &Path, test: &CharacterizationTest) -> Result<()> {
@@ -3098,7 +3349,8 @@ mod tests {
   "jobs": [
     {{
       "module_path": "{}",
-      "line_number": 2,
+      "line_number": 1,
+      "end_line": 3,
       "test_outcome": "{}"
     }}
   ]
@@ -3607,7 +3859,7 @@ mod tests {
 
     #[test]
     fn absent_coverage_py_auto_command_keeps_patch_coverage_unknown() {
-        let fixture = python_fixture("def f():\n    value = 'TODO: implement'\n    return value\n");
+        let fixture = python_fixture("def f():\n    placeholder = 0\n    return placeholder\n");
         let report = verify_single_with_options(
             fixture.temp.path(),
             patch_for(&fixture.work_order, "    value = 1\n"),
@@ -3681,7 +3933,7 @@ mod tests {
 
     #[test]
     fn cosmic_ray_fixture_survivor_downgrades_python_patch() {
-        let fixture = python_fixture("def f():\n    value = 'TODO: implement'\n    return value\n");
+        let fixture = python_fixture("def f():\n    placeholder = 0\n    return placeholder\n");
         let source = fixture.temp.path().join("sample.py");
         let outcomes = cosmic_ray_outcomes_fixture(fixture.temp.path(), &source, "survived");
         let report = verify_single_with_options(
@@ -3712,7 +3964,7 @@ mod tests {
 
     #[test]
     fn cosmic_ray_fixture_without_survivor_does_not_downgrade_python_patch() {
-        let fixture = python_fixture("def f():\n    value = 'TODO: implement'\n    return value\n");
+        let fixture = python_fixture("def f():\n    placeholder = 0\n    return placeholder\n");
         let source = fixture.temp.path().join("sample.py");
         let outcomes = cosmic_ray_outcomes_fixture(fixture.temp.path(), &source, "killed");
         let report = verify_single_with_options(
@@ -3738,7 +3990,7 @@ mod tests {
 
     #[test]
     fn absent_cosmic_ray_degrades_without_rejecting_python_patch() {
-        let fixture = python_fixture("def f():\n    value = 'TODO: implement'\n    return value\n");
+        let fixture = python_fixture("def f():\n    placeholder = 0\n    return placeholder\n");
         let report = verify_single_with_options(
             fixture.temp.path(),
             patch_for(&fixture.work_order, "    value = 1\n"),
@@ -3775,6 +4027,139 @@ mod tests {
             VerificationVerdict::CoverageUnknown
         );
         assert!(report.results[0].reasons[1].contains("cargo-mutants"));
+    }
+
+    #[test]
+    fn native_mutation_survivor_downgrades_patch_verdict() {
+        let fixture = rust_fixture("fn f(a: i32, b: i32) -> bool {\n    return a < b;\n}\n");
+        let report = verify_single_with_options(
+            fixture.temp.path(),
+            patch_for(
+                &fixture.work_order,
+                "fn f(a: i32, b: i32) -> bool {\n    a < b\n}\n",
+            ),
+            test_options_with_mutation(fixture.temp.path(), Some("true"), MutationConfig::Auto),
+        );
+
+        assert_eq!(
+            report.results[0].verdict,
+            VerificationVerdict::UntestedRisky
+        );
+        assert!(
+            report.results[0]
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("tree-sitter-native")
+                    && reason.contains("surviving mutant")),
+            "{:#?}",
+            report.results[0].reasons
+        );
+    }
+
+    #[test]
+    fn native_mutation_content_keyed_check_cmd_can_kill_all_mutants() {
+        let fixture = rust_fixture("fn f(a: i32, b: i32) -> bool {\n    return a < b;\n}\n");
+        let report = verify_single_with_options(
+            fixture.temp.path(),
+            patch_for(
+                &fixture.work_order,
+                "fn f(a: i32, b: i32) -> bool {\n    a < b\n}\n",
+            ),
+            test_options_with_mutation(
+                fixture.temp.path(),
+                Some("! grep -q '<=' sample.rs"),
+                MutationConfig::Auto,
+            ),
+        );
+
+        assert_eq!(
+            report.results[0].verdict,
+            VerificationVerdict::CoverageUnknown
+        );
+        assert!(
+            report.results[0]
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("no surviving mutant")),
+            "{:#?}",
+            report.results[0].reasons
+        );
+    }
+
+    #[test]
+    fn native_mutation_timeout_counts_as_killed() {
+        let fixture = rust_fixture("fn f(a: i32, b: i32) -> bool {\n    return a < b;\n}\n");
+        let report = verify_single_with_options(
+            fixture.temp.path(),
+            patch_for(
+                &fixture.work_order,
+                "fn f(a: i32, b: i32) -> bool {\n    a < b\n}\n",
+            ),
+            test_options_with_mutation(
+                fixture.temp.path(),
+                Some("if grep -q '<=' sample.rs; then sleep 1; else true; fi"),
+                MutationConfig::AutoWithTimeout(Duration::from_millis(10)),
+            ),
+        );
+
+        assert_eq!(
+            report.results[0].verdict,
+            VerificationVerdict::CoverageUnknown
+        );
+        assert!(
+            report.results[0]
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("timed out")),
+            "{:#?}",
+            report.results[0].reasons
+        );
+    }
+
+    #[test]
+    fn native_mutation_restricts_to_covered_lines() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let file = write_rust_fixture(
+            temp.path(),
+            "fn f(a: i32, b: i32) -> i32 {\n    let _ = a < b;\n    a + b\n}\n",
+        );
+        let source = SourceFile::read(&file).expect("source");
+        let work_order = WorkOrder {
+            schema: "deslop.workorder/1".to_string(),
+            kind: WorkOrderKind::RewriteRegion,
+            id: "wo_native_mutation_coverage".to_string(),
+            path: source.path.to_path_buf(),
+            region: Region {
+                start_line: 1,
+                end_line: 4,
+                text: source.region_text(1, 4),
+            },
+            findings: Vec::new(),
+            instruction: "test".to_string(),
+            contract: deslop_protocol::Contract::default(),
+        };
+        let coverage = CoverageAssessment {
+            status: CoverageStatus::Covered,
+            reason: None,
+            covered_lines: Some(BTreeSet::from([2])),
+        };
+        let mut probe = TreeSitterMutationProbe;
+        let assessment = probe
+            .assess(MutationRequest {
+                root: temp.path(),
+                source: &source,
+                work_order: &work_order,
+                check_cmd: Some("! grep -q '<=' sample.rs"),
+                coverage: &coverage,
+                timeout: Duration::from_secs(1),
+            })
+            .expect("mutation");
+
+        assert_eq!(assessment.status, MutationStatus::NoSurvivor);
+        assert!(
+            assessment.reason.expect("reason").contains("1/1 killed"),
+            "covered-line restriction should skip the line-3 arithmetic mutant"
+        );
     }
 
     #[test]

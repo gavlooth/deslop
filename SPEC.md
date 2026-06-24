@@ -149,14 +149,17 @@ strings are `disabled`/`off`/`none`, `auto`, `auto:<cmd>`, `lcov:<path>`,
 `cloverage:<path>`, `julia-cov:<path>`/`julia:<path>`, and
 `coverage-py:<path>`/`coverage.py:<path>`/`python:<path>`.
 
-Mutation probes are also registry-driven and opt-in. Rust uses `cargo-mutants` outcomes. Python
-uses Cosmic Ray because it has a project configuration, a durable SQLite session, and reports that
-can be reduced to source path + line + killed/survived status; deslop's live mode runs
-`cosmic-ray init`/`exec` when a Cosmic Ray config is present and degrades to `mutation-unknown`
-when the command/config/session inspection is unavailable. Recorded outcome files are accepted for
-deterministic tests. Clojure and Julia are intentionally not wired until their source-mappable
-contracts are stable enough for region gating: JVM bytecode tools such as PITest do not map cleanly
-to Clojure source regions; Heretic is promising and Clojure-specific but currently labels itself
+Mutation probes are also registry-driven and opt-in. The default `--mutation` engine is native:
+`deslop-mutate` generates tree-sitter CST mutants for Rust, Clojure, Julia, and Python, then
+`deslop-verify` scores each viable mutant on a temp project copy with the resolved `--check-cmd`.
+A passing mutant is `survived` and downgrades the verdict; a failing check kills the mutant;
+parse-unviable mutants are excluded; a per-mutant timeout is treated as killed. When coverage data
+is available, native mutation only generates mutants on covered lines in the work-order region;
+with coverage disabled or unknown, it mutates the whole region. Recorded external outcome files are
+still accepted for deterministic tests. `MutationConfig::AutoWithCommand` keeps the previous
+external probes as opt-in paths: Rust `cargo-mutants`, Python Cosmic Ray. Clojure and Julia external
+tools remain documented blockers: JVM bytecode tools such as PITest do not map cleanly to Clojure
+source regions; Heretic is promising and Clojure-specific but currently labels itself
 experimental/not released, so its JSON/EDN contract is not yet a stable verifier input. Julia's
 older Vimes.jl path reports patches/diffs but is legacy, while Gremlins.jl is a new 0.x
 source-splicing project; both are deferred until a maintained, source-line machine-readable report
@@ -470,6 +473,7 @@ crates/
   deslop-core/       # Finding, SafetyClass, Edit, Span, Lang, fingerprint
   deslop-lang/       # LangPack registry: detection, grammar, region, comment syntax
   deslop-parse/      # SourceFile + tree-sitter parse calls via deslop-lang
+  deslop-mutate/     # pure tree-sitter CST mutant generation
   deslop-analyzer/   # T1: scope graph, duplication, complexity, idiom rules
   deslop-metrics/    # per-region complexity/expressivity + hotspot ranking
   deslop-external/   # T2: clj-kondo / clippy / StaticLint/JET adapters (subprocess; graceful degrade)
@@ -528,6 +532,9 @@ default hold of `coverage-unknown`, `--allow-unverified` opt-in apply, rejected 
 blocked in both modes, `--characterize` accept/reject paths that prove accepted tests upgrade
 weak verdicts while failing tests stay held, and LCOV-backed `removable` apply by default.
 Optional live smoke sits outside the default suite.
+Mutation tests cover exact native CST mutant generation for Rust, Clojure, Julia, and Python,
+content-keyed native check-cmd scoring for killed versus survived mutants, verdict downgrade from
+native survivors, timeout-as-killed behavior, and covered-line restriction.
 Metrics tests cover cyclomatic counts, known Halstead numbers, hotspot detection, and a
 throwaway pack driving metric declarations without central language edits.
 MCP tests cover `tools/list` schemas, `tools/call scan`, `fix` prompt generation,

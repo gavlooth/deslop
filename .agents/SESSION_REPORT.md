@@ -1,5 +1,82 @@
 # Session Report
 
+## 2026-06-24T09:41:37+02:00 — Native Tree-Sitter Mutation Engine Complete
+
+Objective: Finish `.agents/NEXT_TASK.md` Task 14: native tree-sitter mutation
+generation, verifier scoring, timeout handling, and coverage-gated mutation.
+
+Changes:
+- Completed P2/P3 on top of the P1 checkpoint in jj change `lmmlzykp`.
+- Added native `TreeSitterMutationProbe` as the `MutationConfig::Auto` default.
+- Kept external recorded outcomes and live external probes as opt-in paths:
+  - `MutationConfig::OutcomesFile` for recorded cargo-mutants/cosmic-ray style outcomes.
+  - `MutationConfig::AutoWithCommand` for the previous cargo-mutants/cosmic-ray command probes.
+- Threaded resolved `check_cmd`, coverage assessment, and per-mutant timeout into
+  `MutationRequest`.
+- Extended coverage assessment with covered line sets; native mutation restricts generated
+  mutants to covered work-order lines when coverage data is present, and mutates the whole
+  region when coverage is disabled/unknown.
+- Added `wait-timeout` for per-mutant timeouts; timeout is classified as killed.
+- Updated `SPEC.md`.
+
+Tests:
+- P1 exact CST mutant generation tests for Rust, Clojure, Julia, and Python.
+- Native verifier tests for:
+  - survived mutant downgrading a non-empty rewrite to `untested-risky`;
+  - content-keyed check command killing all mutants;
+  - timeout counting as killed;
+  - covered-line restriction skipping uncovered-line mutants.
+- Existing cargo-mutants/cosmic-ray recorded outcome tests remain passing.
+
+Verification:
+- Focused checks passed:
+  - `cargo fmt --all && cargo test -p deslop-mutate`
+  - `cargo fmt --all && cargo test -p deslop-verify`
+- Full required gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+
+Deferred:
+- Equivalent-mutant pruning.
+- Parallel mutant scoring.
+- Finer distinction between check-command build failures and behavior-killed mutants.
+
+Signature: Codex
+
+## 2026-06-24T09:34:11+02:00 — Native Tree-Sitter Mutation Engine P1
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 14. Round 1 completed P1 only:
+pure CST mutant generation in a new `deslop-mutate` crate.
+
+Changes:
+- Started jj change `lmmlzykp` on top of `xumlpqvs`.
+- Added `deslop-mutate`, a pure tree-sitter mutant generation crate.
+- Added portable operators:
+  - relational swaps: `<`/`<=`, `>`/`>=`, `==`/`!=`; Clojure uses `=`/`not=`.
+  - arithmetic swaps: `+`/`-`, `*`/`/`.
+  - logical swaps: `&&`/`||`, Python `and`/`or`, Clojure `and`/`or`.
+  - boolean literal flip.
+  - condition negation.
+- Wired `tree-sitter-python` into `deslop-lang` so Python participates in CST mutation.
+- Adjusted Python verifier fixtures that had relied on TODO text inside strings; with Python CST,
+  that string content is correctly ignored by the incompleteness rule.
+
+Tests:
+- Exact mutant-generation tests for Rust, Clojure, Julia, and Python.
+- Restrict-lines generation test.
+- Mutated-source output test.
+
+Verification:
+- Focused check passed:
+  - `cargo fmt --all && cargo test -p deslop-mutate`
+- Full round gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+
+Next:
+- P2/P3: integrate native `TreeSitterMutationProbe` into `deslop-verify`, add
+  content-keyed scoring tests, timeout handling, and coverage-gated line restriction.
+
+Signature: Codex
+
 ## 2026-06-24T08:38:26+02:00 — LSP Edges Final Queue Item
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 13 only: sharpen LSP diagnostics/code

@@ -372,7 +372,7 @@ impl LangPack for PythonPack {
     }
 
     fn grammar(&self) -> Option<tree_sitter::Language> {
-        None
+        Some(tree_sitter_python::LANGUAGE.into())
     }
 
     fn line_comments(&self) -> &'static [&'static str] {

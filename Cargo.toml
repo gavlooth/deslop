@@ -3,6 +3,7 @@ members = [
   "crates/deslop-core",
   "crates/deslop-lang",
   "crates/deslop-parse",
+  "crates/deslop-mutate",
   "crates/deslop-analyzer",
   "crates/deslop-eval",
   "crates/deslop-metrics",
@@ -39,11 +40,14 @@ lsp-types = "0.97.0"
 tree-sitter = "0.25.10"
 tree-sitter-clojure = "0.1.0"
 tree-sitter-julia = "0.23.1"
+tree-sitter-python = "0.25.0"
 tree-sitter-rust = "0.24.2"
+wait-timeout = "0.2.1"
 
 deslop-core = { path = "crates/deslop-core" }
 deslop-lang = { path = "crates/deslop-lang" }
 deslop-parse = { path = "crates/deslop-parse" }
+deslop-mutate = { path = "crates/deslop-mutate" }
 deslop-analyzer = { path = "crates/deslop-analyzer" }
 deslop-eval = { path = "crates/deslop-eval" }
 deslop-metrics = { path = "crates/deslop-metrics" }
