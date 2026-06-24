@@ -18,5 +18,9 @@ deslop-verify.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+[features]
+default = []
+slim-llm = ["deslop-slim/anthropic", "deslop-slim/openai"]
+
 [dev-dependencies]
 tempfile.workspace = true

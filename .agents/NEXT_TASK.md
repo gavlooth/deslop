@@ -1,40 +1,43 @@
-# TASK 7/queue — MCP `fix` option A: opt-in server-run LLM (feature-gated, default stays network-free)
+# TASK 8/queue — Analyzer threshold knobs in config (move consts into AnalyzerConfig)
 
-The MCP `fix` tool today only does option B (returns prompts; `fix_tool` at deslop-mcp lib.rs:269).
-Add option A — the server runs the LLM end-to-end (slim `run_slim` → verify → apply) — but ONLY
-behind a cargo feature that is OFF by default, so the default MCP build remains provably
-network-free. Start with `jj new` (separate change on top of znzxmqym).
+Make the remaining rule thresholds configurable via `AnalyzerConfig` + `deslop.toml [analyzer]`.
+Behavior-preserving by default. Start with `jj new` (separate change on top of svrplorq).
 
-## Design
-1. **Cargo feature** on deslop-mcp, e.g. `slim-llm = ["deslop-slim/anthropic", "deslop-slim/openai"]`
-   (deslop-mcp currently depends on deslop-slim with `default-features = false`). Default features:
-   feature OFF. With it OFF, `cargo tree -p deslop-mcp -i ureq` MUST stay empty (keep that test).
-2. **`fix` tool gains `mode`** (string, default `"prompts"`):
-   - `"prompts"` → current option-B behavior, ALWAYS available (unchanged output `deslop.fix/1`).
-   - `"auto"` → option A. Requires the `slim-llm` feature. Build a slim `LlmClient` from args and run
-     `deslop_slim::run_slim`, returning the `SlimReport` JSON (schema `deslop.slim/1`).
-     - If the feature is NOT compiled in, return a CLEAR error: "fix mode=auto requires deslop-mcp
-       built with --features slim-llm". Do NOT panic.
-3. **auto-mode params** (mirror the CLI `fix` surface, reuse `SlimOptions`): `paths`, `provider`
-   (anthropic|openai), `model`, `base_url`, `apply` (bool, default false → dry-run), `allow_unverified`
-   (default false), `coverage` (mode string via the shared `parse_coverage_mode`), `check_cmd`,
-   `characterize` (bool), and `mock` (path to a recorded response → use `RecordedClient`/`ScriptedClient`
-   for deterministic tests). API key stays env-only (never from args). Never log the key.
-4. Update the `fix` tool schema + description (document mode + the auto params + the feature
-   requirement). SPEC.md: note option A is available behind `slim-llm`, default build is network-free.
+## The consts to migrate (only these two; `min_duplication_tokens` is already configurable)
+- `crates/deslop-analyzer/src/agnostic.rs:9` `const LONG_METHOD_NLOC: usize = 40` (long-method).
+- `crates/deslop-analyzer/src/tokens.rs:8` `const MIN_MEANINGFUL_TOKENS: usize = 8`
+  (near-duplicate / duplicate-block meaningful-token floor).
 
-## Tests
-- DEFAULT build (no feature): `fix` mode=prompts unchanged; mode=auto returns the clear
-  feature-required error; `cargo tree -p deslop-mcp -i ureq` empty. (Keep/extend existing MCP tests.)
-- `#[cfg(feature = "slim-llm")]` test: `fix` mode=auto with `mock` (recorded rewrite) on a fixture →
-  returns a `deslop.slim/1` report; with `apply:true` in a tempdir a verified (Removable / covered or
-  allow_unverified) rewrite is written; a rejected rewrite is not. Deterministic, NO network/key.
+`AnalyzerConfig` currently: `min_duplication_tokens` (default 24), `rust_external`, `julia_external`,
+`julia_project`. Rules already receive `&AnalyzerConfig` via `Rule::check(source, config)`.
 
-## Gate (run BOTH feature states)
-Default: `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
-Feature: `cargo test -p deslop-mcp --features slim-llm && cargo clippy -p deslop-mcp --features slim-llm -- -D warnings`
+## Do
+1. Add to `AnalyzerConfig`: `long_method_nloc: usize` (Default 40) and `min_meaningful_tokens: usize`
+   (Default 8). Keep the `Default` impl producing the SAME values as today (40 / 8 / 24) — no
+   behavior change unless configured.
+2. Replace the const usages with `config.long_method_nloc` / `config.min_meaningful_tokens`. Thread
+   `&AnalyzerConfig` (or just the needed usize) into the token/duplication functions in `tokens.rs`
+   if they don't already receive it — minimal plumbing, no logic change. Remove the now-unused consts.
+3. Extend the CLI `[analyzer]` config section (currently only `min_duplication_tokens`) to also
+   accept `long_method_nloc` and `min_meaningful_tokens`, wiring them into the `AnalyzerConfig` the
+   CLI builds. Precedence stays CLI/flags > config > default (there may be no CLI flag for these — if
+   not, config > default is fine; do NOT add new flags unless trivial).
+4. Update `deslop.toml.example` + `docs/CONFIG.md` with the new `[analyzer]` keys.
 
-## Constraints / report
-Do NOT change option B output, the slim gating, or verify. Do NOT touch `deslop/*.py`. Report: the
-feature; `mode` param; default-build network-free proof; the auto-mode mock test; both gate states.
-`jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`. Do NOT start queued items 8-13.
+## Tests (deterministic)
+- Default preserved: existing analyzer/corpus tests stay green (defaults 40/8/24 unchanged).
+- `long_method_nloc`: a method just under the default (e.g. 40 lines) is NOT flagged at default but
+  IS flagged when `long_method_nloc` is lowered; assert the finding count changes with config.
+- `min_meaningful_tokens`: changing it changes near-duplicate/duplicate-block findings on a fixture
+  (lower floor → more/looser matches). Assert via `scan_source_with_config`.
+- Config parse: a `[analyzer]` section with all three keys deserializes and reaches `AnalyzerConfig`.
+
+## Constraints / gate
+No rule LOGIC change — only the threshold source. MCP stays network-free (default build). Do NOT
+touch `deslop/*.py`. Gate after each change:
+`cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+
+## Report
+fields added + defaults; the const→config replacement (and any plumbing into tokens.rs); the
+`[analyzer]` config keys; the threshold tests (default-preserving + config-changes-behavior); docs.
+`jj describe -m "<summary>"`. Touch `.agents/HEARTBEAT.md`. Do NOT start queued items 9-13.

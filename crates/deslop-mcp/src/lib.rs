@@ -11,6 +11,10 @@ use deslop_protocol::{
 };
 use deslop_report::{render_agent, render_json};
 use deslop_slim::build_prompt;
+#[cfg(feature = "slim-llm")]
+use deslop_slim::{
+    AnthropicClient, OpenAiClient, RecordedClient, SlimOptions, resolve_model, run_slim,
+};
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
     characterization_work_orders_for_patches, parse_coverage_mode, verify_characterization_tests,
@@ -95,8 +99,41 @@ fn tools_list_result() -> Value {
             tool("propose", "Return deslop.workorder/1 JSONL-compatible work orders.", object_schema(json!({
                     "paths": paths_schema()
             }))),
-            tool("fix", "Return deslop-slim rewrite prompts (deslop.fix/1) for agent-as-consumer; submit resulting deslop.patch/1 via the apply tool.", object_schema(json!({
-                    "paths": paths_schema()
+            tool("fix", "Return deslop-slim rewrite prompts by default (mode=prompts). With deslop-mcp built using --features slim-llm, mode=auto runs deslop-slim server-side and returns deslop.slim/1.", object_schema(json!({
+                    "mode": {
+                        "type": "string",
+                        "enum": ["prompts", "auto"],
+                        "default": "prompts",
+                        "description": "prompts returns deslop.fix/1 for agent-as-consumer. auto requires deslop-mcp --features slim-llm and runs deslop-slim server-side."
+                    },
+                    "paths": paths_schema(),
+                    "provider": {
+                        "type": "string",
+                        "enum": ["anthropic", "openai"],
+                        "default": "anthropic",
+                        "description": "auto mode only; API keys are read from environment variables, never MCP arguments."
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "auto mode only; defaults via DESLOP_SLIM_MODEL or deslop-slim's built-in default."
+                    },
+                    "base_url": {
+                        "type": "string",
+                        "description": "auto mode only; OpenAI-compatible base URL."
+                    },
+                    "apply": { "type": "boolean", "default": false },
+                    "allow_unverified": { "type": "boolean", "default": false },
+                    "coverage": {
+                        "type": "string",
+                        "default": "disabled",
+                        "description": "auto mode only; disabled, auto, auto:<cmd>, lcov:<path>, cloverage:<path>, julia-cov:<path>, or coverage-py:<path>."
+                    },
+                    "check_cmd": { "type": "string" },
+                    "characterize": { "type": "boolean", "default": false },
+                    "mock": {
+                        "type": "string",
+                        "description": "auto mode only; path to a recorded response for deterministic no-network runs."
+                    }
             }))),
             tool("verify", "Verify deslop.patch/1 patches without writing files.", required_schema(&["patches"], json!({
                     "patches": patches_schema(),
@@ -267,6 +304,22 @@ fn propose_tool(args: &Value) -> Result<Value> {
 }
 
 fn fix_tool(args: &Value) -> Result<Value> {
+    match fix_mode(args)? {
+        "prompts" => fix_prompts_tool(args),
+        "auto" => fix_auto_tool(args),
+        other => bail!("unsupported fix mode `{other}`; use `prompts` or `auto`"),
+    }
+}
+
+fn fix_mode(args: &Value) -> Result<&str> {
+    match args.get("mode") {
+        None => Ok("prompts"),
+        Some(Value::String(mode)) => Ok(mode),
+        Some(_) => bail!("fix mode must be a string"),
+    }
+}
+
+fn fix_prompts_tool(args: &Value) -> Result<Value> {
     let prompts = proposed_work_orders(args)?
         .into_iter()
         .filter(|work_order| work_order.kind == WorkOrderKind::RewriteRegion)
@@ -277,6 +330,64 @@ fn fix_tool(args: &Value) -> Result<Value> {
         "prompts": prompts,
         "next": "Rewrite each region. Build deslop.patch/1 patches { schema:\"deslop.patch/1\", workorder_id, region_fingerprint, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)."
     }))
+}
+
+#[cfg(not(feature = "slim-llm"))]
+fn fix_auto_tool(_args: &Value) -> Result<Value> {
+    bail!("fix mode=auto requires deslop-mcp built with --features slim-llm")
+}
+
+#[cfg(feature = "slim-llm")]
+fn fix_auto_tool(args: &Value) -> Result<Value> {
+    let model = resolve_model(optional_string(args, "model"));
+    let options = SlimOptions {
+        root: PathBuf::from("."),
+        paths: paths_arg(args)?,
+        workorders: None,
+        apply: bool_arg(args, "apply"),
+        characterize: bool_arg(args, "characterize"),
+        allow_unverified: bool_arg(args, "allow_unverified"),
+        coverage: auto_coverage_config(args)?,
+        model: model.to_owned(),
+        check_cmd: optional_string(args, "check_cmd"),
+        backup: true,
+    };
+    let report = if let Some(path) = optional_string(args, "mock") {
+        let client = RecordedClient::from_path(path)?;
+        run_slim(&client, options)?
+    } else {
+        match provider_arg(args)? {
+            "anthropic" => {
+                let client = AnthropicClient::from_env(model.clone())?;
+                run_slim(&client, options)?
+            }
+            "openai" => {
+                let client =
+                    OpenAiClient::from_env(model.clone(), optional_string(args, "base_url"))?;
+                run_slim(&client, options)?
+            }
+            other => bail!("unsupported fix provider `{other}`; use `anthropic` or `openai`"),
+        }
+    };
+    Ok(serde_json::to_value(report)?)
+}
+
+#[cfg(feature = "slim-llm")]
+fn provider_arg(args: &Value) -> Result<&str> {
+    match args.get("provider") {
+        None => Ok("anthropic"),
+        Some(Value::String(provider)) => Ok(provider),
+        Some(_) => bail!("provider must be a string"),
+    }
+}
+
+#[cfg(feature = "slim-llm")]
+fn auto_coverage_config(args: &Value) -> Result<CoverageConfig> {
+    match args.get("coverage") {
+        None => Ok(CoverageConfig::Disabled),
+        Some(Value::String(mode)) => parse_coverage_mode(mode),
+        Some(_) => bail!("fix auto coverage must be a coverage mode string"),
+    }
 }
 
 fn fix_prompt_entry(work_order: WorkOrder) -> Value {
@@ -530,6 +641,18 @@ mod tests {
         work_order: WorkOrder,
     }
 
+    #[cfg(feature = "slim-llm")]
+    struct RustSlimFixture {
+        _guard: MutexGuard<'static, ()>,
+        _temp: tempfile::TempDir,
+        source: PathBuf,
+        coverage: PathBuf,
+    }
+
+    #[cfg(feature = "slim-llm")]
+    const RUST_SLIM_ORIGINAL: &str =
+        "fn unfinished() -> i32 {\n    todo!(\"TODO: implement\")\n}\n";
+
     #[test]
     fn tools_list_returns_expected_tool_set_with_schemas() {
         let response = handle_request(&json!({
@@ -570,6 +693,19 @@ mod tests {
                 .as_str()
                 .expect("description")
                 .contains("lcov:<path>")
+        );
+        let fix = tools
+            .iter()
+            .find(|tool| tool["name"] == "fix")
+            .expect("fix tool");
+        let mode = &fix["inputSchema"]["properties"]["mode"];
+        assert_eq!(mode["default"], "prompts");
+        assert_eq!(mode["enum"], json!(["prompts", "auto"]));
+        assert!(
+            fix["description"]
+                .as_str()
+                .expect("description")
+                .contains("slim-llm")
         );
     }
 
@@ -756,6 +892,75 @@ mod tests {
         assert!(content["next"].as_str().unwrap().contains("apply"));
     }
 
+    #[cfg(not(feature = "slim-llm"))]
+    #[test]
+    fn fix_auto_requires_slim_llm_feature_in_default_build() {
+        let error = call_tool("fix", json!({ "mode": "auto" })).expect_err("feature error");
+        assert!(
+            error
+                .to_string()
+                .contains("fix mode=auto requires deslop-mcp built with --features slim-llm"),
+            "{error:#}"
+        );
+    }
+
+    #[cfg(feature = "slim-llm")]
+    #[test]
+    fn fix_auto_mock_applies_verified_and_blocks_rejected_rewrite() {
+        {
+            let applied = rust_slim_fixture();
+            let good_mock = repo_relative_temp_path(&applied._temp, "good-response.txt");
+            fs::write(&good_mock, "fn unfinished() -> i32 {\n    1\n}\n").expect("good mock");
+            let response = call_tool(
+                "fix",
+                json!({
+                    "mode": "auto",
+                    "paths": [applied.source.clone()],
+                    "mock": good_mock,
+                    "apply": true,
+                    "check_cmd": "true",
+                    "coverage": format!("lcov:{}", applied.coverage.display())
+                }),
+            )
+            .expect("fix auto apply");
+            let content = structured_content(&response);
+            assert_eq!(content["schema"], "deslop.slim/1");
+            assert_eq!(content["dry_run"], false);
+            assert_eq!(content["verified"]["results"][0]["verdict"], "removable");
+            assert_eq!(content["gating"]["applied"].as_array().unwrap().len(), 1);
+            assert_eq!(
+                fs::read_to_string(&applied.source).expect("read applied source"),
+                "fn unfinished() -> i32 {\n    1\n}"
+            );
+        }
+
+        let rejected = rust_slim_fixture();
+        let bad_mock = repo_relative_temp_path(&rejected._temp, "bad-response.txt");
+        fs::write(&bad_mock, "pub fn added() {}\nfn unfinished() -> i32 {\n").expect("bad mock");
+        let response = call_tool(
+            "fix",
+            json!({
+                "mode": "auto",
+                "paths": [rejected.source.clone()],
+                "mock": bad_mock,
+                "apply": true,
+                "allow_unverified": true,
+                "check_cmd": "true",
+                "coverage": "disabled"
+            }),
+        )
+        .expect("fix auto rejected");
+        let content = structured_content(&response);
+        assert_eq!(content["schema"], "deslop.slim/1");
+        assert_eq!(content["verified"]["results"][0]["verdict"], "rejected");
+        assert_eq!(content["gating"]["rejected"].as_array().unwrap().len(), 1);
+        assert!(content["applied"]["written"].as_array().unwrap().is_empty());
+        assert_eq!(
+            fs::read_to_string(&rejected.source).expect("read rejected source"),
+            RUST_SLIM_ORIGINAL
+        );
+    }
+
     #[test]
     fn initialize_list_scan_handshake_works() {
         let fixture = sample_fixture();
@@ -821,6 +1026,26 @@ mod tests {
             source,
             coverage,
             work_order,
+        }
+    }
+
+    #[cfg(feature = "slim-llm")]
+    fn rust_slim_fixture() -> RustSlimFixture {
+        let guard = temp_test_lock();
+        let temp = tempfile::tempdir_in(".").expect("tempdir");
+        let source = repo_relative_temp_path(&temp, "sample.rs");
+        fs::write(&source, RUST_SLIM_ORIGINAL).expect("rust fixture");
+        let coverage = repo_relative_temp_path(&temp, "coverage.lcov");
+        fs::write(
+            &coverage,
+            format!("TN:\nSF:{}\nDA:2,1\nend_of_record\n", source.display()),
+        )
+        .expect("coverage fixture");
+        RustSlimFixture {
+            _guard: guard,
+            _temp: temp,
+            source,
+            coverage,
         }
     }
 

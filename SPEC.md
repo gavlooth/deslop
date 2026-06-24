@@ -386,8 +386,15 @@ the region and submits `deslop.patch/1` patches through `apply`, so the existing
 verify-gated removable-only default remains the write boundary. MCP `verify` and `apply`
 accept `coverage` as either the original boolean (`true` = `auto`, `false`/absent =
 `disabled`) or a shared parser mode string such as `lcov:<path>`, so agents can reach
-`removable` verdicts from recorded coverage without CLI-only affordances. Server-side LLM
-execution for MCP is deferred.
+`removable` verdicts from recorded coverage without CLI-only affordances.
+
+The MCP `fix` tool has two modes. `mode="prompts"` is the default and is always available:
+it returns the agent-as-consumer `deslop.fix/1` prompt payload described above. `mode="auto"`
+is opt-in server-run LLM execution: it constructs a `deslop-slim` client from
+`provider`/`model`/`base_url` or a recorded `mock` response, runs `run_slim`, and returns the
+`deslop.slim/1` report. Auto mode is compiled only with the `deslop-mcp` `slim-llm` cargo
+feature, which enables `deslop-slim/anthropic` and `deslop-slim/openai`; default MCP builds
+keep `slim-llm` off and return a clear feature-required error for `mode="auto"`.
 
 `deslop-slim` exists to prove the loop and to serve users with no agent harness. The runtime
 loop is: propose/load work orders → build a constrained prompt from instruction, exact region
@@ -409,9 +416,8 @@ generated tests are rejected and do not weaken the removable-only apply gate.
 from disk and is the test/replay client. It enforces nothing the core doesn't; all guarantees
 live in `verify`. The HTTP clients are behind `deslop-slim`'s optional `anthropic` and
 `openai` features; default slim builds enable both, while MCP depends on `deslop-slim` with
-default features disabled, so the MCP server can reuse prompt construction without pulling
-`ureq` or network client code. Deferred integration work: server-run MCP client option,
-streaming progress, and non-OpenAI-compatible provider families.
+default features disabled unless `deslop-mcp/slim-llm` is explicitly enabled. Deferred
+integration work: streaming progress and non-OpenAI-compatible provider families.
 
 `deslop-lsp` is a synchronous editor-integration server built on `lsp-server` and
 `lsp-types`. It advertises full text synchronization and code-action support. On
@@ -494,9 +500,12 @@ Optional live smoke sits outside the default suite.
 Metrics tests cover cyclomatic counts, known Halstead numbers, hotspot detection, and a
 throwaway pack driving metric declarations without central language edits.
 MCP tests cover `tools/list` schemas, `tools/call scan`, `fix` prompt generation,
-propose→verify round-trip, stale `region_fingerprint` rejection, MCP coverage bool
-back-compat/defaults, bad coverage-mode errors, LCOV mode-string `apply` upgrading a covered
-patch to `removable`, and an initialize/list/scan stdio transcript.
+default-build `fix mode=auto` feature-required errors, propose→verify round-trip, stale
+`region_fingerprint` rejection, MCP coverage bool back-compat/defaults, bad coverage-mode
+errors, LCOV mode-string `apply` upgrading a covered patch to `removable`, and an
+initialize/list/scan stdio transcript. With `deslop-mcp/slim-llm`, a deterministic mock
+auto-mode test proves a covered `deslop.slim/1` rewrite writes and a rejected rewrite does
+not.
 LSP unit tests cover pure finding→diagnostic mapping and safety-lattice code-action gating:
 safe fixable findings produce a quickfix edit, while `llm-only` findings produce no edit.
 CLI integration tests cover `scan --fail-on major` exiting non-zero on a sloppy fixture and

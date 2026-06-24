@@ -1,5 +1,65 @@
 # Session Report
 
+## 2026-06-24T07:08:19+02:00 — MCP Fix Auto Mode
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 7 only: add opt-in MCP `fix`
+server-run LLM mode behind a `deslop-mcp` cargo feature while keeping default MCP builds
+network-free. Do not start queued items 8-13.
+
+Changes:
+- Started new jj change `svrplorq` on top of `znzxmqym`.
+- Added `deslop-mcp` cargo feature:
+  - `slim-llm = ["deslop-slim/anthropic", "deslop-slim/openai"]`
+  - default features remain empty.
+- Extended MCP `fix` tool schema with `mode`:
+  - `mode = "prompts"` default, always available, unchanged `deslop.fix/1` option-B output.
+  - `mode = "auto"` opt-in option A, returning `deslop.slim/1`.
+- Added auto-mode arguments:
+  - `paths`, `provider`, `model`, `base_url`, `apply`, `allow_unverified`, `coverage`,
+    `check_cmd`, `characterize`, `mock`.
+- With `slim-llm` disabled, `mode=auto` returns the clear error:
+  - `fix mode=auto requires deslop-mcp built with --features slim-llm`
+- With `slim-llm` enabled, auto mode:
+  - uses `RecordedClient::from_path` when `mock` is supplied
+  - otherwise builds `AnthropicClient` or `OpenAiClient` from env-only API keys
+  - resolves model through existing `deslop_slim::resolve_model`
+  - parses coverage through shared `parse_coverage_mode`
+  - runs `deslop_slim::run_slim` and returns its report JSON.
+- Updated `SPEC.md` to document prompt-vs-auto MCP fix modes, the `slim-llm`
+  feature, default network-free behavior, and feature-mode mock coverage.
+- Touched `.agents/HEARTBEAT.md`.
+
+Tests:
+- Default build:
+  - existing prompts test still verifies `schema = "deslop.fix/1"` and prompt payload shape.
+  - new test verifies `mode=auto` returns the feature-required error.
+  - tools/list schema test verifies `mode` enum/default and `slim-llm` documentation.
+- Feature build:
+  - new deterministic mock test under `--features slim-llm`:
+    - LCOV-covered Rust `todo!` rewrite returns `deslop.slim/1`, verifies `removable`, and writes.
+    - rejected rewrite remains rejected and does not write, even with `allow_unverified`.
+
+Verification:
+- Initial feature test run hung because the new test held the shared temp-fixture lock while
+  constructing a second fixture. Fixed by scoping the first fixture so its guard drops before
+  the second fixture is created.
+- Default gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+- Default MCP network-free proof:
+  - `cargo tree -p deslop-mcp -i ureq`
+  - exited with Cargo's expected absence message: `package ID specification 'ureq' did not match any packages`.
+- Feature gate passed:
+  - `cargo test -p deslop-mcp --features slim-llm`
+  - `cargo clippy -p deslop-mcp --features slim-llm -- -D warnings`
+
+Not started:
+- Queued items 8-13.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-23T23:14:29+02:00 — Project Config File
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 6 only: extend `deslop.toml`
