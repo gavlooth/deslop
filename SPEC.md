@@ -123,9 +123,13 @@ This is how "the repo proposes to the LLM" works without losing safety.
    defensive-code guard, and the size/scope guards — reporting pass/fail per patch. Writes
    nothing.
    With `--coverage`, the gate uses registry-driven `CoverageProvider`s: Rust via
-   `cargo-llvm-cov` LCOV, Clojure via cloverage JSON/EDN, Julia via Coverage.jl `.cov`/LCOV,
-   and Python via coverage.py JSON/XML. Missing tools degrade to `coverage-unknown`; they never
-   fail verification by themselves.
+   `cargo-llvm-cov` LCOV, Clojure via live `lein cloverage --json --output <temp>` or recorded
+   cloverage JSON/EDN, Julia via live `julia --startup-file=no --code-coverage=user -e "using Pkg;
+   Pkg.test()"` on a temp project copy or recorded `.cov`/LCOV, and Python via live `coverage run
+   -m unittest discover` + `coverage json -o <temp>/coverage.json` or recorded coverage.py
+   JSON/XML. `auto:<cmd>` replaces the tool executable (`cargo`, `lein`, `julia`, or `coverage`)
+   while preserving deslop's generated arguments. Missing tools or failed live runs degrade to
+   `coverage-unknown`; they never fail verification by themselves.
 4. If the verifier verdict is `coverage-unknown`, `untested-risky`, or `dead-candidate`, the
    oracle is too weak to trust deletion. **`deslop characterize --patches ...`** emits
    `needs-characterization-test` work orders. An external agent writes the test, then

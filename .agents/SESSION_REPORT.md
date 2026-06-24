@@ -1,5 +1,75 @@
 # Session Report
 
+## 2026-06-24T07:50:53+02:00 — Non-Rust Coverage Auto Wiring
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 10 only: make non-Rust coverage
+providers' Auto/AutoWithCommand modes actually invoke live coverage tools where needed,
+keep recorded file parsers and graceful degrade behavior intact, and do not start queued
+items 11-13.
+
+Before-state:
+- `ClojureCloverageProvider` Auto was already live: it ran
+  `lein cloverage --json --output <temp>` and parsed generated `coverage.json`.
+- `JuliaCoverageProvider` Auto was incomplete: it only ran a Coverage.jl post-processing
+  command and depended on preexisting `.cov` data.
+- `PythonCoveragePyProvider` Auto was incomplete: it only ran `coverage json -o ...` and
+  depended on preexisting `.coverage` data.
+
+Changes:
+- Started new jj change `quvrtxsu` on top of `mvnszkqq`.
+- Added pure command builders for deterministic tests:
+  - Clojure: `<cmd> cloverage --json --output <temp-dir>`
+  - Julia: `<cmd> --startup-file=no --code-coverage=user -e "using Pkg; Pkg.test()"`
+  - Python run: `<cmd> run -m unittest discover`
+  - Python report: `<cmd> json -o <temp>/coverage.json`
+- Kept `AutoWithCommand(cmd)` as executable override only; deslop still supplies the
+  generated arguments.
+- Refactored Clojure live execution through the builder while preserving its existing
+  output strategy and parser.
+- Reworked Julia Auto:
+  - checks `julia --version`
+  - copies the project to a temp directory
+  - runs `Pkg.test()` under `--code-coverage=user`
+  - locates generated `.cov` files in the temp copy
+  - parses them with the existing `.cov` line parser after normalizing paths back to the
+    original project root.
+- Reworked Python Auto:
+  - checks `coverage --version`
+  - runs `coverage run -m unittest discover` with `COVERAGE_FILE` in a temp dir
+  - runs `coverage json -o <temp>/coverage.json`
+  - parses the generated JSON with the existing coverage.py parser.
+- Any missing tool, failing command, or missing generated report still returns
+  `CoverageStatus::Unknown` with a notice; it never rejects by itself.
+- Updated `SPEC.md` with live coverage commands and report-location strategy.
+- Touched `.agents/HEARTBEAT.md`.
+
+Tests:
+- Added command-construction tests for Clojure, Julia, and Python default and override
+  command behavior.
+- Added Auto-mode default mapping tests for `lein`, `julia`, and `coverage`.
+- Added absent-tool verify-path degrade tests for Clojure, Julia, and Python; verdicts stay
+  `CoverageUnknown`, not rejected.
+- Existing recorded cloverage, Coverage.jl `.cov`, and coverage.py file parser tests remain
+  green.
+
+Verification:
+- Focused gate passed:
+  - `cargo fmt --all && cargo test -p deslop-verify`
+- Full required gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+
+Not unit-tested:
+- Live successful runs, because they require the language toolchains/plugins/test
+  dependencies to be installed in the target project.
+
+Not started:
+- Queued items 11-13.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-24T07:38:00+02:00 — Python Mutation Probe
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 9 only: add a real non-Rust mutation

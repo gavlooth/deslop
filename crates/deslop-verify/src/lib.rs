@@ -1634,19 +1634,7 @@ impl ClojureCloverageProvider {
                 }
                 let temp = TempDir::new()
                     .map_err(|err| format!("failed to create cloverage tempdir: {err}"))?;
-                let output = Command::new(command)
-                    .args(["cloverage", "--json", "--output"])
-                    .arg(temp.path())
-                    .current_dir(root)
-                    .output()
-                    .map_err(|err| format!("failed to run cloverage: {err}"))?;
-                if !output.status.success() {
-                    return Err(command_failure_reason(
-                        "cloverage",
-                        output.status,
-                        &output.stderr,
-                    ));
-                }
+                run_coverage_tool(cloverage_command(command, temp.path()), root, "cloverage")?;
                 let report = find_named_file(temp.path(), "coverage.json").ok_or_else(|| {
                     "coverage-unknown: cloverage produced no coverage.json".to_string()
                 })?;
@@ -1736,25 +1724,10 @@ impl JuliaCoverageProvider {
                 LineCoverage::parse_lcov(&text).map_err(|err| err.to_string())
             }
             CoverageProviderMode::Auto { command } => {
-                if !julia_coverage_available(command, root) {
-                    return Err("coverage-unknown: Coverage.jl not available".to_string());
+                if !julia_available(command, root) {
+                    return Err("coverage-unknown: julia not available".to_string());
                 }
-                let text = run_output_file_command(
-                    command,
-                    root,
-                    "Coverage.jl",
-                    "Coverage.jl",
-                    "coverage.lcov",
-                    "Coverage.jl LCOV",
-                    |cmd, output_path| {
-                        let script = format!(
-                            "using Coverage; coverage = process_folder(); LCOV.writefile(\"{}\", coverage)",
-                            output_path.display()
-                        );
-                        cmd.args(["--startup-file=no", "-e", &script]);
-                    },
-                )?;
-                LineCoverage::parse_lcov(&text).map_err(|err| err.to_string())
+                run_julia_coverage(command, root)
             }
             _ => Err("coverage disabled".to_string()),
         }
@@ -1838,18 +1811,7 @@ impl PythonCoveragePyProvider {
                 if !coverage_py_available(command, root) {
                     return Err("coverage-unknown: coverage.py not available".to_string());
                 }
-                let text = run_output_file_command(
-                    command,
-                    root,
-                    "coverage.py",
-                    "coverage.py",
-                    "coverage.json",
-                    "coverage.py report",
-                    |cmd, output_path| {
-                        cmd.args(["json", "-o"]).arg(output_path);
-                    },
-                )?;
-                LineCoverage::parse_coverage_py(&text).map_err(|err| err.to_string())
+                run_coverage_py(command, root)
             }
             _ => Err("coverage disabled".to_string()),
         }
@@ -1924,10 +1886,9 @@ fn cloverage_available(command: &str, root: &Path) -> bool {
         .is_ok_and(|output| output.status.success())
 }
 
-fn julia_coverage_available(command: &str, root: &Path) -> bool {
-    let script = "using Coverage";
+fn julia_available(command: &str, root: &Path) -> bool {
     Command::new(command)
-        .args(["--startup-file=no", "-e", script])
+        .arg("--version")
         .current_dir(root)
         .output()
         .is_ok_and(|output| output.status.success())
@@ -1939,6 +1900,139 @@ fn coverage_py_available(command: &str, root: &Path) -> bool {
         .current_dir(root)
         .output()
         .is_ok_and(|output| output.status.success())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CoverageToolCommand {
+    program: String,
+    args: Vec<String>,
+}
+
+impl CoverageToolCommand {
+    fn new(program: &str, args: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            program: program.to_string(),
+            args: args.into_iter().collect(),
+        }
+    }
+}
+
+fn cloverage_command(command: &str, output_dir: &Path) -> CoverageToolCommand {
+    CoverageToolCommand::new(
+        command,
+        [
+            "cloverage".to_string(),
+            "--json".to_string(),
+            "--output".to_string(),
+            output_dir.display().to_string(),
+        ],
+    )
+}
+
+fn julia_coverage_command(command: &str) -> CoverageToolCommand {
+    CoverageToolCommand::new(
+        command,
+        [
+            "--startup-file=no".to_string(),
+            "--code-coverage=user".to_string(),
+            "-e".to_string(),
+            "using Pkg; Pkg.test()".to_string(),
+        ],
+    )
+}
+
+fn coverage_py_run_command(command: &str) -> CoverageToolCommand {
+    CoverageToolCommand::new(
+        command,
+        [
+            "run".to_string(),
+            "-m".to_string(),
+            "unittest".to_string(),
+            "discover".to_string(),
+        ],
+    )
+}
+
+fn coverage_py_json_command(command: &str, output_path: &Path) -> CoverageToolCommand {
+    CoverageToolCommand::new(
+        command,
+        [
+            "json".to_string(),
+            "-o".to_string(),
+            output_path.display().to_string(),
+        ],
+    )
+}
+
+fn run_coverage_tool(
+    tool: CoverageToolCommand,
+    root: &Path,
+    tool_name: &str,
+) -> std::result::Result<(), String> {
+    run_coverage_tool_with_env(tool, root, tool_name, &[])
+}
+
+fn run_coverage_tool_with_env(
+    tool: CoverageToolCommand,
+    root: &Path,
+    tool_name: &str,
+    envs: &[(&str, &Path)],
+) -> std::result::Result<(), String> {
+    let mut command = Command::new(&tool.program);
+    command.args(&tool.args).current_dir(root);
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    let output = command
+        .output()
+        .map_err(|err| format!("failed to run {tool_name}: {err}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(command_failure_reason(
+            tool_name,
+            output.status,
+            &output.stderr,
+        ))
+    }
+}
+
+fn run_julia_coverage(command: &str, root: &Path) -> std::result::Result<LineCoverage, String> {
+    let temp =
+        TempDir::new().map_err(|err| format!("failed to create julia coverage tempdir: {err}"))?;
+    copy_project_for_check(root, temp.path())
+        .map_err(|err| format!("failed to copy project for julia coverage: {err}"))?;
+    run_coverage_tool(
+        julia_coverage_command(command),
+        temp.path(),
+        "julia coverage",
+    )?;
+    let cov_files = find_files_with_extension(temp.path(), "cov");
+    if cov_files.is_empty() {
+        return Err("coverage-unknown: julia produced no .cov files".to_string());
+    }
+    LineCoverage::from_julia_cov_files(root, temp.path(), &cov_files)
+}
+
+fn run_coverage_py(command: &str, root: &Path) -> std::result::Result<LineCoverage, String> {
+    let temp =
+        TempDir::new().map_err(|err| format!("failed to create coverage.py tempdir: {err}"))?;
+    let data_file = temp.path().join(".coverage");
+    let report = temp.path().join("coverage.json");
+    run_coverage_tool_with_env(
+        coverage_py_run_command(command),
+        root,
+        "coverage.py run",
+        &[("COVERAGE_FILE", &data_file)],
+    )?;
+    run_coverage_tool_with_env(
+        coverage_py_json_command(command, &report),
+        root,
+        "coverage.py json",
+        &[("COVERAGE_FILE", &data_file)],
+    )?;
+    let text = read_report_text(&report, "coverage.py report")?;
+    LineCoverage::parse_coverage_py(&text).map_err(|err| err.to_string())
 }
 
 fn run_output_file_command(
@@ -1984,6 +2078,22 @@ fn find_named_file(root: &Path, name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn find_files_with_extension(root: &Path, extension: &str) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    for entry in ignore::WalkBuilder::new(root).hidden(false).build() {
+        let Ok(entry) = entry else {
+            continue;
+        };
+        if entry.file_type().is_some_and(|kind| kind.is_file())
+            && entry.path().extension().and_then(|value| value.to_str()) == Some(extension)
+        {
+            paths.push(entry.path().to_path_buf());
+        }
+    }
+    paths.sort();
+    paths
 }
 
 fn command_failure_reason(name: &str, status: std::process::ExitStatus, stderr: &[u8]) -> String {
@@ -2036,6 +2146,28 @@ impl LineCoverage {
     }
 
     fn from_julia_cov(path: &Path, text: &str) -> Self {
+        Self::from_julia_cov_text(path_without_cov_suffix(path), text)
+    }
+
+    fn from_julia_cov_files(
+        root: &Path,
+        temp_root: &Path,
+        paths: &[PathBuf],
+    ) -> std::result::Result<Self, String> {
+        let mut files = Vec::new();
+        for path in paths {
+            let text = read_report_text(path, "Coverage.jl .cov")?;
+            let temp_source = path_without_cov_suffix(path);
+            let source = match temp_source.strip_prefix(temp_root) {
+                Ok(relative) => root.join(relative),
+                Err(_) => temp_source,
+            };
+            files.extend(Self::from_julia_cov_text(source, &text).files);
+        }
+        Ok(Self { files })
+    }
+
+    fn from_julia_cov_text(path: PathBuf, text: &str) -> Self {
         let mut lines = BTreeMap::new();
         for (idx, line) in text.lines().enumerate() {
             if let Some(count) = julia_cov_line_count(line) {
@@ -2043,10 +2175,7 @@ impl LineCoverage {
             }
         }
         Self {
-            files: vec![LineCoverageFile {
-                path: path_without_cov_suffix(path),
-                lines,
-            }],
+            files: vec![LineCoverageFile { path, lines }],
         }
     }
 
@@ -2784,6 +2913,7 @@ mod tests {
     #[derive(Debug, Clone, Copy)]
     enum FixtureKind {
         Clojure,
+        Julia,
         Python,
         Rust,
     }
@@ -2802,6 +2932,12 @@ mod tests {
 
     fn write_python_fixture(root: &Path, text: &str) -> PathBuf {
         let file = root.join("sample.py");
+        fs::write(&file, text).expect("write");
+        file
+    }
+
+    fn write_julia_fixture(root: &Path, text: &str) -> PathBuf {
+        let file = root.join("sample.jl");
         fs::write(&file, text).expect("write");
         file
     }
@@ -2877,10 +3013,16 @@ mod tests {
         only_work_order(root)
     }
 
+    fn julia_work_order_from_fixture(root: &Path, text: &str) -> WorkOrder {
+        write_julia_fixture(root, text);
+        only_work_order(root)
+    }
+
     fn verify_fixture(kind: FixtureKind, text: &str) -> VerifyFixture {
         let temp = tempfile::tempdir().expect("tempdir");
         let work_order = match kind {
             FixtureKind::Clojure => work_order_from_fixture(temp.path(), text),
+            FixtureKind::Julia => julia_work_order_from_fixture(temp.path(), text),
             FixtureKind::Python => python_work_order_from_fixture(temp.path(), text),
             FixtureKind::Rust => rust_work_order_from_fixture(temp.path(), text),
         };
@@ -3201,6 +3343,114 @@ mod tests {
     }
 
     #[test]
+    fn non_rust_coverage_auto_commands_are_constructed_deterministically() {
+        let output_dir = Path::new("/tmp/deslop-cloverage");
+        assert_eq!(
+            cloverage_command("lein", output_dir),
+            CoverageToolCommand::new(
+                "lein",
+                [
+                    "cloverage".to_string(),
+                    "--json".to_string(),
+                    "--output".to_string(),
+                    output_dir.display().to_string(),
+                ],
+            )
+        );
+        assert_eq!(
+            cloverage_command("custom-lein", output_dir).program,
+            "custom-lein"
+        );
+
+        assert_eq!(
+            julia_coverage_command("julia"),
+            CoverageToolCommand::new(
+                "julia",
+                [
+                    "--startup-file=no".to_string(),
+                    "--code-coverage=user".to_string(),
+                    "-e".to_string(),
+                    "using Pkg; Pkg.test()".to_string(),
+                ],
+            )
+        );
+        assert_eq!(
+            julia_coverage_command("custom-julia").program,
+            "custom-julia"
+        );
+
+        let output_path = Path::new("/tmp/deslop-coverage.json");
+        assert_eq!(
+            coverage_py_run_command("coverage"),
+            CoverageToolCommand::new(
+                "coverage",
+                [
+                    "run".to_string(),
+                    "-m".to_string(),
+                    "unittest".to_string(),
+                    "discover".to_string(),
+                ],
+            )
+        );
+        assert_eq!(
+            coverage_py_json_command("coverage", output_path),
+            CoverageToolCommand::new(
+                "coverage",
+                [
+                    "json".to_string(),
+                    "-o".to_string(),
+                    output_path.display().to_string(),
+                ],
+            )
+        );
+        assert_eq!(
+            coverage_py_run_command("custom-coverage").program,
+            "custom-coverage"
+        );
+    }
+
+    #[test]
+    fn non_rust_coverage_auto_defaults_to_expected_commands() {
+        let clojure = ClojureCloverageProvider::new(&CoverageConfig::Auto);
+        let julia = JuliaCoverageProvider::new(&CoverageConfig::Auto);
+        let python = PythonCoveragePyProvider::new(&CoverageConfig::Auto);
+        assert!(matches!(
+            clojure.mode,
+            CoverageProviderMode::Auto { ref command } if command == "lein"
+        ));
+        assert!(matches!(
+            julia.mode,
+            CoverageProviderMode::Auto { ref command } if command == "julia"
+        ));
+        assert!(matches!(
+            python.mode,
+            CoverageProviderMode::Auto { ref command } if command == "coverage"
+        ));
+
+        let clojure = ClojureCloverageProvider::new(&CoverageConfig::AutoWithCommand(
+            "custom-lein".to_string(),
+        ));
+        let julia = JuliaCoverageProvider::new(&CoverageConfig::AutoWithCommand(
+            "custom-julia".to_string(),
+        ));
+        let python = PythonCoveragePyProvider::new(&CoverageConfig::AutoWithCommand(
+            "custom-coverage".to_string(),
+        ));
+        assert!(matches!(
+            clojure.mode,
+            CoverageProviderMode::Auto { ref command } if command == "custom-lein"
+        ));
+        assert!(matches!(
+            julia.mode,
+            CoverageProviderMode::Auto { ref command } if command == "custom-julia"
+        ));
+        assert!(matches!(
+            python.mode,
+            CoverageProviderMode::Auto { ref command } if command == "custom-coverage"
+        ));
+    }
+
+    #[test]
     fn cloverage_fixture_maps_covered_and_uncovered_regions() {
         let temp = tempfile::tempdir().expect("tempdir");
         let source = SourceFile::new(
@@ -3243,6 +3493,26 @@ mod tests {
     }
 
     #[test]
+    fn absent_cloverage_auto_command_keeps_patch_coverage_unknown() {
+        let fixture = clojure_fixture("(= (count xs) 0)\n");
+        let report = verify_single_with_options(
+            fixture.temp.path(),
+            patch_for(&fixture.work_order, "(empty? xs)\n"),
+            test_options(
+                fixture.temp.path(),
+                Some("true"),
+                CoverageConfig::AutoWithCommand("__deslop_missing_cloverage__".to_string()),
+            ),
+        );
+        assert_eq!(report.passed_count(), 1);
+        assert_eq!(
+            report.results[0].verdict,
+            VerificationVerdict::CoverageUnknown
+        );
+        assert!(report.results[0].reasons[0].contains("cloverage"));
+    }
+
+    #[test]
     fn coverage_jl_cov_fixture_maps_covered_and_uncovered_regions() {
         let temp = tempfile::tempdir().expect("tempdir");
         let source = SourceFile::new(
@@ -3268,7 +3538,30 @@ mod tests {
         ));
         let assessment = assess_provider(&mut provider, temp.path(), &source, &work_order);
         assert_eq!(assessment.status, CoverageStatus::Unknown);
-        assert!(assessment.reason.unwrap().contains("Coverage.jl"));
+        assert!(assessment.reason.unwrap().contains("julia"));
+    }
+
+    #[test]
+    fn absent_julia_auto_command_keeps_patch_coverage_unknown() {
+        let fixture = verify_fixture(
+            FixtureKind::Julia,
+            "function f()\n    error(\"TODO: implement\")\nend\n",
+        );
+        let report = verify_single_with_options(
+            fixture.temp.path(),
+            patch_for(&fixture.work_order, "function f()\n    1\nend\n"),
+            test_options(
+                fixture.temp.path(),
+                Some("true"),
+                CoverageConfig::AutoWithCommand("__deslop_missing_julia__".to_string()),
+            ),
+        );
+        assert_eq!(report.passed_count(), 1);
+        assert_eq!(
+            report.results[0].verdict,
+            VerificationVerdict::CoverageUnknown
+        );
+        assert!(report.results[0].reasons[0].contains("julia"));
     }
 
     #[test]
@@ -3310,6 +3603,26 @@ mod tests {
         let assessment = assess_provider(&mut provider, temp.path(), &source, &work_order);
         assert_eq!(assessment.status, CoverageStatus::Unknown);
         assert!(assessment.reason.unwrap().contains("coverage.py"));
+    }
+
+    #[test]
+    fn absent_coverage_py_auto_command_keeps_patch_coverage_unknown() {
+        let fixture = python_fixture("def f():\n    value = 'TODO: implement'\n    return value\n");
+        let report = verify_single_with_options(
+            fixture.temp.path(),
+            patch_for(&fixture.work_order, "    value = 1\n"),
+            test_options(
+                fixture.temp.path(),
+                Some("true"),
+                CoverageConfig::AutoWithCommand("__deslop_missing_coverage_py__".to_string()),
+            ),
+        );
+        assert_eq!(report.passed_count(), 1);
+        assert_eq!(
+            report.results[0].verdict,
+            VerificationVerdict::CoverageUnknown
+        );
+        assert!(report.results[0].reasons[0].contains("coverage.py"));
     }
 
     #[test]
