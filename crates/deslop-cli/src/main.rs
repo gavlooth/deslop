@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use deslop_analyzer::{AnalyzerConfig, JuliaExternal, scan_paths, scan_paths_with_config};
 use deslop_core::{FileReport, Severity};
@@ -15,7 +15,9 @@ use deslop_metrics::{
 };
 use deslop_report::{render_agent, render_json, render_sarif, render_text};
 use deslop_slim::{
-    AnthropicClient, DEFAULT_MODEL, OpenAiClient, RecordedClient, SlimOptions, run_slim,
+    AnthropicClient, DEFAULT_MODEL, EgressDecision, EgressSummary, OpenAiClient, RecordedClient,
+    SlimOptions, egress_consent_error, egress_prompt_message, egress_summary, env_egress_consent,
+    provider_base_url, resolve_egress_consent, run_slim,
 };
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
@@ -126,6 +128,9 @@ struct FixArgs {
 
     #[arg(long)]
     mock: Option<PathBuf>,
+
+    #[arg(long, alias = "consent")]
+    yes: bool,
 
     #[arg(long)]
     check_cmd: Option<String>,
@@ -307,6 +312,15 @@ enum SlimProvider {
     Openai,
 }
 
+impl SlimProvider {
+    fn as_str(self) -> &'static str {
+        match self {
+            SlimProvider::Anthropic => "anthropic",
+            SlimProvider::Openai => "openai",
+        }
+    }
+}
+
 impl From<JuliaExternalArg> for JuliaExternal {
     fn from(value: JuliaExternalArg) -> Self {
         match value {
@@ -373,6 +387,8 @@ struct SlimConfig {
     model: Option<String>,
     #[serde(default)]
     base_url: Option<String>,
+    #[serde(default)]
+    egress_consent: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -506,6 +522,8 @@ fn fix(args: FixArgs, config: &DeslopConfig) -> Result<()> {
     let allow_unverified = resolve_fix_allow_unverified(args.allow_unverified, config);
     let provider = resolve_slim_provider(args.provider, config);
     let base_url = resolve_slim_base_url(args.base_url, config);
+    let explicit_consent =
+        resolve_slim_egress_consent(args.yes, std::env::var("DESLOP_SLIM_CONSENT").ok(), config);
     let options = SlimOptions {
         root: PathBuf::from("."),
         paths,
@@ -522,6 +540,14 @@ fn fix(args: FixArgs, config: &DeslopConfig) -> Result<()> {
         let client = RecordedClient::from_path(path)?;
         run_slim(&client, options)?
     } else {
+        let provider_name = provider.as_str();
+        let destination = provider_base_url(provider_name, base_url.as_deref());
+        require_cli_egress_consent(
+            provider_name,
+            &destination,
+            egress_summary(&options)?,
+            explicit_consent,
+        )?;
         match provider {
             SlimProvider::Anthropic => {
                 let client = AnthropicClient::from_env(model.clone())?;
@@ -535,6 +561,34 @@ fn fix(args: FixArgs, config: &DeslopConfig) -> Result<()> {
     };
     print_pretty_json(&report)?;
     Ok(())
+}
+
+fn require_cli_egress_consent(
+    provider: &str,
+    base_url: &str,
+    summary: EgressSummary,
+    explicit_consent: bool,
+) -> Result<()> {
+    match resolve_egress_consent(explicit_consent, io::stdin().is_terminal()) {
+        EgressDecision::Granted => Ok(()),
+        EgressDecision::DeniedNonInteractive => {
+            bail!("{}", egress_consent_error(provider, base_url, summary))
+        }
+        EgressDecision::Prompt => {
+            let message = egress_prompt_message(provider, base_url, summary);
+            eprint!("{message} ");
+            io::stderr().flush()?;
+            let mut answer = String::new();
+            io::stdin()
+                .read_line(&mut answer)
+                .context("failed to read source-egress consent response")?;
+            if matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+                Ok(())
+            } else {
+                bail!("source-egress consent declined; no LLM request was sent")
+            }
+        }
+    }
 }
 
 fn propose(args: ProposeArgs, config: &DeslopConfig) -> Result<()> {
@@ -767,6 +821,20 @@ fn resolve_slim_model(
     cli.or(env_model)
         .or_else(|| config.slim.as_ref().and_then(|slim| slim.model.clone()))
         .unwrap_or_else(|| DEFAULT_MODEL.to_string())
+}
+
+fn resolve_slim_egress_consent(
+    cli_yes: bool,
+    env_consent: Option<String>,
+    config: &DeslopConfig,
+) -> bool {
+    cli_yes
+        || env_egress_consent(env_consent)
+        || config
+            .slim
+            .as_ref()
+            .and_then(|slim| slim.egress_consent)
+            .unwrap_or(false)
 }
 
 fn resolve_fix_check_cmd(cli: Option<String>, config: &DeslopConfig) -> Option<String> {
@@ -1035,6 +1103,7 @@ mod tests {
             provider = "openai"
             model = "configured-model"
             base_url = "http://localhost:11434/v1"
+            egress_consent = true
 
             [fix]
             check_cmd = "cargo test -p configured"
@@ -1064,6 +1133,7 @@ mod tests {
             resolve_slim_base_url(None, &config).as_deref(),
             Some("http://localhost:11434/v1")
         );
+        assert!(resolve_slim_egress_consent(false, None, &config));
         assert_eq!(
             resolve_fix_check_cmd(None, &config).as_deref(),
             Some("cargo test -p configured")
@@ -1135,6 +1205,33 @@ mod tests {
             resolve_slim_model(None, None, &DeslopConfig::default()),
             DEFAULT_MODEL
         );
+    }
+
+    #[test]
+    fn slim_egress_consent_sources_grant_independently() {
+        let config: DeslopConfig = toml::from_str(
+            r#"
+            [slim]
+            egress_consent = true
+            "#,
+        )
+        .expect("parse config");
+        assert!(resolve_slim_egress_consent(
+            true,
+            None,
+            &DeslopConfig::default()
+        ));
+        assert!(resolve_slim_egress_consent(
+            false,
+            Some("1".to_string()),
+            &DeslopConfig::default()
+        ));
+        assert!(resolve_slim_egress_consent(false, None, &config));
+        assert!(!resolve_slim_egress_consent(
+            false,
+            Some("0".to_string()),
+            &DeslopConfig::default()
+        ));
     }
 
     #[test]
@@ -1212,6 +1309,7 @@ mod tests {
             "--provider",
             "--base-url",
             "--mock",
+            "--yes",
             "--check-cmd",
         ] {
             assert!(help.contains(flag), "{flag} missing from help:\n{help}");

@@ -162,6 +162,13 @@ older Vimes.jl path reports patches/diffs but is legacy, while Gremlins.jl is a 
 source-splicing project; both are deferred until a maintained, source-line machine-readable report
 contract is proven.
 
+Bundled real-provider LLM calls are source egress and require affirmative consent before any
+Anthropic/OpenAI request, including dry-run rewrites. Consent can come from `--yes`/`--consent`,
+`DESLOP_SLIM_CONSENT=1`, `[slim] egress_consent = true`, or an interactive TTY prompt that states
+the provider, base URL, file count, and region count. Recorded/mock clients bypass this requirement
+because no source leaves the machine. Non-interactive callers, including MCP `fix mode=auto`, must
+provide explicit consent and fail before provider-client construction when it is absent.
+
 ---
 
 ## 5. Agent-ready output / protocol (`deslop-protocol`)  *(new, first-class)*

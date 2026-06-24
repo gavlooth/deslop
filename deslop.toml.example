@@ -15,6 +15,7 @@
 # provider = "anthropic" # anthropic | openai
 # model = "claude-sonnet-4-6"
 # base_url = "https://api.openai.com/v1" # used by provider = "openai"
+# egress_consent = false # true permits real-provider source egress without an interactive prompt
 
 [external]
 # clippy = "off" # off | on

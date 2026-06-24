@@ -46,10 +46,26 @@ Feeds `deslop fix`. `coverage` uses the same parser as the CLI:
 provider = "anthropic"         # anthropic | openai
 model = "claude-sonnet-4-6"
 base_url = "https://api.openai.com/v1"
+egress_consent = false
 ```
 
 Feeds the bundled `deslop fix` LLM consumer. `DESLOP_SLIM_MODEL` overrides the config
 model when `--model` is not supplied. Provider API keys stay in environment variables.
+
+Real-provider `deslop fix` calls send selected code regions to the configured provider, even
+in dry-run. Consent is required through one of:
+
+- `deslop fix --yes` or `deslop fix --consent`
+- `DESLOP_SLIM_CONSENT=1`
+- `[slim] egress_consent = true`
+- an interactive `y` response to the TTY prompt
+
+`--mock` uses a recorded local response and does not require consent. Non-interactive runs
+without consent fail before constructing a provider client or reading an API key.
+
+MCP `fix mode=auto` is non-interactive. With `deslop-mcp --features slim-llm`, real-provider
+auto mode requires `consent: true`, `DESLOP_SLIM_CONSENT=1`, or a config file containing
+`[slim] egress_consent = true`; mock auto runs bypass consent.
 
 ## external
 

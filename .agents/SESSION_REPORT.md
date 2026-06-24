@@ -1,5 +1,61 @@
 # Session Report
 
+## 2026-06-24T08:04:14+02:00 — Source Egress Consent
+
+Objective: Execute `.agents/NEXT_TASK.md` Task 11 only: gate real-provider bundled LLM
+calls behind affirmative source-egress consent, keep mock/RecordedClient local runs
+unblocked, and do not start queued items 12-13.
+
+Changes:
+- Started new jj change `qpywotro` on top of `quvrtxsu`.
+- Added shared pure consent primitives in `deslop-slim`:
+  - `EgressDecision::{Granted, Prompt, DeniedNonInteractive}`
+  - `resolve_egress_consent(explicit, is_interactive)`
+  - env parsing for `DESLOP_SLIM_CONSENT`
+  - provider/base-url message helpers
+  - source-egress summary counting unique files and rewrite regions.
+- Wired CLI `deslop fix`:
+  - new `--yes` flag with `--consent` alias
+  - `[slim] egress_consent = true`
+  - consent sources: CLI flag > env/config folded into explicit consent > TTY prompt
+  - real providers resolve consent before building `AnthropicClient`/`OpenAiClient`
+  - prompt/error states provider, base URL, file count, and region count
+  - API keys are never printed or read from config.
+- Wired MCP `fix mode=auto` behind `slim-llm`:
+  - schema adds `consent` and `config`
+  - server is non-interactive, so real providers require explicit consent via `consent:
+    true`, `DESLOP_SLIM_CONSENT=1`, or `[slim] egress_consent = true`
+  - missing consent errors before provider-client construction/API-key lookup
+  - mock/RecordedClient path bypasses consent.
+- Added `egress_consent` to `deslop.toml.example`.
+- Updated `docs/CONFIG.md` and `SPEC.md`.
+- Touched `.agents/HEARTBEAT.md`.
+
+Tests:
+- `deslop-slim`: truth table for `resolve_egress_consent`; env/message/base-url
+  determinism.
+- `deslop-cli`: flag/env/config consent sources grant independently; all config parsing
+  includes `egress_consent`; help lists `--yes`.
+- `deslop-mcp --features slim-llm`: real provider without consent returns the clear
+  source-egress error without mentioning API keys; config consent parser works; existing mock
+  e2e still passes without consent.
+
+Verification:
+- Focused checks passed:
+  - `cargo fmt --all && cargo test -p deslop-slim && cargo test -p deslop-cli && cargo test -p deslop-mcp --features slim-llm`
+- Full required gate passed:
+  - `cargo fmt --all && cargo build --workspace && cargo build -p deslop-slim --no-default-features && cargo test --workspace && cargo clippy --workspace -- -D warnings`
+- Required feature gate rerun passed:
+  - `cargo test -p deslop-mcp --features slim-llm`
+
+Not started:
+- Queued items 12-13.
+
+Blockers:
+- None.
+
+Signature: Codex
+
 ## 2026-06-24T07:50:53+02:00 — Non-Rust Coverage Auto Wiring
 
 Objective: Execute `.agents/NEXT_TASK.md` Task 10 only: make non-Rust coverage

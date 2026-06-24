@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -16,6 +17,8 @@ use deslop_verify::{
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
+pub const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com/v1/messages";
+pub const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 
 pub trait LlmClient {
     fn rewrite(&self, prompt: &SlimPrompt) -> Result<String>;
@@ -46,6 +49,76 @@ pub struct SlimOptions {
     pub model: String,
     pub check_cmd: Option<String>,
     pub backup: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EgressDecision {
+    Granted,
+    Prompt,
+    DeniedNonInteractive,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EgressSummary {
+    pub file_count: usize,
+    pub region_count: usize,
+}
+
+pub fn resolve_egress_consent(explicit: bool, is_interactive: bool) -> EgressDecision {
+    if explicit {
+        EgressDecision::Granted
+    } else if is_interactive {
+        EgressDecision::Prompt
+    } else {
+        EgressDecision::DeniedNonInteractive
+    }
+}
+
+pub fn env_egress_consent(value: Option<String>) -> bool {
+    value.as_deref().is_some_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "y"
+        )
+    })
+}
+
+pub fn provider_base_url(provider: &str, base_url: Option<&str>) -> String {
+    match provider {
+        "anthropic" => ANTHROPIC_BASE_URL.to_string(),
+        "openai" => base_url.unwrap_or(OPENAI_DEFAULT_BASE_URL).to_string(),
+        _ => base_url.unwrap_or("unknown").to_string(),
+    }
+}
+
+pub fn egress_prompt_message(provider: &str, base_url: &str, summary: EgressSummary) -> String {
+    format!(
+        "deslop will send code regions from {} file(s), {} region(s), to {} ({}). Continue? [y/N]",
+        summary.file_count, summary.region_count, provider, base_url
+    )
+}
+
+pub fn egress_consent_error(provider: &str, base_url: &str, summary: EgressSummary) -> String {
+    format!(
+        "{} Refusing to call the real LLM provider without source-egress consent. Pass --yes/--consent, set DESLOP_SLIM_CONSENT=1, or set [slim] egress_consent = true in deslop.toml.",
+        egress_prompt_message(provider, base_url, summary)
+    )
+}
+
+pub fn egress_summary(options: &SlimOptions) -> Result<EgressSummary> {
+    let work_orders = load_or_propose_work_orders(options)?;
+    let rewrite_orders = work_orders
+        .into_iter()
+        .filter(|work_order| work_order.kind != WorkOrderKind::NeedsCharacterizationTest)
+        .collect::<Vec<_>>();
+    let files = rewrite_orders
+        .iter()
+        .map(|work_order| work_order.path.to_path_buf())
+        .collect::<BTreeSet<_>>();
+    Ok(EgressSummary {
+        file_count: files.len(),
+        region_count: rewrite_orders.len(),
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -649,6 +722,46 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn egress_consent_decision_truth_table() {
+        assert_eq!(resolve_egress_consent(true, false), EgressDecision::Granted);
+        assert_eq!(resolve_egress_consent(true, true), EgressDecision::Granted);
+        assert_eq!(resolve_egress_consent(false, true), EgressDecision::Prompt);
+        assert_eq!(
+            resolve_egress_consent(false, false),
+            EgressDecision::DeniedNonInteractive
+        );
+    }
+
+    #[test]
+    fn egress_env_and_messages_are_deterministic() {
+        assert!(env_egress_consent(Some("1".to_string())));
+        assert!(env_egress_consent(Some("true".to_string())));
+        assert!(!env_egress_consent(Some("0".to_string())));
+        assert!(!env_egress_consent(None));
+
+        assert_eq!(
+            provider_base_url("anthropic", Some("ignored")),
+            ANTHROPIC_BASE_URL
+        );
+        assert_eq!(provider_base_url("openai", None), OPENAI_DEFAULT_BASE_URL);
+        assert_eq!(
+            provider_base_url("openai", Some("http://localhost:11434/v1")),
+            "http://localhost:11434/v1"
+        );
+        let message = egress_prompt_message(
+            "openai",
+            "http://localhost:11434/v1",
+            EgressSummary {
+                file_count: 2,
+                region_count: 3,
+            },
+        );
+        assert!(message.contains("2 file(s), 3 region(s)"));
+        assert!(message.contains("openai (http://localhost:11434/v1)"));
+        assert!(!message.contains("API_KEY"));
+    }
 
     #[test]
     fn prompt_contains_region_finding_and_contract() {

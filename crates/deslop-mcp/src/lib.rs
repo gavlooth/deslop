@@ -1,3 +1,5 @@
+#[cfg(feature = "slim-llm")]
+use std::fs;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
@@ -13,13 +15,17 @@ use deslop_report::{render_agent, render_json};
 use deslop_slim::build_prompt;
 #[cfg(feature = "slim-llm")]
 use deslop_slim::{
-    AnthropicClient, OpenAiClient, RecordedClient, SlimOptions, resolve_model, run_slim,
+    AnthropicClient, EgressDecision, OpenAiClient, RecordedClient, SlimOptions,
+    egress_consent_error, egress_summary, env_egress_consent, provider_base_url,
+    resolve_egress_consent, resolve_model, run_slim,
 };
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
     characterization_work_orders_for_patches, parse_coverage_mode, verify_characterization_tests,
     verify_patches,
 };
+#[cfg(feature = "slim-llm")]
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 pub fn run_stdio() -> Result<()> {
@@ -133,6 +139,16 @@ fn tools_list_result() -> Value {
                     "mock": {
                         "type": "string",
                         "description": "auto mode only; path to a recorded response for deterministic no-network runs."
+                    },
+                    "consent": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "auto mode real providers only; explicit source-egress consent. Mock runs bypass consent."
+                    },
+                    "config": {
+                        "type": "string",
+                        "default": "deslop.toml",
+                        "description": "auto mode only; deslop.toml path used for [slim] egress_consent."
                     }
             }))),
             tool("verify", "Verify deslop.patch/1 patches without writing files.", required_schema(&["patches"], json!({
@@ -356,20 +372,76 @@ fn fix_auto_tool(args: &Value) -> Result<Value> {
         let client = RecordedClient::from_path(path)?;
         run_slim(&client, options)?
     } else {
-        match provider_arg(args)? {
+        let provider = provider_arg(args)?;
+        let base_url = optional_string(args, "base_url");
+        let destination = provider_base_url(provider, base_url.as_deref());
+        require_mcp_egress_consent(args, provider, &destination, &options)?;
+        match provider {
             "anthropic" => {
                 let client = AnthropicClient::from_env(model.clone())?;
                 run_slim(&client, options)?
             }
             "openai" => {
-                let client =
-                    OpenAiClient::from_env(model.clone(), optional_string(args, "base_url"))?;
+                let client = OpenAiClient::from_env(model.clone(), base_url)?;
                 run_slim(&client, options)?
             }
             other => bail!("unsupported fix provider `{other}`; use `anthropic` or `openai`"),
         }
     };
     Ok(serde_json::to_value(report)?)
+}
+
+#[cfg(feature = "slim-llm")]
+#[derive(Debug, Default, Deserialize)]
+struct McpDeslopConfig {
+    #[serde(default)]
+    slim: Option<McpSlimConfig>,
+}
+
+#[cfg(feature = "slim-llm")]
+#[derive(Debug, Default, Deserialize)]
+struct McpSlimConfig {
+    #[serde(default)]
+    egress_consent: Option<bool>,
+}
+
+#[cfg(feature = "slim-llm")]
+fn require_mcp_egress_consent(
+    args: &Value,
+    provider: &str,
+    base_url: &str,
+    options: &SlimOptions,
+) -> Result<()> {
+    let explicit = bool_arg(args, "consent")
+        || env_egress_consent(std::env::var("DESLOP_SLIM_CONSENT").ok())
+        || mcp_config_egress_consent(args)?;
+    match resolve_egress_consent(explicit, false) {
+        EgressDecision::Granted => Ok(()),
+        EgressDecision::Prompt => unreachable!("MCP fix auto is non-interactive"),
+        EgressDecision::DeniedNonInteractive => {
+            bail!(
+                "{}",
+                egress_consent_error(provider, base_url, egress_summary(options)?)
+            )
+        }
+    }
+}
+
+#[cfg(feature = "slim-llm")]
+fn mcp_config_egress_consent(args: &Value) -> Result<bool> {
+    let path = optional_string(args, "config").unwrap_or_else(|| "deslop.toml".to_string());
+    let path = PathBuf::from(path);
+    if !path.exists() {
+        return Ok(false);
+    }
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let config: McpDeslopConfig =
+        toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))?;
+    Ok(config
+        .slim
+        .and_then(|slim| slim.egress_consent)
+        .unwrap_or(false))
 }
 
 #[cfg(feature = "slim-llm")]
@@ -701,6 +773,14 @@ mod tests {
         let mode = &fix["inputSchema"]["properties"]["mode"];
         assert_eq!(mode["default"], "prompts");
         assert_eq!(mode["enum"], json!(["prompts", "auto"]));
+        assert_eq!(
+            fix["inputSchema"]["properties"]["consent"]["default"],
+            false
+        );
+        assert_eq!(
+            fix["inputSchema"]["properties"]["config"]["default"],
+            "deslop.toml"
+        );
         assert!(
             fix["description"]
                 .as_str()
@@ -901,6 +981,42 @@ mod tests {
                 .to_string()
                 .contains("fix mode=auto requires deslop-mcp built with --features slim-llm"),
             "{error:#}"
+        );
+    }
+
+    #[cfg(feature = "slim-llm")]
+    #[test]
+    fn fix_auto_real_provider_requires_explicit_consent() {
+        let fixture = rust_slim_fixture();
+        let error = call_tool(
+            "fix",
+            json!({
+                "mode": "auto",
+                "paths": [fixture.source],
+                "provider": "anthropic",
+                "config": repo_relative_temp_path(&fixture._temp, "missing-deslop.toml")
+            }),
+        )
+        .expect_err("consent error");
+        let error = error.to_string();
+        assert!(error.contains("without source-egress consent"), "{error}");
+        assert!(error.contains("anthropic"), "{error}");
+        assert!(error.contains("DESLOP_SLIM_CONSENT=1"), "{error}");
+        assert!(!error.contains("ANTHROPIC_API_KEY"), "{error}");
+    }
+
+    #[cfg(feature = "slim-llm")]
+    #[test]
+    fn mcp_config_egress_consent_reads_slim_section() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let config = repo_relative_temp_path(&temp, "deslop.toml");
+        fs::write(&config, "[slim]\negress_consent = true\n").expect("write config");
+        assert!(mcp_config_egress_consent(&json!({ "config": config })).expect("config consent"));
+        assert!(
+            !mcp_config_egress_consent(&json!({
+                "config": repo_relative_temp_path(&temp, "missing.toml")
+            }))
+            .expect("missing config")
         );
     }
 
