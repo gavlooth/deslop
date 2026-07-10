@@ -356,8 +356,9 @@ deslop rules                                                   # class, precondi
   findings and **fails CI only on new slop** (ratchet). Heavy external analyzers are
   opt-in; `--julia-external` selects StaticLint by default and `--julia-project` passes
   `julia --project=...`.
-- **`metrics`/`health`**: computes per-region complexity and expressivity metrics, ranks
-  repo-relative bloat hotspots, and emits text or JSON.
+- **`metrics`/`health`**: computes per-region complexity, entropy, structural readability,
+  and separate measurement/refactor confidence; ranks absolute refactor candidates and
+  repo-relative bloat hotspots; emits text or JSON.
 - **`graph`**: emits `deslop.graph/1`, a deterministic Tree-sitter-derived dependency graph
   for LLM refactor planning. Nodes are files, symbols, and explicit external symbols; edges are
   `contains`, `imports`, `calls`, and `inherits`. Only `confidence=resolved` means deslop found
@@ -400,8 +401,37 @@ Per region:
   normalized 0-100.
 - **Expressivity / density:** decision density (`cyclomatic / tokens`), unique-token
   ratio, comment-to-code ratio, and a compression/redundancy proxy.
+- **Tree-sitter entropy:** normalized Shannon entropy over CST leaf tokens plus normalized
+  entropy over CST node kinds. Token information volume is `leaf_count * raw_token_entropy`.
+  Languages without a grammar fall back to the existing text tokenizer and omit structural
+  entropy.
 - **Compression proxy:** currently byte entropy normalized to `0.0..1.0`, chosen to avoid
   a compression dependency while still flagging repetitive low-information regions.
+- **Structural readability:** a bounded deterministic model combines cognitive/cyclomatic/
+  nesting burden, information volume, lexical redundancy, structural disorder, and the
+  complexity-by-information interaction. Higher scores are easier to read. The model id is
+  `deslop-structural-readability/1` and `calibrated=false`; it is not a human-agreement
+  probability.
+- **Confidence and size:** `measurement_confidence` reports parse/sample reliability.
+  `size_support` rises with CST leaf count and NLOC. `refactor_confidence` combines readability
+  burden, measurement confidence, and size support, so size strengthens existing complexity/
+  entropy evidence but cannot make a large simple region suspicious by itself.
+- **Confidence distribution and normalization:** the report emits count, mean, median, population
+  standard deviation, min/max, and linearly interpolated p25/p75 for raw refactor confidence.
+  Every region also receives a mean-relative z-score and tie-aware empirical percentile. Regions
+  qualify as candidates either at raw confidence `>= 0.50`, or repo-relatively at z-score `>= 1.0`
+  and percentile `>= 0.90`. Relative selection requires at least 8 regions and is disabled when
+  the confidence range is below `0.05` or standard deviation below `0.01`; flat/tied distributions
+  therefore cannot manufacture refactor targets. Region traversal retains nested containers and
+  members, so classes/impls and their methods/functions are scored.
+- **Labeled JSON confidence (`deslop.metrics/3`):** `refactor_confidence` is a one-entry object
+  whose key communicates the band and whose value is the score, e.g. `{"high": 0.70}`.
+  `refactor_confidence_score` repeats the numeric value for sorting and arithmetic. Bands are
+  `very_low` `[0.00,0.20)`, `low` `[0.20,0.40)`, `moderate` `[0.40,0.60)`, `high`
+  `[0.60,0.80)`, and `very_high` `[0.80,1.00]`. `confidence_basis` is
+  `tree_intrinsic_v1`, making the fixed cross-codebase structural basis explicit. Scan-local
+  normalization is nested separately as `repo_relative: {zscore, percentile}`. The schema moved
+  from `/2` to `/3` because the formerly flat relative fields were replaced by this object.
 
 After scanning, metrics are compared against the run's own distribution. A hotspot is a
 region at least `--sigma` standard deviations from the repo median on high complexity or
@@ -421,7 +451,7 @@ It implements the core JSON-RPC MCP methods needed by coding agents:
 `initialize`, `tools/list`, and `tools/call`. Tool payloads reuse the existing
 `deslop.findings/1`, `deslop.workorder/1`, `deslop.fix/1`, `deslop.patch/1`,
 `deslop.characterization-test/1`, `deslop.verify/1`, `deslop.apply/1`, and
-`deslop.metrics/1`/`deslop.graph/1` schemas. The `fix` tool scans/proposes work orders, reuses
+`deslop.metrics/3`/`deslop.graph/1` schemas. The `fix` tool scans/proposes work orders, reuses
 `deslop_slim::build_prompt`, and returns prompt entries containing `workorder_id`, `path`,
 line range, `region_fingerprint`, contract, findings, and prompt text. The caller rewrites
 the region and submits `deslop.patch/1` patches through `apply`, so the existing

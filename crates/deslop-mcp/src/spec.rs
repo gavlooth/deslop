@@ -211,8 +211,8 @@ fn patch_verification_properties() -> Value {
 fn metrics_tool_spec() -> Value {
     tool(
         "metrics",
-        "Read-only. Return deslop.metrics/1 per-function complexity/expressivity metrics plus statistical hotspots (mean + sigma * stddev). Hotspots are triage signals, not proof of removable code. No writes, no network.",
-        ToolBehavior::read_only("Code metrics and hotspots"),
+        "Read-only. Return deslop.metrics/3 with Tree-sitter-derived per-region structural readability, labeled intrinsic confidence plus numeric score, explicit confidence_basis, nested repo_relative z-score/percentile, distribution statistics, ranked candidates, and complexity/entropy hotspots. Flat distributions cannot create relative candidates. Confidence is uncalibrated triage evidence, not proof that a rewrite is safe. No writes, no network.",
+        ToolBehavior::read_only("Readability, refactor confidence, and code hotspots"),
         object_schema(json!({
             "paths": paths_schema(),
             "sigma": { "type": "number", "default": 2.0 }

@@ -401,19 +401,35 @@ impl LangPack for PythonPack {
     }
 
     fn metrics_regions(&self) -> &'static [&'static str] {
-        &[]
+        &["function_definition", "class_definition"]
     }
 
     fn metrics_branches(&self) -> &'static [&'static str] {
-        &["if", "elif", "for", "while", "except"]
+        &[
+            "if_statement",
+            "elif_clause",
+            "for_statement",
+            "while_statement",
+            "except_clause",
+        ]
     }
 
     fn metrics_nesting(&self) -> &'static [&'static str] {
-        &["if", "for", "while", "try"]
+        &[
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "try_statement",
+        ]
     }
 
     fn metrics_flow_breaks(&self) -> &'static [&'static str] {
-        &["return", "break", "continue", "raise"]
+        &[
+            "return_statement",
+            "break_statement",
+            "continue_statement",
+            "raise_statement",
+        ]
     }
 
     fn halstead_operator_tokens(&self) -> &'static [&'static str] {

@@ -111,10 +111,39 @@ const WELL_KNOWN_TOOL_CONFIGS: &[&str] = &[
 /// case-insensitive substring over the callee identifier. Deliberately broad: config keys
 /// flowing into logging/printing/serialization is exactly the "looks wired" surface.
 const SINK_FRAGMENTS: &[&str] = &[
-    "print", "log", "write", "format", "serial", "echo", "banner", "show", "display", "debug",
-    "info", "warn", "error", "trace", "dump", "render", "tostring", "to_string", "to_str",
-    "inspect", "repr", "json", "yaml", "toml", "assert", "panic", "throw", "bail", "raise",
-    "expect", "message", "sprint", "string",
+    "print",
+    "log",
+    "write",
+    "format",
+    "serial",
+    "echo",
+    "banner",
+    "show",
+    "display",
+    "debug",
+    "info",
+    "warn",
+    "error",
+    "trace",
+    "dump",
+    "render",
+    "tostring",
+    "to_string",
+    "to_str",
+    "inspect",
+    "repr",
+    "json",
+    "yaml",
+    "toml",
+    "assert",
+    "panic",
+    "throw",
+    "bail",
+    "raise",
+    "expect",
+    "message",
+    "sprint",
+    "string",
 ];
 
 /// Callee-name fragments that mark a call as a config parse/lookup site when a key string
@@ -254,7 +283,11 @@ pub(crate) fn add_config_boundary(
                 .spellings
                 .iter()
                 .any(|s| s.starts_with("--") || s.contains('.') || is_env_shaped(s));
-        if anchored && !entry.parsed.is_empty() && entry.live.is_empty() && entry.shadowed.is_empty() {
+        if anchored
+            && !entry.parsed.is_empty()
+            && entry.live.is_empty()
+            && entry.shadowed.is_empty()
+        {
             let (path, line) = &entry.parsed[0];
             if let Some(source) = code_sources.iter().find(|s| &s.path == path) {
                 let echoes = entry.echoed.len();
@@ -579,12 +612,11 @@ fn collect_code_evidence(
                 attributed.push(key);
             }
         }
-        if keys.contains(&normalized) {
-            if let Some((key, _)) = evidence.get_key_value(&normalized) {
-                if !attributed.iter().any(|k| *k == key) {
-                    attributed.push(key);
-                }
-            }
+        if keys.contains(&normalized)
+            && let Some((key, _)) = evidence.get_key_value(&normalized)
+            && !attributed.contains(&key)
+        {
+            attributed.push(key);
         }
         if attributed.is_empty() {
             continue;
@@ -625,10 +657,10 @@ fn collect_code_evidence(
             if !in_scope {
                 continue;
             }
-            if let Some(literal) = literal_reassignment(*node, text) {
-                if let Some(entry) = evidence.get_mut(key) {
-                    entry.shadowed.push((source.path.clone(), line, literal));
-                }
+            if let Some(literal) = literal_reassignment(*node, text)
+                && let Some(entry) = evidence.get_mut(key)
+            {
+                entry.shadowed.push((source.path.clone(), line, literal));
             }
         }
     }
@@ -646,11 +678,20 @@ fn inside_guarded_block(node: Node) -> bool {
         if kind.contains("function") || kind.contains("method") {
             return false;
         }
-        if kind.contains("if") || kind.contains("try") || kind.contains("except")
-            || kind.contains("catch") || kind.contains("rescue") || kind.contains("case")
-            || kind.contains("match") || kind.contains("cond") || kind.contains("unless")
-            || kind.contains("switch") || kind.contains("conditional")
-            || kind.contains("binary") || kind.contains("boolean") || kind.contains("short_circuit")
+        if kind.contains("if")
+            || kind.contains("try")
+            || kind.contains("except")
+            || kind.contains("catch")
+            || kind.contains("rescue")
+            || kind.contains("case")
+            || kind.contains("match")
+            || kind.contains("cond")
+            || kind.contains("unless")
+            || kind.contains("switch")
+            || kind.contains("conditional")
+            || kind.contains("binary")
+            || kind.contains("boolean")
+            || kind.contains("short_circuit")
         {
             return true;
         }
@@ -753,10 +794,7 @@ fn callee_name(call: Node, text: &[u8]) -> Option<String> {
     let target = call.child(0)?;
     let raw = target.utf8_text(text).ok()?;
     let head = raw.lines().next().unwrap_or(raw);
-    let name = head
-        .rsplit(|c: char| matches!(c, '.' | ':' | '/'))
-        .next()
-        .unwrap_or(head);
+    let name = head.rsplit(['.', ':', '/']).next().unwrap_or(head);
     let cleaned: String = name
         .chars()
         .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '!' || *c == '?')
@@ -783,8 +821,8 @@ fn binding_target(call: Node, text: &[u8]) -> Option<String> {
             let lhs = parent.child(0)?;
             let raw = lhs.utf8_text(text).ok()?;
             let name = raw.trim();
-            let simple = !name.is_empty()
-                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            let simple =
+                !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
             return simple.then(|| name.to_string());
         }
         // Passing through wrappers like `parse(Int, get(...))` and parenthesized exprs.
@@ -835,16 +873,30 @@ fn classify_identifier_use(node: Node, text: &[u8], sinks: &impl Fn(&str) -> boo
                 _ => UseClass::Live,
             };
         }
-        if kind.contains("if") || kind.contains("condition") || kind.contains("while")
-            || kind.contains("binary") || kind.contains("comparison") || kind.contains("unary")
-            || kind.contains("index") || kind.contains("subscript") || kind.contains("range")
-            || kind.contains("return") || kind.contains("ternary") || kind.contains("for")
-            || kind.contains("match") || kind.contains("case") || kind.contains("switch")
+        if kind.contains("if")
+            || kind.contains("condition")
+            || kind.contains("while")
+            || kind.contains("binary")
+            || kind.contains("comparison")
+            || kind.contains("unary")
+            || kind.contains("index")
+            || kind.contains("subscript")
+            || kind.contains("range")
+            || kind.contains("return")
+            || kind.contains("ternary")
+            || kind.contains("for")
+            || kind.contains("match")
+            || kind.contains("case")
+            || kind.contains("switch")
         {
             return UseClass::Live;
         }
-        if kind.contains("pair") || kind.contains("field") || kind.contains("keyword_arg")
-            || kind.contains("named_field") || kind.contains("dictionary") || kind.contains("tuple")
+        if kind.contains("pair")
+            || kind.contains("field")
+            || kind.contains("keyword_arg")
+            || kind.contains("named_field")
+            || kind.contains("dictionary")
+            || kind.contains("tuple")
             || kind.contains("struct")
         {
             saw_store_shape = true;
@@ -878,7 +930,7 @@ fn literal_reassignment(node: Node, text: &[u8]) -> Option<String> {
     if parent.child(0).map(|c| c.id()) != Some(node.id()) {
         return None;
     }
-    let rhs = parent.child(parent.child_count().saturating_sub(1) as usize)?;
+    let rhs = parent.child(parent.child_count().saturating_sub(1))?;
     if rhs.id() == node.id() {
         return None;
     }
@@ -895,17 +947,22 @@ fn rhs_is_literal_only(node: Node, text: &[u8], self_ident: &str) -> bool {
     if kind.contains("comment") {
         return true;
     }
-    if kind.contains("number") || kind.contains("integer") || kind.contains("float")
-        || kind.contains("string") || kind.contains("bool") || kind == "true" || kind == "false"
+    if kind.contains("number")
+        || kind.contains("integer")
+        || kind.contains("float")
+        || kind.contains("string")
+        || kind.contains("bool")
+        || kind == "true"
+        || kind == "false"
     {
         return true;
     }
     if kind == "identifier" || kind.ends_with("_identifier") {
         // The binding itself may appear (e.g. `x = min(x, 3)`); any OTHER identifier
         // means the RHS is not literal-only.
-        return node.utf8_text(text).is_ok_and(|t| {
-            t == self_ident || t == "min" || t == "max" || t == "clamp"
-        });
+        return node
+            .utf8_text(text)
+            .is_ok_and(|t| t == self_ident || t == "min" || t == "max" || t == "clamp");
     }
     if node.child_count() == 0 {
         // Operators, parens, commas.
@@ -1068,7 +1125,8 @@ mod tests {
         assert!(
             findings
                 .iter()
-                .any(|f| f.rule == "config-key-shadowed" && f.message.contains("min(relation_top_k, 3)")),
+                .any(|f| f.rule == "config-key-shadowed"
+                    && f.message.contains("min(relation_top_k, 3)")),
             "expected config-key-shadowed for the literal clamp, got {findings:?}"
         );
     }

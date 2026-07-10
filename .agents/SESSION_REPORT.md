@@ -4327,3 +4327,206 @@ incidents are fixed; fixtures carry the pre-fix shapes). P2 candidates: per-lang
 (serde/clap derive keys), container round-trip crediting, prefix-construction detection.
 
 **Signature:** Claude (Fable 5), config-boundary analyzer (3 rules) landed with 6-round precision campaign, 188→2 on the motivating repo, 2026-07-10.
+
+## 2026-07-10T20:33:39+02:00 — Tree-sitter structural readability and refactor confidence
+
+**Objective:** add deterministic readability detection to `deslop metrics` by combining
+complexity and entropy, and expose confidence for functions, methods, classes/type containers,
+and other language-pack metric regions.
+
+**Production target and output contract:** `deslop metrics` text/JSON and the MCP `metrics` tool
+now emit additive `deslop.metrics/1` fields. Each region has its tree-sitter kind, normalized CST
+leaf-token entropy, CST node-kind entropy, information volume (`leaf_count * raw token entropy`),
+a 0-100 structural-readability score, component burdens, `measurement_confidence`, `size_support`,
+and `refactor_confidence`. The report declares model `deslop-structural-readability/1` with
+`calibrated=false` and ranks regions at refactor confidence >= 0.50. Existing fix/apply safety is
+unchanged; readability is triage-only.
+
+**Changes:**
+- `crates/deslop-metrics/src/lib.rs`: added CST token/node entropy, information volume, bounded
+  complexity/information/entropy interaction model, separate measurement/refactor confidence,
+  confidence-weighted repo readability, ranked absolute refactor candidates with factor reasons,
+  nested-region retention, and text/JSON rendering.
+- `crates/deslop-lang/src/lib.rs`: added Python function/class metric regions and corrected Python
+  tree-sitter branch/nesting/flow node kinds.
+- `crates/deslop-mcp/src/lib.rs` + `spec.rs`: documented and contract-tested the additive MCP
+  readability fields.
+- `README.md`, `SPEC.md`, `.agents/PLAN.md`: documented the model, size semantics, calibration
+  boundary, region coverage, and safety boundary.
+- `crates/deslop-analyzer/src/boundary.rs`: rustfmt plus six semantics-preserving clippy repairs
+  required because the clean parent change did not pass the repository's `-D warnings` gate.
+
+**Numerical/contract evidence:**
+- Focused metric matrix: 9/9 tests pass. It verifies bounded scores, complexity-only vs
+  entropy-only vs combined ordering, positive interaction, size increasing evidence support,
+  large-simple code remaining less suspicious, JS/Python class+method coverage, and Clojure
+  nested-call suppression.
+- MCP readability contract test passes and checks class/method regions plus both confidence fields.
+- CLI self-smoke on `crates/deslop-metrics/src/lib.rs`: 81 regions, repo health 40.3/100,
+  structural readability 83.2/100, two absolute candidates: `input_files` confidence 0.5866
+  (readability 48.88) and `ast_complexity` confidence 0.5412 (readability 55.95).
+- Full gate: `cargo fmt --all --check`; workspace build; slim no-default-features build;
+  `cargo test --workspace` (177 passed); `cargo test -p deslop-mcp --features slim-llm`
+  (18 passed); analyzer regression tests after clippy repair (49 passed); workspace clippy
+  with `-D warnings`. All final gates pass.
+
+**Invalidated assumptions / negative memory:**
+- Tree-sitter is sufficient for static feature extraction; human ratings are needed only to
+  calibrate a human-agreement probability, not to compute a deterministic structural score.
+- A repo-relative hotspot is not automatically an absolute high-confidence refactor candidate.
+  The old small bloated fixture measured only 0.2368 refactor confidence despite being a correct
+  statistical outlier. This is recorded in Hindsight negative memory; the absolute gate now uses
+  a genuinely large 40-branch fixture and remains separate from repo-relative hotspots.
+- Stopping traversal at an outer class/impl omitted methods. Traversing every declared region fixed
+  containers/members, but Clojure's broad `list_lit` declaration required semantic filtering to
+  avoid treating every nested call as a region.
+
+**Gate classification:** MECHANICS PASS, QUALITY CLOSURE NOT CLAIMED. The deterministic triage
+capability is integrated and deployable; the score is not a calibrated probability of human
+readability.
+
+**Estimated distance to production ready:** 55% ready / 45% remaining for a calibrated
+human-readability model. Baseline artifact: `deslop-structural-readability/1`. The three remaining
+quality gates are (1) independent human-rated, cross-language region data, (2) cross-project held-out
+comparison of complexity-only, entropy-only, combined, and lexical-enriched models, and (3)
+calibration of coefficients/0.50 candidate threshold with reliability/error reporting. No blocker
+prevents using the current explicitly uncalibrated triage score.
+
+**Restart/rebuild:** rebuild/reinstall the CLI or MCP binary to activate the new output in an
+already-installed executable. No migration, network access, or new dependency is required.
+
+**Signature:** Codex (GPT-5), Tree-sitter structural readability implementation, 2026-07-10.
+
+## 2026-07-10T21:14:42+02:00 — Refactor-confidence distribution normalization
+
+**Objective:** prevent compressed raw-confidence distributions from hiding all refactor targets,
+while preventing flat or tied distributions from manufacturing arbitrary outliers.
+
+**Output contract changes (`deslop.metrics/1`, additive):**
+- Top-level `refactor_confidence_distribution`: count, mean, median, population stddev, min/max,
+  linearly interpolated p25/p75, `flat`, and `relative_candidate_eligible`.
+- Per-region `refactor_zscore` and tie-aware empirical `refactor_percentile` alongside the existing
+  absolute `refactor_confidence`.
+- Candidate selection is absolute (`raw >= 0.50`) OR guarded relative (`z >= 1.0` and percentile
+  >= 0.90). Relative selection requires at least 8 regions, confidence range >= 0.05, and stddev
+  >= 0.01. Candidate output states whether absolute and/or relative evidence selected it.
+- Text, JSON, MCP descriptions/tests, README, and SPEC expose the statistics and semantics.
+
+**Numerical convergence test:** exact summaries verified for `[0.10, 0.20, 0.30, 0.40]`
+(mean/median 0.25, population stddev 0.1118033989, p25 0.175, p75 0.325). For nine 0.10 values
+plus one 0.30, the low-absolute outlier receives z=3.0 and percentile=1.0 and qualifies relatively.
+Ten tied 0.20 values receive percentile=0.5, forced z=0, flat=true, and produce no relative target.
+
+**Real repository smoke:** metrics-crate scan produced n=87, mean=0.15356, stddev=0.13849,
+median=0.14869, p25=0.04057, p75=0.22215, min=0.00497, max=0.64064, flat=false, relative eligible.
+Candidates expanded from 2 absolute-only to 9 guarded high-tail regions. `input_files` measured raw
+0.5866, z=3.13, percentile=0.988. The normalization implementation itself ranked first at raw
+0.6406, z=3.52, percentile=1.0, providing a direct dogfood target rather than suppressing the result.
+
+**Invalidated assumption / negative memory:** identical floating inputs do not guarantee computed
+stddev equals exact zero. The first flat test found microscopic roundoff generating meaningless
+z-scores. Fixed by forcing z=0 for any distribution classified flat; Hindsight negative memory was
+written with recheck conditions.
+
+**Verification:** `cargo fmt --all --check`; workspace build; slim no-default-features build;
+`cargo test --workspace` (178 passed); `cargo test -p deslop-mcp --features slim-llm` (18 passed);
+workspace clippy with `-D warnings`. No new dependency, migration, write path, or network behavior.
+
+**Gate:** BOUNDED-QUALITY PASS, QUALITY CLOSURE NOT CLAIMED, READINESS UNCHANGED. Baseline artifact
+remains `deslop-structural-readability/1`. Estimated distance to production ready remains 55% ready /
+45% remaining for human-calibrated readability; normalization improves within-repo actionability but
+does not supply human labels. Remaining gates are cross-language human ratings, held-out
+cross-project ablation, and calibration of absolute/relative thresholds.
+
+**Restart/rebuild:** rebuild/reinstall an already-installed CLI or MCP binary. No other restart.
+
+**Signature:** Codex (GPT-5), confidence-distribution normalization, 2026-07-10.
+
+## 2026-07-10T21:31:22+02:00 — Labeled refactor-confidence JSON (`deslop.metrics/2`)
+
+**Objective:** make confidence immediately interpretable in JSON by mapping each score to one
+categorical key, while retaining a stable numeric field for arithmetic and sorting.
+
+**Contract:** metrics output is now `deslop.metrics/2`. Both per-region readability and ranked
+candidate objects serialize:
+
+```json
+"refactor_confidence": { "high": 0.70 },
+"refactor_confidence_score": 0.70
+```
+
+Bands are `very_low` [0.00,0.20), `low` [0.20,0.40), `moderate` [0.40,0.60), `high`
+[0.60,0.80), and `very_high` [0.80,1.00]. The nested object always has exactly one key. The
+numeric companion is the same underlying score and remains the authority for distribution,
+threshold, ranking, z-score, and percentile calculations. The schema was bumped because the
+`refactor_confidence` JSON type changed from number to object.
+
+**Measured JSON smoke:** the metrics crate's top candidate serialized as
+`{"high": 0.6406387287}` with companion `0.6406387287`; `input_files` serialized as
+`{"moderate": 0.5866305613}`. Existing z-score, percentile, distribution, and candidate reasons
+remain present.
+
+**Validation:** band-boundary test covers 0.00, 0.19, 0.20, 0.40, 0.60, 0.70, 0.80, and 1.00;
+each object has one key and equals the numeric companion. CLI JSON smoke and MCP contract test pass.
+Full gate: rustfmt; workspace build; slim no-default-features build; workspace tests 179 passed;
+MCP slim-llm tests 18 passed; workspace clippy `-D warnings`. No dependency or runtime behavior
+change outside serialization.
+
+**Gate:** PACKAGING PASS, QUALITY CLOSURE NOT CLAIMED, READINESS UNCHANGED. Baseline artifact is
+now the `deslop.metrics/2` packaging of `deslop-structural-readability/1`. Estimated calibrated-model
+readiness remains 55% ready / 45% remaining; labels improve communication but do not validate
+human agreement. Remaining gates remain human-rated cross-language data, held-out cross-project
+ablation, and score/threshold calibration.
+
+**Restart/rebuild:** rebuild/reinstall an existing CLI or MCP installation. `/1` consumers must
+upgrade to `/2` and read `refactor_confidence_score` when they require a scalar.
+
+**Signature:** Codex (GPT-5), labeled confidence JSON packaging, 2026-07-10.
+
+## 2026-07-11T00:53:28+02:00 — Explicit intrinsic confidence and repo-relative context (`deslop.metrics/3`)
+
+**Objective:** make the confidence authority explicit and prevent consumers from confusing the
+stable Tree-sitter-derived score with scan-local normalization.
+
+**Contract:** metrics output is now `deslop.metrics/3`. Region and candidate objects serialize:
+
+```json
+"refactor_confidence": { "high": 0.70 },
+"refactor_confidence_score": 0.70,
+"confidence_basis": "tree_intrinsic_v1",
+"repo_relative": { "zscore": 1.84, "percentile": 0.94 }
+```
+
+`refactor_confidence` and its scalar companion are intrinsic to the parsed region and use the
+versioned Tree-sitter feature model. `repo_relative` is computed from the current scan's confidence
+distribution and is contextual, not portable across scan sets. The old flat `refactor_zscore` and
+`refactor_percentile` keys were removed. The top-level distribution summary and guarded relative
+candidate-selection behavior remain unchanged.
+
+**Measured JSON smoke:** a region emitted `confidence_basis: "tree_intrinsic_v1"`, intrinsic score
+0.0104468 in the `very_low` band, and nested repo-relative z=-1.053 / percentile=0.04494. The top
+candidate emitted intrinsic score 0.6406387 in the `high` band and nested z=3.5189 / percentile=1.0.
+
+**Changes:** `crates/deslop-metrics/src/lib.rs` owns the `/3` serialization and model metadata;
+`crates/deslop-mcp/src/lib.rs` and `spec.rs` expose and test the exact MCP contract; `SPEC.md` and
+`.agents/PLAN.md` document the authority split and migration.
+
+**Verification:** focused metrics tests 11/11; exact MCP metrics contract; CLI JSON smoke;
+`cargo fmt --all --check`; workspace build; slim no-default-features build;
+`cargo test --workspace` (179 passed); `cargo test -p deslop-mcp --features slim-llm` (18 passed);
+workspace clippy with `-D warnings`. No dependency, migration, write-path, or network change.
+
+**Invalidated assumptions / negative-memory status:** no new invalidation in this packaging slice.
+Existing constraints remain active: repo-relative rank is not absolute refactor evidence, and flat
+floating-point distributions must force contextual z-scores to zero.
+
+**Gate:** PACKAGING PASS, QUALITY CLOSURE NOT CLAIMED, READINESS UNCHANGED. The deterministic
+structural score is usable for triage, but calibrated-model readiness remains 55% ready / 45%
+remaining pending human-rated cross-language data, held-out cross-project ablation, and absolute
+score/threshold calibration.
+
+**Restart/rebuild:** rebuild/reinstall an existing CLI or MCP binary. `/2` consumers must migrate
+to `/3`, use `refactor_confidence_score` for arithmetic, and read contextual normalization from
+`repo_relative`.
+
+**Signature:** Codex (GPT-5), intrinsic/repo-relative confidence contract, 2026-07-11.

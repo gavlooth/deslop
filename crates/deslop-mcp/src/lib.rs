@@ -255,7 +255,7 @@ fn patch_verification_properties() -> Value {
 fn metrics_tool_spec() -> Value {
     tool(
         "metrics",
-        "Return deslop.metrics/1 JSON with hotspots.",
+        "Return read-only deslop.metrics/3 JSON with Tree-sitter-derived per-region structural readability, labeled intrinsic confidence plus numeric score, explicit confidence_basis, nested repo_relative z-score/percentile, distribution statistics, ranked candidates, and complexity/entropy hotspots. Flat distributions cannot create relative candidates. Confidence is uncalibrated triage evidence, not proof that a rewrite is safe.",
         object_schema(json!({
             "paths": paths_schema(),
             "sigma": { "type": "number", "default": 2.0 }
@@ -1017,6 +1017,50 @@ mod tests {
         assert_scan_analyzer_schema(tool_by_name(tools, "propose"));
         assert_verify_coverage_schema(tool_by_name(tools, "verify"));
         assert_fix_tool_schema(tool_by_name(tools, "fix"));
+    }
+
+    #[test]
+    fn metrics_tool_exposes_readability_and_refactor_confidence() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = temp.path().join("sample.js");
+        std::fs::write(
+            &source,
+            "class Worker { run(value) { if (value) { return value; } return 0; } }\n",
+        )
+        .expect("fixture");
+        let report = metrics_tool(&json!({ "paths": [source] })).expect("metrics");
+        assert_eq!(report["schema"], "deslop.metrics/3");
+        assert_eq!(report["readability_model"]["calibrated"], false);
+        assert!(report["refactor_confidence_distribution"]["mean"].is_number());
+        assert!(report["refactor_confidence_distribution"]["stddev"].is_number());
+        let regions = report["functions"].as_array().expect("regions");
+        assert!(regions.iter().any(|region| {
+            region["kind"] == "class_declaration"
+                && region["readability"]["refactor_confidence"].is_object()
+                && region["readability"]["refactor_confidence_score"].is_number()
+                && region["readability"]["confidence_basis"] == "tree_intrinsic_v1"
+                && region["readability"]["repo_relative"]["zscore"].is_number()
+                && region["readability"]["repo_relative"]["percentile"].is_number()
+        }));
+        assert!(regions.iter().any(|region| {
+            region["kind"] == "method_definition"
+                && region["readability"]["measurement_confidence"].is_number()
+        }));
+        let class = regions
+            .iter()
+            .find(|region| region["kind"] == "class_declaration")
+            .expect("class region");
+        let labeled = class["readability"]["refactor_confidence"]
+            .as_object()
+            .expect("labeled confidence");
+        assert_eq!(labeled.len(), 1);
+        assert_eq!(
+            labeled.values().next(),
+            Some(&class["readability"]["refactor_confidence_score"])
+        );
+        assert!(class["readability"].get("refactor_zscore").is_none());
+        assert!(class["readability"].get("refactor_percentile").is_none());
+        assert!(report["refactor_candidates"].is_array());
     }
 
     fn tools_list_response() -> Value {

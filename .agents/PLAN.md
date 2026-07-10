@@ -339,6 +339,103 @@ Signature: Claude (Fable 5), full-diff review iterated into prioritized improvem
 
 ---
 
+# Structural Readability Capability (2026-07-10)
+
+Status: IMPLEMENTED; focused numerical/MCP/CLI checks and full workspace gates passed.
+
+## Objective
+
+Add a deterministic per-region readability assessment to `deslop metrics` by combining
+control-flow complexity with lexical/structural entropy. Expose a 0-100 score, a separate
+confidence value, calibration status, and component burdens in text and JSON/MCP output.
+
+## Active Hypothesis
+
+Complexity and entropy capture complementary sources of comprehension burden. A transparent,
+bounded interaction model can provide useful structural-readability triage now, provided it is
+explicitly marked uncalibrated until evaluated against independent human ratings.
+
+## Current Approach
+
+- Extend region metrics with normalized token entropy and AST-node-kind entropy.
+- Compute information volume from token count and token entropy.
+- Combine complexity, information volume, entropy deviation, and their interaction into a
+  deterministic bounded burden; convert that burden to a 0-100 readability score.
+- Expose `measurement_confidence` from parse/sample reliability separately from
+  `refactor_confidence`, which combines readability burden with measurement confidence and
+  size support. Size strengthens complexity/entropy evidence but cannot flag simple code alone.
+- Retain nested metric regions so containers and members (class/impl plus methods/functions) are
+  each scored, and rank regions crossing the absolute refactor-confidence threshold.
+- Preserve the existing safety boundary: readability remains triage-only and never authorizes a
+  rewrite or apply operation.
+
+## Validation Path
+
+One fixture matrix compares simple, repetitive, and nested/dense regions and numerically verifies
+boundedness, expected ordering, complexity contribution, entropy contribution, and interaction.
+Then run a CLI text/JSON smoke and the repository's full Rust gate.
+
+## Next Checkpoint
+
+The metric crate, text/JSON contract, MCP description, docs, and numerical tests are green; then
+record measured fixture values and remaining calibration risk in the session report.
+
+## Negative-Memory Constraints
+
+- Do not call the score a probability or claim human calibration without a labelled corpus.
+- Do not transplant legacy Java/snippet coefficients into the cross-language model.
+- Do not use low entropy alone as proof of poor readability; preserve separate component factors.
+- Do not let readability affect deterministic fix/apply safety classes.
+
+Signature: Codex (GPT-5), readability implementation plan, 2026-07-10.
+
+## Confidence Distribution Normalization (2026-07-10)
+
+Status: IMPLEMENTED; numerical flat/outlier/tie tests, real-repo smoke, and full workspace gates
+passed.
+
+Active hypothesis: absolute refactor confidence and repo-relative position answer different
+questions and must both be exposed. Mean/stddev/quantiles make the distribution inspectable;
+z-score plus tie-aware empirical percentile makes outliers actionable when absolute scores are
+compressed. Relative selection is disabled for small or flat distributions so normalization cannot
+manufacture a refactor target.
+
+Validation: one numerical matrix covers exact summary statistics, a clear low-absolute outlier, a
+flat distribution, and all-tied values. Terminal success requires the outlier to surface via the
+relative gate while flat/tied data produce no candidate.
+
+Signature: Codex (GPT-5), confidence-normalization plan, 2026-07-10.
+
+## Labeled Confidence JSON Contract (2026-07-10)
+
+Status: IMPLEMENTED; band-boundary, CLI/MCP JSON, workspace test, and clippy gates passed.
+
+Target: bump the additive metrics output to `deslop.metrics/2` because `refactor_confidence`
+changes from a number to a one-entry labeled object (`{"high": 0.70}`). Preserve
+`refactor_confidence_score` as the numeric companion for sorting, arithmetic, and consumers that
+should not inspect dynamic keys. Bands are `very_low`, `low`, `moderate`, `high`, `very_high`.
+
+Validation: exact boundary mapping at 0.00/0.20/0.40/0.60/0.80/1.00, one-key serialization,
+score equality between the object and numeric companion, and CLI/MCP JSON contract checks.
+
+Signature: Codex (GPT-5), labeled-confidence packaging plan, 2026-07-10.
+
+## Explicit Confidence Basis and Repo Context (2026-07-11)
+
+Status: IMPLEMENTED; exact CLI/MCP JSON contracts, workspace tests, and clippy gates passed.
+
+Target contract (`deslop.metrics/3`): pair the labeled intrinsic score with
+`confidence_basis: "tree_intrinsic_v1"` and nest local normalization under
+`repo_relative: {zscore, percentile}`. Remove flat z-score/percentile keys from `/3`; keep the
+top-level distribution summary and scalar companion unchanged.
+
+Validation: exact region and candidate JSON shapes, absence of legacy flat keys, preservation of
+candidate selection/ranking, CLI smoke, MCP contract, and full workspace gates.
+
+Signature: Codex (GPT-5), confidence-basis packaging plan, 2026-07-11.
+
+---
+
 # Product Backlog — Tool Improvements (2026-07-02)
 
 Beyond the diff cleanup (P1–P5 above) and the MCP UX phases (triage tool, session handles,
