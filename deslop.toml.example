@@ -38,6 +38,16 @@
 # [analyzer.typescript]
 # long_method_nloc = 45
 
+# Config-boundary analysis: flags "dishonest wiring" — config keys that are declared,
+# parsed, and echoed but never behaviorally consumed (config-key-unread /
+# config-key-unconsumed / config-key-shadowed). On by default; unknown keys here error.
+# [analyzer.boundary]
+# enabled = true
+# min_key_length = 4                # ignore keys shorter than this after normalization
+# extra_sinks = ["telemetry"]       # extra callee fragments counted as echo/serialize sinks
+# ignore_keys = ["legacy_knob"]     # keys exempt from all boundary rules
+# skip_artifacts = ["Cargo.toml"]   # REPLACES the built-in tool-config skip list when set
+
 # Suppression filters findings after they are produced, by rule and by path.
 # Unknown rule names and invalid globs are errors, not silent no-ops.
 # disabled_rules = ["magic-number", "narrating-comment"]  # drop these rules everywhere

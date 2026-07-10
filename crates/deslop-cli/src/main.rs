@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use deslop_analyzer::{
-    AnalyzerConfig, AnalyzerLangConfig, JuliaExternal, RuleSuppression, Suppression, scan_paths,
-    scan_paths_with_config,
+    AnalyzerConfig, AnalyzerLangConfig, BoundaryConfig, JuliaExternal, RuleSuppression,
+    Suppression, scan_paths, scan_paths_with_config,
 };
 use deslop_core::{FileReport, Severity};
 use deslop_eval::{append_false_positive_feedback, render_eval_json, render_eval_text, run_eval};
@@ -504,6 +504,30 @@ struct AnalyzerConfigSection {
     typescript: Option<AnalyzerLangConfigSection>,
     #[serde(default)]
     generic: Option<AnalyzerLangConfigSection>,
+    /// `[analyzer.boundary]` — config-boundary (dishonest-wiring) analysis controls.
+    #[serde(default)]
+    boundary: Option<BoundaryConfigSection>,
+}
+
+/// `[analyzer.boundary]` keys. Every field maps 1:1 onto [`BoundaryConfig`]; unknown keys
+/// are rejected by `deny_unknown_fields` so misspellings fail loudly instead of silently
+/// configuring nothing (the exact pathology this analyzer exists to catch).
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BoundaryConfigSection {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    min_key_length: Option<usize>,
+    /// Extra echo-sink callee fragments, merged with the built-ins.
+    #[serde(default)]
+    extra_sinks: Option<Vec<String>>,
+    /// Key names exempt from all boundary rules.
+    #[serde(default)]
+    ignore_keys: Option<Vec<String>>,
+    /// Replaces (not extends) the built-in tool-config skip list when set.
+    #[serde(default)]
+    skip_artifacts: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -1058,7 +1082,33 @@ fn analyzer_config_from_config(
             .unwrap_or(configured_julia),
         julia_project: julia_project.or(configured_project),
         suppression: build_suppression(config.analyzer.as_ref())?,
+        boundary: build_boundary_config(config.analyzer.as_ref()),
     })
+}
+
+/// Merge `[analyzer.boundary]` over [`BoundaryConfig`] defaults.
+fn build_boundary_config(section: Option<&AnalyzerConfigSection>) -> BoundaryConfig {
+    let default = BoundaryConfig::default();
+    let Some(section) = section.and_then(|analyzer| analyzer.boundary.as_ref()) else {
+        return default;
+    };
+    let mut merged = default;
+    if let Some(enabled) = section.enabled {
+        merged.enabled = enabled;
+    }
+    if let Some(min_key_length) = section.min_key_length {
+        merged.min_key_length = min_key_length;
+    }
+    if let Some(extra_sinks) = &section.extra_sinks {
+        merged.extra_sinks.extend(extra_sinks.iter().cloned());
+    }
+    if let Some(ignore_keys) = &section.ignore_keys {
+        merged.ignore_keys.extend(ignore_keys.iter().cloned());
+    }
+    if let Some(skip_artifacts) = &section.skip_artifacts {
+        merged.skip_artifacts = skip_artifacts.clone();
+    }
+    merged
 }
 
 /// Compile `[analyzer]` suppression keys into a [`Suppression`]. Unknown rule names and

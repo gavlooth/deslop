@@ -4293,3 +4293,37 @@ Current recommendation:
 Blockers: none.
 
 Signature: Codex (GPT-5), graph-guided deslop-graph module split, 2026-07-06.
+
+## 2026-07-10 — Config-boundary analyzer landed (owner-directed, no delegation)
+
+**Objective:** catch "dishonest wiring" (configured-but-not-wired/hardcoded/shadowed config) as a
+deterministic deslop pass — motivated by the RelationExtractor knob incidents (canvas_top_k echo-only;
+relation_top_k k>3→3 literal clamp).
+
+**Built (crates/deslop-analyzer/src/boundary.rs + wiring):** repo-wide post-pass (mirrors
+add_cross_file_duplication) over the config key lifecycle: TOML/YAML/JSON key inventory → structural
+parse-site detection (lookup-shaped calls with key-string args) → per-occurrence classification
+(echo sink / store / live) over both key strings AND convention-named or parse-bound identifiers,
+aggregated repo-wide on normalized keys (kebab/snake/camel fold). Rules: config-key-unread (Minor),
+config-key-unconsumed (Major, anchored keys only: artifact-declared | --flag | ENV_SHAPED | dotted),
+config-key-shadowed (Major, literal-only reassignment AFTER the parse, SAME function scope, outside
+guards incl. &&/or short-circuits). DetectedBy::Boundary; SafetyClass NeverAuto; [analyzer.boundary]
+config (deny_unknown_fields fail-loud); suppression integrated; docs (README + deslop.toml.example);
+module-doc known-limitations (prefix-constructed keys, derive configs, container round-trips).
+
+**Precision campaign (live shakedown on RelationExtractor, 6 rounds):** 188 → 67 (anchor requirement)
+→ 16 (inline-consumption + store-walk fixes) → 5 (multi-key alias attribution — found via a false flag
+on MY OWN DRIVER_ALLOW_FOREIGN_GPU_MIB nested-get) → 4 (short-circuit guards) → **2** (scope-aware
+shadowing). Final 2 = the known prefix-constructed-key limitation, hedged by precondition text.
+Ground-truth fixtures (pre-fix incident shapes) caught at every round; 8/8 boundary tests; workspace
+171/171. Notable: the analyzer's own first test run caught ME declaring-but-not-wiring its
+skip_artifacts knob — the exact pathology class, self-demonstrated.
+
+**Verification run:** cargo test --workspace (171 passed / 0 failed); release binary scan of
+RelationExtractor configs+scripts+src (14s).
+
+**Residual risk / next:** unconsumed rule currently reports 0 on post-fix RelationExtractor (expected —
+incidents are fixed; fixtures carry the pre-fix shapes). P2 candidates: per-language precision packs
+(serde/clap derive keys), container round-trip crediting, prefix-construction detection.
+
+**Signature:** Claude (Fable 5), config-boundary analyzer (3 rules) landed with 6-round precision campaign, 188→2 on the motivating repo, 2026-07-10.

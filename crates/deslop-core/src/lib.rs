@@ -57,6 +57,7 @@ pub enum DetectedBy {
     Idiom,
     Duplication,
     Complexity,
+    Boundary,
     CljKondo,
     JuliaAnalyzer,
     RustAnalyzer,
@@ -402,6 +403,21 @@ pub mod rules {
             name: "near-duplicate",
             safety: "llm-only",
             default: "propose",
+        },
+        RuleInfo {
+            name: "config-key-unread",
+            safety: "never-auto",
+            default: "review (declared config key no code reads)",
+        },
+        RuleInfo {
+            name: "config-key-unconsumed",
+            safety: "never-auto",
+            default: "review (parsed+echoed but nothing behavioral consumes it)",
+        },
+        RuleInfo {
+            name: "config-key-shadowed",
+            safety: "never-auto",
+            default: "review (parsed value overwritten by a literal)",
         },
     ];
 

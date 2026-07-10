@@ -17,9 +17,12 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 
 mod agnostic;
+mod boundary;
 mod clojure;
 mod julia;
 mod packs;
+
+pub use boundary::BoundaryConfig;
 #[cfg(test)]
 mod test_pack;
 #[cfg(test)]
@@ -52,6 +55,8 @@ pub struct AnalyzerConfig {
     pub julia_project: Option<PathBuf>,
     /// Per-rule and per-path finding suppression. Empty by default (no-op).
     pub suppression: Suppression,
+    /// Config-boundary analysis (config-key-unread/-unconsumed/-shadowed).
+    pub boundary: BoundaryConfig,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -76,6 +81,7 @@ impl Default for AnalyzerConfig {
             julia_external: JuliaExternal::Off,
             julia_project: None,
             suppression: Suppression::default(),
+            boundary: BoundaryConfig::default(),
         }
     }
 }
@@ -465,16 +471,24 @@ pub fn scan_paths_with_config(
     };
 
     let mut supported_paths = Vec::new();
-    for path in paths {
+    for path in &paths {
         collect_supported_paths(
             &mut supported_paths,
-            &path,
+            path,
             &lang_registry,
             &analyzer_registry,
         )?;
     }
     let mut reports = scan_supported_paths_parallel(&supported_paths, &config)?;
     add_cross_file_duplication(&mut reports, &config)?;
+    boundary::add_config_boundary(&mut reports, &supported_paths, &paths, &config)?;
+    // Boundary findings are appended after the per-file pass, so suppression must run
+    // over them here (the per-file pass already filtered its own findings).
+    if !config.suppression.is_empty() {
+        for report in &mut reports {
+            config.suppression.retain(&mut report.findings);
+        }
+    }
     reports.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(reports)
 }

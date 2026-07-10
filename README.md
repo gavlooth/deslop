@@ -142,6 +142,24 @@ ignore_paths = ["**/tests/**"]              # skip one rule on selected paths
 
 See `docs/CONFIG.md` for the full suppression reference.
 
+## Config-boundary analysis (dishonest wiring)
+
+`deslop scan` also audits the **config key lifecycle** — declared (TOML/YAML/JSON) → parsed →
+consumed — and flags keys that only *look* wired:
+
+| Rule | Meaning |
+|---|---|
+| `config-key-unread` | declared in a config artifact, never read by any scanned code |
+| `config-key-unconsumed` | parsed (and typically echoed/serialized) but nothing behavioral consumes it |
+| `config-key-shadowed` | parsed, then unconditionally overwritten by a literal before any behavioral use |
+
+The analysis is language-agnostic (tree-sitter node-kind heuristics + repo-wide key
+aggregation over normalized names, so `canvas-top-k` in TOML matches `canvas_top_k` in code)
+and precision-first: uses that can't be confidently classified as echo count as live, which
+suppresses the finding. Tune via `[analyzer.boundary]` (`enabled`, `min_key_length`,
+`extra_sinks`, `ignore_keys`, `skip_artifacts`); tool configs like `Cargo.toml`/`package.json`
+are skipped by default.
+
 ## Languages
 
 Full analysis packs for **Rust, Clojure, Julia**, seeded idiom packs for **Python** and
