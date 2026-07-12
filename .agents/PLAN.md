@@ -497,3 +497,636 @@ this changeset), then 5 (adoption), then 4 (detection depth). 3 and 6 as corpus 
 allows; 7–10 opportunistic.
 
 Signature: Claude (Fable 5), product backlog tiered from verified gaps, 2026-07-02.
+
+---
+
+## Graph-first algorithm remediation (2026-07-12)
+
+Status: AUDIT COMPLETE; implementation not performed because this task requested an audit/report.
+
+Active hypothesis: a single owned Tree-sitter analysis snapshot, with per-node exclusive evidence
+and semantic graph projections, will remove the correctness, performance, identity, and work-order
+integration failures that cannot be fixed by further readability-weight tuning.
+
+Current approach: first repair duplicate work orders, false graph resolution, TypeScript/Python/
+Clojure adapter contracts, partial-parse handling, and misleading metric gates. Then build the shared
+node arena and migrate analyzer, metrics, graph, LSP, protocol, and slim consumers together.
+
+Validation path: exact language construct matrix; one-parse instrumentation; node containment and
+stable-key tests; duplicate-name scope resolution; clone-class maximality; work-order uniqueness;
+clean/sloppy smoke; then one instrumented human-labelled benchmark with leave-project/language-out
+calibration and explicit terminal outcomes.
+
+Next checkpoint: P0 contract repair passes the exact live probes recorded in
+`.agents/ALGORITHM_AUDIT.md`, with no health/readability/refactor-confidence gate retained without
+external calibration.
+
+Negative-memory constraints: repo-relative unusualness is not absolute evidence; passing the
+current test suite is not a semantic oracle; byte/token entropy, surprisal, and compression are not
+interchangeable; readability does not imply removability or safety.
+
+Agent assignments for the completed audit: `/root` integration/verification;
+`architecture_audit` parser/graph/work-order review; `metrics_audit` formulas and numerical probes;
+`literature_review` primary-source evidence. Ruflo was unavailable, so built-in read-only agents
+were used.
+
+Signature: Codex (GPT-5), graph-first algorithm remediation plan, 2026-07-12.
+
+---
+
+# Ultimate Generic Deslop Plan (2026-07-12)
+
+Status: AUTHORITATIVE PRODUCT ROADMAP. Earlier sections remain as decision history; where they
+conflict with this section, this section wins. Execution is tracked in `.agents/TODO.md`.
+
+## Mission and product contract
+
+Deslop will be a language-extensible refactoring intelligence and safety kernel for humans and
+LLM agents. It will answer four distinct questions without conflating them:
+
+1. **What is the code?** A lossless, revision-bound syntax and semantic graph.
+2. **What makes it difficult or wasteful?** Per-node evidence for readability, structural load,
+   anomaly, duplication, coupling, and change impact.
+3. **What transformations could improve it?** Explicit recipes with preconditions, graph deltas,
+   dependency order, and counter-evidence.
+4. **What may be changed safely?** Static and dynamic verification scoped to the exact patch and
+   its impact cone.
+
+The LLM is the planner and code author where judgment is useful. Deslop is the deterministic
+observer, constraint system, transaction manager, and verifier. Neither an LLM suggestion nor a
+high slop/readability score is permission to edit code.
+
+“Generic” means a shared graph contract and algorithm family with explicit language capabilities;
+it does not mean pretending Tree-sitter alone supplies types, effects, reflection behavior, macro
+expansion, or whole-program semantics. Missing evidence must be reported as `unknown`, never
+silently replaced by a weaker heuristic while retaining a stronger label.
+
+### Non-goals
+
+- Detect whether code was written by a human or an AI.
+- Collapse readability, unusualness, complexity, removability, payoff, and safety into one number.
+- Claim semantic equivalence from syntax similarity.
+- auto-apply transformations that change public APIs, evaluation order, effects, exceptions,
+  concurrency, generated code, macros, reflection, or dynamic dispatch without adequate proof.
+- Make every grammar look identical. The common layer normalizes roles while adapters preserve
+  language-specific facts and limitations.
+
+## Active hypothesis and convergence
+
+Active hypothesis: a single owned parse snapshot per file, projected into a layered program graph
+and evaluated at exclusive nodes/regions, can give LLMs compact and actionable refactoring context
+while eliminating the current duplicate-work-order, false-resolution, repeated-parse, metric-label,
+and language-normalization failures.
+
+The roadmap resolves this hypothesis in increasing semantic depth. Each milestone has a terminal
+gate. Failure at a layer downgrades the advertised capability at that layer; it does not trigger
+another round of threshold tuning. The decisive experiment is one instrumented, cross-language
+benchmark that records all graph facts, features, proposals, patches, and verification outcomes in
+one run so that ablations and thresholds can be evaluated post hoc.
+
+## Core architecture: Universal Program Analysis Graph
+
+The public abstraction is a revision-bound `ProjectAnalysis` over one immutable `ProjectSnapshot`,
+not a collection of independently parsed reports. One source snapshot owns several linked projections:
+
+```text
+source revision
+  -> lossless Tree-sitter CST + token/trivia spans
+  -> canonical node/region arena
+  -> scope and name-resolution graph
+  -> CFG + hierarchical SESE/PST regions
+  -> PDG/SDG control and data dependencies
+  -> file/module/package/build dependency graph
+  -> clone and structural-motif graph
+  -> findings, metrics, transformation candidates, impact cones
+  -> verification evidence and patch outcomes
+```
+
+This is a code-property-graph architecture, but with provenance and capability information on every
+node, edge, fact, and conclusion. All CLI, MCP, LSP, evaluator, metrics, analyzer, and slim workflows
+must consume projections of the same snapshot.
+
+### 1. Lossless syntax and owned node arena
+
+- Parse each file once per content revision with its correct grammar variant.
+- Retain named and anonymous syntax, tokens, comments/trivia, byte and point spans, parse errors,
+  field names, child order, and grammar provenance.
+- Copy required facts out of borrowed Tree-sitter nodes into an owned arena. A scan-local `NodeId`
+  is an arena index; it is never serialized as a durable identity.
+- Give externally visible nodes a revision-bound `NodeKey` containing repository, normalized path,
+  language/grammar, source revision, canonical role, span/structural anchor, and collision ordinal.
+- Keep three identities separate: scan-local `NodeId`, best-effort baseline/finding fingerprint across
+  revisions, and exact `RevisionGuard` for stale-write protection. A fuzzy baseline match can never
+  authorize an edit.
+- Make containment explicit. Every token belongs to one smallest exclusive metric region; every
+  aggregate declares whether descendants are exclusive or inclusive.
+- Allow derived line, blank/trivia-run, and comment-region nodes when line/visual metrics need a unit
+  that does not correspond to one grammar node; link them to exact source/token ownership.
+- Preserve raw source slices for exact patches and normalized token/role forms for comparison.
+- Support Tree-sitter edit/changed-range invalidation without pretending identities survive arbitrary
+  edits. Durable handles must either re-anchor with evidence or expire explicitly.
+
+### 2. Canonical semantic roles and language adapters
+
+Adapters map grammar-specific node kinds to a small, stable role vocabulary: project, module,
+declaration, type, callable, parameter, block, statement, expression, branch, loop, match/case,
+call, read, write, literal, comment, import/export, error, and generated/opaque region. Roles can be
+composed; raw kinds remain available.
+
+Every adapter must provide or explicitly decline these capabilities:
+
+- grammar selection, including variants such as JavaScript, TypeScript, TSX, and dialect/version;
+- Tree-sitter queries for declarations, references, scopes, control constructs, comments, and
+  language-specific generated/opaque regions;
+- canonical-role and operator/token classification;
+- lexical scope, binding, import/export, and shadowing rules;
+- CFG lowering rules, abrupt exits, exception edges, async/yield behavior, and evaluation order;
+- def/use and conservative effect classification;
+- formatting or CST-safe splice strategy for supported transformations;
+- focused fixtures, parse-error policy, external analyzer integration, and capability declaration.
+
+Capability tiers are monotone and machine-readable:
+
+- `S0 syntax`: lossless parse, node roles, spans, tokens, comments.
+- `S1 local structure`: regions, local metrics, clone normalization, syntactic recipes.
+- `S2 local semantics`: scopes, name resolution, CFG, def/use, effects, local PDG.
+- `S3 project semantics`: imports/exports, call/dependency graph, SDG, API impact.
+- `S4 verified change`: compiler/type evidence plus targeted dynamic verification.
+
+A finding or recipe requiring `S2` cannot be emitted as confirmed on an `S1` adapter.
+
+### 3. Scope and name-resolution graph
+
+- Represent definitions, references, imports, exports, lexical scopes, shadowing, visibility, and
+  unresolved/ambiguous candidates as first-class facts.
+- Use a declarative, file-incremental model in the style of stack graphs where it fits; allow an
+  adapter or compiler/LSP bridge to provide higher-authority resolution.
+- Never resolve by bare name alone. A `resolved` edge requires a unique path under the adapter's
+  semantics; otherwise retain all candidates with an `ambiguous` or `unresolved` status.
+- Record resolution authority (`syntax`, `adapter`, `compiler`, `runtime`) and provenance.
+
+### 4. Control, region, and dependence graphs
+
+- Build a CFG for each callable/initializer with entry, exit, normal, exceptional, suspension, and
+  abrupt-control edges as supported by the adapter.
+- Derive hierarchical single-entry/single-exit regions with a Program Structure Tree or an explicit
+  irreducible-region representation. This gives stable units for branch merging, splitting,
+  flattening, extraction, and exclusive metric aggregation.
+- Build a PDG from control dependence and def/use data dependence. Build an SDG when calls,
+  parameters, returns, globals, and cross-file resolution are sufficiently authoritative.
+- Store dominance/post-dominance, liveness, reaching definitions, effects, aliases at the available
+  precision, and an explicit uncertainty set. Conservative uncertainty blocks automatic edits; it
+  does not disappear from reports.
+
+### 5. Project dependency, clone, and evidence graphs
+
+- Model files, modules, packages, build targets, public API surfaces, generated boundaries, imports,
+  calls, inheritance/implementation, data ownership, tests, and configuration/build edges.
+- Compute strongly connected components, the condensation DAG, topological layers, fan-in/fan-out,
+  instability, change coupling, and architecture-rule violations. A cycle is a planning constraint,
+  not automatically a defect.
+- Represent clones as maximal clone classes, not repeated pair findings. Link normalized token,
+  subtree, and semantic-motif evidence back to all participating nodes.
+- Attach every metric/finding to evidence nodes and every aggregate to a declared roll-up policy.
+  Store authority, confidence basis, exclusions, and counter-evidence separately from severity.
+
+## Per-node evidence model
+
+Every named node and every canonical region receives an exclusive local feature vector. Inclusive
+subtree/project views are derived; they are not recomputed from overlapping slices. Keep these axes
+separate in storage and protocol responses:
+
+1. **Structural load:** NLOC, nesting, branch/loop counts, cyclomatic and essential complexity,
+   fan-in/out, dependency depth, live variables, parameters/outputs, and control/data coupling.
+2. **Lexical/visual readability evidence:** identifier quality, expression length, indentation and
+   line-shape distribution, comment placement, vocabulary, token/operator density, and role-specific
+   learned features.
+3. **Naturalness/anomaly:** token-model surprisal normalized by node role and project/language;
+   explicitly repo-relative unless a calibrated external model establishes otherwise.
+4. **Distributional entropy:** Shannon entropy over declared token/AST-edge categories with sample
+   size and estimator. Do not call source-byte compression or language-model surprisal “entropy”
+   without qualifying it.
+5. **Redundancy:** exact/renamed/near clone class membership, repeated graph motifs, boilerplate,
+   and duplicated responsibility.
+6. **Cohesion and coupling:** PDG clusters, shared state, slices, call/dependency communities, and
+   responsibility dispersion.
+7. **Change impact/payoff:** callers, dependents, test coverage, churn, blast radius, expected graph
+   delta, and number of findings resolved.
+8. **Reliability and safety:** adapter capability, resolution authority, parse completeness, static
+   preconditions, coverage/mutation evidence, and verification results.
+
+If human-labelled models are shipped, expose calibrated probabilities per model/language/role and
+their version. A cross-language “readability” score ships only if it beats size/simple baselines on
+held-out projects and languages with acceptable calibration. Otherwise deslop exposes the evidence
+vector and rankings without the label.
+
+## Transformation opportunity engine
+
+Detectors consume graph facts and emit `TransformationCandidate`s. They do not write edits. Each
+candidate is deduplicated by snapshot, target region, and recipe; multiple findings become evidence
+on one candidate.
+
+### Branch and control-flow transformations
+
+For each CFG/PST branch region, evaluate these recipe families:
+
+- merge equivalent arms or adjacent conditions only when bodies, effects, evaluation order,
+  short-circuit behavior, exceptions, and bindings are compatible;
+- factor common branch prefixes/suffixes when dominance and post-dominance preserve behavior;
+- split a compound branch when its predicates/actions form independent dependence slices;
+- replace nested conditionals with guards when exits and resource/exception behavior are preserved;
+- invert conditions to reduce nesting, remove dead/unreachable arms, or turn exhaustive chains into
+  pattern/table dispatch where language semantics make that representation clearer;
+- extract a branch or repeated decision into a named predicate/action only when captured inputs,
+  outputs, mutations, and control exits are explicit.
+
+Branch “clarity” must be predicted from the resulting region graph, not from line-count reduction.
+The candidate includes before/after nesting, complexity, dependence cuts, effects, and readability
+evidence, plus reasons the recipe might be rejected.
+
+### Function transformations
+
+- Find extract-method candidates from SESE/PST regions and complete PDG computation or object-state
+  slices, preferring coherent action blocks over arbitrary line windows.
+- Compute exact inputs, outputs, mutations, exits, exceptions, async/yield constraints, ownership/
+  lifetime constraints, and affected call sites before proposing extraction.
+- Split multi-responsibility callables using dependence cohesion and named action clusters.
+- Merge over-fragmented helpers when a trivial single-use wrapper adds indirection without a useful
+  abstraction boundary and inlining preserves dispatch, visibility, stack/exception, and API facts.
+- Inline temporaries, introduce explanatory variables, simplify expressions, and reorder independent
+  statements only under explicit def/use and effect constraints.
+- Treat long methods and high complexity as search signals, never proof that extraction improves code.
+
+### Dependency and module transformations
+
+- Use SCCs and the condensation DAG to expose cycles, dependency order, and legal transformation
+  sequencing. Suggest cycle-breaking seams from dependency direction, API ownership, and data flow;
+  never auto-break a cycle from topology alone.
+- Compare declared architecture rules and inferred layers with actual dependencies. Identify stable
+  abstractions, unstable dependencies, bypasses, hub modules, misplaced declarations, and tests that
+  cross unintended boundaries.
+- Suggest move/split/merge-module operations from structural and semantic cohesion, coupling, public
+  API impact, and change history when available. Clustering is candidate generation, not ground truth.
+- Repair import/declaration order only when order is semantically irrelevant or the language/toolchain
+  provides authority. Preserve initialization and side-effect order.
+- Derive the refactoring schedule from prerequisites and invalidations rather than applying a fixed
+  bottom-up or top-down rule.
+
+### Duplication, ceremony, dead code, and clarity
+
+- Build maximal clone classes using exact subtree fingerprints, renamed-token normalization, scalable
+  candidate indexing, and graph-context verification. One clone class yields one coordinated work order.
+- Distinguish incidental token similarity, generated/schema repetition, tests, parallel public APIs,
+  and intentional redundancy before recommending abstraction.
+- Find forwarding layers, redundant conversions/allocations, defensive wrappers, needless comments,
+  dead declarations/branches, and repeated error handling through graph facts plus adapter rules.
+- Evaluate names and comments in scope and role context. Prefer explaining invariants, decisions, and
+  effects; do not delete documentation merely because it restates syntax under a simplistic matcher.
+
+## Transformation recipe and safety contract
+
+Every executable recipe is versioned and contains:
+
+- applicable languages, roles, and minimum capability tier;
+- required nodes/edges/facts and provenance;
+- positive preconditions and explicit forbidden/unknown conditions;
+- parameter schema, edit builder, formatting strategy, and collision handling;
+- expected graph delta and findings expected to resolve or regress;
+- safety class, impact-cone query, validation plan, and rollback data;
+- minimal counterexample fixtures and property/regression tests.
+
+Preconditions are three-valued: `Proven`, `Disproven`, or `Unknown`, each with authority and evidence.
+Only `Proven` satisfies an automatic obligation; absence of a counterexample is not proof. LLMs may
+select candidates and propose semantic boundaries, names, tests, or patches, but cannot promote a safety
+class, mark an edge resolved, or bypass a failed/unknown gate.
+
+Safety classes:
+
+- `safe-auto`: locally proven under complete preconditions and still verified after application;
+- `analyzer-confirmed`: requires authoritative compiler/type/effect information;
+- `safe-with-tests`: static preconditions plus adequate targeted dynamic evidence;
+- `suggest-only`: useful candidate with unresolved semantic uncertainty;
+- `llm-design`: architectural intent or API choice requiring judgment and review;
+- `blocked`: known ambiguity, incomplete parse/graph, generated boundary, or failed verification.
+
+The apply transaction is: pin revision -> revalidate preconditions -> produce patch -> parse and
+rebuild impacted graph -> compare expected/actual graph delta -> format -> compile/type/lint -> run
+targeted tests and optional characterization/differential/mutation checks -> report -> atomically
+commit or roll back. Verification commands execute under explicit resource, filesystem, environment,
+and network policies. “Tests passed” is evidence, not a proof of equivalence.
+
+When a risky rewrite needs characterization, capture and approve that behavior on the pinned pre-change
+snapshot before authoring the rewrite. Tests generated after the rewrite cannot independently establish
+what behavior was meant to be preserved.
+
+## Work-order dependency planner
+
+One `WorkOrder` is a reviewable transformation transaction, not a finding. It contains a unique ID,
+snapshot, target region, recipe/parameters, evidence and counter-evidence, safety class, impact cone,
+prerequisites, conflicts, expected graph delta, patch budget, and verification contract.
+
+Its machine-level access summary declares `Reads`, `Writes`, `Requires`, and `Invalidates` over node,
+symbol, file, API, build, and test resources. Multi-file edits are one atomic transaction.
+
+Build a dependency graph over work orders:
+
+- add prerequisite edges for identity, signature, move/rename, extraction, test, and graph-authority
+  requirements;
+- add conflict edges for overlapping edits, shared public surfaces, mutually exclusive recipes, and
+  invalidation of another candidate's target;
+- collapse genuine atomic groups; block or ask for a design decision on unresolved cycles;
+- topologically schedule independent transactions and run disjoint impact cones in parallel;
+- after every committed patch, incrementally reparse and replan affected candidates. Stale orders
+  expire; they are never blindly rebased by span.
+
+This graph is how deslop decides whether branches/functions/modules should be merged or split and in
+which order. The objective is a Pareto improvement across clarity, structure, coupling, duplication,
+impact, and safety—not maximum finding-count reduction.
+
+## LLM-facing protocol
+
+The primary agent workflow is query -> plan -> patch -> verify -> replan:
+
+1. `index` returns snapshot/capabilities, parse gaps, architecture summary, and cache state.
+2. `triage` returns ranked transformation candidates, not a flood of raw findings.
+3. `explain` returns a bounded graph slice: source nodes, scope, CFG/PST/PDG facts, dependencies,
+   clones, evidence, counter-evidence, impact cone, and relevant tests.
+4. `plan` returns the work-order DAG and exposes alternatives/trade-offs; the LLM selects or edits it.
+5. `propose_patch` accepts recipe-grounded edits or an LLM patch and validates touched-node identity,
+   declared intent, edit overlap, and scope.
+6. `verify` runs the transaction contract and returns structured failures at the responsible node,
+   edge, precondition, or test—not only command text.
+7. `apply` is permitted only for the requested safety policy and pinned revision, produces undo data,
+   and triggers incremental reanalysis.
+
+All responses have schema versions, deterministic ordering, pagination/budgets, provenance, explicit
+unknowns, and handles that expire with their revision. Provide compact source-plus-graph context so
+an LLM does not need the whole repository or an opaque scalar. MCP, CLI, LSP, and library APIs expose
+the same domain objects.
+
+## Scale and incrementality
+
+- Cache parse/arena/adapter facts by content, grammar, adapter, and schema version.
+- Invalidate through Tree-sitter changed ranges and graph dependencies; rebuild only affected scope,
+  CFG/PDG, clone buckets, callers/dependents, candidates, and metrics.
+- Keep name-resolution facts file-isolated where possible, then stitch project paths lazily.
+- Use content fingerprints and ordered indices for clone search instead of all-pairs comparison.
+- Store the project graph in a compact, deterministic representation with bounded query APIs.
+- Parallelize independent files/regions and verifier jobs, but serialize graph commits and stable output
+  ordering. Measure parse count, cache hit rate, latency, peak memory, and invalidation fan-out.
+- Degrade explicitly under budgets: complete local facts may be returned while project semantics remain
+  pending/unknown. Do not attach high-authority conclusions to partial analysis.
+
+## Convergent evaluation and release gates
+
+Build one versioned benchmark harness that captures every candidate feature and outcome once. It must
+contain small gold fixtures and licensed real repositories across Rust, JavaScript, TypeScript/TSX,
+Python, Clojure, and Julia; macro/dynamic/generated/error cases; clean and deliberately degraded code;
+human- and LLM-produced behavior-preserving refactors; and seeded unsafe near-misses.
+
+Evaluate these independently:
+
+- parse coverage/error fidelity and canonical-role agreement;
+- name-resolution and dependency-edge precision/recall, including duplicate names and ambiguity;
+- CFG/PST/PDG/SDG edge agreement on gold fixtures;
+- candidate precision/recall, precision at the review budget, maximal clone-class quality, duplicate
+  work-order rate, and unsupported-capability leakage;
+- patch applicability, precondition rejection quality, expected/actual graph delta, compile/type/lint
+  success, behavioral regression rate, and rollback integrity;
+- human readability rankings, timed/correct comprehension, inter-rater agreement, calibration, and
+  gain over size/complexity baselines;
+- LLM task success, review edits, tokens/context, retries, semantic regressions, and wall time with and
+  without graph-grounded work orders;
+- cold/full and warm/incremental latency, parse counts, throughput, cache hits, memory, deterministic
+  output, and invalidation fan-out.
+
+Use leave-project-out splits for every learned/ranked claim and leave-language-out tests before calling
+anything generic. Publish per-language/role confidence intervals and failure cases. Release gates are:
+
+1. no duplicate work-order IDs and no falsely `resolved` ambiguous references in the gold corpus;
+2. no confirmed finding/recipe above the adapter's declared capability tier;
+3. zero known behavior-changing patches in `safe-auto`; any counterexample immediately demotes the recipe;
+4. deterministic output and successful atomic rollback under injected verifier failures;
+5. a claimed readability model materially and consistently beats size/simple baselines on held-out data
+   and is calibrated; otherwise retain only transparent evidence axes;
+6. graph-grounded LLM refactoring improves successful verified tasks over the same model/tool budget
+   without increasing semantic regressions;
+7. incremental analysis demonstrates bounded changed-region invalidation and a measured advantage over a
+   full scan; otherwise do not advertise incrementality.
+
+Threshold values beyond the zero-tolerance correctness gates are set once from labelled benchmark data
+and frozen before the held-out run. They are not chosen from deslop's own clean/sloppy smoke corpus.
+
+### Benchmark minimums and provisional acceptance floors
+
+These values make the target falsifiable. They are provisional until a benchmark pilot measures label
+quality and resource variance; then they are frozen before the release holdout and may not be relaxed after
+seeing it.
+
+- Canonical microcorpus: at least 600 programs, at least 100 for each of the six non-generic language
+  adapters, spanning control flow, nested callables, calls/imports, comments/strings/Unicode, malformed
+  subtrees, macros/dynamic behavior, and language-specific syntax.
+- Transformation corpus: at least 1,000 labelled opportunities and 1,000 hard negatives with gold target,
+  protected spans/APIs, expected safety class, behavior oracle, and allowed transformation family.
+- Project corpus: 18 pinned real repositories, three per language, stratified by size and containing tests,
+  public APIs, generated boundaries, and reproducible build commands.
+- Human/LLM set: at least 300 blinded readability pairs and 240 fixed refactoring tasks, balanced by
+  language and opportunity family. Authorship can be a reporting slice but is never the prediction target.
+- Graph floors: canonical-role macro F1 >= 0.99 with no language below 0.97; exact containment and owning-
+  callable assignment on all gold fixtures; intra-callable control-edge F1 >= 0.98; resolved local-reference
+  precision >= 0.98 at declared coverage >= 0.80; incremental and clean-rebuild graphs exactly equal.
+- Candidate floors: actionable precision lower 95% bound >= 0.90 overall and 0.85 per language; recall lower
+  bound >= 0.70 overall and 0.60 per language/family; hard-negative actionable false-positive upper bound
+  <= 0.02 overall and 0.05 per language; candidate calibration ECE <= 0.05.
+- Behavior floors: 100% parse/build/typecheck and declared behavior-oracle success for accepted benchmark
+  patches; no unauthorized public API/test weakening; zero confirmed semantic failures in `safe-auto`.
+- Human-quality floors: blinded preference lower 95% bound >= 0.60 overall and 0.55 per language, with at
+  least 90% of accepted patches improving the task's declared primary axis and no hidden project-level
+  coupling/API/aggregate-complexity regression above the declared tolerance.
+- LLM floors: graph-rich work orders improve behavior-and-quality accepted-patch rate by at least 10
+  percentage points over findings/raw-code context with paired 95% confidence excluding zero; no language
+  or model family regresses by more than 5 points; out-of-scope edits <= 2%; correct unsafe/impossible
+  abstention >= 90%.
+- Initial reference-machine scale budget: cold 1 MLOC scan <= 60 seconds and <= 3 GiB peak RSS; single-file
+  incremental edit p95 <= 500 ms and <= 5% of full-scan time; tenfold corpus growth <= 12x wall time and
+  <= 11x memory. The machine, filesystem/cache state, corpus, and toolchain must be recorded.
+
+Report macro, worst-language, worst-family, confidence interval, abstention/coverage, and prior-release
+delta together. A pass cannot be manufactured by pooling languages, dropping abstentions, cherry-picking
+work orders, or weakening tests/coverage/verification.
+
+## Dependency-ordered implementation roadmap
+
+```text
+M0 contract truth
+  -> M1 immutable parse snapshot
+    -> M2 adapter contract
+      -> M3 scope/project names
+        -> M4 CFG/PST/PDG/SDG
+          -> M5 candidates + executable recipe slices
+            -> M6 work-order DAG + LLM protocol
+            -> M7 hardened verification authority
+
+M1 + M2 ---------------------> M8 feature capture/calibration
+M1 + M3 + correctness gates -> M9 incremental/project scale
+M6 + M7 + M8 + M9 ----------> M10 external release evidence
+```
+
+Schema work for M6, verifier contracts for M7, feature instrumentation for M8, and performance
+instrumentation for M9 begin earlier, but their completion gates retain the dependencies above. In
+particular, every M5 recipe is implemented as a thin verified vertical slice; M7 then broadens and
+hardens the shared verification authority rather than postponing safety until after recipe creation.
+
+### M0 — Repair present contracts
+
+Group findings into one work order per target/recipe; fix ambiguous name resolution; select the correct
+TypeScript/TSX grammars; repair Python regions and Clojure branch semantics; make partial-parse behavior
+consistent; remove or relabel uncalibrated health/readability/refactor-confidence gates; add exact probes
+from `.agents/ALGORITHM_AUDIT.md`. This milestone is a prerequisite for trusting later measurements.
+
+### M1 — One parse, one owned syntax snapshot
+
+Create the revision/source store, node arena, IDs/keys, containment index, token/trivia ownership, parse
+diagnostics, role hooks, and query surfaces. Migrate metrics, analyzer, graph, protocol, LSP, evaluator,
+and slim consumers so instrumentation proves one parse per file revision.
+
+### M2 — Language-adapter contract
+
+Implement capability manifests, grammar variants, query packs, canonical roles, operator/token policy,
+parse-error policy, and golden fixture matrices for every supported language. Unsupported semantics become
+machine-readable unknowns. This unlocks honest cross-language algorithms at `S0`/`S1`.
+
+### M3 — Scope and project-name graph
+
+Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link
+files/modules/packages and optional compiler/LSP facts. Gate on duplicate-name, shadowing, aliasing, and
+incremental-file fixtures before any semantic refactor uses `resolved` edges.
+
+### M4 — CFG, PST, PDG, and SDG
+
+Lower control flow per adapter; compute dominance/post-dominance and SESE/PST regions; add liveness,
+def/use, control/data dependence, effects, and interprocedural summaries. Preserve irreducible and unknown
+regions. This unlocks branch/function recipes and impact-aware planning.
+
+### M5 — Candidate detectors and transformation recipes
+
+Implement in thin vertical slices with fixtures and counterexamples: branches first, then extract/split/
+merge function, clone classes, dependency/module operations, and clarity/ceremony/dead-code recipes. Every
+slice must go graph fact -> candidate -> patch -> expected graph delta -> verifier -> rollback.
+
+### M6 — Work-order DAG and LLM protocol
+
+Replace finding-shaped proposals with unique transactions, prerequisites/conflicts, SCC/atomic grouping,
+topological scheduling, bounded graph slices, schema-versioned handles, and replan-after-change. Make MCP,
+CLI, LSP, and library paths behaviorally identical.
+
+### M7 — Verification authority
+
+Expand impact-cone selection, compiler/type/lint adapters, targeted tests, coverage, characterization,
+differential checks, mutation evidence, resource sandboxing, failure injection, and atomic undo. Build the
+recipe demotion path for discovered counterexamples.
+
+### M8 — Readability and ranking calibration
+
+Capture per-node features once; import/licence-check published datasets; collect multilingual pairwise
+ratings and comprehension outcomes; run size-controlled ablations, project/language holdouts, calibration,
+and model cards. Decide explicitly between one portable model, language/role models, or evidence-only UX.
+
+### M9 — Incremental project scale and integrations
+
+Add persistent content-addressed caches, changed-range graph invalidation, scalable clone indexing, parallel
+region analysis, query budgets, git-changed scans, ratchets, SARIF/CI, editor updates, and performance
+regressions. Reuse the same project snapshot across tools and sessions.
+
+### M10 — Dogfood, external evaluation, and stable release
+
+Run deslop on itself and independent repositories through human and LLM workflows. Publish benchmark
+results and failure taxonomy, close or document every release-gate exception, freeze schema/recipe/model
+versions, complete migration/undo/security docs, and release only the capability tiers demonstrated by data.
+
+## Required artifacts and decision records
+
+Each milestone must leave: an ADR for new semantic authority, schemas and capability matrix, gold fixtures
+and counterexamples, numerical benchmark results, migration notes, a session-report checkpoint, and updated
+negative memory for invalidated algorithms or labels. `.agents/TODO.md` is the completion ledger; an item is
+checked only after its listed evidence exists.
+
+## Negative-memory constraints
+
+- Tree-sitter is an imperative syntax substrate, not a universal semantic oracle.
+- Repo-relative unusualness is not absolute readability or defect evidence.
+- Byte/token/AST entropy, compression ratio, and language-model surprisal are distinct measures.
+- Readability evidence does not imply removability, payoff, behavior preservation, or safe application.
+- A green current test suite does not validate name resolution, graph edges, metric labels, or equivalence.
+- Pairwise clone findings and span-derived work-order IDs do not constitute a stable transformation plan.
+- Architectural clustering and dependency cycles generate hypotheses; intent and public-boundary decisions
+  still require evidence and review.
+
+## Primary references and design consequences
+
+1. Ferrante, Ottenstein, and Warren, “The Program Dependence Graph and Its Use in Optimization”
+   (TOPLAS, 1987), <https://doi.org/10.1145/24039.24041>. Represent control and data dependence explicitly;
+   use dependence facts to constrain transformations.
+2. Horwitz, Reps, and Binkley, “Interprocedural Slicing Using Dependence Graphs” (TOPLAS, 1990),
+   <https://doi.org/10.1145/77606.77608>. Use system-dependence summaries for cross-call impact and slicing.
+3. Yamaguchi et al., “Modeling and Discovering Vulnerabilities with Code Property Graphs” (IEEE S&P,
+   2014), <https://doi.org/10.1109/SP.2014.44>. Unify syntax, control flow, and dependence in a queryable
+   property graph while retaining provenance.
+4. Johnson, Pearson, and Pingali, “The Program Structure Tree: Computing Control Regions in Linear Time”
+   (PLDI, 1994), <https://iss.oden.utexas.edu/Publications/Papers/PLDI1994.pdf>. Use hierarchical SESE
+   regions as principled branch/extraction units.
+5. Creager and van Antwerpen, “Stack Graphs: Name Resolution at Scale” (EVCS, 2023),
+   <https://doi.org/10.4230/OASIcs.EVCS.2023.8>. Make name resolution declarative and file-incremental,
+   with paths rather than same-name guesses.
+6. Tsantalis and Chatzigeorgiou, “Identification of Extract Method Refactoring Opportunities for the
+   Decomposition of Methods” (JSS, 2011), <https://doi.org/10.1016/j.jss.2011.05.016>. Generate extraction
+   candidates from complete computation and object-state slices.
+7. Sajnani et al., “SourcererCC: Scaling Code Clone Detection to Big-Code” (ICSE, 2016),
+   <https://doi.org/10.1145/2884781.2884877>. Use indexed candidates and token ordering rather than
+   quadratic pair comparison for Type-1/2/3 clones.
+8. Tarjan, “Depth-First Search and Linear Graph Algorithms” (SIAM J. Computing, 1972),
+   <https://doi.org/10.1137/0201010>. Use SCCs and condensation DAGs to expose cycles and plan order.
+9. Sangal et al., “Using Dependency Models to Manage Complex Software Architecture” (OOPSLA, 2005),
+   <https://doi.org/10.1145/1094811.1094824>. Use dependency structure and design rules to reason about
+   layering and architecture refactors.
+10. McCabe, “A Complexity Measure” (TSE, 1976), <https://doi.org/10.1109/TSE.1976.233837>. Compute
+    cyclomatic complexity from control flow, not token guesses.
+11. Buse and Weimer, “Learning a Metric for Code Readability” (TSE, 2010),
+    <https://doi.org/10.1109/TSE.2009.70>; Posnett, Hindle, and Devanbu, “A Simpler Model of Software
+    Readability” (MSR, 2011), <https://doi.org/10.1145/1985441.1985454>; and Scalabrino et al., “A
+    Comprehensive Model for Code Readability” (JSS/SMR, 2018), <https://doi.org/10.1002/smr.1958>.
+    Learn from human-labelled local features, control for size, and avoid universal hand-set weights.
+12. Hindle et al., “On the Naturalness of Software” (ICSE, 2012),
+    <https://doi.org/10.1109/ICSE.2012.6227135>, and Ray et al., “On the ‘Naturalness’ of Buggy Code”
+    (ICSE, 2016), <https://doi.org/10.1145/2884781.2884848>. Treat surprisal as project- and
+    role-conditioned anomaly evidence, not readability or authorship proof.
+13. Torres et al., software-evolution entropy study (EMSE, 2025),
+    <https://doi.org/10.1007/s10664-025-10644-y>. Token and AST-edge entropy can help flag unusual
+    changes, but the target and estimator must remain explicit.
+14. Tree-sitter documentation, <https://tree-sitter.github.io/tree-sitter/>. Use fields, queries,
+    cursors, edits, and changed ranges as the incremental concrete-syntax foundation; layer semantics
+    above it.
+15. Weiser, “Program Slicing” (TSE, 1984), <https://doi.org/10.1109/TSE.1984.5010248>. Define impact and
+    extraction inputs/outputs from a `(program point, value)` slicing criterion, while recognizing that a
+    slice alone need not be cohesive, contiguous, or extractable.
+16. Komondoor and Horwitz, “Semantics-Preserving Procedure Extraction” (POPL, 2000),
+    <https://doi.org/10.1145/325694.325713>. Check flow, anti-, output, and control dependences plus non-local
+    transfers before moving selected statements.
+17. Néron et al., “A Theory of Name Resolution” (ESOP, 2015),
+    <https://doi.org/10.1007/978-3-662-46669-8_9>. Separate language-specific scope-graph construction from
+    resolution and use binding equivalence to constrain rename/move operations.
+18. Jiang et al., “DECKARD: Scalable and Accurate Tree-Based Detection of Code Clones” (ICSE, 2007),
+    <https://doi.org/10.1109/ICSE.2007.30>. Use structural vectors/approximate neighbors for candidate
+    retrieval, followed by semantic and refactorability checks.
+19. Mitchell and Mancoridis, “On the Automatic Modularization of Software Systems Using the Bunch Tool”
+    (TSE, 2006), <https://doi.org/10.1109/TSE.2006.31>. Treat cohesion/coupling optimization as a source of
+    candidate module boundaries, not architectural truth.
+20. Overbey and Johnson, “Differential Precondition Checking” (ASE, 2011),
+    <https://doi.org/10.1109/ASE.2011.6100067>. Compare authoritative semantic facts before and after a
+    transformation and centralize reusable preconditions.
+21. Daniel et al., “Automated Testing of Refactoring Engines” (ESEC/FSE, 2007),
+    <https://doi.org/10.1145/1287624.1287651>, and Soares et al., “Making Program Refactoring Safer”
+    (IEEE Software, 2010), <https://doi.org/10.1109/MS.2010.63>. Use generated adversarial programs and
+    pre/post differential tests to find unsound refactorings; passing tests remain evidence, not proof.
+
+Signature: Codex (GPT-5), ultimate generic deslop roadmap, 2026-07-12.

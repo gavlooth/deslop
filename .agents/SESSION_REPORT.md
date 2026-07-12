@@ -4530,3 +4530,123 @@ to `/3`, use `refactor_confidence_score` for arithmetic, and read contextual nor
 `repo_relative`.
 
 **Signature:** Codex (GPT-5), intrinsic/repo-relative confidence contract, 2026-07-11.
+
+## 2026-07-12T13:11:12+02:00 — Algorithm audit: graph-first per-node analysis
+
+**Objective:** audit deslop's algorithms and determine how to make the tool effective for cleaning
+both human- and AI-authored code, with Tree-sitter as a general syntax backbone and evaluation at
+node/block/line granularity.
+
+**Target:** parser lifecycle; language packs; dependency graph; analyzer and duplication algorithms;
+metrics/readability/entropy/complexity; finding/work-order/slim/verify flow; evaluation coverage;
+primary readability/naturalness literature.
+
+**Changes:** added `.agents/ALGORITHM_AUDIT.md`; appended the implementation checkpoint to
+`.agents/PLAN.md`; recorded the confirmed negative memory in Hindsight. No Rust, schema, config,
+test, dependency, or runtime code was changed.
+
+**Commands/checks run:** Serena project activation and memories (Rust symbolic inspection was
+unavailable because Serena exposed only Python); Hindsight startup recall/search and consolidation;
+targeted `rg`/numbered source reads; Context7 Tree-sitter 0.25 traversal/query API check; primary-
+source web literature review; current CLI metrics/graph/propose/slop/eval probes; timed metrics and
+graph runs; `cargo test -p deslop-metrics`; `cargo fmt --all --check`; `cargo test --workspace`;
+`cargo clippy --workspace -- -D warnings`.
+
+**Results:** full gate green (179 tests). Live semantic probes failed despite the green suite:
+clean health `40.38` versus sloppy `46.14`; clean relative-only refactor candidates at intrinsic
+`0.15–0.17`; metrics `30.50s` versus graph `0.74s` over `crates`; false resolved `compact_label`
+edges; Clojure branches score zero increments; typed TypeScript falls back/skips; one Rust region
+generates 11 duplicate work orders. The broader sloppy corpus generated 62 orders but 31 unique IDs.
+
+**Failure modes/root causes:** no shared parsed IR; raw grammar strings used as cross-language
+semantics; per-region reparsing and overlapping aggregates; unsound global simple-name resolution;
+unvalidated heuristic weights presented as confidence/health; zero-order entropy conflated with
+compression/naturalness; fixed-window `O(n² × k)` same-file duplication; finding schemas lack node
+identity/evidence; work orders are per finding rather than per region.
+
+**Invalidated assumptions:** unit-test success proves metric/graph correctness; a repo-relative
+outlier is an absolute refactor candidate; Tree-sitter-derived output is necessarily graph-first;
+unique global simple-name lookup is resolution proof; Shannon entropy, model cross-entropy, and
+compression have the same meaning or monotonic quality direction.
+
+**Current recommendation/checkpoint:** implement P0 contract repair, then one parse per file into an
+owned syntax arena with normalized roles, exclusive per-node features, lexical/CFG/dependency
+projections, durable NodeKeys, structured evidence, and region-grouped work orders. Keep readability,
+structural load, anomaly, redundancy, evidence reliability, impact, and refactor safety separate.
+Run one convergent human-labelled calibration experiment only after the feature substrate is stable.
+
+**Blockers:** none for the audit. Ruflo was not callable; built-in read-only agents covered the
+independent architecture, metric, and literature tracks. A real TypeScript grammar will require an
+existing-stack check and likely a justified grammar dependency during implementation.
+
+**Next actions:** start with work-order grouping and regression proof; correct graph confidence and
+language adapters; remove metric gating authority; implement the shared graph IR; replace clone
+matching; then run the convergent calibration benchmark. Exact design and terminal validation
+outcomes are in `.agents/ALGORITHM_AUDIT.md`.
+
+**Dependencies/restart:** none for this read-only audit. Any later implementation will require a
+rebuild/reinstall of CLI, MCP, and LSP binaries; no live fix is active now.
+
+**Negative-memory status:** written and consolidated. The current structural readability/health/
+confidence and graph-resolved outputs are authority-downgraded to experimental until the recorded
+recheck conditions pass.
+
+**Signature:** Codex (GPT-5), algorithm-audit integration owner, 2026-07-12.
+
+## 2026-07-12T13:48:15+02:00 — Ultimate generic deslop roadmap and completion ledger
+
+**Objective:** turn the graph-first algorithm audit into an executable product plan for a generic
+human/LLM refactoring tool, including branch/function/module merge/split decisions, dependency order,
+readability evidence, primary research references, measurable gates, and markable completion items.
+
+**Target:** authoritative product contract; universal per-node program-graph architecture; adapter and
+capability boundary; refactoring opportunity/recipe algorithms; work-order dependency planning; LLM
+protocol; verification authority; cross-language calibration; incrementality; release evidence.
+
+**Changes:** appended the authoritative “Ultimate Generic Deslop Plan (2026-07-12)” to
+`.agents/PLAN.md`, retaining older plans as history; added `.agents/TODO.md` with 159 stable checklist
+items and M0.1 as the explicit next task. The plan defines one immutable project snapshot with lossless
+Tree-sitter syntax, owned nodes, scope/name, CFG/PST, PDG/SDG, project dependency, clone, evidence,
+candidate, transaction, and verification overlays. It separates candidate generation, semantic legality,
+and behavior validation; defines S0-S4 adapter capabilities, three-valued preconditions, work-order
+`Reads`/`Writes`/`Requires`/`Invalidates`, a safety lattice, a dependency DAG, and atomic rollback. No
+Rust, dependency, schema, runtime, or live-process code was changed.
+
+**Research integrated:** 21 primary references covering PDG/SDG and slicing, code property graphs,
+PST/SESE control regions, extract-method legality, scope/stack graphs and binding preservation, clone
+indexing, SCCs and modularization, readability/naturalness/entropy, differential preconditions, and
+refactoring-engine testing. Independent agents supplied architecture sequencing, primary-source limits,
+and convergent numerical release gates; `/root` owned integration and final decisions.
+
+**Commands/checks run:** focused `rg`/`sed` repository and artifact inspection; primary-source web and
+Tree-sitter documentation review; duplicate checklist-ID and checkbox-shape checks; required heading,
+reference, and local-artifact assertions; trailing-whitespace scan; `git diff --check HEAD -- .agents`;
+`cargo fmt --all --check`; Hindsight durable decision write and graph consolidation.
+
+**Results:** artifact contract PASS; 159 uniquely identified checkboxes, four completed audit/planning
+items, 21 primary references, no malformed checkboxes or trailing whitespace, no patch whitespace errors,
+and no Rust formatting regression. The benchmark plan now has explicit minimum assets and provisional
+floors for graph accuracy, opportunity precision/recall, behavior preservation, human preference, paired
+LLM uplift, and incremental scale; values must be frozen before the held-out run.
+
+**Invalidated assumptions:** no new failed implementation attempt. The plan formalizes prior invalidations:
+Tree-sitter syntax is not a universal semantic oracle; topology does not identify a correct cycle-breaking
+edge; a high readability/slop/clone score is not refactor legality; test success alone is not equivalence;
+and fuzzy baseline identity must never authorize a write.
+
+**Current recommendation/checkpoint:** execute M0.1 first: group all findings for one
+`(snapshot, target region, recipe)` into one work order and add duplicate-ID/proposal-count regressions.
+Complete M0 contract truth before the owned snapshot/graph migration so later benchmark numbers are not
+anchored to known duplicate, resolution, grammar, parse-error, or metric-authority failures.
+
+**Blockers:** none for planning. Implementation of the semantic layers will require per-language adapter
+work and may require a maintained TypeScript/TSX grammar after confirming the existing stack cannot meet
+the contract; that dependency is not added by this planning change.
+
+**Dependencies/restart:** none; documentation only. No rebuild, reinstall, migration, or live-process
+restart is required. The proposed capabilities are not active until their TODO gates are implemented.
+
+**Negative-memory status:** prior algorithm-audit negative memory remains active; the authoritative
+architecture and next checkpoint were written to repo Hindsight and consolidated.
+
+**Signature:** Codex (GPT-5), roadmap integration owner, 2026-07-12.
