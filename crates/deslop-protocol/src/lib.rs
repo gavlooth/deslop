@@ -341,6 +341,29 @@ mod tests {
     }
 
     #[test]
+    fn typed_tsx_finding_targets_the_enclosing_component() {
+        let source = SourceFile::new(
+            PathBuf::from("component.tsx"),
+            include_str!("../../../tests/fixtures/typescript/component.tsx").to_string(),
+        );
+        let work_orders = work_orders_for_source(
+            &source,
+            &[finding(
+                &source,
+                14,
+                "typed-component-cleanup",
+                SafetyClass::LlmOnly,
+            )],
+        );
+
+        assert_eq!(source.lang, deslop_core::Lang::TypeScript);
+        assert_eq!(work_orders.len(), 1);
+        assert_eq!(work_orders[0].region.start_line, 11);
+        assert_eq!(work_orders[0].region.end_line, 21);
+        assert!(work_orders[0].region.text.contains("function View"));
+    }
+
+    #[test]
     fn emits_distinct_unique_orders_for_distinct_regions() {
         let source = SourceFile::new(
             PathBuf::from("sample.rs"),

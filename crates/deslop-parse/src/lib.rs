@@ -192,6 +192,13 @@ fn parser_for_pack(pack: &dyn LangPack, path: Option<&Path>) -> Result<Option<Pa
 mod tests {
     use super::*;
 
+    const TYPED_TYPESCRIPT: &str = include_str!("../../../tests/fixtures/typescript/typed.ts");
+    const TYPED_TSX: &str = include_str!("../../../tests/fixtures/typescript/component.tsx");
+    const JSX: &str = include_str!("../../../tests/fixtures/typescript/component.jsx");
+    const MALFORMED_TYPESCRIPT: &str =
+        include_str!("../../../tests/fixtures/typescript/malformed.ts");
+    const MALFORMED_TSX: &str = include_str!("../../../tests/fixtures/typescript/malformed.tsx");
+
     #[test]
     fn extracts_clojure_top_level_list_region() {
         let source = SourceFile::new(
@@ -268,6 +275,92 @@ mod tests {
         );
     }
 
+    #[test]
+    fn parses_typed_typescript_and_tsx_construct_matrix() {
+        let typescript = SourceFile::new(PathBuf::from("typed.ts"), TYPED_TYPESCRIPT.to_string());
+        let tsx = SourceFile::new(PathBuf::from("component.tsx"), TYPED_TSX.to_string());
+        let jsx = SourceFile::new(PathBuf::from("component.jsx"), JSX.to_string());
+
+        let typescript_tree = parse_source(&typescript)
+            .expect("TypeScript parse")
+            .expect("TypeScript tree");
+        assert!(!typescript_tree.root_node().has_error());
+        for kind in [
+            "interface_declaration",
+            "type_alias_declaration",
+            "function_signature",
+            "function_declaration",
+            "class_declaration",
+            "decorator",
+            "satisfies_expression",
+            "internal_module",
+        ] {
+            assert!(
+                tree_has_kind(typescript_tree.root_node(), kind),
+                "missing {kind}"
+            );
+        }
+
+        let tsx_tree = parse_source(&tsx).expect("TSX parse").expect("TSX tree");
+        assert!(!tsx_tree.root_node().has_error());
+        for kind in [
+            "interface_declaration",
+            "type_alias_declaration",
+            "type_parameters",
+            "arrow_function",
+            "function_declaration",
+            "jsx_element",
+            "jsx_expression",
+            "spread_element",
+            "member_expression",
+            "type_arguments",
+        ] {
+            assert!(tree_has_kind(tsx_tree.root_node(), kind), "missing {kind}");
+        }
+
+        let jsx_tree = parse_source(&jsx).expect("JSX parse").expect("JSX tree");
+        assert_eq!(jsx.lang, Lang::JavaScript);
+        assert!(!jsx_tree.root_node().has_error());
+        for kind in [
+            "function_declaration",
+            "jsx_element",
+            "jsx_self_closing_element",
+            "jsx_expression",
+            "spread_element",
+            "member_expression",
+        ] {
+            assert!(tree_has_kind(jsx_tree.root_node(), kind), "missing {kind}");
+        }
+    }
+
+    #[test]
+    fn typed_typescript_and_tsx_regions_use_behavioral_boundaries() {
+        let typescript = SourceFile::new(PathBuf::from("typed.ts"), TYPED_TYPESCRIPT.to_string());
+        let tsx = SourceFile::new(PathBuf::from("component.tsx"), TYPED_TSX.to_string());
+        let jsx = SourceFile::new(PathBuf::from("component.jsx"), JSX.to_string());
+
+        assert_enclosing_region(&typescript, 22, 21, 24, "add(item: T)");
+        assert_enclosing_region(&tsx, 14, 11, 21, "function View");
+        assert_enclosing_region(&jsx, 6, 1, 10, "function JsxView");
+    }
+
+    #[test]
+    fn malformed_typescript_and_tsx_report_explicit_error_nodes() {
+        for (path, text) in [
+            ("malformed.ts", MALFORMED_TYPESCRIPT),
+            ("malformed.tsx", MALFORMED_TSX),
+        ] {
+            let source = SourceFile::new(PathBuf::from(path), text.to_string());
+            let tree = parse_source(&source)
+                .unwrap_or_else(|error| panic!("{path}: {error:#}"))
+                .expect("tree");
+
+            assert_eq!(source_parses_without_errors(&source).unwrap(), Some(false));
+            assert!(tree.root_node().has_error(), "{path}");
+            assert!(tree_has_error_or_missing(tree.root_node()), "{path}");
+        }
+    }
+
     fn tree_has_kind(node: tree_sitter::Node<'_>, expected: &str) -> bool {
         if node.kind() == expected {
             return true;
@@ -275,6 +368,15 @@ mod tests {
         let mut cursor = node.walk();
         node.named_children(&mut cursor)
             .any(|child| tree_has_kind(child, expected))
+    }
+
+    fn tree_has_error_or_missing(node: tree_sitter::Node<'_>) -> bool {
+        if node.is_error() || node.is_missing() {
+            return true;
+        }
+        let mut cursor = node.walk();
+        node.named_children(&mut cursor)
+            .any(tree_has_error_or_missing)
     }
 
     fn assert_enclosing_region(

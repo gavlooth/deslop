@@ -4578,7 +4578,7 @@ mod tests {
 
     #[test]
     fn parse_guard_selects_tsx_from_work_order_path() {
-        let typed_jsx = "const view: JSX.Element = <div />;\n";
+        let typed_jsx = include_str!("../../../tests/fixtures/typescript/component.tsx");
 
         assert!(
             parse_check_passes(Path::new("sample.tsx"), Lang::TypeScript, typed_jsx)
@@ -4588,6 +4588,26 @@ mod tests {
             !parse_check_passes(Path::new("sample.ts"), Lang::TypeScript, typed_jsx)
                 .expect("typescript parse")
         );
+    }
+
+    #[test]
+    fn parse_guard_rejects_malformed_typescript_fixtures() {
+        for (path, text) in [
+            (
+                "malformed.ts",
+                include_str!("../../../tests/fixtures/typescript/malformed.ts"),
+            ),
+            (
+                "malformed.tsx",
+                include_str!("../../../tests/fixtures/typescript/malformed.tsx"),
+            ),
+        ] {
+            assert!(
+                !parse_check_passes(Path::new(path), Lang::TypeScript, text)
+                    .unwrap_or_else(|error| panic!("{path}: {error:#}")),
+                "{path} must fail the verifier parse guard"
+            );
+        }
     }
 
     #[test]

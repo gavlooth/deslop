@@ -4979,3 +4979,73 @@ unsupported and therefore cannot provide a mutation proof.
 passed. Recheck only when M2 versions explicit adapter/dialect provenance.
 
 **Signature:** Codex (GPT-5), M0.4 integration owner, 2026-07-12.
+
+## 2026-07-12T20:30:27+02:00 — M0.5 typed TypeScript, JSX, and TSX fixtures
+
+**Objective:** freeze the typed JavaScript-family construct, behavioral-region, and explicit parser-error
+contract before expanding language coverage, so downstream refactoring facts are based on the selected
+TypeScript or TSX grammar rather than incidental JavaScript recovery.
+
+**Target:** shared physical TypeScript/TSX/JSX fixtures and their parser, analyzer, metrics, graph, protocol,
+and verifier consumers. `/root` owned integration and full verification; three read-only agents audited the
+fixture boundary, malformed-input contract, and consumer coverage.
+
+**Changes:**
+
+- Added `tests/fixtures/typescript/typed.ts` with type-only imports/exports, interfaces, generic aliases,
+  overload signatures plus implementation, decorators, generic classes, private fields, methods, type
+  predicates, `satisfies`, and namespaces.
+- Added `component.tsx` with typed generic arrows and components, fragments, member tags, spread props,
+  and generic JSX type arguments, plus a JavaScript `component.jsx` dialect fixture.
+- Added unequivocally malformed `.ts` and `.tsx` fixtures. Parser regressions require root error state and
+  an explicit `ERROR` or missing recovery node instead of assuming any syntactically suspicious JSX is
+  rejected.
+- Locked selected paths, public `Lang::TypeScript` identity, construct node kinds, and exact behavioral
+  regions. The fragment representation is the grammar's nameless `jsx_element`, not an invented
+  `jsx_fragment` kind.
+- Migrated typed fixture coverage into metrics, graph, analyzer, protocol, and verifier tests. Metrics keep
+  named callable spans instead of file fallback; graph emits typed declarations without notices; protocol
+  targets the enclosing TSX component; verifier both selects TSX from the work-order path and rejects the
+  malformed TS/TSX fixtures.
+- Corrected the prior M0.4 report's prose: the pre-existing kebab-case serde representation of
+  `Lang::TypeScript` is `"type-script"`, not `"typescript"`. M0.5 now locks that JSON value and proves no
+  public `"tsx"` language value was introduced.
+- Updated SPEC with the fixture boundary and the explicit limitation that parser success is not JSX tag-name
+  equality validation. Updated `.agents/TODO.md` to mark M0.5 complete and advance **NEXT** to M0.6.
+
+**Commands/checks run:** targeted fixture probes and parser/consumer tests; `cargo fmt --all --check`;
+`git diff --check`; `cargo build --workspace`; `cargo build -p deslop-slim --no-default-features`;
+`cargo test --workspace`; `cargo test -p deslop-mcp --features slim-llm`; and
+`cargo clippy --workspace -- -D warnings`. Hindsight checkpoint and corrective memories were written and
+consolidated.
+
+**Verification results:** PASS. Workspace: 228 tests. Feature-enabled MCP: 20 tests. Formatting, patch
+whitespace, workspace and no-default-features slim builds, and warnings-denied workspace clippy passed.
+No dependency or public schema change was made in M0.5.
+
+**Failed iterations / invalidated assumptions:** an initial TSX region assertion selected a line inside the
+nested generic arrow and correctly resolved to that inner callable; the probe moved to the component body to
+test the intended enclosing `View` region. Expected fixture end lines were corrected to the parser's exact
+inclusive spans. More importantly, mismatched JSX opening/closing names were invalidated as a reliable
+malformed fixture because the official grammar may accept them without `ERROR`; deslop does not claim that
+tree-sitter performs JSX tag-name semantic validation.
+
+**Residual semantic boundary:** M0.5 establishes parser error evidence and verifier rejection, but does not
+yet choose whether graph, metrics, analyzer, LSP, and MCP should reject a whole malformed file or emit
+explicitly partial facts. That cross-surface policy remains M0.8. Grammar-version node-shape provenance and
+adapter goldens remain M2.7 concerns.
+
+**Current recommendation/checkpoint:** execute M0.6 next by emitting Python behavioral regions and freezing
+async, decorated, and nested-function ownership before expanding graph resolution semantics.
+
+**Blockers:** none. Serena remains configured for Python-only symbols and therefore cannot symbolically
+inspect this Rust workspace; targeted text and local Rust reads remain the active fallback.
+
+**Dependencies/restart:** rebuild or reinstall CLI/MCP binaries to consume the fixture-backed parser
+behavior. No migration or configuration change is required.
+
+**Negative-memory status:** corrective repo memory supersedes the M0.4 `"typescript"` wording and rejects
+mismatched JSX tag names as parse-error evidence. Hindsight consolidation passed. Recheck partial malformed
+analysis at M0.8 and serialized dialect provenance at M2.
+
+**Signature:** Codex (GPT-5), M0.5 integration owner, 2026-07-12.

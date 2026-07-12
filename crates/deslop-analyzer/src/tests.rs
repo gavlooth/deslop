@@ -544,16 +544,19 @@ fn typed_typescript_dialects_preserve_inline_suppression() {
     let cases = [
         (
             "sample.ts",
-            "function typed(value: number): number {\n  // deslop:ignore-next-line js-var-declaration\n  var copy: number = value;\n  return copy;\n}\n",
+            include_str!("../../../tests/fixtures/typescript/typed.ts"),
+            "function suppressed(value: number): number {\n  // deslop:ignore-next-line js-var-declaration\n  var copy: number = value;\n  return copy;\n}\n",
         ),
         (
             "sample.tsx",
-            "function View(value: string): JSX.Element {\n  // deslop:ignore-next-line js-var-declaration\n  var copy: JSX.Element = <span>{value}</span>;\n  return copy;\n}\n",
+            include_str!("../../../tests/fixtures/typescript/component.tsx"),
+            "function Suppressed(value: string): JSX.Element {\n  // deslop:ignore-next-line js-var-declaration\n  var copy: JSX.Element = <span>{value}</span>;\n  return copy;\n}\n",
         ),
     ];
 
-    for (path, text) in cases {
-        let report = scan_source(&source(path, text));
+    for (path, fixture, suppressed) in cases {
+        let text = format!("{fixture}\n{suppressed}");
+        let report = scan_source(&source(path, &text));
         assert_eq!(report.lang, Lang::TypeScript);
         assert!(!has_rule(&report, "js-var-declaration"), "{path}");
     }

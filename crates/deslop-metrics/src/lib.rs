@@ -1560,26 +1560,46 @@ mod tests {
     fn typed_typescript_and_tsx_functions_keep_dialect_regions() {
         let cases = [
             (
-                "sample.ts",
+                "typed.ts",
                 Lang::TypeScript,
-                "function greet(name: string): string { return name; }\n",
-                "greet",
+                include_str!("../../../tests/fixtures/typescript/typed.ts"),
+                "convert",
+                13,
+                15,
             ),
             (
-                "sample.tsx",
+                "component.tsx",
                 Lang::TypeScript,
-                "function View(title: string): JSX.Element { return <h1>{title}</h1>; }\n",
+                include_str!("../../../tests/fixtures/typescript/component.tsx"),
                 "View",
+                11,
+                21,
+            ),
+            (
+                "component.jsx",
+                Lang::JavaScript,
+                include_str!("../../../tests/fixtures/typescript/component.jsx"),
+                "JsxView",
+                1,
+                10,
             ),
         ];
 
-        for (path, lang, text, name) in cases {
+        for (path, lang, text, name, start_line, end_line) in cases {
             let source = SourceFile::new(PathBuf::from(path), text.to_string());
             let report = metrics_source(&source).expect("typed metrics");
             assert_eq!(source.lang, lang);
-            assert!(report.iter().any(|region| {
-                region.lang == lang && region.name == name && region.kind == "function_declaration"
-            }));
+            let region = report
+                .iter()
+                .find(|region| {
+                    region.lang == lang
+                        && region.name == name
+                        && region.kind == "function_declaration"
+                })
+                .unwrap_or_else(|| panic!("missing {name} in {path}: {report:#?}"));
+            assert_eq!(region.span.start_line, start_line);
+            assert_eq!(region.span.end_line, end_line);
+            assert!(!report.iter().any(|region| region.kind == "file"));
         }
     }
 

@@ -39,8 +39,13 @@ reports, benchmark records, and work orders.
   verifier, LSP, CLI, and MCP parsing/config consumers to the path-aware contract. Evidence: extension
   and positive/negative grammar truth table, typed graph/metrics regions, analyzer/LSP suppression,
   verifier TSX parse guard, honest mutation capability, and MCP TypeScript configuration regressions.
-- [ ] M0.5 Add typed TypeScript and JSX/TSX parse/region fixtures with explicit error assertions. **NEXT**
-- [ ] M0.6 Emit Python behavioral regions and add async/decorator/nested-function fixtures.
+- [x] M0.5 Add shared typed TypeScript, JSX, TSX, and malformed fixtures with explicit parser
+  recovery and exact behavioral-region assertions. Cover generic constraints/arrows, overloads,
+  decorators, private fields, type-only import/export, `satisfies`, fragments, spread/member JSX,
+  and generic JSX type arguments; prove valid analyzer/metrics/graph/protocol consumers and verifier
+  rejection of malformed `.ts`/`.tsx`. Preserve public `TypeScript` identity and defer malformed-file
+  cross-consumer policy to M0.8.
+- [ ] M0.6 Emit Python behavioral regions and add async/decorator/nested-function fixtures. **NEXT**
 - [ ] M0.7 Correct Clojure branch/decision counting and add reader/macro-edge fixtures.
 - [ ] M0.8 Define one parse-error/partial-analysis policy across scan, metrics, graph, LSP, MCP, and slim.
 - [ ] M0.9 Relabel or remove uncalibrated health/readability/refactor-confidence gates.

@@ -612,21 +612,26 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         std::fs::write(
             temp.path().join("typed.ts"),
-            "export function greet(name: string): string { return name; }\n",
+            include_str!("../../../tests/fixtures/typescript/typed.ts"),
         )
         .expect("typescript");
         std::fs::write(
-            temp.path().join("view.tsx"),
-            "interface Props { title: string }\nexport function View(props: Props): JSX.Element { return <h1>{props.title}</h1>; }\n",
+            temp.path().join("component.tsx"),
+            include_str!("../../../tests/fixtures/typescript/component.tsx"),
         )
         .expect("tsx");
+        std::fs::write(
+            temp.path().join("component.jsx"),
+            include_str!("../../../tests/fixtures/typescript/component.jsx"),
+        )
+        .expect("jsx");
 
         let graph = graph_paths(&[temp.path().to_path_buf()], GraphConfig::default()).unwrap();
 
         assert!(graph.notices.is_empty(), "{:#?}", graph.notices);
         assert!(graph.nodes.iter().any(|node| {
-            node.name == "greet"
-                && node.kind == GraphNodeKind::Function
+            node.name == "Entity"
+                && node.kind == GraphNodeKind::Interface
                 && node.lang == Lang::TypeScript
         }));
         assert!(graph.nodes.iter().any(|node| {
@@ -634,6 +639,20 @@ mod tests {
                 && node.kind == GraphNodeKind::Function
                 && node.lang == Lang::TypeScript
         }));
+        assert!(graph.nodes.iter().any(|node| {
+            node.name == "JsxView"
+                && node.kind == GraphNodeKind::Function
+                && node.lang == Lang::JavaScript
+        }));
+
+        let json = serde_json::to_value(&graph).expect("graph JSON");
+        let nodes = json["nodes"].as_array().expect("nodes");
+        assert!(
+            nodes
+                .iter()
+                .any(|node| { node["name"] == "View" && node["lang"] == "type-script" })
+        );
+        assert!(!nodes.iter().any(|node| node["lang"] == "tsx"));
     }
 
     #[test]

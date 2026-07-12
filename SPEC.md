@@ -261,6 +261,10 @@ detection, tree-sitter grammar selection, CST region extraction, and comment syn
 JavaScript/JSX uses `tree-sitter-javascript`. The TypeScript language family keeps one
 public `typescript` identity while `.ts`/`.mts`/`.cts` select the TypeScript grammar and
 `.tsx` selects the distinct TSX grammar from the source path.
+Shared fixtures under `tests/fixtures/typescript` freeze typed TypeScript, JSX, TSX, region,
+and malformed-syntax behavior. Tree-sitter parse success proves CST recovery without `ERROR` or
+missing nodes; it does not prove matching JSX tag names. Cross-consumer partial-analysis policy is
+defined separately in M0.8.
 `deslop-parse` and `deslop-analyzer` query this registry rather than switching on
 `Lang`. Analyzer rule packs and external analyzers attach to the same stable `Lang`
 id. Adding low-level language behavior should require only a new pack module plus one
