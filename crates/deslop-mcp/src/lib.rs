@@ -266,7 +266,7 @@ fn metrics_tool_spec() -> Value {
 fn graph_tool_spec() -> Value {
     tool(
         "graph",
-        "Return deslop.graph/1 JSON: deterministic file/symbol nodes plus contains/imports/calls/inherits edges for LLM refactor planning. Read-only; no writes, no network.",
+        "Return read-only deslop.graph/1 JSON for refactor planning. Contains edges are resolved syntax ownership. Calls/imports/inherits are syntactic best-candidate or ambiguous evidence until a scope/type authority proves binding; syntactic is not resolution proof. No writes, no network.",
         object_schema(json!({
             "paths": paths_schema(),
             "include_calls": { "type": "boolean", "default": true }
@@ -1017,6 +1017,12 @@ mod tests {
         assert_scan_analyzer_schema(tool_by_name(tools, "propose"));
         assert_verify_coverage_schema(tool_by_name(tools, "verify"));
         assert_fix_tool_schema(tool_by_name(tools, "fix"));
+        assert!(
+            tool_by_name(tools, "graph")["description"]
+                .as_str()
+                .expect("graph description")
+                .contains("syntactic is not resolution proof")
+        );
     }
 
     #[test]
@@ -1204,7 +1210,7 @@ mod tests {
                 .iter()
                 .any(|edge| {
                     edge["kind"] == "calls"
-                        && edge["confidence"] == "resolved"
+                        && edge["confidence"] == "syntactic"
                         && edge["label"] == "helper"
                 }),
             "{content:#}"

@@ -4729,3 +4729,80 @@ rejected deliberately and must be regenerated or manually consolidated.
 to repo Hindsight and consolidated. Recheck conditions are linked to TODO M0.12-M0.14.
 
 **Signature:** Codex (GPT-5), M0.1 integration owner, 2026-07-12.
+
+## 2026-07-12T15:46:39+02:00 — M0.2 scope-aware graph authority
+
+**Objective:** continue the ultimate-deslop implementation with M0.2: remove first-wins bare-name
+authority from `deslop.graph/1`, distinguish unique syntactic candidates from ambiguity and unresolved
+labels, and prove that duplicate definitions no longer silently redirect refactor-planning edges.
+
+**Target:** `deslop-graph` path discovery, symbol indexing, owner/scope traversal, call/import/inheritance
+edge classification, graph authority documentation, MCP consumer descriptions, and exact regressions.
+`/root` owned integration and final verification; three read-only agents independently audited producer
+flow, consumers/schema compatibility, and adversarial regressions. No agent edited shared files.
+
+**Changes:**
+
+- Replaced first-wins symbol and module maps with candidate-preserving indexes for simple names,
+  qualified names, owner/name pairs, parent ownership, and module keys. Every symbol now has a
+  path-qualified name, including top-level definitions.
+- Added deterministic best-candidate routing through nearest lexical owners, explicit self/type owners,
+  named owners, module-qualified files, qualified suffixes, and finally global syntactic fallback.
+  One candidate is `Syntactic`, competing candidates are `Ambiguous`, and no candidate produces a
+  syntactic unresolved placeholder. Reference edges are never promoted to `Resolved`; exact `Contains`
+  ownership remains resolved.
+- Fixed inheritance extraction so an edge originates at the subclass after its node exists. Python
+  multiple bases now produce separate edges rather than one combined label.
+- Ported canonical physical-path deduplication and deterministic display-path selection into graph
+  discovery, making equivalent root order/spelling produce byte-identical JSON.
+- Added 15 graph regressions covering same-file duplicate names, same-scope duplicates, remote duplicates,
+  qualified duplicates, colliding module/import keys, unresolved calls, local binding shadowing, nested
+  scope, self/named type calls, unique remote candidates, subclass-owned multiple inheritance, path
+  determinism, and the live duplicate `compact_label` case.
+- Updated `SPEC.md`, the active MCP graph description, its duplicate spec description, and MCP tests to
+  state that graph/1 syntactic edges are evidence rather than resolution proof. `.agents/TODO.md` marks
+  M0.2 complete and leaves M0.3 next for alias/import and full language-binding regressions.
+
+**Measured before/after:** the audited live source had 2 `compact_label` definitions and 10 calls, with
+all calls previously routed to the first definition in `builder.rs`. The corrected probe has 2 definitions,
+10 calls, 10/10 syntactic calls, and every target in the caller's file. The current full graph-source probe
+contains 6 files, 135 symbols, 384 unresolved/ambiguous placeholder nodes, 1,069 edges, 135 resolved
+containment edges, zero ambiguous edges on this source set, and zero externally proven edges.
+
+**Commands/checks run:** Serena project activation/memory bootstrap from the continued session, targeted
+Serena text search plus local `rg`/`sed`; Hindsight startup context from the continued session, two durable
+checkpoint/negative-memory writes, and `improve`; focused graph tests and clippy; MCP graph/tools tests and
+the complete default MCP suite; exact CLI graph JSON plus `jq` ownership assertions; `git diff --check`;
+TODO ID uniqueness; `cargo fmt --all --check`; workspace build; slim no-default-features build;
+`cargo test --workspace`; `cargo test -p deslop-mcp --features slim-llm`; and workspace clippy with
+`-D warnings`. One attempted Cargo invocation supplied two positional test filters and was rejected by
+Cargo; the complete graph suite was rerun immediately and passed.
+
+**Verification results:** PASS. `deslop-graph`: 15 passed. Default MCP: 16 passed. Workspace: 207 passed.
+MCP `slim-llm`: 18 passed. Formatting, workspace and slim builds, patch whitespace checks, TODO identity,
+and warnings-denied workspace clippy passed. No dependency or graph schema version was added.
+
+**Invalidated assumptions / residual semantic boundary:** a unique result from a syntactic name lookup is
+not proof of lexical binding, import aliasing, types, dispatch, or externality. `deslop.graph/1` therefore
+retains its compatible schema but deliberately reserves `Resolved` for containment; unique best references
+and unresolved placeholders are syntactic, while competing candidates are ambiguous. Graph/1 cannot retain
+an ambiguity candidate list or explicit status/authority/provenance. Those facts require the M3 scope graph
+and a versioned graph/2 contract. Local variable bindings and aliases are not modeled yet, so syntactic
+targets must not authorize semantic refactors.
+
+**Current recommendation/checkpoint:** proceed to M0.3 and complete alias/import, shadowing, and language-
+specific binding fixtures without weakening the new authority labels. Then continue M0 adapter/parse-error
+contract repairs before building the owned syntax snapshot and full scope graph in M1-M3.
+
+**Blockers:** none for M0.2 or M0.3. Serena remains configured for Python symbols only, so non-trivial Rust
+inspection used its text search plus local symbol-oriented reads; this did not block the change.
+
+**Dependencies/restart:** rebuild or reinstall CLI/MCP binaries to activate the new graph behavior. The
+`deslop.graph/1` JSON shape is compatible, but consumers that treated reference `resolved` as name-binding
+proof must accept `syntactic`/`ambiguous` and must not auto-refactor from those edges alone.
+
+**Negative-memory status:** durable corrective memory records the invalidated first-wins/name-uniqueness
+assumption and the graph/1 authority downgrade; repo Hindsight consolidation completed. Recheck at M0.3
+alias fixtures and M3 graph/2 binding/provenance implementation.
+
+**Signature:** Codex (GPT-5), M0.2 integration owner, 2026-07-12.

@@ -18,11 +18,15 @@ reports, benchmark records, and work orders.
   IDs before rewriting or writes. True `(ProjectSnapshotId, NodeKey, RecipeId)` identity remains in
   M1.4/M5.1/M6.1. Evidence: `13 -> 3` orders with all 13 findings retained; full sloppy corpus
   `62 -> 31` with 31 unique IDs; one LLM call/patch/verification/write per region.
+- [x] M0.2 Remove first-wins bare-name authority from `deslop.graph/1`: preserve every candidate,
+  emit path-qualified symbols, route unique best scoped candidates as syntactic evidence, report
+  competing candidates as ambiguous, keep unresolved placeholders syntactic, and originate
+  inheritance at the subclass. Evidence: 15 graph regressions; live `compact_label` probe has 2
+  definitions and 10/10 syntactic calls targeting the definition in the caller's file.
 
 ## M0 — Repair present contracts
 
-- [ ] M0.2 Replace bare-name graph resolution with scoped unique/ambiguous/unresolved results. **NEXT**
-- [ ] M0.3 Add duplicate-definition, shadowing, alias/import, and cross-file resolution regressions.
+- [ ] M0.3 Add duplicate-definition, shadowing, alias/import, and cross-file resolution regressions. **NEXT**
 - [ ] M0.4 Select distinct JavaScript, TypeScript, TSX, and supported dialect grammars.
 - [ ] M0.5 Add typed TypeScript and JSX/TSX parse/region fixtures with explicit error assertions.
 - [ ] M0.6 Emit Python behavioral regions and add async/decorator/nested-function fixtures.

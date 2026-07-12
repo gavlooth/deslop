@@ -44,9 +44,7 @@ impl SourceExtractor<'_> {
             self.add_extracted_edge(GraphEdgeKind::Calls, node, label);
         }
 
-        if let Some(label) = inheritance_label(self.source.lang, node, self.source) {
-            self.add_extracted_edge(GraphEdgeKind::Inherits, node, label);
-        }
+        let inheritance = inheritance_labels(self.source.lang, node, self.source);
 
         if let Some(def) = symbol_def(self.source.lang, node, self.source, self.owner()) {
             let current_owner = self.owner().clone();
@@ -54,9 +52,16 @@ impl SourceExtractor<'_> {
                 .builder
                 .add_symbol_node(self.source, &current_owner, node, def);
             self.owners.push(owner);
+            for label in inheritance {
+                self.add_extracted_edge(GraphEdgeKind::Inherits, node, label);
+            }
             self.visit_children(node);
             self.owners.pop();
             return;
+        }
+
+        for label in inheritance {
+            self.add_extracted_edge(GraphEdgeKind::Inherits, node, label);
         }
 
         self.visit_children(node);
@@ -249,18 +254,28 @@ fn call_label(lang: Lang, node: Node<'_>, source: &SourceFile) -> Option<String>
     }
 }
 
-fn inheritance_label(lang: Lang, node: Node<'_>, source: &SourceFile) -> Option<String> {
+fn inheritance_labels(lang: Lang, node: Node<'_>, source: &SourceFile) -> Vec<String> {
     match lang {
         Lang::Python if node.kind() == "class_definition" => node
             .child_by_field_name("superclasses")
-            .map(|child| compact_label(node_text(source, child))),
+            .map(|superclasses| {
+                let mut cursor = superclasses.walk();
+                superclasses
+                    .named_children(&mut cursor)
+                    .map(|child| compact_label(node_text(source, child)))
+                    .filter(|label| !label.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default(),
         Lang::JavaScript | Lang::TypeScript if node.kind() == "class_declaration" => {
             let text = node_text(source, node);
             text.split_once("extends")
                 .map(|(_, tail)| compact_label(tail.split('{').next().unwrap_or(tail)))
                 .filter(|label| !label.is_empty())
+                .into_iter()
+                .collect()
         }
-        _ => None,
+        _ => Vec::new(),
     }
 }
 

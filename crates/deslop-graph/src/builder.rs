@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use anyhow::Result;
@@ -20,8 +20,10 @@ pub(crate) struct GraphBuilder {
     edges: BTreeMap<EdgeKey, GraphEdge>,
     pending: Vec<PendingEdge>,
     local_symbols: BTreeMap<String, Vec<String>>,
-    qualified_symbols: BTreeMap<String, String>,
-    files_by_module_key: BTreeMap<String, String>,
+    qualified_symbols: BTreeMap<String, Vec<String>>,
+    symbols_by_owner_name: BTreeMap<(String, String), Vec<String>>,
+    parent_by_symbol: BTreeMap<String, String>,
+    files_by_module_key: BTreeMap<String, Vec<String>>,
     notices: Vec<GraphNotice>,
 }
 
@@ -43,6 +45,8 @@ impl GraphBuilder {
             pending: Vec::new(),
             local_symbols: BTreeMap::new(),
             qualified_symbols: BTreeMap::new(),
+            symbols_by_owner_name: BTreeMap::new(),
+            parent_by_symbol: BTreeMap::new(),
             files_by_module_key: BTreeMap::new(),
             notices: Vec::new(),
         }
@@ -56,9 +60,7 @@ impl GraphBuilder {
         let pack = registry.pack_for_path(path);
         let file_id = file_id(path);
         for key in module_keys(path, pack.lang()) {
-            self.files_by_module_key
-                .entry(key)
-                .or_insert(file_id.clone());
+            push_candidate(&mut self.files_by_module_key, key, &file_id);
         }
     }
 
@@ -117,7 +119,7 @@ impl GraphBuilder {
         let qualified_name = qualified_name(owner, &def.name);
         let signature = signature_for_node(source, node);
         self.insert_symbol_node(source, &id, &def, &qualified_name, span, signature);
-        self.index_symbol(&id, &def.name, &qualified_name);
+        self.index_symbol(source, owner, &id, &def.name, &qualified_name);
         self.add_contains_edge(owner, &id, &def.name, span);
         Owner {
             id,
@@ -149,16 +151,39 @@ impl GraphBuilder {
             });
     }
 
-    fn index_symbol(&mut self, id: &str, name: &str, qualified_name: &str) {
-        let id = id.to_string();
-        self.local_symbols
-            .entry(simple_name(name))
-            .or_default()
-            .push(id.clone());
-        self.qualified_symbols
-            .entry(qualified_name.to_string())
-            .or_insert(id.clone());
-        self.qualified_symbols.entry(name.to_string()).or_insert(id);
+    fn index_symbol(
+        &mut self,
+        source: &SourceFile,
+        owner: &Owner,
+        id: &str,
+        name: &str,
+        qualified_name: &str,
+    ) {
+        let simple = simple_name(name);
+        push_candidate(&mut self.local_symbols, simple.clone(), id);
+        push_candidate(
+            &mut self.symbols_by_owner_name,
+            (owner.id.clone(), simple),
+            id,
+        );
+        self.parent_by_symbol
+            .insert(id.to_string(), owner.id.clone());
+
+        push_candidate(
+            &mut self.qualified_symbols,
+            normalize_qualified_label(qualified_name),
+            id,
+        );
+        let file_prefix = format!("{}::", source.path.display());
+        if let Some(relative) = qualified_name.strip_prefix(&file_prefix)
+            && relative.contains("::")
+        {
+            push_candidate(
+                &mut self.qualified_symbols,
+                normalize_qualified_label(relative),
+                id,
+            );
+        }
     }
 
     fn add_contains_edge(&mut self, owner: &Owner, id: &str, name: &str, span: Span) {
@@ -222,15 +247,7 @@ impl GraphBuilder {
     fn resolve_pending_edges(&mut self) {
         for pending in std::mem::take(&mut self.pending) {
             let (target, confidence) = match pending.kind {
-                GraphEdgeKind::Imports => self
-                    .resolve_import(&pending)
-                    .map(|target| (target, GraphConfidence::Resolved))
-                    .unwrap_or_else(|| {
-                        (
-                            self.external_node(pending.lang, &pending.label, pending.kind),
-                            GraphConfidence::External,
-                        )
-                    }),
+                GraphEdgeKind::Imports => self.resolve_import(&pending),
                 GraphEdgeKind::Calls | GraphEdgeKind::Inherits => self.resolve_symbol(&pending),
                 GraphEdgeKind::Contains => continue,
             };
@@ -246,27 +263,150 @@ impl GraphBuilder {
     }
 
     fn resolve_symbol(&mut self, pending: &PendingEdge) -> (String, GraphConfidence) {
-        if let Some(target) = self.qualified_symbols.get(&pending.label) {
-            return (target.clone(), GraphConfidence::Resolved);
-        }
         let simple = simple_name(&pending.label);
-        match self.local_symbols.get(&simple).map(Vec::as_slice) {
-            Some([target]) => (target.clone(), GraphConfidence::Resolved),
-            Some(candidates) if candidates.len() > 1 => (
+        let segments = qualified_segments(&pending.label);
+
+        let scoped = if segments.len() == 1 {
+            self.nearest_scope_candidates(&pending.from, &simple, false)
+        } else if is_self_qualifier(&segments) {
+            self.nearest_scope_candidates(&pending.from, &simple, true)
+        } else {
+            self.named_owner_candidates(&pending.from, &segments, &simple)
+        };
+        if !scoped.is_empty() {
+            return self.classify_reference(pending, scoped);
+        }
+
+        if segments.len() > 1 {
+            let module_candidates = self.module_qualified_candidates(&segments, &simple);
+            if !module_candidates.is_empty() {
+                return self.classify_reference(pending, module_candidates);
+            }
+            if let Some(candidates) = self
+                .qualified_symbols
+                .get(&normalize_qualified_label(&pending.label))
+                .cloned()
+            {
+                return self.classify_reference(pending, candidates);
+            }
+        }
+
+        let candidates = self.local_symbols.get(&simple).cloned().unwrap_or_default();
+        self.classify_reference(pending, candidates)
+    }
+
+    fn resolve_import(&mut self, pending: &PendingEdge) -> (String, GraphConfidence) {
+        let candidates = import_keys(&pending.path, pending.lang, &pending.label)
+            .into_iter()
+            .filter_map(|key| self.files_by_module_key.get(&key))
+            .flatten()
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        self.classify_reference(pending, candidates)
+    }
+
+    fn classify_reference(
+        &mut self,
+        pending: &PendingEdge,
+        mut candidates: Vec<String>,
+    ) -> (String, GraphConfidence) {
+        candidates.sort();
+        candidates.dedup();
+        match candidates.as_slice() {
+            [target] => (target.clone(), GraphConfidence::Syntactic),
+            [] => (
                 self.external_node(pending.lang, &pending.label, pending.kind),
-                GraphConfidence::Ambiguous,
+                GraphConfidence::Syntactic,
             ),
             _ => (
                 self.external_node(pending.lang, &pending.label, pending.kind),
-                GraphConfidence::External,
+                GraphConfidence::Ambiguous,
             ),
         }
     }
 
-    fn resolve_import(&self, pending: &PendingEdge) -> Option<String> {
-        import_keys(&pending.path, pending.lang, &pending.label)
+    fn nearest_scope_candidates(
+        &self,
+        from: &str,
+        simple: &str,
+        include_type_scopes: bool,
+    ) -> Vec<String> {
+        let mut scope = Some(from);
+        while let Some(id) = scope {
+            let searchable = self
+                .nodes
+                .get(id)
+                .is_none_or(|node| include_type_scopes || !is_type_scope(node.kind));
+            if searchable
+                && let Some(candidates) = self
+                    .symbols_by_owner_name
+                    .get(&(id.to_string(), simple.to_string()))
+            {
+                return candidates.clone();
+            }
+            scope = self.parent_by_symbol.get(id).map(String::as_str);
+        }
+        Vec::new()
+    }
+
+    fn named_owner_candidates(&self, from: &str, segments: &[String], simple: &str) -> Vec<String> {
+        let Some(qualifier) = segments.get(segments.len().saturating_sub(2)) else {
+            return Vec::new();
+        };
+        let mut scope = Some(from);
+        while let Some(id) = scope {
+            if self.nodes.get(id).is_some_and(|node| {
+                node.name == *qualifier
+                    && matches!(
+                        node.kind,
+                        GraphNodeKind::Class
+                            | GraphNodeKind::Struct
+                            | GraphNodeKind::Trait
+                            | GraphNodeKind::Interface
+                            | GraphNodeKind::Module
+                            | GraphNodeKind::Namespace
+                    )
+            }) && let Some(candidates) = self
+                .symbols_by_owner_name
+                .get(&(id.to_string(), simple.to_string()))
+            {
+                return candidates.clone();
+            }
+            scope = self.parent_by_symbol.get(id).map(String::as_str);
+        }
+        Vec::new()
+    }
+
+    fn module_qualified_candidates(&self, segments: &[String], simple: &str) -> Vec<String> {
+        let file_ids = qualifier_keys(segments)
             .into_iter()
-            .find_map(|key| self.files_by_module_key.get(&key).cloned())
+            .filter_map(|key| self.files_by_module_key.get(&key))
+            .flatten()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        self.local_symbols
+            .get(simple)
+            .into_iter()
+            .flatten()
+            .filter(|candidate| {
+                self.root_file_id(candidate)
+                    .is_some_and(|file_id| file_ids.contains(file_id))
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn root_file_id<'a>(&'a self, symbol: &'a str) -> Option<&'a str> {
+        let mut current = symbol;
+        loop {
+            let node = self.nodes.get(current)?;
+            if node.kind == GraphNodeKind::File {
+                return Some(current);
+            }
+            current = self.parent_by_symbol.get(current)?;
+        }
     }
 
     fn external_node(&mut self, lang: Lang, label: &str, edge_kind: GraphEdgeKind) -> String {
@@ -323,7 +463,8 @@ fn agent_notes() -> Vec<String> {
     [
         "Use contains edges for ownership boundaries before rewriting.",
         "Use incoming calls/imports edges to find refactor impact.",
-        "Only confidence=resolved means deslop found one local target; external and ambiguous edges require verification.",
+        "In deslop.graph/1, resolved reference authority is not available yet: contains edges are resolved syntax ownership, while calls/imports/inherits are syntactic or ambiguous.",
+        "A syntactic edge points to the best scoped candidate or an unresolved placeholder; it is not name-resolution proof. Ambiguous edges retain no candidate list in graph/1.",
         "This graph is deterministic tree-sitter evidence, not a behavior-preservation proof; run verify/apply before writing.",
     ]
     .into_iter()
@@ -332,13 +473,71 @@ fn agent_notes() -> Vec<String> {
 }
 
 fn qualified_name(owner: &Owner, name: &str) -> String {
-    if owner.kind == GraphNodeKind::File {
-        name.to_string()
-    } else {
-        format!("{}::{name}", owner.name)
-    }
+    format!("{}::{name}", owner.name)
 }
 
 fn compact_label(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn push_candidate<K: Ord>(map: &mut BTreeMap<K, Vec<String>>, key: K, id: &str) {
+    let candidates = map.entry(key).or_default();
+    if !candidates.iter().any(|candidate| candidate == id) {
+        candidates.push(id.to_string());
+    }
+}
+
+fn normalize_qualified_label(label: &str) -> String {
+    qualified_segments(label).join("::")
+}
+
+fn qualified_segments(label: &str) -> Vec<String> {
+    label
+        .replace("::", "/")
+        .replace('.', "/")
+        .split('/')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn qualifier_keys(segments: &[String]) -> Vec<String> {
+    let qualifier = &segments[..segments.len().saturating_sub(1)];
+    let qualifier = if qualifier
+        .first()
+        .is_some_and(|part| matches!(part.as_str(), "crate" | "self" | "super"))
+    {
+        &qualifier[1..]
+    } else {
+        qualifier
+    };
+    if qualifier.is_empty() {
+        return Vec::new();
+    }
+    let mut keys = vec![
+        qualifier.join("::"),
+        qualifier.join("."),
+        qualifier.join("/"),
+        qualifier.last().cloned().unwrap_or_default(),
+    ];
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+fn is_self_qualifier(segments: &[String]) -> bool {
+    segments
+        .get(segments.len().saturating_sub(2))
+        .is_some_and(|part| matches!(part.as_str(), "self" | "this" | "Self"))
+}
+
+fn is_type_scope(kind: GraphNodeKind) -> bool {
+    matches!(
+        kind,
+        GraphNodeKind::Class
+            | GraphNodeKind::Struct
+            | GraphNodeKind::Trait
+            | GraphNodeKind::Interface
+    )
 }
