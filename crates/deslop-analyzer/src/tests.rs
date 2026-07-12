@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use deslop_core::{Finding, Lang, SafetyClass};
+use deslop_core::{AnalysisStatus, Finding, Lang, SafetyClass};
 use deslop_parse::SourceFile;
 
 use super::*;
@@ -41,6 +41,20 @@ const BEHAVIORAL_DUPLICATION_FIXTURES: &[TextFixture] = &[
         include_str!("../../../tests/fixtures/dup/behavior.jl"),
     ),
 ];
+
+#[test]
+fn malformed_typescript_is_quarantined_before_rules_or_edits() {
+    let source = SourceFile::new(
+        PathBuf::from("malformed.ts"),
+        include_str!("../../../tests/fixtures/typescript/malformed.ts").to_string(),
+    );
+
+    let report = scan_source(&source);
+
+    assert_eq!(report.analysis.status, AnalysisStatus::Partial);
+    assert!(!report.analysis.diagnostics.is_empty());
+    assert!(report.findings.is_empty());
+}
 
 fn source(path: &str, text: &str) -> SourceFile {
     SourceFile::new(PathBuf::from(path), text.into())

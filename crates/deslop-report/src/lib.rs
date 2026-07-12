@@ -1,9 +1,12 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use std::collections::BTreeMap;
 
-use deslop_core::{FileReport, Finding, SafetyClass, Severity};
+use deslop_core::{
+    AnalysisDiagnostic, AnalysisStatus, FileReport, Finding, SafetyClass, Severity,
+    reports_analysis_status, reports_permit_rewrites,
+};
 use deslop_parse::SourceFile;
-use deslop_protocol::work_orders_for_source;
+use deslop_protocol::work_orders_for_report;
 use serde::Serialize;
 use serde_json::json;
 
@@ -33,6 +36,16 @@ pub fn render_text(reports: &[FileReport]) -> String {
     let mut out = String::new();
     let mut count = 0;
     for report in reports {
+        for diagnostic in &report.analysis.diagnostics {
+            let location = diagnostic.span.map_or_else(
+                || report.path.display().to_string(),
+                |span| format!("{}:{}", report.path.display(), span.start_line),
+            );
+            out.push_str(&format!(
+                "{location} [{}] {}\n",
+                diagnostic.code, diagnostic.message
+            ));
+        }
         for finding in &report.findings {
             count += 1;
             out.push_str(&format!(
@@ -52,14 +65,19 @@ pub fn render_text(reports: &[FileReport]) -> String {
         }
     }
     if count == 0 {
-        out.push_str("No findings.\n");
+        if reports_permit_rewrites(reports) {
+            out.push_str("No findings.\n");
+        } else {
+            out.push_str("No authoritative findings; analysis is incomplete.\n");
+        }
     }
     out
 }
 
 pub fn render_json(reports: &[FileReport]) -> Result<String> {
     Ok(serde_json::to_string_pretty(&ReportEnvelope {
-        schema: "deslop.findings/1",
+        schema: "deslop.findings/2",
+        status: reports_analysis_status(reports),
         reports,
     })?)
 }
@@ -68,6 +86,20 @@ pub fn render_sarif(reports: &[FileReport]) -> Result<String> {
     let mut rules: BTreeMap<String, SafetyClass> = BTreeMap::new();
     let mut results = Vec::new();
     for report in reports {
+        if !report.analysis.permits_rewrites() {
+            for diagnostic in &report.analysis.diagnostics {
+                rules
+                    .entry(format!("deslop/{}", diagnostic.code))
+                    .or_insert(SafetyClass::NeverAuto);
+            }
+            results.extend(
+                report
+                    .analysis
+                    .diagnostics
+                    .iter()
+                    .map(|diagnostic| sarif_analysis_result(report, diagnostic)),
+            );
+        }
         for finding in &report.findings {
             rules
                 .entry(finding.rule.to_owned())
@@ -102,10 +134,13 @@ pub fn render_sarif(reports: &[FileReport]) -> Result<String> {
 }
 
 pub fn render_agent(reports: &[FileReport]) -> Result<String> {
+    if !reports_permit_rewrites(reports) {
+        bail!("analysis is incomplete; refusing to emit rewrite work orders");
+    }
     let mut out = String::new();
     for report in reports {
         let source = SourceFile::read(&report.path)?;
-        for work_order in work_orders_for_source(&source, &report.findings) {
+        for work_order in work_orders_for_report(&source, report) {
             out.push_str(&serde_json::to_string(&work_order)?);
             out.push('\n');
         }
@@ -130,6 +165,34 @@ fn sarif_result(finding: &Finding) -> serde_json::Value {
     })
 }
 
+fn sarif_analysis_result(
+    report: &FileReport,
+    diagnostic: &AnalysisDiagnostic,
+) -> serde_json::Value {
+    let span = diagnostic
+        .span
+        .unwrap_or_else(|| deslop_core::Span::new(1, 1, 0, 0));
+    json!({
+        "ruleId": format!("deslop/{}", diagnostic.code),
+        "level": "error",
+        "message": { "text": format!("[{}] {}", diagnostic.code, diagnostic.message) },
+        "properties": {
+            "diagnosticCode": diagnostic.code,
+            "analysisStatus": report.analysis.status,
+            "rewriteBlocked": true
+        },
+        "locations": [{
+            "physicalLocation": {
+                "artifactLocation": { "uri": report.path.to_string_lossy() },
+                "region": {
+                    "startLine": span.start_line,
+                    "endLine": span.end_line
+                }
+            }
+        }]
+    })
+}
+
 fn sarif_level(severity: Severity) -> &'static str {
     match severity {
         Severity::Major => "error",
@@ -141,6 +204,7 @@ fn sarif_level(severity: Severity) -> &'static str {
 #[derive(Serialize)]
 struct ReportEnvelope<'a> {
     schema: &'static str,
+    status: AnalysisStatus,
     reports: &'a [FileReport],
 }
 
@@ -157,6 +221,7 @@ mod tests {
         let reports = vec![FileReport {
             path: PathBuf::from("src/sample.clj"),
             lang: deslop_core::Lang::Clojure,
+            analysis: deslop_core::AnalysisProvenance::complete(),
             findings: vec![
                 finding("duplicate-block", Severity::Major, 2),
                 finding("narrating-comment", Severity::Minor, 4),
@@ -193,6 +258,42 @@ mod tests {
             value["runs"][0]["tool"]["driver"]["rules"][0]["properties"]["safety"],
             "llm-only"
         );
+    }
+
+    #[test]
+    fn partial_report_is_explicit_and_never_renders_agent_workorders() {
+        let reports = vec![FileReport {
+            path: PathBuf::from("malformed.ts"),
+            lang: deslop_core::Lang::TypeScript,
+            analysis: deslop_core::AnalysisProvenance::partial(vec![AnalysisDiagnostic {
+                code: "tree-sitter-error".to_string(),
+                message: "syntax recovery".to_string(),
+                span: Some(deslop_core::Span::new(2, 2, 10, 11)),
+            }]),
+            findings: Vec::new(),
+        }];
+
+        let text = render_text(&reports);
+        assert!(text.contains("malformed.ts:2 [tree-sitter-error]"));
+        assert!(text.contains("No authoritative findings"));
+        assert!(!text.contains("No findings.\n"));
+
+        let json: serde_json::Value =
+            serde_json::from_str(&render_json(&reports).expect("json")).expect("value");
+        assert_eq!(json["schema"], "deslop.findings/2");
+        assert_eq!(json["status"], "partial");
+
+        let sarif: serde_json::Value =
+            serde_json::from_str(&render_sarif(&reports).expect("sarif")).expect("value");
+        assert_eq!(
+            sarif["runs"][0]["results"][0]["ruleId"],
+            "deslop/tree-sitter-error"
+        );
+        assert_eq!(
+            sarif["runs"][0]["results"][0]["properties"]["rewriteBlocked"],
+            true
+        );
+        assert!(render_agent(&reports).is_err());
     }
 
     fn assert_json_eq(value: &serde_json::Value, path: &[&str], expected: &str) {

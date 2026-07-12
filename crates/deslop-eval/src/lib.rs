@@ -517,6 +517,7 @@ mod tests {
         let report = FileReport {
             path: source,
             lang: deslop_core::Lang::Python,
+            analysis: deslop_core::AnalysisProvenance::complete(),
             findings: Vec::new(),
         };
         let finding = Finding {

@@ -3,7 +3,7 @@ use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result};
 use deslop_lang::Registry;
-use deslop_parse::SourceFile;
+use deslop_parse::{SourceFile, analysis_provenance_or_failed};
 use ignore::WalkBuilder;
 
 mod builder;
@@ -22,14 +22,24 @@ pub fn graph_paths(paths: &[PathBuf], config: GraphConfig) -> Result<DependencyG
     let registry = Registry::default();
     let paths = deduplicate_supported_paths(collect_supported_paths(paths, &registry)?);
 
+    let sources = paths
+        .iter()
+        .map(SourceFile::read)
+        .collect::<Result<Vec<_>>>()?;
+    let analyses = sources
+        .iter()
+        .map(analysis_provenance_or_failed)
+        .collect::<Vec<_>>();
+
     let mut builder = builder::GraphBuilder::new(config);
-    for path in &paths {
-        builder.index_file_path(path, &registry);
+    for (source, analysis) in sources.iter().zip(&analyses) {
+        if analysis.permits_rewrites() {
+            builder.index_file_path(&source.path, &registry);
+        }
     }
 
-    for path in paths {
-        let source = SourceFile::read(&path)?;
-        builder.add_source(&source, &registry)?;
+    for (source, analysis) in sources.iter().zip(analyses) {
+        builder.add_source(source, analysis, &registry)?;
     }
 
     Ok(builder.finish())
@@ -117,6 +127,27 @@ mod tests {
     use deslop_core::{Lang, Span};
 
     #[test]
+    fn malformed_source_keeps_file_identity_without_graph_authority() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("malformed.ts");
+        std::fs::write(
+            &path,
+            include_str!("../../../tests/fixtures/typescript/malformed.ts"),
+        )
+        .expect("fixture");
+
+        let graph = graph_paths(&[path], GraphConfig::default()).expect("graph");
+
+        assert_eq!(graph.schema, "deslop.graph/2");
+        assert_eq!(graph.status, deslop_core::AnalysisStatus::Partial);
+        assert_eq!(graph.nodes.len(), 1);
+        assert_eq!(graph.nodes[0].kind, GraphNodeKind::File);
+        assert!(graph.edges.is_empty());
+        assert_eq!(graph.summary.symbols, 0);
+        assert!(render_dot(&graph).contains("tree-sitter-error"));
+    }
+
+    #[test]
     fn rust_qualified_call_targets_the_named_module_without_claiming_resolution() {
         let temp = tempfile::tempdir().expect("tempdir");
         let lib = temp.path().join("lib.rs");
@@ -172,7 +203,7 @@ mod tests {
                 - graph.summary.ambiguous_edges
                 - graph.summary.external_edges,
             1,
-            "graph/1 derives syntactic edges as the unclassified remainder"
+            "graph/2 derives syntactic edges as the unclassified remainder"
         );
     }
 
@@ -707,6 +738,8 @@ mod tests {
     fn dot_render_includes_edge_labels() {
         let graph = DependencyGraph {
             schema: SCHEMA.to_string(),
+            status: deslop_core::AnalysisStatus::Complete,
+            analyses: Vec::new(),
             summary: GraphSummary {
                 files: 0,
                 symbols: 0,

@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use deslop_core::{Lang, Span};
+use deslop_core::{AnalysisStatus, FileAnalysis, Lang, Span};
 use serde::{Deserialize, Serialize};
 
-pub(crate) const SCHEMA: &str = "deslop.graph/1";
+pub(crate) const SCHEMA: &str = "deslop.graph/2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GraphConfig {
@@ -21,6 +21,8 @@ impl Default for GraphConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DependencyGraph {
     pub schema: String,
+    pub status: AnalysisStatus,
+    pub analyses: Vec<FileAnalysis>,
     pub summary: GraphSummary,
     pub agent_notes: Vec<String>,
     pub nodes: Vec<GraphNode>,

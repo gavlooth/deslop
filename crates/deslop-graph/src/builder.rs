@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use anyhow::Result;
-use deslop_core::{Lang, Span};
+use deslop_core::{AnalysisProvenance, FileAnalysis, Lang, Span, file_analyses_status};
 use deslop_lang::Registry;
 use deslop_parse::{SourceFile, parse_source};
 
@@ -26,6 +26,7 @@ pub(crate) struct GraphBuilder {
     import_bindings_by_owner_name: BTreeSet<(String, String)>,
     parent_by_symbol: BTreeMap<String, String>,
     files_by_module_key: BTreeMap<String, Vec<String>>,
+    analyses: Vec<FileAnalysis>,
     notices: Vec<GraphNotice>,
 }
 
@@ -52,6 +53,7 @@ impl GraphBuilder {
             import_bindings_by_owner_name: BTreeSet::new(),
             parent_by_symbol: BTreeMap::new(),
             files_by_module_key: BTreeMap::new(),
+            analyses: Vec::new(),
             notices: Vec::new(),
         }
     }
@@ -68,9 +70,28 @@ impl GraphBuilder {
         }
     }
 
-    pub(crate) fn add_source(&mut self, source: &SourceFile, registry: &Registry) -> Result<()> {
+    pub(crate) fn add_source(
+        &mut self,
+        source: &SourceFile,
+        analysis: AnalysisProvenance,
+        registry: &Registry,
+    ) -> Result<()> {
         let pack = registry.pack_for_lang(source.lang);
         let file_id = self.add_file_node(source);
+        self.analyses.push(FileAnalysis {
+            path: source.path.clone(),
+            lang: source.lang,
+            analysis: analysis.clone(),
+        });
+        if !analysis.permits_rewrites() {
+            for diagnostic in analysis.diagnostics {
+                self.notices.push(GraphNotice {
+                    path: source.path.clone(),
+                    message: format!("[{}] {}", diagnostic.code, diagnostic.message),
+                });
+            }
+            return Ok(());
+        }
         let Some(tree) = parse_source(source)? else {
             self.notices.push(GraphNotice {
                 path: source.path.clone(),
@@ -248,10 +269,14 @@ impl GraphBuilder {
 
     pub(crate) fn finish(mut self) -> DependencyGraph {
         self.resolve_pending_edges();
+        self.analyses.sort_by(|a, b| a.path.cmp(&b.path));
+        let status = file_analyses_status(&self.analyses);
         let nodes = self.nodes.into_values().collect::<Vec<_>>();
         let edges = self.edges.into_values().collect::<Vec<_>>();
         DependencyGraph {
             schema: SCHEMA.to_string(),
+            status,
+            analyses: self.analyses,
             summary: graph_summary(&nodes, &edges),
             agent_notes: agent_notes(),
             nodes,
@@ -525,8 +550,8 @@ fn agent_notes() -> Vec<String> {
     [
         "Use contains edges for ownership boundaries before rewriting.",
         "Use incoming calls/imports edges to find refactor impact.",
-        "In deslop.graph/1, resolved reference authority is not available yet: contains edges are resolved syntax ownership, while calls/imports/inherits are syntactic or ambiguous.",
-        "A syntactic edge points to the best scoped candidate or an unresolved placeholder; it is not name-resolution proof. Ambiguous edges retain no candidate list in graph/1.",
+        "In deslop.graph/2, resolved reference authority is not available yet: contains edges are resolved syntax ownership, while calls/imports/inherits are syntactic or ambiguous.",
+        "A syntactic edge points to the best scoped candidate or an unresolved placeholder; it is not name-resolution proof. Ambiguous edges retain no candidate list in graph/2.",
         "This graph is deterministic tree-sitter evidence, not a behavior-preservation proof; run verify/apply before writing.",
     ]
     .into_iter()

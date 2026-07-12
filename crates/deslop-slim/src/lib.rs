@@ -4,9 +4,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::{AnalyzerConfig, scan_paths_with_config};
-use deslop_parse::SourceFile;
+use deslop_core::{FileAnalysis, reports_permit_rewrites};
+use deslop_parse::{SourceFile, analysis_provenance_or_failed};
 use deslop_protocol::{
-    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, work_orders_for_source,
+    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, work_orders_for_report,
     workorder_region_fingerprint,
 };
 use deslop_verify::{
@@ -147,8 +148,9 @@ pub fn egress_consent_error(provider: &str, base_url: &str, summary: EgressSumma
 }
 
 pub fn egress_summary(options: &SlimOptions) -> Result<EgressSummary> {
-    let work_orders = load_or_propose_work_orders(options)?;
-    let rewrite_orders = work_orders
+    let loaded = load_or_propose_work_orders(options)?;
+    let rewrite_orders = loaded
+        .work_orders
         .into_iter()
         .filter(|work_order| work_order.kind != WorkOrderKind::NeedsCharacterizationTest)
         .collect::<Vec<_>>();
@@ -167,6 +169,7 @@ pub struct SlimReport {
     pub schema: String,
     pub dry_run: bool,
     pub model: String,
+    pub blocked_files: Vec<FileAnalysis>,
     pub skipped: Vec<SkippedWorkOrder>,
     pub patches: Vec<Patch>,
     pub verified: VerifyReport,
@@ -356,10 +359,32 @@ pub fn run_slim_with_progress(
     options: SlimOptions,
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<SlimReport> {
-    let work_orders = load_or_propose_work_orders(&options)?;
-    emit_started_progress(&work_orders, progress);
+    let loaded = load_or_propose_work_orders(&options)?;
+    emit_started_progress(&loaded.work_orders, progress);
+    if !loaded.blocked_files.is_empty() {
+        progress(SlimProgress::Finished {
+            applied: 0,
+            held: 0,
+            rejected: 0,
+        });
+        return Ok(SlimReport {
+            schema: "deslop.slim/2".to_string(),
+            dry_run: !options.apply,
+            model: options.model,
+            blocked_files: loaded.blocked_files,
+            skipped: Vec::new(),
+            patches: Vec::new(),
+            verified: VerifyReport {
+                schema: "deslop.verify/1".to_string(),
+                results: Vec::new(),
+            },
+            gating: SlimGatingReport::default(),
+            characterization: None,
+            applied: None,
+        });
+    }
 
-    let rewrite = rewrite_work_orders(client, &options, work_orders, progress)?;
+    let rewrite = rewrite_work_orders(client, &options, loaded.work_orders, progress)?;
     let verification = verify_rewrites(client, &options, &rewrite.patches, progress)?;
     let gating = gating_report(
         &verification.verified,
@@ -379,6 +404,7 @@ pub fn run_slim_with_progress(
         verification,
         gating,
         applied,
+        loaded.blocked_files,
     ))
 }
 
@@ -575,6 +601,7 @@ fn finish_slim_report(
     verification: SlimVerificationRun,
     gating: SlimGatingReport,
     applied: Option<ApplyReport>,
+    blocked_files: Vec<FileAnalysis>,
 ) -> SlimReport {
     let characterization = public_characterization_report(
         verification.characterization,
@@ -583,9 +610,10 @@ fn finish_slim_report(
         options.apply,
     );
     SlimReport {
-        schema: "deslop.slim/1".to_string(),
+        schema: "deslop.slim/2".to_string(),
         dry_run: !options.apply,
         model: options.model,
+        blocked_files,
         skipped: rewrite.skipped,
         patches: rewrite.patches,
         verified: verification.verified,
@@ -673,6 +701,7 @@ fn verify_options_with_characterization(
 ) -> VerifyOptions {
     VerifyOptions {
         root: options.root.to_owned(),
+        scope: Some(options.paths.clone()),
         check_cmd: options.check_cmd.to_owned(),
         coverage: options.coverage.clone(),
         mutation: MutationConfig::Disabled,
@@ -889,11 +918,16 @@ fn progress_outcome_counts(outcomes: &[(String, SlimProgressOutcome)]) -> (usize
     )
 }
 
-fn load_or_propose_work_orders(options: &SlimOptions) -> Result<Vec<WorkOrder>> {
+struct LoadedWorkOrders {
+    work_orders: Vec<WorkOrder>,
+    blocked_files: Vec<FileAnalysis>,
+}
+
+fn load_or_propose_work_orders(options: &SlimOptions) -> Result<LoadedWorkOrders> {
     if let Some(path) = &options.workorders {
-        return load_workorders_jsonl(path);
+        return preflight_loaded_work_orders(&options.root, load_workorders_jsonl(path)?);
     }
-    propose_work_orders_with_config(&options.paths, options.analyzer.clone())
+    propose_work_orders_batch(&options.paths, options.analyzer.clone())
 }
 
 /// Propose work orders using the default analyzer config (no suppression, default thresholds).
@@ -907,13 +941,72 @@ pub fn propose_work_orders_with_config(
     paths: &[PathBuf],
     config: AnalyzerConfig,
 ) -> Result<Vec<WorkOrder>> {
+    Ok(propose_work_orders_batch(paths, config)?.work_orders)
+}
+
+fn propose_work_orders_batch(
+    paths: &[PathBuf],
+    config: AnalyzerConfig,
+) -> Result<LoadedWorkOrders> {
     let reports = scan_paths_with_config(paths, config)?;
+    let blocked_files = reports
+        .iter()
+        .filter(|report| !report.analysis.permits_rewrites())
+        .map(|report| FileAnalysis {
+            path: report.path.clone(),
+            lang: report.lang,
+            analysis: report.analysis.clone(),
+        })
+        .collect::<Vec<_>>();
     let mut work_orders = Vec::new();
-    for report in reports {
-        let source = SourceFile::read(&report.path)?;
-        work_orders.extend(work_orders_for_source(&source, &report.findings));
+    if reports_permit_rewrites(&reports) {
+        for report in reports {
+            let source = SourceFile::read(&report.path)?;
+            work_orders.extend(work_orders_for_report(&source, &report));
+        }
     }
-    Ok(work_orders)
+    Ok(LoadedWorkOrders {
+        work_orders,
+        blocked_files,
+    })
+}
+
+fn preflight_loaded_work_orders(
+    root: &Path,
+    work_orders: Vec<WorkOrder>,
+) -> Result<LoadedWorkOrders> {
+    let mut analyses = BTreeMap::new();
+    for work_order in &work_orders {
+        let path = if work_order.path.is_absolute() {
+            work_order.path.clone()
+        } else {
+            root.join(&work_order.path)
+        };
+        if analyses.contains_key(&path) {
+            continue;
+        }
+        let source = SourceFile::read(&path)?;
+        analyses.insert(
+            path,
+            FileAnalysis {
+                path: work_order.path.clone(),
+                lang: source.lang,
+                analysis: analysis_provenance_or_failed(&source),
+            },
+        );
+    }
+    let blocked_files = analyses
+        .into_values()
+        .filter(|file| !file.analysis.permits_rewrites())
+        .collect::<Vec<_>>();
+    Ok(LoadedWorkOrders {
+        work_orders: if blocked_files.is_empty() {
+            work_orders
+        } else {
+            Vec::new()
+        },
+        blocked_files,
+    })
 }
 
 pub fn load_workorders_jsonl(path: &Path) -> Result<Vec<WorkOrder>> {
@@ -1262,6 +1355,68 @@ mod tests {
     }
 
     #[test]
+    fn partial_auto_scan_returns_blocked_report_without_llm_call() -> Result<()> {
+        let fixture =
+            SlimTestFixture::with_source("fn broken(value: i32) -> i32 {\n    return value.\n}\n")?;
+        let client = CountingClient {
+            prompts: RefCell::new(Vec::new()),
+        };
+
+        let report = run_slim(
+            &client,
+            fixture.options(
+                true,
+                false,
+                true,
+                CoverageConfig::Disabled,
+                "counting",
+                None,
+            ),
+        )?;
+
+        assert_eq!(report.schema, "deslop.slim/2");
+        assert_eq!(report.blocked_files.len(), 1);
+        assert!(report.patches.is_empty());
+        assert!(report.applied.is_none());
+        assert!(client.prompts.borrow().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn precomputed_workorder_is_preflighted_before_llm_egress() -> Result<()> {
+        let fixture = SlimTestFixture::identity()?;
+        let work_order = propose_work_orders(&[fixture.source.clone()])?.remove(0);
+        let workorders_path = fixture.root().join("workorders.jsonl");
+        fs::write(
+            &workorders_path,
+            format!("{}\n", serde_json::to_string(&work_order)?),
+        )?;
+        fs::write(
+            &fixture.source,
+            "fn broken(value: i32) -> i32 {\n    return value.\n}\n",
+        )?;
+        let mut options = fixture.options(
+            true,
+            false,
+            true,
+            CoverageConfig::Disabled,
+            "counting",
+            None,
+        );
+        options.workorders = Some(workorders_path);
+        let client = CountingClient {
+            prompts: RefCell::new(Vec::new()),
+        };
+
+        let report = run_slim(&client, options)?;
+
+        assert_eq!(report.blocked_files.len(), 1);
+        assert!(report.patches.is_empty());
+        assert!(client.prompts.borrow().is_empty());
+        Ok(())
+    }
+
+    #[test]
     fn aggregated_regions_produce_one_llm_call_and_patch_each() -> Result<()> {
         let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/corpus/sloppy/slop_rust.rs");
@@ -1308,7 +1463,7 @@ mod tests {
             fixture.recorded_options(true, false, CoverageConfig::LcovFile(fixture.lcov())),
         )?;
 
-        assert_eq!(report.schema, "deslop.slim/1");
+        assert_eq!(report.schema, "deslop.slim/2");
         assert_eq!(report.patches.len(), 1);
         assert_eq!(report.patches[0].schema, "deslop.patch/1");
         assert_eq!(report.patches[0].by, "deslop-slim/recorded");

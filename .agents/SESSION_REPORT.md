@@ -5197,3 +5197,87 @@ no-macro-expansion/no-reader-dialect boundary. Recheck under M1/M2 owned syntax 
 notices. Hindsight consolidation passed.
 
 **Signature:** Codex (GPT-5), M0.7 integration owner, 2026-07-12.
+
+## 2026-07-13T00:50:42+02:00 — M0.8 fail-closed partial-analysis authority
+
+**Objective:** replace silent parse-recovery fallbacks with one explicit cross-surface authority policy,
+so malformed or parser-incomplete sources remain inspectable but can never authorize metrics claims,
+work orders, LLM egress, code actions, verification overrides, or writes.
+
+**Target:** shared core/parse provenance; analyzer and project passes; findings, metrics, graph, and slim
+schemas; report/CLI/SARIF; protocol/fix/verify; LSP; MCP default and `slim-llm` modes; SPEC and the durable
+roadmap. `/root` owned all edits, integration decisions, and verification. Ruflo was unavailable; three
+read-only subagents audited core, integration, and contract/test surfaces without write ownership.
+
+**Changes:**
+
+- Added fail-closed `AnalysisStatus::{Unknown, Complete, Partial, Unsupported, Failed}`, structured
+  diagnostics, per-file analysis records, and aggregate status helpers. Legacy reports without provenance
+  deserialize to `Unknown` with `analysis-unknown`; only explicit `Complete` with no diagnostics permits
+  rewrites.
+- Added deterministic Tree-sitter error/missing-node collection. Shared malformed fixtures now lock exact
+  evidence: `malformed.ts` lines 2–2/bytes 62–63 and `malformed.tsx` lines 1–2/bytes 0–96.
+- Quarantined partial/failed files before analyzer rules or external analyzers. Registered no-grammar packs
+  retain downgraded `never-auto` text evidence; project-wide duplication/config-boundary passes run only
+  for a complete requested snapshot.
+- Bumped public read/report contracts to `deslop.findings/2`, `deslop.metrics/4`, `deslop.graph/2`, and
+  `deslop.slim/2`. Metrics retain complete-file read-only regions in mixed scans but suppress project
+  candidates/hotspots and serialize aggregate scores as null. Graph retains a partial file node only,
+  publishes typed provenance, and renders notices in JSON and DOT.
+- Text/JSON/SARIF expose stable parse diagnostics. CLI scan/metrics/graph/slop read-only output exits 2
+  when incomplete; agent/propose output is atomic and never overwrites an existing work-order file.
+  Baseline write/update and deterministic safe-fix/diff refuse incomplete analysis.
+- LSP stores provenance, publishes exact parse diagnostics, and offers no quick-fix or fix-all action for
+  incomplete documents.
+- MCP propose/fix return successful structured domain blocks with `analyses`, `blocked_files`, and zero
+  work orders/prompts. Slim preflights auto-discovered and imported JSONL work orders before consent,
+  credentials, or model construction; blocked runs make zero LLM calls and no writes even with allow flags.
+- Protocol work-order generation rechecks current source provenance and source/report identity. Verifier
+  target rediscovery cannot create an order for an incomplete target; `allow_non_removable` cannot turn
+  that rejection into a write. `VerifyOptions` and MCP gained an optional analysis `scope` so rediscovery
+  can use the original requested paths instead of an expensive whole-repository scan.
+- Updated SPEC, README, MCP tool descriptions, and `.agents/TODO.md`; M0.9 is now **NEXT**.
+
+**Commands/checks run:** before/after CLI scan/metrics/graph/propose probes on the shared malformed TS
+fixture; targeted core/parse/analyzer/metrics/graph/protocol/report/LSP/slim/verify tests; MCP default tests;
+`cargo fmt --all --check`; `git diff --check`; `cargo build --workspace`;
+`cargo build -p deslop-slim --no-default-features`; `cargo test --workspace`;
+`cargo test -p deslop-mcp --features slim-llm -- --test-threads=1`; and
+`cargo clippy --workspace -- -D warnings`. Hindsight checkpoint and negative memories were written and
+consolidated.
+
+**Verification results:** PASS. Workspace: 251 tests plus doc-tests. Feature-enabled MCP: 22 tests.
+Formatting, whitespace, workspace build, no-default-features slim build, and warnings-denied clippy passed.
+Measured malformed TS after-state: exit 2; one diagnostic; 0 findings; 0 metric regions/candidates/hotspots;
+null health/readability scores; graph 1 file/0 symbols/0 edges; proposal stdout contains 0 work orders.
+
+**Failed iterations / invalidated assumptions:** the first draft made missing serde provenance default to
+`Complete`, which was fail-open; it now defaults to `Unknown`. Per-file write gating alone was invalidated
+for project-derived absence/relative facts, so incomplete requested snapshots suppress those passes and all
+rewrite-capable proposal output. A global verifier-root completeness gate was also invalidated: workorder/1
+does not persist the original scope, and repositories intentionally contain malformed fixtures. Verification
+therefore rechecks target provenance and accepts an explicit scope; persisting the complete originating
+snapshot remains M0.13/M6. Killed timeout probes left five temporary fixture directories, which were removed
+after confirming they were generated by this session.
+
+**Residual semantic boundary:** M0 quarantines the whole recovered file; valid subtrees and trusted-byte
+coverage wait for M1's owned syntax snapshot/M2 adapter facts. Proposal surfaces enforce global completeness
+for their requested paths, while imported workorder/1 verification can only recheck its target unless the
+caller supplies `scope`. Analyzer config, capability, source revision, and scope must travel in the future
+work-order contract before verifier reconstruction can claim original-snapshot equivalence.
+
+**Current recommendation/checkpoint:** execute M0.9 next: remove or relabel uncalibrated health,
+readability, and refactor-confidence gates without weakening the new partial-analysis authority.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; targeted local Rust reads
+were the active fallback.
+
+**Dependencies/restart:** rebuild or reinstall CLI/MCP binaries because findings, metrics, graph, and slim
+schema versions changed. No data migration or configuration change is required; MCP clients may optionally
+pass `scope` for bounded verifier rediscovery.
+
+**Negative-memory status:** durable memory rejects fail-open missing provenance, per-file-only authority for
+project-derived facts, and whole-verifier-root completeness claims without persisted scope. Hindsight
+consolidation passed. Recheck under M1/M2 owned syntax facts and M0.13/M6 versioned work-order context.
+
+**Signature:** Codex (GPT-5), M0.8 integration owner, 2026-07-13.

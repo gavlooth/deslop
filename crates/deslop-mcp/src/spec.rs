@@ -65,7 +65,7 @@ impl ToolBehavior {
 fn scan_tool_spec() -> Value {
     tool(
         "scan",
-        "Read-only. Scan paths and return deslop.findings/1 JSON: per-file findings with rule, severity, safety class, span, and any deterministic edit. Start here to see what deslop would change. No writes, no network. Unknown rule names in analyzer overrides are rejected.",
+        "Read-only. Scan paths and return deslop.findings/2 JSON: per-file findings with rule, severity, safety class, span, analysis status, and any deterministic edit. Start here to see what deslop would change. No writes, no network. Unknown rule names in analyzer overrides are rejected.",
         ToolBehavior::read_only("Scan for findings"),
         object_schema(json!({
             "paths": paths_schema(),
@@ -92,7 +92,7 @@ fn propose_tool_spec() -> Value {
 fn fix_tool_spec() -> Value {
     tool(
         "fix",
-        "mode=prompts (default): read-only, no network; returns deslop.fix/1 rewrite prompts plus region fingerprints for the calling agent to rewrite locally. mode=auto: requires a --features slim-llm build; runs deslop-slim server-side, sending flagged source regions to the LLM provider (network egress, explicit consent required) and writing verified rewrites only when apply=true. Returns deslop.slim/1.",
+        "mode=prompts (default): read-only, no network; returns deslop.fix/1 rewrite prompts plus region fingerprints for the calling agent to rewrite locally. mode=auto: requires a --features slim-llm build; runs deslop-slim server-side, sending flagged source regions to the LLM provider (network egress, explicit consent required) and writing verified rewrites only when apply=true. Returns deslop.slim/2.",
         ToolBehavior {
             title: "Rewrite prompts or server-side fix",
             read_only: false,
@@ -201,6 +201,8 @@ fn apply_tool_spec() -> Value {
 fn patch_verification_properties() -> Value {
     json!({
         "patches": patches_schema(),
+        "root": string_schema("Project root for work-order rediscovery and verification."),
+        "scope": paths_schema(),
         "check_cmd": { "type": "string" },
         "coverage": coverage_schema(),
         "mutation": { "type": "boolean", "default": false },
@@ -211,7 +213,7 @@ fn patch_verification_properties() -> Value {
 fn metrics_tool_spec() -> Value {
     tool(
         "metrics",
-        "Read-only. Return deslop.metrics/3 with Tree-sitter-derived per-region structural readability, labeled intrinsic confidence plus numeric score, explicit confidence_basis, nested repo_relative z-score/percentile, distribution statistics, ranked candidates, and complexity/entropy hotspots. Flat distributions cannot create relative candidates. Confidence is uncalibrated triage evidence, not proof that a rewrite is safe. No writes, no network.",
+        "Read-only. Return deslop.metrics/4 with Tree-sitter-derived per-region structural readability, labeled intrinsic confidence plus numeric score, explicit confidence_basis, nested repo_relative z-score/percentile, distribution statistics, ranked candidates, and complexity/entropy hotspots. Flat distributions cannot create relative candidates. Confidence is uncalibrated triage evidence, not proof that a rewrite is safe. No writes, no network.",
         ToolBehavior::read_only("Readability, refactor confidence, and code hotspots"),
         object_schema(json!({
             "paths": paths_schema(),
@@ -223,7 +225,7 @@ fn metrics_tool_spec() -> Value {
 fn graph_tool_spec() -> Value {
     tool(
         "graph",
-        "Read-only. Return deslop.graph/1 JSON for refactor planning. Contains edges are resolved syntax ownership. Calls/imports/inherits are syntactic planning hints or ambiguous evidence; a syntactic external-symbol target is unresolved, not proven external, and syntactic is not resolution proof. No writes, no network.",
+        "Read-only. Return deslop.graph/2 JSON for refactor planning. Contains edges are resolved syntax ownership. Calls/imports/inherits are syntactic planning hints or ambiguous evidence; a syntactic external-symbol target is unresolved, not proven external, and syntactic is not resolution proof. No writes, no network.",
         ToolBehavior::read_only("Refactor dependency graph"),
         object_schema(json!({
             "paths": paths_schema(),

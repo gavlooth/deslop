@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use deslop_core::Lang;
+use deslop_core::{AnalysisDiagnostic, AnalysisProvenance, Lang, Span};
 use deslop_lang::{LangPack, Registry, detect_lang};
 use tree_sitter::{Parser, Tree};
 
@@ -125,6 +125,93 @@ pub fn parses_without_errors(lang: Lang, text: &str) -> Result<Option<bool>> {
 
 pub fn source_parses_without_errors(source: &SourceFile) -> Result<Option<bool>> {
     Ok(parse_source(source)?.map(|tree| !tree.root_node().has_error()))
+}
+
+pub fn analysis_provenance(source: &SourceFile) -> Result<AnalysisProvenance> {
+    let registry = Registry::default();
+    let pack = registry.pack_for_path(&source.path);
+    if pack.grammar_for_path(&source.path).is_none() {
+        return Ok(AnalysisProvenance::unsupported(vec![AnalysisDiagnostic {
+            code: "parser-unavailable".to_string(),
+            message: "no tree-sitter grammar is available; syntax-backed analysis is partial"
+                .to_string(),
+            span: None,
+        }]));
+    }
+    let Some(tree) = parse_source(source)? else {
+        return Ok(AnalysisProvenance::failed(vec![AnalysisDiagnostic {
+            code: "parser-no-tree".to_string(),
+            message: "tree-sitter returned no syntax tree; analysis failed".to_string(),
+            span: None,
+        }]));
+    };
+    Ok(analysis_provenance_for_tree(&tree))
+}
+
+pub fn analysis_provenance_or_failed(source: &SourceFile) -> AnalysisProvenance {
+    analysis_provenance(source).unwrap_or_else(|error| {
+        AnalysisProvenance::failed(vec![AnalysisDiagnostic {
+            code: "parser-failure".to_string(),
+            message: format!("tree-sitter analysis failed: {error}; rewrite authority is denied"),
+            span: None,
+        }])
+    })
+}
+
+pub fn analysis_provenance_for_tree(tree: &Tree) -> AnalysisProvenance {
+    if !tree.root_node().has_error() {
+        return AnalysisProvenance::complete();
+    }
+    let mut diagnostics = Vec::new();
+    collect_parse_diagnostics(tree.root_node(), &mut diagnostics);
+    if diagnostics.is_empty() {
+        diagnostics.push(AnalysisDiagnostic {
+            code: "tree-sitter-error".to_string(),
+            message: "tree-sitter reported syntax recovery; syntax-backed analysis is partial"
+                .to_string(),
+            span: None,
+        });
+    }
+    AnalysisProvenance::partial(diagnostics)
+}
+
+fn collect_parse_diagnostics(
+    node: tree_sitter::Node<'_>,
+    diagnostics: &mut Vec<AnalysisDiagnostic>,
+) {
+    if node.is_error() || node.is_missing() {
+        let (code, message) = if node.is_missing() {
+            (
+                "tree-sitter-missing-node",
+                format!(
+                    "tree-sitter inserted missing `{}` syntax; syntax-backed analysis is partial",
+                    node.kind()
+                ),
+            )
+        } else {
+            (
+                "tree-sitter-error",
+                format!(
+                    "tree-sitter emitted `{}` recovery syntax; syntax-backed analysis is partial",
+                    node.kind()
+                ),
+            )
+        };
+        diagnostics.push(AnalysisDiagnostic {
+            code: code.to_string(),
+            message,
+            span: Some(Span::new(
+                node.start_position().row + 1,
+                node.end_position().row + 1,
+                node.start_byte(),
+                node.end_byte(),
+            )),
+        });
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_parse_diagnostics(child, diagnostics);
+    }
 }
 
 pub fn enclosing_region(
@@ -420,9 +507,13 @@ mod tests {
 
     #[test]
     fn malformed_typescript_and_tsx_report_explicit_error_nodes() {
-        for (path, text) in [
-            ("malformed.ts", MALFORMED_TYPESCRIPT),
-            ("malformed.tsx", MALFORMED_TSX),
+        for (path, text, expected_span) in [
+            (
+                "malformed.ts",
+                MALFORMED_TYPESCRIPT,
+                Span::new(2, 2, 62, 63),
+            ),
+            ("malformed.tsx", MALFORMED_TSX, Span::new(1, 2, 0, 96)),
         ] {
             let source = SourceFile::new(PathBuf::from(path), text.to_string());
             let tree = parse_source(&source)
@@ -432,6 +523,22 @@ mod tests {
             assert_eq!(source_parses_without_errors(&source).unwrap(), Some(false));
             assert!(tree.root_node().has_error(), "{path}");
             assert!(tree_has_error_or_missing(tree.root_node()), "{path}");
+            let analysis = analysis_provenance(&source).expect("analysis provenance");
+            assert_eq!(analysis.status, deslop_core::AnalysisStatus::Partial);
+            assert!(!analysis.permits_rewrites());
+            assert!(!analysis.diagnostics.is_empty(), "{path}");
+            assert_eq!(analysis.diagnostics.len(), 1, "{path}");
+            assert_eq!(analysis.diagnostics[0].span, Some(expected_span), "{path}");
+            assert!(
+                analysis.diagnostics.iter().all(|diagnostic| {
+                    matches!(
+                        diagnostic.code.as_str(),
+                        "tree-sitter-error" | "tree-sitter-missing-node"
+                    ) && diagnostic.span.is_some()
+                }),
+                "{path}: {:#?}",
+                analysis.diagnostics
+            );
         }
     }
 

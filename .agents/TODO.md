@@ -59,8 +59,17 @@ reports, benchmark records, and work orders.
   and `defmethod` as behavioral regions. Evidence: exact reader CST counts/regions and measured
   cyclomatic/cognitive/nesting regressions for nested `if`/`when`, ordinary calls, macro templates,
   quote/discard edges, live forms, and `loop`/`recur`.
-- [ ] M0.8 Define one parse-error/partial-analysis policy across scan, metrics, graph, LSP, MCP, and slim. **NEXT**
-- [ ] M0.9 Relabel or remove uncalibrated health/readability/refactor-confidence gates.
+- [x] M0.8 Enforce fail-closed `unknown|complete|partial|unsupported|failed` provenance and exact
+  parse diagnostics across scan, metrics, graph, LSP, MCP, slim, fix, baseline, and verification.
+  Non-complete inputs are report-only: project-derived analysis is withheld; metrics expose no
+  authoritative candidates/scores; graph retains file identity only; CLI read-only output exits 2;
+  agent/propose output is atomic; MCP returns structured blocked files; safe fixes, work orders,
+  prompts, imported work orders, provider consent/credentials, code actions, verify overrides, and
+  writes cannot bypass the gate. Evidence: exact malformed TS/TSX diagnostic spans; legacy missing
+  provenance defaults unknown; mixed-scan aggregate suppression; zero findings/orders/prompts/model
+  calls/writes; metrics/4 null scores; graph/2 file-only; LSP diagnostic/no action; findings/2 and
+  slim/2 schema regressions; scoped verifier rediscovery; full workspace and MCP feature gates.
+- [ ] M0.9 Relabel or remove uncalibrated health/readability/refactor-confidence gates. **NEXT**
 - [ ] M0.10 Add the exact clean/sloppy, performance, duplicate-order, and false-resolution probes from
   `.agents/ALGORITHM_AUDIT.md` to automated regression suites.
 - [ ] M0.11 Run focused tests, then full fmt/build/test/clippy gates and record measured before/after values.

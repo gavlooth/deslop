@@ -35,7 +35,7 @@ cargo install --path crates/deslop-cli --features mcp   # CLI + MCP server
 | `deslop scan <paths>` | Findings (`text`/`json`/`agent`/`sarif`); `--fail-on <sev>` for CI gating |
 | `deslop slop <paths>` | Slop score + per-rule counts |
 | `deslop metrics` (`health`) | Repo health, distribution-normalized readability/refactor confidence, complexity/entropy hotspots |
-| `deslop graph <paths>` | Agent-ready `deslop.graph/1` dependency graph for refactor planning (`json`/`dot`) |
+| `deslop graph <paths>` | Agent-ready `deslop.graph/2` dependency graph for refactor planning (`json`/`dot`) |
 | `deslop propose <paths>` | Work orders for non-safe-auto findings |
 | `deslop fix` | The bundled LLM consumer: propose → rewrite → verify → apply |
 | `deslop fix --diff` | Preview deterministic safe-auto edits as a unified diff without writing |

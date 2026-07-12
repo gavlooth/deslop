@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use deslop_core::{Lang, Span};
+use deslop_core::{AnalysisStatus, FileAnalysis, Lang, Span, file_analyses_status};
 use deslop_lang::{LangPack, RegionClass, RegionSpan, Registry};
-use deslop_parse::{SourceFile, parse_source};
+use deslop_parse::{SourceFile, analysis_provenance_or_failed, parse_source};
 use ignore::WalkBuilder;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
@@ -24,12 +24,14 @@ impl Default for MetricsConfig {
 #[derive(Debug, Clone, Serialize)]
 pub struct MetricsReport {
     pub schema: &'static str,
+    pub status: AnalysisStatus,
+    pub analyses: Vec<FileAnalysis>,
     pub functions: Vec<RegionMetrics>,
     pub refactor_candidates: Vec<ReadabilityCandidate>,
     pub refactor_confidence_distribution: ConfidenceDistribution,
     pub hotspots: Vec<Hotspot>,
-    pub health_score: f64,
-    pub readability_score: f64,
+    pub health_score: Option<f64>,
+    pub readability_score: Option<f64>,
     pub readability_model: ReadabilityModel,
 }
 
@@ -188,9 +190,18 @@ struct Token {
 
 pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<MetricsReport> {
     let mut functions = Vec::new();
+    let mut analyses = Vec::new();
     for path in input_files(paths)? {
         let source = SourceFile::read(&path)?;
-        functions.extend(metrics_source(&source)?);
+        let analysis = analysis_provenance_or_failed(&source);
+        analyses.push(FileAnalysis {
+            path: source.path.clone(),
+            lang: source.lang,
+            analysis: analysis.clone(),
+        });
+        if analysis.permits_rewrites() {
+            functions.extend(metrics_source(&source)?);
+        }
     }
     functions.sort_by(|a, b| {
         a.path
@@ -198,14 +209,28 @@ pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<Metrics
             .then(a.span.start_line.cmp(&b.span.start_line))
             .then(a.name.cmp(&b.name))
     });
+    analyses.sort_by(|a, b| a.path.cmp(&b.path));
+    let status = file_analyses_status(&analyses);
     let refactor_confidence_distribution = normalize_refactor_confidence(&mut functions);
-    let refactor_candidates =
-        detect_refactor_candidates(&functions, refactor_confidence_distribution);
-    let hotspots = detect_hotspots(&functions, config.sigma);
-    let health_score = health_score(&functions, &hotspots);
-    let readability_score = repo_readability_score(&functions);
+    let authoritative = status == AnalysisStatus::Complete;
+    let refactor_candidates = if authoritative {
+        detect_refactor_candidates(&functions, refactor_confidence_distribution)
+    } else {
+        Vec::new()
+    };
+    let hotspots = if authoritative {
+        detect_hotspots(&functions, config.sigma)
+    } else {
+        Vec::new()
+    };
+    let health_score =
+        (authoritative && !functions.is_empty()).then(|| health_score(&functions, &hotspots));
+    let readability_score =
+        (authoritative && !functions.is_empty()).then(|| repo_readability_score(&functions));
     Ok(MetricsReport {
-        schema: "deslop.metrics/3",
+        schema: "deslop.metrics/4",
+        status,
+        analyses,
         functions,
         refactor_candidates,
         refactor_confidence_distribution,
@@ -221,6 +246,9 @@ pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<Metrics
 }
 
 pub fn metrics_source(source: &SourceFile) -> Result<Vec<RegionMetrics>> {
+    if !analysis_provenance_or_failed(source).permits_rewrites() {
+        return Ok(Vec::new());
+    }
     let registry = Registry::default();
     let pack = registry.pack_for_lang(source.lang);
     let regions = metric_regions(pack, source)?;
@@ -232,6 +260,18 @@ pub fn metrics_source(source: &SourceFile) -> Result<Vec<RegionMetrics>> {
 
 pub fn render_text(report: &MetricsReport, hotspots_only: bool) -> String {
     let mut out = String::new();
+    for file in &report.analyses {
+        for diagnostic in &file.analysis.diagnostics {
+            let location = diagnostic.span.map_or_else(
+                || file.path.display().to_string(),
+                |span| format!("{}:{}", file.path.display(), span.start_line),
+            );
+            out.push_str(&format!(
+                "{location} [{}] {}\n",
+                diagnostic.code, diagnostic.message
+            ));
+        }
+    }
     out.push_str(&metrics_summary_line(report));
     if !hotspots_only {
         out.push_str(&regions_text(&report.functions));
@@ -243,12 +283,30 @@ pub fn render_text(report: &MetricsReport, hotspots_only: bool) -> String {
 
 fn metrics_summary_line(report: &MetricsReport) -> String {
     let distribution = report.refactor_confidence_distribution;
+    let (Some(health_score), Some(readability_score)) =
+        (report.health_score, report.readability_score)
+    else {
+        return format!(
+            "Repo health: unavailable (0 complete region(s))\nStructural readability: unavailable ({}; partial analysis)\nRefactor confidence distribution: n={} mean={:.3} std={:.3} median={:.3} p25={:.3} p75={:.3} min={:.3} max={:.3} flat={} relative-eligible={}\n",
+            report.readability_model.id,
+            distribution.count,
+            distribution.mean,
+            distribution.stddev,
+            distribution.median,
+            distribution.p25,
+            distribution.p75,
+            distribution.min,
+            distribution.max,
+            distribution.flat,
+            distribution.relative_candidate_eligible,
+        );
+    };
     format!(
         "Repo health: {:.1}/100 ({} region(s), {} hotspot(s))\nStructural readability: {:.1}/100 ({}; uncalibrated, {} refactor candidate(s))\nRefactor confidence distribution: n={} mean={:.3} std={:.3} median={:.3} p25={:.3} p75={:.3} min={:.3} max={:.3} flat={} relative-eligible={}\n",
-        report.health_score,
+        health_score,
         report.functions.len(),
         report.hotspots.len(),
-        report.readability_score,
+        readability_score,
         report.readability_model.id,
         report.refactor_candidates.len(),
         distribution.count,
@@ -1437,6 +1495,49 @@ mod tests {
         let report = metrics_source(&source).expect("metrics");
         let function = report.iter().find(|region| region.name == "f").expect("f");
         assert_eq!(function.complexity.cyclomatic, 4.0);
+    }
+
+    #[test]
+    fn malformed_input_has_no_structural_metrics_or_aggregate_scores() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let malformed = tmp.path().join("malformed.ts");
+        std::fs::write(
+            &malformed,
+            include_str!("../../../tests/fixtures/typescript/malformed.ts"),
+        )
+        .expect("fixture");
+
+        let report = metrics_paths(&[malformed], MetricsConfig::default()).expect("metrics");
+
+        assert_eq!(report.schema, "deslop.metrics/4");
+        assert_eq!(report.status, AnalysisStatus::Partial);
+        assert!(report.functions.is_empty());
+        assert!(report.refactor_candidates.is_empty());
+        assert!(report.hotspots.is_empty());
+        assert!(report.health_score.is_none());
+        assert!(report.readability_score.is_none());
+    }
+
+    #[test]
+    fn mixed_partial_scan_withholds_project_level_metric_authority() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let valid = tmp.path().join("valid.rs");
+        let malformed = tmp.path().join("malformed.ts");
+        std::fs::write(&valid, "fn valid() -> i32 { 1 }\n").expect("valid fixture");
+        std::fs::write(
+            &malformed,
+            include_str!("../../../tests/fixtures/typescript/malformed.ts"),
+        )
+        .expect("malformed fixture");
+
+        let report = metrics_paths(&[valid, malformed], MetricsConfig::default()).expect("metrics");
+
+        assert_eq!(report.status, AnalysisStatus::Partial);
+        assert!(!report.functions.is_empty());
+        assert!(report.refactor_candidates.is_empty());
+        assert!(report.hotspots.is_empty());
+        assert!(report.health_score.is_none());
+        assert!(report.readability_score.is_none());
     }
 
     #[test]

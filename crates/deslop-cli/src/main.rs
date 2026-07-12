@@ -9,7 +9,10 @@ use deslop_analyzer::{
     AnalyzerConfig, AnalyzerLangConfig, BoundaryConfig, JuliaExternal, RuleSuppression,
     Suppression, scan_paths, scan_paths_with_config,
 };
-use deslop_core::{FileReport, Severity};
+use deslop_core::{
+    AnalysisStatus, FileAnalysis, FileReport, Severity, reports_analysis_status,
+    reports_permit_rewrites,
+};
 use deslop_eval::{append_false_positive_feedback, render_eval_json, render_eval_text, run_eval};
 use deslop_fix::{diff_paths, undo_paths};
 use deslop_graph::{
@@ -605,6 +608,9 @@ fn metrics(args: MetricsArgs) -> Result<()> {
         MetricsFormat::Json => render_metrics_json(&report)?,
     };
     print!("{rendered}");
+    if report.status != AnalysisStatus::Complete {
+        std::process::exit(2);
+    }
     Ok(())
 }
 
@@ -620,6 +626,9 @@ fn graph(args: GraphArgs) -> Result<()> {
         GraphFormat::Dot => render_graph_dot(&report),
     };
     print!("{rendered}");
+    if report.status != AnalysisStatus::Complete {
+        std::process::exit(2);
+    }
     Ok(())
 }
 
@@ -637,6 +646,12 @@ fn scan(args: ScanArgs, config: &DeslopConfig) -> Result<()> {
         suppress_baseline(&mut reports, &baseline);
     }
 
+    let complete = reports_permit_rewrites(&reports);
+    if !complete && matches!(args.format, Format::Agent) {
+        print_analysis_diagnostics(&reports);
+        std::process::exit(2);
+    }
+
     let rendered = match args.format {
         Format::Text => render_text(&reports),
         Format::Json => render_json(&reports)?,
@@ -644,6 +659,10 @@ fn scan(args: ScanArgs, config: &DeslopConfig) -> Result<()> {
         Format::Agent => render_agent(&reports)?,
     };
     print!("{rendered}");
+
+    if !complete {
+        std::process::exit(2);
+    }
 
     if let Some(threshold) = resolve_scan_fail_on(args.fail_on, config) {
         let should_fail = reports
@@ -730,12 +749,16 @@ fn run_real_provider_fix(
     request: FixRequest,
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<SlimReport> {
+    let summary = egress_summary(&request.options)?;
+    if summary.region_count == 0 {
+        return run_slim_with_progress(&RecordedClient::new(""), request.options, progress);
+    }
     let provider_name = request.provider.as_str();
     let destination = provider_base_url(provider_name, request.base_url.as_deref());
     require_cli_egress_consent(
         provider_name,
         &destination,
-        egress_summary(&request.options)?,
+        summary,
         request.explicit_consent,
     )?;
     match request.provider {
@@ -869,6 +892,10 @@ fn propose(args: ProposeArgs, config: &DeslopConfig) -> Result<()> {
         args.julia_project,
     )?;
     let reports = scan_paths_with_config(&args.paths, analyzer)?;
+    if !reports_permit_rewrites(&reports) {
+        print_analysis_diagnostics(&reports);
+        std::process::exit(2);
+    }
     let rendered = render_agent(&reports)?;
     if let Some(output) = args.output {
         fs::write(&output, rendered)
@@ -877,6 +904,18 @@ fn propose(args: ProposeArgs, config: &DeslopConfig) -> Result<()> {
         print!("{rendered}");
     }
     Ok(())
+}
+
+fn print_analysis_diagnostics(reports: &[FileReport]) {
+    for report in reports {
+        for diagnostic in &report.analysis.diagnostics {
+            let location = diagnostic.span.map_or_else(
+                || report.path.display().to_string(),
+                |span| format!("{}:{}", report.path.display(), span.start_line),
+            );
+            eprintln!("{location} [{}] {}", diagnostic.code, diagnostic.message);
+        }
+    }
 }
 
 fn eval(args: EvalArgs) -> Result<()> {
@@ -922,7 +961,9 @@ fn feedback(args: FeedbackArgs, config: &DeslopConfig) -> Result<()> {
 #[derive(Debug, Serialize)]
 struct SlopReport {
     schema: &'static str,
-    score: f64,
+    status: AnalysisStatus,
+    score: Option<f64>,
+    blocked_files: Vec<FileAnalysis>,
     files: Vec<FileSlopScore>,
     rule_counts: BTreeMap<String, usize>,
 }
@@ -943,13 +984,27 @@ fn slop(args: SlopArgs) -> Result<()> {
         MetricsFormat::Text => print!("{}", render_slop_text(&report)),
         MetricsFormat::Json => println!("{}", serde_json::to_string_pretty(&report)?),
     }
+    if report.status != AnalysisStatus::Complete {
+        std::process::exit(2);
+    }
     Ok(())
 }
 
 fn slop_report(reports: &[FileReport]) -> Result<SlopReport> {
+    let status = reports_analysis_status(reports);
+    let blocked_files = reports
+        .iter()
+        .filter(|report| !report.analysis.permits_rewrites())
+        .map(|report| FileAnalysis {
+            path: report.path.clone(),
+            lang: report.lang,
+            analysis: report.analysis.clone(),
+        })
+        .collect::<Vec<_>>();
     let mut rule_counts = BTreeMap::new();
     let mut files = reports
         .iter()
+        .filter(|report| report.analysis.permits_rewrites())
         .map(|report| slop_score_for_file(report, &mut rule_counts))
         .collect::<Result<Vec<_>>>()?;
     files.sort_by(|a, b| {
@@ -958,14 +1013,16 @@ fn slop_report(reports: &[FileReport]) -> Result<SlopReport> {
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.path.cmp(&b.path))
     });
-    let score = if files.is_empty() {
-        0.0
+    let score = if status != AnalysisStatus::Complete || files.is_empty() {
+        None
     } else {
-        files.iter().map(|file| file.score).sum::<f64>() / files.len() as f64
+        Some(files.iter().map(|file| file.score).sum::<f64>() / files.len() as f64)
     };
     Ok(SlopReport {
-        schema: "deslop.slop/1",
+        schema: "deslop.slop/2",
+        status,
         score,
+        blocked_files,
         files,
         rule_counts,
     })
@@ -1013,7 +1070,10 @@ fn slop_weight(rule: &str) -> Option<f64> {
 
 fn render_slop_text(report: &SlopReport) -> String {
     let mut out = String::new();
-    out.push_str(&format!("Slop score: {:.1}/100\n", report.score));
+    match report.score {
+        Some(score) => out.push_str(&format!("Slop score: {score:.1}/100\n")),
+        None => out.push_str("Slop score: unavailable (analysis incomplete)\n"),
+    }
     out.push_str("rule counts:\n");
     if report.rule_counts.is_empty() {
         out.push_str("  none\n");
@@ -1352,6 +1412,7 @@ fn verify_options(
 ) -> VerifyOptions {
     VerifyOptions {
         root: PathBuf::from("."),
+        scope: None,
         check_cmd,
         coverage: coverage_config(coverage),
         mutation: mutation_config(mutation, mutation_jobs),
@@ -1384,6 +1445,9 @@ fn baseline(args: BaselineArgs) -> Result<()> {
 
 fn write_baseline(paths: &[PathBuf], output: &Path, verb: &str) -> Result<()> {
     let reports = scan_paths(paths)?;
+    if !reports_permit_rewrites(&reports) {
+        bail!("analysis is incomplete; refusing to write or update a baseline");
+    }
     let baseline = Baseline::from_reports(&reports);
     let rendered = serde_json::to_string_pretty(&baseline)?;
     fs::write(output, rendered).with_context(|| format!("failed to write {}", output.display()))?;
@@ -1806,7 +1870,7 @@ mod tests {
     #[test]
     fn slim_progress_never_changes_stdout_report_rendering() {
         let report = serde_json::json!({
-            "schema": "deslop.slim/1",
+            "schema": "deslop.slim/2",
             "dry_run": true,
             "verified": { "results": [] }
         });

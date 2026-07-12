@@ -263,8 +263,28 @@ public `type-script` identity while `.ts`/`.mts`/`.cts` select the TypeScript gr
 `.tsx` selects the distinct TSX grammar from the source path.
 Shared fixtures under `tests/fixtures/typescript` freeze typed TypeScript, JSX, TSX, region,
 and malformed-syntax behavior. Tree-sitter parse success proves CST recovery without `ERROR` or
-missing nodes; it does not prove matching JSX tag names. Cross-consumer partial-analysis policy is
-defined separately in M0.8.
+missing nodes; it does not prove matching JSX tag names.
+
+Every analyzed source carries `AnalysisProvenance { status, diagnostics }`. `complete` means the
+path-selected grammar produced a tree with no `ERROR` or missing nodes. `partial` means Tree-sitter
+recovered a tree containing invalid or missing syntax; `unsupported` means no grammar is registered;
+`failed` means the expected parser could not produce analysis; and `unknown` is the fail-closed
+default for legacy/deserialized reports. Diagnostics have stable codes and exact source spans when
+Tree-sitter supplies one. Only explicit `complete` provenance with no diagnostics permits edits,
+work orders, prompts, verification authority, or writes.
+
+M0 uses coarse quarantine because per-fact dependency provenance does not exist yet. A non-complete
+file emits diagnostics and contributes no parser/external/cross-file findings, structural metrics,
+graph authority beyond its file node, edit, work order, or prompt. If any requested path is
+non-complete, project-derived duplication/boundary analysis, repo-relative metric candidates, and
+all rewrite-capable project output are withheld. Text-only packs without a grammar may still emit
+`never-auto` report evidence, but never structural metrics or rewrites. CLI read-only commands emit
+their structured partial result and exit 2; CLI agent/propose output is atomic and emits no JSONL.
+MCP returns the partial state as a successful domain payload with `analyses`, `blocked_files`, and no
+work orders/prompts. Slim preflights both discovered and imported work orders before consent,
+credentials, or model calls. `allow_unverified` and `allow_non_removable` cannot override parse
+authority. Retaining valid recovered subtrees with fact-level coverage is deferred to M1's owned
+syntax snapshot; persisting the original project analysis scope into work orders remains M0.13/M6.
 Python maps `function_definition` to a behavioral region, treats `class_definition` as a
 declaration container whose methods remain discoverable, and treats `decorated_definition` as
 ownership syntax rather than a second symbol. Async callables retain the grammar's
@@ -380,9 +400,9 @@ deslop rules                                                   # class, precondi
 - **`metrics`/`health`**: computes per-region complexity, entropy, structural readability,
   and separate measurement/refactor confidence; ranks absolute refactor candidates and
   repo-relative bloat hotspots; emits text or JSON.
-- **`graph`**: emits `deslop.graph/1`, a deterministic Tree-sitter-derived dependency graph
+- **`graph`**: emits `deslop.graph/2`, a deterministic Tree-sitter-derived dependency graph
   for LLM refactor planning. Nodes are files, symbols, and external-or-unresolved placeholders; edges are
-  `contains`, `imports`, `calls`, and `inherits`. In graph/1, `resolved` is exact syntax ownership
+  `contains`, `imports`, `calls`, and `inherits`. In graph/2, `resolved` is exact syntax ownership
   on `contains`; reference edges are `syntactic` best-candidate or `ambiguous` evidence until a
   scope/type authority proves binding. A syntactic edge to an `external-symbol` node means unresolved,
   not proven external; every reference `to` is a planning hint rather than a proven binding.
@@ -417,7 +437,8 @@ deslop rules                                                   # class, precondi
 `deslop metrics` measures bloat-prone regions, not just rule findings. It is built on
 `LangPack`: each pack declares metric region node kinds, branch node kinds,
 nesting/control-flow node kinds, line-comment tokens, and Halstead operator tokens.
-`deslop-parse` supplies the CST; languages without a grammar use text-only metrics.
+`deslop-parse` supplies the CST; non-complete inputs expose diagnostics but do not emit structural
+regions, candidates, hotspots, or aggregate scores.
 
 Per region:
 - **Complexity:** cyclomatic (`branch_count + 1`), cognitive control/nesting/flow-break
@@ -427,8 +448,8 @@ Per region:
   ratio, comment-to-code ratio, and a compression/redundancy proxy.
 - **Tree-sitter entropy:** normalized Shannon entropy over CST leaf tokens plus normalized
   entropy over CST node kinds. Token information volume is `leaf_count * raw_token_entropy`.
-  Languages without a grammar fall back to the existing text tokenizer and omit structural
-  entropy.
+  A registered text-only language may still emit report-only findings, but metrics remain unavailable
+  until the pack supplies a grammar.
 - **Compression proxy:** currently byte entropy normalized to `0.0..1.0`, chosen to avoid
   a compression dependency while still flagging repetitive low-information regions.
 - **Structural readability:** a bounded deterministic model combines cognitive/cyclomatic/
@@ -448,14 +469,15 @@ Per region:
   the confidence range is below `0.05` or standard deviation below `0.01`; flat/tied distributions
   therefore cannot manufacture refactor targets. Region traversal retains nested containers and
   members, so classes/impls and their methods/functions are scored.
-- **Labeled JSON confidence (`deslop.metrics/3`):** `refactor_confidence` is a one-entry object
+- **Labeled JSON confidence (`deslop.metrics/4`):** `refactor_confidence` is a one-entry object
   whose key communicates the band and whose value is the score, e.g. `{"high": 0.70}`.
   `refactor_confidence_score` repeats the numeric value for sorting and arithmetic. Bands are
   `very_low` `[0.00,0.20)`, `low` `[0.20,0.40)`, `moderate` `[0.40,0.60)`, `high`
   `[0.60,0.80)`, and `very_high` `[0.80,1.00]`. `confidence_basis` is
   `tree_intrinsic_v1`, making the fixed cross-codebase structural basis explicit. Scan-local
   normalization is nested separately as `repo_relative: {zscore, percentile}`. The schema moved
-  from `/2` to `/3` because the formerly flat relative fields were replaced by this object.
+  from `/3` to `/4` to add per-file analysis provenance, an aggregate status, and nullable aggregate
+  scores when the requested snapshot is incomplete.
 
 After scanning, metrics are compared against the run's own distribution. A hotspot is a
 region at least `--sigma` standard deviations from the repo median on high complexity or
@@ -473,9 +495,9 @@ feature-gated stdio MCP server (`--features mcp`) and is network-free: it only r
 deterministic analyzer, protocol serializer, metrics engine, and `deslop-verify` gate.
 It implements the core JSON-RPC MCP methods needed by coding agents:
 `initialize`, `tools/list`, and `tools/call`. Tool payloads reuse the existing
-`deslop.findings/1`, `deslop.workorder/1`, `deslop.fix/1`, `deslop.patch/1`,
+`deslop.findings/2`, `deslop.workorder/1`, `deslop.fix/1`, `deslop.patch/1`,
 `deslop.characterization-test/1`, `deslop.verify/1`, `deslop.apply/1`, and
-`deslop.metrics/3`/`deslop.graph/1` schemas. The `fix` tool scans/proposes work orders, reuses
+`deslop.metrics/4`/`deslop.graph/2` schemas. The `fix` tool scans/proposes work orders, reuses
 `deslop_slim::build_prompt`, and returns prompt entries containing `workorder_id`, `path`,
 line range, `region_fingerprint`, contract, findings, and prompt text. The caller rewrites
 the region and submits `deslop.patch/1` patches through `apply`, so the existing
@@ -488,7 +510,7 @@ The MCP `fix` tool has two modes. `mode="prompts"` is the default and is always 
 it returns the agent-as-consumer `deslop.fix/1` prompt payload described above. `mode="auto"`
 is opt-in server-run LLM execution: it constructs a `deslop-slim` client from
 `provider`/`model`/`base_url` or a recorded `mock` response, runs `run_slim`, and returns the
-`deslop.slim/1` report. Auto mode is compiled only with the `deslop-mcp` `slim-llm` cargo
+`deslop.slim/2` report. Auto mode is compiled only with the `deslop-mcp` `slim-llm` cargo
 feature, which enables `deslop-slim/anthropic` and `deslop-slim/openai`; default MCP builds
 keep `slim-llm` off and return a clear feature-required error for `mode="auto"`.
 
@@ -607,7 +629,7 @@ default-build `fix mode=auto` feature-required errors, propose→verify round-tr
 `region_fingerprint` rejection, MCP coverage bool back-compat/defaults, bad coverage-mode
 errors, LCOV mode-string `apply` upgrading a covered patch to `removable`, and an
 initialize/list/scan stdio transcript. With `deslop-mcp/slim-llm`, a deterministic mock
-auto-mode test proves a covered `deslop.slim/1` rewrite writes and a rejected rewrite does
+auto-mode test proves a covered `deslop.slim/2` rewrite writes and a rejected rewrite does
 not.
 LSP tests cover precise UTF-16 diagnostic ranges including non-ASCII text, safety-lattice
 code-action gating, `source.fixAll` for all safe findings in a file, no fix-all for riskier

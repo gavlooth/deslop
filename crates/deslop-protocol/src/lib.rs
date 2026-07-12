@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use deslop_core::{Finding, SafetyClass, Severity, Span, fingerprint};
-use deslop_parse::SourceFile;
+use deslop_core::{FileReport, Finding, SafetyClass, Severity, Span, fingerprint};
+use deslop_parse::{SourceFile, analysis_provenance_or_failed};
 use serde::{Deserialize, Serialize};
 
 macro_rules! protocol_struct {
@@ -95,7 +95,18 @@ pub struct CharacterizationTest {
 }
 }
 
-pub fn work_orders_for_source(source: &SourceFile, findings: &[Finding]) -> Vec<WorkOrder> {
+pub fn work_orders_for_report(source: &SourceFile, report: &FileReport) -> Vec<WorkOrder> {
+    if source.path != report.path
+        || source.lang != report.lang
+        || !report.analysis.permits_rewrites()
+        || !analysis_provenance_or_failed(source).permits_rewrites()
+    {
+        return Vec::new();
+    }
+    work_orders_for_source(source, &report.findings)
+}
+
+fn work_orders_for_source(source: &SourceFile, findings: &[Finding]) -> Vec<WorkOrder> {
     let mut grouped: BTreeMap<RewriteRegionKey, Vec<&Finding>> = BTreeMap::new();
     for finding in findings
         .iter()
@@ -316,6 +327,34 @@ mod tests {
         assert!(value.get("instruction").is_some());
         assert!(value.get("contract").is_some());
         assert!(value.get("region_fingerprint").is_none());
+    }
+
+    #[test]
+    fn partial_unknown_and_mismatched_reports_cannot_create_workorders() {
+        let source = SourceFile::new(
+            PathBuf::from("malformed.ts"),
+            include_str!("../../../tests/fixtures/typescript/malformed.ts").to_string(),
+        );
+        let injected = finding(&source, 1, "narrating-comment", SafetyClass::LlmOnly);
+        let partial = FileReport {
+            path: source.path.clone(),
+            lang: source.lang,
+            analysis: deslop_parse::analysis_provenance_or_failed(&source),
+            findings: vec![injected.clone()],
+        };
+        let unknown = FileReport {
+            analysis: deslop_core::AnalysisProvenance::default(),
+            ..partial.clone()
+        };
+        let mismatched = FileReport {
+            path: PathBuf::from("other.ts"),
+            analysis: deslop_core::AnalysisProvenance::complete(),
+            ..partial.clone()
+        };
+
+        assert!(work_orders_for_report(&source, &partial).is_empty());
+        assert!(work_orders_for_report(&source, &unknown).is_empty());
+        assert!(work_orders_for_report(&source, &mismatched).is_empty());
     }
 
     #[test]

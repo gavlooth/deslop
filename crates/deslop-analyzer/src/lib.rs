@@ -6,13 +6,14 @@ use std::thread;
 
 use anyhow::{Context, Result, bail};
 use deslop_core::{
-    DetectedBy, Edit, FileReport, Finding, Lang, SafetyClass, Severity, Span, fingerprint,
+    AnalysisDiagnostic, AnalysisProvenance, AnalysisStatus, DetectedBy, Edit, FileReport, Finding,
+    Lang, SafetyClass, Severity, Span, fingerprint, reports_permit_rewrites,
 };
 use deslop_external::{
     CljKondoAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait, ExternalFindings, JuliaAnalyzer,
 };
 use deslop_lang::{Registry as LangRegistry, Rule};
-use deslop_parse::{SourceFile, parse_source};
+use deslop_parse::{SourceFile, analysis_provenance_or_failed, parse_source};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 
@@ -481,8 +482,10 @@ pub fn scan_paths_with_config(
     }
     supported_paths = deduplicate_supported_paths(supported_paths);
     let mut reports = scan_supported_paths_parallel(&supported_paths, &config)?;
-    add_cross_file_duplication(&mut reports, &config)?;
-    boundary::add_config_boundary(&mut reports, &supported_paths, &paths, &config)?;
+    if reports_permit_rewrites(&reports) {
+        add_cross_file_duplication(&mut reports, &config)?;
+        boundary::add_config_boundary(&mut reports, &supported_paths, &paths, &config)?;
+    }
     // Boundary findings are appended after the per-file pass, so suppression must run
     // over them here (the per-file pass already filtered its own findings).
     if !config.suppression.is_empty() {
@@ -599,8 +602,12 @@ fn add_cross_file_duplication(reports: &mut [FileReport], config: &AnalyzerConfi
     }
     let sources = reports
         .iter()
+        .filter(|report| report.analysis.permits_rewrites())
         .map(|report| SourceFile::read(&report.path))
         .collect::<Result<Vec<_>>>()?;
+    if sources.len() < 2 {
+        return Ok(());
+    }
     let mut findings = tokens::cross_file_duplicate_findings(&sources, config);
     config.suppression.retain(&mut findings);
     for source in &sources {
@@ -651,6 +658,9 @@ fn scan_file_with_pack(
         .with_context(|| format!("failed to read {}", path.display()))?;
     let source = SourceFile::new_with_lang(path.to_path_buf(), text, pack.lang());
     let mut report = scan_source_with_pack(&source, pack, &config);
+    if !report.analysis.permits_rewrites() {
+        return Ok(report);
+    }
     if let Some(external) = pack.external_analyzer(&config) {
         match external.analyze(path, &source)? {
             ExternalFindings::Available(external_findings) => {
@@ -697,6 +707,11 @@ fn empty_report(path: &Path, lang: Lang) -> FileReport {
     FileReport {
         path: path.to_path_buf(),
         lang,
+        analysis: AnalysisProvenance::unsupported(vec![AnalysisDiagnostic {
+            code: "unsupported-language".to_string(),
+            message: "no analyzer and parser adapter is available; analysis is partial".to_string(),
+            span: None,
+        }]),
         findings: Vec::new(),
     }
 }
@@ -708,13 +723,11 @@ pub fn scan_source(source: &SourceFile) -> FileReport {
 pub fn scan_source_with_config(source: &SourceFile, config: AnalyzerConfig) -> FileReport {
     let registry = AnalyzerRegistry::default();
     let Some(pack) = registry.pack_for_lang(source.lang) else {
-        let mut findings = run_rules(&AGNOSTIC_PACK, source, &config);
-        config.suppression.retain(&mut findings);
-        sort_findings(&mut findings);
         return FileReport {
             path: source.path.to_path_buf(),
             lang: source.lang,
-            findings,
+            analysis: source_analysis_provenance(source),
+            findings: Vec::new(),
         };
     };
     scan_source_with_pack(source, pack, &config)
@@ -725,6 +738,36 @@ fn scan_source_with_pack(
     pack: &'static dyn AnalysisPack,
     config: &AnalyzerConfig,
 ) -> FileReport {
+    let analysis = source_analysis_provenance(source);
+    if analysis.status == AnalysisStatus::Unsupported {
+        let mut findings = Vec::new();
+        findings.extend(run_rules(&AGNOSTIC_PACK, source, config));
+        findings.extend(run_rules(pack, source, config));
+        for finding in &mut findings {
+            finding.safety = SafetyClass::NeverAuto;
+            finding.edit = None;
+            finding.precondition = Some(
+                "report-only text evidence; install a parser adapter before proposing rewrites"
+                    .to_string(),
+            );
+        }
+        config.suppression.retain(&mut findings);
+        sort_findings(&mut findings);
+        return FileReport {
+            path: source.path.to_path_buf(),
+            lang: source.lang,
+            analysis,
+            findings,
+        };
+    }
+    if !analysis.permits_rewrites() {
+        return FileReport {
+            path: source.path.to_path_buf(),
+            lang: source.lang,
+            analysis,
+            findings: Vec::new(),
+        };
+    }
     let mut findings = Vec::new();
     findings.extend(run_rules(&AGNOSTIC_PACK, source, config));
     findings.extend(run_rules(pack, source, config));
@@ -734,8 +777,13 @@ fn scan_source_with_pack(
     FileReport {
         path: source.path.to_path_buf(),
         lang: source.lang,
+        analysis,
         findings,
     }
+}
+
+fn source_analysis_provenance(source: &SourceFile) -> AnalysisProvenance {
+    analysis_provenance_or_failed(source)
 }
 
 fn apply_inline_suppression(source: &SourceFile, findings: &mut Vec<Finding>) {

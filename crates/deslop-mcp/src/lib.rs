@@ -8,14 +8,15 @@ use deslop_analyzer::{
     AnalyzerConfig, AnalyzerLangConfig, RuleSuppression, Suppression, SuppressionBuilder,
     scan_paths_with_config,
 };
+use deslop_core::{AnalysisStatus, FileAnalysis, reports_analysis_status, reports_permit_rewrites};
 use deslop_graph::{GraphConfig, graph_paths};
 use deslop_metrics::{MetricsConfig, metrics_paths};
 use deslop_parse::SourceFile;
 use deslop_protocol::{
-    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, work_orders_for_source,
+    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, work_orders_for_report,
     workorder_region_fingerprint,
 };
-use deslop_report::{render_agent, render_json};
+use deslop_report::render_json;
 use deslop_slim::build_prompt;
 #[cfg(feature = "slim-llm")]
 use deslop_slim::{
@@ -122,7 +123,7 @@ fn tool_definitions() -> Vec<Value> {
 fn scan_tool_spec() -> Value {
     tool(
         "scan",
-        "Scan paths and return deslop.findings/1 JSON.",
+        "Scan paths and return deslop.findings/2 JSON.",
         object_schema(json!({
             "paths": paths_schema(),
             "format": { "type": "string", "enum": ["json"], "default": "json" },
@@ -147,7 +148,7 @@ fn propose_tool_spec() -> Value {
 fn fix_tool_spec() -> Value {
     tool(
         "fix",
-        "Return deslop-slim rewrite prompts by default (mode=prompts). With deslop-mcp built using --features slim-llm, mode=auto runs deslop-slim server-side and returns deslop.slim/1.",
+        "Return deslop-slim rewrite prompts by default (mode=prompts). With deslop-mcp built using --features slim-llm, mode=auto runs deslop-slim server-side and returns deslop.slim/2.",
         object_schema(fix_tool_properties()),
     )
 }
@@ -161,6 +162,7 @@ fn fix_tool_properties() -> Value {
             "description": "prompts returns deslop.fix/1 for agent-as-consumer. auto requires deslop-mcp --features slim-llm and runs deslop-slim server-side."
         },
         "paths": paths_schema(),
+        "root": { "type": "string", "description": "Project root for work-order rediscovery and verification; defaults to the server working directory." },
         "analyzer": analyzer_schema(),
         "provider": {
             "type": "string",
@@ -245,6 +247,8 @@ fn apply_tool_spec() -> Value {
 fn patch_verification_properties() -> Value {
     json!({
         "patches": patches_schema(),
+        "root": { "type": "string", "description": "Project root for work-order rediscovery and verification; defaults to the server working directory." },
+        "scope": paths_schema(),
         "check_cmd": { "type": "string" },
         "coverage": coverage_schema(),
         "mutation": { "type": "boolean", "default": false },
@@ -255,7 +259,7 @@ fn patch_verification_properties() -> Value {
 fn metrics_tool_spec() -> Value {
     tool(
         "metrics",
-        "Return read-only deslop.metrics/3 JSON with Tree-sitter-derived per-region structural readability, labeled intrinsic confidence plus numeric score, explicit confidence_basis, nested repo_relative z-score/percentile, distribution statistics, ranked candidates, and complexity/entropy hotspots. Flat distributions cannot create relative candidates. Confidence is uncalibrated triage evidence, not proof that a rewrite is safe.",
+        "Return read-only deslop.metrics/4 JSON with Tree-sitter-derived per-region structural readability, labeled intrinsic confidence plus numeric score, explicit confidence_basis, nested repo_relative z-score/percentile, distribution statistics, ranked candidates, and complexity/entropy hotspots. Flat distributions cannot create relative candidates. Confidence is uncalibrated triage evidence, not proof that a rewrite is safe.",
         object_schema(json!({
             "paths": paths_schema(),
             "sigma": { "type": "number", "default": 2.0 }
@@ -266,7 +270,7 @@ fn metrics_tool_spec() -> Value {
 fn graph_tool_spec() -> Value {
     tool(
         "graph",
-        "Return read-only deslop.graph/1 JSON for refactor planning. Contains edges are resolved syntax ownership. Calls/imports/inherits are syntactic planning hints or ambiguous evidence; a syntactic external-symbol target is unresolved, not proven external, and syntactic is not resolution proof. No writes, no network.",
+        "Return read-only deslop.graph/2 JSON for refactor planning. Contains edges are resolved syntax ownership. Calls/imports/inherits are syntactic planning hints or ambiguous evidence; a syntactic external-symbol target is unresolved, not proven external, and syntactic is not resolution proof. No writes, no network.",
         object_schema(json!({
             "paths": paths_schema(),
             "include_calls": { "type": "boolean", "default": true }
@@ -491,10 +495,13 @@ fn scan_tool(args: &Value) -> Result<Value> {
 }
 
 fn propose_tool(args: &Value) -> Result<Value> {
-    let work_orders = proposed_work_orders(args)?;
+    let batch = proposed_work_orders(args)?;
     Ok(json!({
         "schema": "deslop.workorders/1",
-        "workorders": work_orders,
+        "status": batch.status,
+        "analyses": batch.analyses,
+        "blocked_files": batch.blocked_files,
+        "workorders": batch.work_orders,
     }))
 }
 
@@ -515,15 +522,25 @@ fn fix_mode(args: &Value) -> Result<&str> {
 }
 
 fn fix_prompts_tool(args: &Value) -> Result<Value> {
-    let prompts = proposed_work_orders(args)?
+    let batch = proposed_work_orders(args)?;
+    let next = if batch.status == AnalysisStatus::Complete {
+        "Rewrite each region. Build deslop.patch/1 patches { schema:\"deslop.patch/1\", workorder_id, region_fingerprint, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)."
+    } else {
+        "Analysis is incomplete. Repair every blocked file and rescan; no rewrite is authorized."
+    };
+    let prompts = batch
+        .work_orders
         .into_iter()
         .filter(|work_order| work_order.kind == WorkOrderKind::RewriteRegion)
         .map(fix_prompt_entry)
         .collect::<Vec<_>>();
     Ok(json!({
         "schema": "deslop.fix/1",
+        "status": batch.status,
+        "analyses": batch.analyses,
+        "blocked_files": batch.blocked_files,
         "prompts": prompts,
-        "next": "Rewrite each region. Build deslop.patch/1 patches { schema:\"deslop.patch/1\", workorder_id, region_fingerprint, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)."
+        "next": next,
     }))
 }
 
@@ -536,7 +553,7 @@ fn fix_auto_tool(_args: &Value) -> Result<Value> {
 fn fix_auto_tool(args: &Value) -> Result<Value> {
     let model = resolve_model(optional_string(args, "model"));
     let options = SlimOptions {
-        root: PathBuf::from("."),
+        root: root_arg(args),
         paths: paths_arg(args)?,
         workorders: None,
         apply: bool_arg(args, "apply"),
@@ -551,6 +568,8 @@ fn fix_auto_tool(args: &Value) -> Result<Value> {
     let report = if let Some(path) = optional_string(args, "mock") {
         let client = RecordedClient::from_path(path)?;
         run_slim(&client, options)?
+    } else if egress_summary(&options)?.region_count == 0 {
+        run_slim(&RecordedClient::new(""), options)?
     } else {
         let provider = provider_arg(args)?;
         let base_url = optional_string(args, "base_url");
@@ -709,15 +728,42 @@ fn fix_prompt_entry(work_order: WorkOrder) -> Value {
     })
 }
 
-fn proposed_work_orders(args: &Value) -> Result<Vec<WorkOrder>> {
+struct ProposedWorkOrders {
+    status: AnalysisStatus,
+    analyses: Vec<FileAnalysis>,
+    blocked_files: Vec<FileAnalysis>,
+    work_orders: Vec<WorkOrder>,
+}
+
+fn proposed_work_orders(args: &Value) -> Result<ProposedWorkOrders> {
     let reports = scan_reports(args)?;
-    let _jsonl = render_agent(&reports)?;
+    let status = reports_analysis_status(&reports);
+    let analyses = reports
+        .iter()
+        .map(|report| FileAnalysis {
+            path: report.path.clone(),
+            lang: report.lang,
+            analysis: report.analysis.clone(),
+        })
+        .collect::<Vec<_>>();
+    let blocked_files = analyses
+        .iter()
+        .filter(|file| !file.analysis.permits_rewrites())
+        .cloned()
+        .collect::<Vec<_>>();
     let mut work_orders = Vec::new();
-    for report in reports {
-        let source = SourceFile::read(&report.path)?;
-        work_orders.extend(work_orders_for_source(&source, &report.findings));
+    if reports_permit_rewrites(&reports) {
+        for report in reports {
+            let source = SourceFile::read(&report.path)?;
+            work_orders.extend(work_orders_for_report(&source, &report));
+        }
     }
-    Ok(work_orders)
+    Ok(ProposedWorkOrders {
+        status,
+        analyses,
+        blocked_files,
+        work_orders,
+    })
 }
 
 fn scan_reports(args: &Value) -> Result<Vec<deslop_core::FileReport>> {
@@ -815,7 +861,8 @@ fn verify_characterization_tool(args: &Value) -> Result<Value> {
     let report = verify_characterization_tests(
         &tests,
         &VerifyOptions {
-            root: PathBuf::from("."),
+            root: root_arg(args),
+            scope: optional_paths_arg(args, "scope")?,
             check_cmd: Some(check_cmd),
             coverage: CoverageConfig::Disabled,
             mutation: MutationConfig::Disabled,
@@ -838,13 +885,20 @@ fn apply_tool(args: &Value) -> Result<Value> {
 
 fn verify_options(args: &Value, allow_non_removable: bool) -> Result<VerifyOptions> {
     Ok(VerifyOptions {
-        root: PathBuf::from("."),
+        root: root_arg(args),
+        scope: optional_paths_arg(args, "scope")?,
         check_cmd: optional_string(args, "check_cmd"),
         coverage: coverage_config(args)?,
         mutation: mutation_config(args),
         characterization_tests: characterization_tests_arg(args)?,
         allow_non_removable,
     })
+}
+
+fn root_arg(args: &Value) -> PathBuf {
+    optional_string(args, "root")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn coverage_config(args: &Value) -> Result<CoverageConfig> {
@@ -908,6 +962,24 @@ fn paths_arg(args: &Value) -> Result<Vec<PathBuf>> {
                 .ok_or_else(|| anyhow::anyhow!("path entries must be strings"))
         })
         .collect::<Result<Vec<_>>>()
+}
+
+fn optional_paths_arg(args: &Value, key: &str) -> Result<Option<Vec<PathBuf>>> {
+    let Some(paths) = args.get(key) else {
+        return Ok(None);
+    };
+    let Some(paths) = paths.as_array() else {
+        bail!("{key} must be an array");
+    };
+    paths
+        .iter()
+        .map(|path| {
+            path.as_str()
+                .map(PathBuf::from)
+                .ok_or_else(|| anyhow::anyhow!("{key} entries must be strings"))
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
 }
 
 fn patches_arg(args: &Value) -> Result<Vec<Patch>> {
@@ -1040,6 +1112,61 @@ mod tests {
     }
 
     #[test]
+    fn malformed_source_is_a_structured_domain_block_across_mcp_tools() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = temp.path().join("malformed.ts");
+        std::fs::write(
+            &source,
+            include_str!("../../../tests/fixtures/typescript/malformed.ts"),
+        )
+        .expect("fixture");
+        let args = json!({ "paths": [source] });
+
+        let scan = scan_tool(&args).expect("scan");
+        assert_eq!(scan["schema"], "deslop.findings/2");
+        assert_eq!(scan["status"], "partial");
+
+        let proposed = propose_tool(&args).expect("propose");
+        assert_eq!(proposed["status"], "partial");
+        assert_eq!(proposed["blocked_files"].as_array().unwrap().len(), 1);
+        assert!(proposed["workorders"].as_array().unwrap().is_empty());
+
+        let fixed = fix_prompts_tool(&args).expect("fix prompts");
+        assert_eq!(fixed["status"], "partial");
+        assert!(fixed["prompts"].as_array().unwrap().is_empty());
+        assert!(
+            fixed["next"]
+                .as_str()
+                .unwrap()
+                .contains("Repair every blocked file")
+        );
+    }
+
+    #[cfg(feature = "slim-llm")]
+    #[test]
+    fn malformed_auto_fix_needs_no_consent_or_provider_credentials() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = temp.path().join("malformed.ts");
+        std::fs::write(
+            &source,
+            include_str!("../../../tests/fixtures/typescript/malformed.ts"),
+        )
+        .expect("fixture");
+
+        let response = call_tool(
+            "fix",
+            json!({ "mode": "auto", "paths": [source], "apply": true }),
+        )
+        .expect("partial analysis is a domain result");
+        let content = structured_content(&response);
+
+        assert_eq!(content["schema"], "deslop.slim/2");
+        assert_eq!(content["blocked_files"].as_array().unwrap().len(), 1);
+        assert!(content["patches"].as_array().unwrap().is_empty());
+        assert!(content["applied"].is_null());
+    }
+
+    #[test]
     fn metrics_tool_exposes_readability_and_refactor_confidence() {
         let temp = tempfile::tempdir().expect("tempdir");
         let source = temp.path().join("sample.js");
@@ -1049,7 +1176,7 @@ mod tests {
         )
         .expect("fixture");
         let report = metrics_tool(&json!({ "paths": [source] })).expect("metrics");
-        assert_eq!(report["schema"], "deslop.metrics/3");
+        assert_eq!(report["schema"], "deslop.metrics/4");
         assert_eq!(report["readability_model"]["calibrated"], false);
         assert!(report["refactor_confidence_distribution"]["mean"].is_number());
         assert!(report["refactor_confidence_distribution"]["stddev"].is_number());
@@ -1210,7 +1337,7 @@ mod tests {
 
         let response = call_tool("graph", json!({ "paths": [path] })).expect("graph");
         let content = structured_content(&response);
-        assert_eq!(content["schema"], "deslop.graph/1");
+        assert_eq!(content["schema"], "deslop.graph/2");
         assert!(
             content["agent_notes"]
                 .as_array()
@@ -1424,13 +1551,21 @@ mod tests {
 
         let work_order = propose_first_work_order(&fixture.path);
         let patch = patch_for_workorder(&work_order, "(empty? xs)\n");
-        let verified = call_tool("verify", json!({ "patches": [patch] })).expect("verify");
+        let verified = call_tool(
+            "verify",
+            json!({ "scope": [&fixture.path], "patches": [patch] }),
+        )
+        .expect("verify");
         assert_eq!(first_tool_result(&verified)["passed"], true, "{verified:#}");
         assert_eq!(first_tool_result(&verified)["verdict"], "coverage-unknown");
 
         let mut stale = patch_for_workorder(&work_order, "(empty? xs)\n");
         stale.region_fingerprint = "stale".to_string();
-        let rejected = call_tool("verify", json!({ "patches": [stale] })).expect("verify");
+        let rejected = call_tool(
+            "verify",
+            json!({ "scope": [&fixture.path], "patches": [stale] }),
+        )
+        .expect("verify");
         assert_eq!(first_tool_result(&rejected)["passed"], false);
         assert_eq!(first_tool_result(&rejected)["verdict"], "rejected");
     }
@@ -1441,9 +1576,11 @@ mod tests {
 
         let work_order = propose_first_work_order(&fixture.path);
         let patch = patch_for_workorder(&work_order, "(empty? xs)\n");
-
-        let absent =
-            call_tool("verify", json!({ "patches": [patch.clone()] })).expect("verify absent");
+        let absent = call_tool(
+            "verify",
+            json!({ "scope": [&fixture.path], "patches": [patch.clone()] }),
+        )
+        .expect("verify absent");
         assert_eq!(first_tool_result(&absent)["verdict"], "coverage-unknown");
         assert_first_tool_reason_contains(&absent, "coverage disabled");
 
@@ -1451,6 +1588,7 @@ mod tests {
             "verify",
             json!({
                 "patches": [patch.clone()],
+                "scope": [&fixture.path],
                 "coverage": false
             }),
         )
@@ -1462,6 +1600,7 @@ mod tests {
             "verify",
             json!({
                 "patches": [patch],
+                "scope": [&fixture.path],
                 "coverage": true
             }),
         )
@@ -1478,6 +1617,7 @@ mod tests {
             "apply",
             json!({
                 "patches": [patch],
+                "scope": [&fixture.source],
                 "check_cmd": "true",
                 "coverage": format!("lcov:{}", fixture.coverage.display()),
                 "no_backup": true
@@ -1628,7 +1768,7 @@ mod tests {
         assert_eq!(responses[1]["result"]["tools"][0]["name"], "scan");
         assert_eq!(
             structured_content(&responses[2])["schema"],
-            "deslop.findings/1"
+            "deslop.findings/2"
         );
     }
 
@@ -1760,7 +1900,7 @@ mod tests {
         )
         .expect("fix auto apply");
         let content = structured_content(&response);
-        assert_eq!(content["schema"], "deslop.slim/1");
+        assert_eq!(content["schema"], "deslop.slim/2");
         assert_eq!(content["dry_run"], false);
         assert_eq!(content["verified"]["results"][0]["verdict"], "removable");
         assert_eq!(content["gating"]["applied"].as_array().unwrap().len(), 1);
@@ -1789,7 +1929,7 @@ mod tests {
         )
         .expect("fix auto rejected");
         let content = structured_content(&response);
-        assert_eq!(content["schema"], "deslop.slim/1");
+        assert_eq!(content["schema"], "deslop.slim/2");
         assert_eq!(content["verified"]["results"][0]["verdict"], "rejected");
         assert_eq!(content["gating"]["rejected"].as_array().unwrap().len(), 1);
         assert!(content["applied"]["written"].as_array().unwrap().is_empty());

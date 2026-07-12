@@ -7,7 +7,9 @@ use anyhow::{Context, Result, bail};
 use deslop_analyzer::{
     AnalyzerConfig, AnalyzerLangConfig, RuleSuppression, Suppression, scan_source_with_config,
 };
-use deslop_core::{Finding, SafetyClass, Severity};
+use deslop_core::{
+    AnalysisDiagnostic, AnalysisProvenance, FileReport, Finding, SafetyClass, Severity,
+};
 use deslop_fix::apply_findings_to_text;
 use deslop_parse::SourceFile;
 use lsp_server::{Connection, Message, Notification, Request, Response};
@@ -31,6 +33,7 @@ use serde::Deserialize;
 struct DocumentState {
     text: String,
     findings: Vec<Finding>,
+    analysis: AnalysisProvenance,
     path: PathBuf,
     version: Option<i32>,
 }
@@ -98,13 +101,14 @@ struct LspAnalyzerLangConfig {
 impl LspState {
     fn open(&mut self, uri: Uri, path: PathBuf, text: String, version: Option<i32>) {
         self.refresh_config_for_path(&path).ok();
-        let findings = analyze_text_with_config(&path, &text, &self.analyzer_config);
+        let report = analyze_text_with_config(&path, &text, &self.analyzer_config);
         self.documents.insert(
             uri,
             DocumentState {
                 text,
                 path,
-                findings,
+                findings: report.findings,
+                analysis: report.analysis,
                 version,
             },
         );
@@ -142,8 +146,9 @@ impl LspState {
         {
             self.refresh_config_for_path(&path).ok();
             if let Some(document) = self.documents.get_mut(uri) {
-                document.findings =
-                    analyze_text_with_config(&path, &document_text, &self.analyzer_config);
+                let report = analyze_text_with_config(&path, &document_text, &self.analyzer_config);
+                document.findings = report.findings;
+                document.analysis = report.analysis;
             }
         }
     }
@@ -231,6 +236,7 @@ fn handle_request(connection: &Connection, state: &LspState, request: Request) -
                 code_actions(
                     params.text_document.uri.clone(),
                     &document.text,
+                    &document.analysis,
                     &document.findings,
                     params.range,
                 )
@@ -350,7 +356,8 @@ fn publish_document_diagnostics(
     let Some(document) = state.documents.get(uri) else {
         return Ok(());
     };
-    let diagnostics = diagnostics_for_findings(&document.text, &document.findings);
+    let diagnostics =
+        diagnostics_for_analysis(&document.text, &document.analysis, &document.findings);
     publish_diagnostics(connection, uri.clone(), diagnostics, document.version)
 }
 
@@ -368,9 +375,9 @@ fn publish_diagnostics(
     Ok(())
 }
 
-fn analyze_text_with_config(path: &Path, text: &str, config: &AnalyzerConfig) -> Vec<Finding> {
+fn analyze_text_with_config(path: &Path, text: &str, config: &AnalyzerConfig) -> FileReport {
     let source = SourceFile::new(path.to_path_buf(), text.to_string());
-    scan_source_with_config(&source, config.to_owned()).findings
+    scan_source_with_config(&source, config.to_owned())
 }
 
 fn root_from_workspace_folders(folders: Option<&[lsp_types::WorkspaceFolder]>) -> Option<PathBuf> {
@@ -463,6 +470,40 @@ pub fn diagnostics_for_findings(text: &str, findings: &[Finding]) -> Vec<Diagnos
         .collect()
 }
 
+pub fn diagnostics_for_analysis(
+    text: &str,
+    analysis: &AnalysisProvenance,
+    findings: &[Finding],
+) -> Vec<Diagnostic> {
+    let mut diagnostics = analysis
+        .diagnostics
+        .iter()
+        .map(|diagnostic| analysis_diagnostic(text, diagnostic))
+        .collect::<Vec<_>>();
+    diagnostics.extend(diagnostics_for_findings(text, findings));
+    diagnostics
+}
+
+fn analysis_diagnostic(text: &str, diagnostic: &AnalysisDiagnostic) -> Diagnostic {
+    let range = diagnostic.span.map_or_else(
+        || Range::new(Position::new(0, 0), Position::new(0, 0)),
+        |span| {
+            Range::new(
+                byte_offset_position_utf16(text, span.start_byte, span.start_line),
+                byte_offset_position_utf16(text, span.end_byte, span.end_line),
+            )
+        },
+    );
+    Diagnostic {
+        range,
+        severity: Some(DiagnosticSeverity::ERROR),
+        code: Some(NumberOrString::String(diagnostic.code.clone())),
+        source: Some("deslop".to_string()),
+        message: diagnostic.message.clone(),
+        ..Diagnostic::default()
+    }
+}
+
 pub fn finding_to_diagnostic(text: &str, finding: &Finding) -> Diagnostic {
     Diagnostic {
         range: finding_range(text, finding),
@@ -477,9 +518,13 @@ pub fn finding_to_diagnostic(text: &str, finding: &Finding) -> Diagnostic {
 pub fn code_actions(
     uri: Uri,
     text: &str,
+    analysis: &AnalysisProvenance,
     findings: &[Finding],
     requested_range: Range,
 ) -> Result<Vec<CodeActionOrCommand>> {
+    if !analysis.permits_rewrites() {
+        return Ok(Vec::new());
+    }
     let mut actions = Vec::new();
     actions.extend(fix_all_action(uri.clone(), text, findings)?);
     for finding in findings {
@@ -775,14 +820,39 @@ mod tests {
     #[test]
     fn tsx_document_analysis_uses_the_path_selected_grammar() {
         let text = "function View(value: string): JSX.Element {\n  // deslop:ignore-next-line js-var-declaration\n  var copy: JSX.Element = <span>{value}</span>;\n  return copy;\n}\n";
-        let findings =
+        let report =
             analyze_text_with_config(Path::new("sample.tsx"), text, &AnalyzerConfig::default());
 
         assert!(
-            !findings
+            !report
+                .findings
                 .iter()
                 .any(|finding| finding.rule == "js-var-declaration")
         );
+    }
+
+    #[test]
+    fn malformed_document_publishes_parse_diagnostic_and_no_code_actions() -> Result<()> {
+        let text = include_str!("../../../tests/fixtures/typescript/malformed.ts");
+        let report =
+            analyze_text_with_config(Path::new("malformed.ts"), text, &AnalyzerConfig::default());
+
+        let diagnostics = diagnostics_for_analysis(text, &report.analysis, &report.findings);
+        assert_eq!(report.analysis.status, deslop_core::AnalysisStatus::Partial);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == Some(NumberOrString::String("tree-sitter-error".to_string()))
+        }));
+        assert!(
+            code_actions(
+                uri(),
+                text,
+                &report.analysis,
+                &report.findings,
+                requested_range(),
+            )?
+            .is_empty()
+        );
+        Ok(())
     }
 
     #[test]
@@ -803,14 +873,25 @@ mod tests {
             ..safe.clone()
         };
 
-        let safe_actions =
-            code_actions(uri(), text, std::slice::from_ref(&safe), requested_range())?;
+        let safe_actions = code_actions(
+            uri(),
+            text,
+            &AnalysisProvenance::complete(),
+            std::slice::from_ref(&safe),
+            requested_range(),
+        )?;
         assert_eq!(safe_actions.len(), 2);
         let action = first_action_with_kind(&safe_actions, CodeActionKind::QUICKFIX);
         assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
         assert!(action.edit.is_some());
 
-        let risky_actions = code_actions(uri(), text, &[llm_only], requested_range())?;
+        let risky_actions = code_actions(
+            uri(),
+            text,
+            &AnalysisProvenance::complete(),
+            &[llm_only],
+            requested_range(),
+        )?;
         assert!(risky_actions.is_empty());
         Ok(())
     }
@@ -819,7 +900,13 @@ mod tests {
     fn code_actions_include_fix_all_for_safe_findings_only() -> Result<()> {
         let text = "(not (= a b))\n(not (nil? x))\n(= (count xs) 0)\n";
         let findings = sample_findings(text);
-        let actions = code_actions(uri(), text, &findings, requested_range())?;
+        let actions = code_actions(
+            uri(),
+            text,
+            &AnalysisProvenance::complete(),
+            &findings,
+            requested_range(),
+        )?;
 
         let fix_all = first_action_with_kind(&actions, CodeActionKind::SOURCE_FIX_ALL);
         assert_eq!(action_kind_count(&actions, CodeActionKind::QUICKFIX), 2);
@@ -833,6 +920,7 @@ mod tests {
         let risky_actions = code_actions(
             uri(),
             risky_text,
+            &AnalysisProvenance::complete(),
             &sample_findings(risky_text),
             requested_range(),
         )?;

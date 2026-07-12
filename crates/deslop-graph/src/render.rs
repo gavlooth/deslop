@@ -9,6 +9,13 @@ pub fn render_json(graph: &DependencyGraph) -> Result<String> {
 
 pub fn render_dot(graph: &DependencyGraph) -> String {
     let mut out = String::from("digraph deslop_graph {\n  rankdir=LR;\n");
+    for notice in &graph.notices {
+        out.push_str(&format!(
+            "  // {}: {}\n",
+            escape_dot(&notice.path.display().to_string()),
+            escape_dot(&notice.message)
+        ));
+    }
     for node in &graph.nodes {
         let label = match &node.signature {
             Some(signature) if !signature.is_empty() => format!("{}\\n{}", node.name, signature),

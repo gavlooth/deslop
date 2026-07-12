@@ -337,7 +337,9 @@ pub(crate) fn add_config_boundary(
     // Merge findings into existing reports where possible; append new reports otherwise.
     for (path, mut findings) in extra_reports {
         if let Some(report) = reports.iter_mut().find(|r| r.path == path) {
-            report.findings.append(&mut findings);
+            if report.analysis.permits_rewrites() {
+                report.findings.append(&mut findings);
+            }
         } else {
             let lang = code_sources
                 .iter()
@@ -346,6 +348,7 @@ pub(crate) fn add_config_boundary(
             reports.push(FileReport {
                 path,
                 lang,
+                analysis: deslop_core::AnalysisProvenance::complete(),
                 findings,
             });
         }

@@ -14,7 +14,7 @@ use deslop_mutate::{generate_mutants, supports_lang as supports_mutation_lang};
 use deslop_parse::{SourceFile, source_parses_without_errors};
 use deslop_protocol::{
     CharacterizationTest, Patch, WorkOrder, characterization_work_order_for,
-    work_orders_for_source, workorder_region_fingerprint,
+    work_orders_for_report, workorder_region_fingerprint,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ use wait_timeout::ChildExt;
 #[derive(Debug, Clone)]
 pub struct VerifyOptions {
     pub root: PathBuf,
+    pub scope: Option<Vec<PathBuf>>,
     pub check_cmd: Option<String>,
     pub coverage: CoverageConfig,
     pub mutation: MutationConfig,
@@ -314,7 +315,7 @@ pub fn characterization_work_orders_for_patches(
     options: &VerifyOptions,
 ) -> Result<Vec<WorkOrder>> {
     let report = verify_patches(patches, options)?;
-    let work_orders = current_work_orders(&options.root)?;
+    let work_orders = current_work_orders_for_options(options)?;
     let mut out = Vec::new();
     for result in report
         .results
@@ -332,7 +333,7 @@ pub fn verify_characterization_tests(
     tests: &[CharacterizationTest],
     options: &VerifyOptions,
 ) -> Result<CharacterizationReport> {
-    let work_orders = current_work_orders(&options.root)?;
+    let work_orders = current_work_orders_for_options(options)?;
     let mut results = Vec::new();
     for test in tests {
         results.push(verify_one_characterization_test(
@@ -425,7 +426,7 @@ fn ensure_unique_patch_ids(patches: &[Patch]) -> Result<()> {
 
 fn verification_run(options: &VerifyOptions) -> Result<VerificationRun> {
     Ok(VerificationRun {
-        work_orders: current_work_orders(&options.root)?,
+        work_orders: current_work_orders_for_options(options)?,
         coverage: CoverageRegistry::new(&options.coverage),
         mutation: MutationRegistry::new(&options.mutation),
     })
@@ -3038,12 +3039,25 @@ fn push_lcov_file(
     });
 }
 
+#[cfg(test)]
 fn current_work_orders(root: &Path) -> Result<BTreeMap<String, WorkOrder>> {
-    let reports = scan_paths(&[root.to_path_buf()])?;
+    current_work_orders_for_paths(&[root.to_path_buf()])
+}
+
+fn current_work_orders_for_options(options: &VerifyOptions) -> Result<BTreeMap<String, WorkOrder>> {
+    let paths = options
+        .scope
+        .as_deref()
+        .map_or_else(|| vec![options.root.clone()], <[PathBuf]>::to_vec);
+    current_work_orders_for_paths(&paths)
+}
+
+fn current_work_orders_for_paths(paths: &[PathBuf]) -> Result<BTreeMap<String, WorkOrder>> {
+    let reports = scan_paths(paths)?;
     let mut out = BTreeMap::new();
     for report in reports {
         let source = SourceFile::read(&report.path)?;
-        for work_order in work_orders_for_source(&source, &report.findings) {
+        for work_order in work_orders_for_report(&source, &report) {
             let id = work_order.id.to_owned();
             if let Some(existing) = out.insert(id.to_owned(), work_order) {
                 bail!(
@@ -3964,6 +3978,7 @@ mod tests {
     ) -> VerifyOptions {
         VerifyOptions {
             root: root.to_path_buf(),
+            scope: None,
             check_cmd: check_cmd.map(ToString::to_string),
             coverage,
             mutation: MutationConfig::Disabled,
@@ -4929,5 +4944,30 @@ mod tests {
         )
         .expect("apply");
         assert_apply_gate_outputs(&report, &fixture.rust_file, &fixture.clj_file);
+    }
+
+    #[test]
+    fn incomplete_baseline_blocks_verify_and_apply_even_with_override() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = temp.path().join("malformed.ts");
+        let original = include_str!("../../../tests/fixtures/typescript/malformed.ts");
+        fs::write(&source, original).expect("fixture");
+        let patch = Patch {
+            schema: "deslop.patch/1".to_string(),
+            workorder_id: "legacy-workorder".to_string(),
+            region_fingerprint: "legacy-fingerprint".to_string(),
+            replacement: "export function repaired(): number { return 1; }\n".to_string(),
+            by: "test".to_string(),
+        };
+        let mut options = test_options(temp.path(), Some("true"), CoverageConfig::Disabled);
+        options.allow_non_removable = true;
+
+        let verified = verify_patches(std::slice::from_ref(&patch), &options)
+            .expect("partial target is a structured rejection");
+        assert_eq!(verified.results[0].verdict, VerificationVerdict::Rejected);
+        let applied = apply_patches(&[patch], &options, false)
+            .expect("partial target is not an operational apply error");
+        assert!(applied.written.is_empty());
+        assert_eq!(fs::read_to_string(source).unwrap(), original);
     }
 }

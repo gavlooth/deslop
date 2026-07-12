@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::scan_paths;
-use deslop_core::{FileReport, Finding, SafetyClass, Splice};
+use deslop_core::{FileReport, Finding, SafetyClass, Splice, reports_permit_rewrites};
 
 #[derive(Debug, Clone, Copy)]
 pub struct FixOptions {
@@ -21,7 +21,7 @@ pub struct FixOutcome {
 
 pub fn fix_paths(paths: &[PathBuf], options: FixOptions) -> Result<Vec<FixOutcome>> {
     let reports = scan_paths(paths)?;
-    let by_path = fixable_findings_by_path(reports);
+    let by_path = fixable_findings_by_path(reports)?;
     let mut outcomes = Vec::new();
     for (path, findings) in by_path {
         outcomes.push(apply_fix_to_path(path, findings, options)?);
@@ -31,7 +31,7 @@ pub fn fix_paths(paths: &[PathBuf], options: FixOptions) -> Result<Vec<FixOutcom
 
 pub fn diff_paths(paths: &[PathBuf]) -> Result<String> {
     let reports = scan_paths(paths)?;
-    let by_path = fixable_findings_by_path(reports);
+    let by_path = fixable_findings_by_path(reports)?;
     let mut out = String::new();
     for (path, findings) in by_path {
         let text = fs::read_to_string(&path)
@@ -44,9 +44,15 @@ pub fn diff_paths(paths: &[PathBuf]) -> Result<String> {
     Ok(out)
 }
 
-fn fixable_findings_by_path(reports: Vec<FileReport>) -> BTreeMap<PathBuf, Vec<Finding>> {
+fn fixable_findings_by_path(reports: Vec<FileReport>) -> Result<BTreeMap<PathBuf, Vec<Finding>>> {
     let mut by_path = BTreeMap::new();
+    if !reports_permit_rewrites(&reports) {
+        bail!("analysis is incomplete; refusing to diff or apply safe fixes");
+    }
     for report in reports {
+        if !report.analysis.permits_rewrites() {
+            continue;
+        }
         let fixable = report
             .findings
             .into_iter()
@@ -56,7 +62,7 @@ fn fixable_findings_by_path(reports: Vec<FileReport>) -> BTreeMap<PathBuf, Vec<F
             by_path.insert(report.path, fixable);
         }
     }
-    by_path
+    Ok(by_path)
 }
 
 fn apply_fix_to_path(

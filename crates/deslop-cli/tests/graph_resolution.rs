@@ -28,7 +28,7 @@ fn graph_cli_keeps_import_alias_calls_unresolved() {
         .find(|node| node["id"] == call["to"])
         .expect("call target");
 
-    assert_eq!(graph["schema"], "deslop.graph/1");
+    assert_eq!(graph["schema"], "deslop.graph/2");
     assert_eq!(call["confidence"], "syntactic");
     assert_eq!(target["kind"], "external-symbol");
     assert!(

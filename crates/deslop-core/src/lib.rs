@@ -110,6 +110,85 @@ impl Span {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AnalysisStatus {
+    #[default]
+    Unknown,
+    Complete,
+    Partial,
+    Unsupported,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnalysisDiagnostic {
+    pub code: String,
+    pub message: String,
+    pub span: Option<Span>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnalysisProvenance {
+    pub status: AnalysisStatus,
+    pub diagnostics: Vec<AnalysisDiagnostic>,
+}
+
+impl Default for AnalysisProvenance {
+    fn default() -> Self {
+        Self {
+            status: AnalysisStatus::Unknown,
+            diagnostics: vec![AnalysisDiagnostic {
+                code: "analysis-unknown".to_string(),
+                message: "analysis provenance is unavailable; rewrite authority is denied"
+                    .to_string(),
+                span: None,
+            }],
+        }
+    }
+}
+
+impl AnalysisProvenance {
+    pub fn complete() -> Self {
+        Self {
+            status: AnalysisStatus::Complete,
+            diagnostics: Vec::new(),
+        }
+    }
+
+    pub fn partial(diagnostics: Vec<AnalysisDiagnostic>) -> Self {
+        Self {
+            status: AnalysisStatus::Partial,
+            diagnostics,
+        }
+    }
+
+    pub fn unsupported(diagnostics: Vec<AnalysisDiagnostic>) -> Self {
+        Self {
+            status: AnalysisStatus::Unsupported,
+            diagnostics,
+        }
+    }
+
+    pub fn failed(diagnostics: Vec<AnalysisDiagnostic>) -> Self {
+        Self {
+            status: AnalysisStatus::Failed,
+            diagnostics,
+        }
+    }
+
+    pub fn permits_rewrites(&self) -> bool {
+        self.status == AnalysisStatus::Complete && self.diagnostics.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileAnalysis {
+    pub path: PathBuf,
+    pub lang: Lang,
+    pub analysis: AnalysisProvenance,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Splice {
     pub start_byte: usize,
@@ -168,7 +247,105 @@ impl Finding {
 pub struct FileReport {
     pub path: PathBuf,
     pub lang: Lang,
+    #[serde(default)]
+    pub analysis: AnalysisProvenance,
     pub findings: Vec<Finding>,
+}
+
+pub fn reports_analysis_status(reports: &[FileReport]) -> AnalysisStatus {
+    if reports.is_empty() {
+        return AnalysisStatus::Complete;
+    }
+    if reports
+        .iter()
+        .all(|report| report.analysis.permits_rewrites())
+    {
+        return AnalysisStatus::Complete;
+    }
+    if reports
+        .iter()
+        .any(|report| report.analysis.status == AnalysisStatus::Failed)
+    {
+        return AnalysisStatus::Failed;
+    }
+    if reports
+        .iter()
+        .any(|report| report.analysis.status == AnalysisStatus::Unknown)
+    {
+        return AnalysisStatus::Unknown;
+    }
+    if reports
+        .iter()
+        .all(|report| report.analysis.status == AnalysisStatus::Unsupported)
+    {
+        return AnalysisStatus::Unsupported;
+    }
+    AnalysisStatus::Partial
+}
+
+pub fn reports_permit_rewrites(reports: &[FileReport]) -> bool {
+    reports
+        .iter()
+        .all(|report| report.analysis.permits_rewrites())
+}
+
+#[cfg(test)]
+mod analysis_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_report_without_provenance_defaults_to_unknown_and_denies_rewrites() {
+        let report: FileReport =
+            serde_json::from_str(r#"{"path":"sample.ts","lang":"type-script","findings":[]}"#)
+                .expect("legacy report");
+
+        assert_eq!(report.analysis.status, AnalysisStatus::Unknown);
+        assert_eq!(report.analysis.diagnostics[0].code, "analysis-unknown");
+        assert!(!report.analysis.permits_rewrites());
+        assert!(!reports_permit_rewrites(&[report]));
+    }
+
+    #[test]
+    fn inconsistent_complete_provenance_with_diagnostics_denies_rewrites() {
+        let analysis = AnalysisProvenance {
+            status: AnalysisStatus::Complete,
+            diagnostics: vec![AnalysisDiagnostic {
+                code: "unexpected".to_string(),
+                message: "complete analysis cannot carry diagnostics".to_string(),
+                span: None,
+            }],
+        };
+
+        assert!(!analysis.permits_rewrites());
+    }
+}
+
+pub fn file_analyses_status(analyses: &[FileAnalysis]) -> AnalysisStatus {
+    if analyses.is_empty() {
+        return AnalysisStatus::Complete;
+    }
+    if analyses.iter().all(|file| file.analysis.permits_rewrites()) {
+        return AnalysisStatus::Complete;
+    }
+    if analyses
+        .iter()
+        .any(|file| file.analysis.status == AnalysisStatus::Failed)
+    {
+        return AnalysisStatus::Failed;
+    }
+    if analyses
+        .iter()
+        .any(|file| file.analysis.status == AnalysisStatus::Unknown)
+    {
+        return AnalysisStatus::Unknown;
+    }
+    if analyses
+        .iter()
+        .all(|file| file.analysis.status == AnalysisStatus::Unsupported)
+    {
+        return AnalysisStatus::Unsupported;
+    }
+    AnalysisStatus::Partial
 }
 
 pub fn fingerprint(path: &Path, rule: &str, span: Span, text: &str) -> String {

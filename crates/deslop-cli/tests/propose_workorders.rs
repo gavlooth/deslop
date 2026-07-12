@@ -108,3 +108,25 @@ fn propose_output_is_invariant_to_equivalent_path_order_and_spelling() {
         serde_json::to_value(reversed).expect("reversed JSON")
     );
 }
+
+#[test]
+fn malformed_propose_is_atomic_and_preserves_existing_output() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let output_path = temp.path().join("workorders.jsonl");
+    std::fs::write(&output_path, "keep-me\n").expect("sentinel");
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/typescript/malformed.ts");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_deslop"))
+        .arg("propose")
+        .arg(&fixture)
+        .arg("--output")
+        .arg(&output_path)
+        .output()
+        .expect("run malformed propose");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("tree-sitter-error"));
+    assert_eq!(std::fs::read_to_string(output_path).unwrap(), "keep-me\n");
+}
