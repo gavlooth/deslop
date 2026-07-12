@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -924,6 +924,7 @@ pub fn load_workorders_jsonl(path: &Path) -> Result<Vec<WorkOrder>> {
 
 pub fn parse_workorders_jsonl(text: &str) -> Result<Vec<WorkOrder>> {
     let mut records = Vec::new();
+    let mut first_line_by_id = BTreeMap::new();
     for (idx, line) in text.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() {
@@ -936,6 +937,14 @@ pub fn parse_workorders_jsonl(text: &str) -> Result<Vec<WorkOrder>> {
                 "line {} has unsupported schema `{}`",
                 idx + 1,
                 work_order.schema
+            );
+        }
+        if let Some(first_line) = first_line_by_id.insert(work_order.id.to_owned(), idx + 1) {
+            bail!(
+                "line {} duplicates workorder id `{}` first seen on line {}",
+                idx + 1,
+                work_order.id,
+                first_line
             );
         }
         records.push(work_order);
@@ -980,6 +989,7 @@ fn openai_text_response(body: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
     use std::fs;
     use std::path::PathBuf;
 
@@ -1224,6 +1234,69 @@ mod tests {
                 .contains("pins the CURRENT observable behavior")
         );
         assert!(characterization.text.contains("fn sample()"));
+    }
+
+    #[test]
+    fn workorder_jsonl_rejects_duplicate_ids_before_rewriting() -> Result<()> {
+        let fixture = SlimTestFixture::identity()?;
+        let work_order = propose_work_orders(&[fixture.source])?.remove(0);
+        let record = serde_json::to_string(&work_order)?;
+
+        let error = parse_workorders_jsonl(&format!("{record}\n{record}\n"))
+            .expect_err("duplicate workorder ID must fail");
+
+        assert!(error.to_string().contains("line 2 duplicates workorder id"));
+        assert!(error.to_string().contains("first seen on line 1"));
+        Ok(())
+    }
+
+    struct CountingClient {
+        prompts: RefCell<Vec<SlimPrompt>>,
+    }
+
+    impl LlmClient for CountingClient {
+        fn rewrite(&self, prompt: &SlimPrompt) -> Result<String> {
+            self.prompts.borrow_mut().push(prompt.clone());
+            Ok("replacement".to_string())
+        }
+    }
+
+    #[test]
+    fn aggregated_regions_produce_one_llm_call_and_patch_each() -> Result<()> {
+        let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/corpus/sloppy/slop_rust.rs");
+        let work_orders = propose_work_orders(&[corpus])?;
+        let fixture = SlimTestFixture::identity()?;
+        let options = fixture.options(
+            false,
+            false,
+            false,
+            CoverageConfig::Disabled,
+            "counting",
+            None,
+        );
+        let client = CountingClient {
+            prompts: RefCell::new(Vec::new()),
+        };
+
+        let rewrite = rewrite_work_orders(&client, &options, work_orders, &mut |_| {})?;
+        let prompts = client.prompts.borrow();
+        let unique_patch_ids = rewrite
+            .patches
+            .iter()
+            .map(|patch| patch.workorder_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let large_region_prompt = prompts
+            .iter()
+            .find(|prompt| prompt.text.contains("Lines: 9-51"))
+            .expect("large-region prompt");
+
+        assert_eq!(prompts.len(), 3);
+        assert_eq!(rewrite.patches.len(), 3);
+        assert_eq!(unique_patch_ids.len(), 3);
+        assert!(large_region_prompt.text.contains("rule: long-method"));
+        assert!(large_region_prompt.text.contains("rule: let-and-return"));
+        Ok(())
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -479,6 +479,7 @@ pub fn scan_paths_with_config(
             &analyzer_registry,
         )?;
     }
+    supported_paths = deduplicate_supported_paths(supported_paths);
     let mut reports = scan_supported_paths_parallel(&supported_paths, &config)?;
     add_cross_file_duplication(&mut reports, &config)?;
     boundary::add_config_boundary(&mut reports, &supported_paths, &paths, &config)?;
@@ -491,6 +492,37 @@ pub fn scan_paths_with_config(
     }
     reports.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(reports)
+}
+
+fn deduplicate_supported_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut unique: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
+    for path in paths {
+        let path = normalized_display_path(&path);
+        let identity = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        unique
+            .entry(identity)
+            .and_modify(|existing| {
+                if path_precedes(&path, existing) {
+                    *existing = path.to_path_buf();
+                }
+            })
+            .or_insert(path);
+    }
+    unique.into_values().collect()
+}
+
+fn normalized_display_path(path: &Path) -> PathBuf {
+    path.components()
+        .filter(|component| !matches!(component, Component::CurDir))
+        .collect()
+}
+
+fn path_precedes(candidate: &Path, current: &Path) -> bool {
+    match (candidate.is_absolute(), current.is_absolute()) {
+        (false, true) => true,
+        (true, false) => false,
+        _ => candidate < current,
+    }
 }
 
 fn collect_supported_paths(

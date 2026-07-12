@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use deslop_core::{Finding, SafetyClass, Severity, Span, fingerprint};
@@ -95,10 +96,24 @@ pub struct CharacterizationTest {
 }
 
 pub fn work_orders_for_source(source: &SourceFile, findings: &[Finding]) -> Vec<WorkOrder> {
-    findings
+    let mut grouped: BTreeMap<RewriteRegionKey, Vec<&Finding>> = BTreeMap::new();
+    for finding in findings
         .iter()
         .filter(|finding| finding.safety != SafetyClass::SafeAuto)
-        .map(|finding| work_order_for_finding(source, finding))
+    {
+        let region = region_for_finding(source, finding);
+        grouped
+            .entry(RewriteRegionKey::new(&source.path, region))
+            .or_default()
+            .push(finding);
+    }
+
+    grouped
+        .into_iter()
+        .map(|(key, mut findings)| {
+            sort_grouped_findings(&mut findings);
+            work_order_for_findings(key, findings)
+        })
         .collect()
 }
 
@@ -117,30 +132,93 @@ pub fn workorder_id_for_region(path: &Path, region: &Region) -> String {
     format!("wo_{}", region_fingerprint(path, region))
 }
 
-fn work_order_for_finding(source: &SourceFile, finding: &Finding) -> WorkOrder {
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct RewriteRegionKey {
+    path: PathBuf,
+    start_line: usize,
+    end_line: usize,
+    text: String,
+}
+
+impl RewriteRegionKey {
+    fn new(path: &Path, region: Region) -> Self {
+        Self {
+            path: path.to_path_buf(),
+            start_line: region.start_line,
+            end_line: region.end_line,
+            text: region.text,
+        }
+    }
+
+    fn region(&self) -> Region {
+        Region {
+            start_line: self.start_line,
+            end_line: self.end_line,
+            text: self.text.to_owned(),
+        }
+    }
+}
+
+fn region_for_finding(source: &SourceFile, finding: &Finding) -> Region {
     let region_span =
         source.enclosing_region_for_span(finding.span.start_line, finding.span.end_line);
-    let region = Region {
+    Region {
         start_line: region_span.start_line,
         end_line: region_span.end_line,
         text: source.region_text(region_span.start_line, region_span.end_line),
-    };
-    let id = workorder_id_for_region(&finding.path, &region);
+    }
+}
+
+fn sort_grouped_findings(findings: &mut [&Finding]) {
+    findings.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(a.span.start_line.cmp(&b.span.start_line))
+            .then(a.rule.cmp(&b.rule))
+            .then(a.span.end_line.cmp(&b.span.end_line))
+            .then(a.span.start_byte.cmp(&b.span.start_byte))
+            .then(a.span.end_byte.cmp(&b.span.end_byte))
+            .then(a.fingerprint.cmp(&b.fingerprint))
+            .then(a.severity.cmp(&b.severity))
+            .then(safety_order(a.safety).cmp(&safety_order(b.safety)))
+            .then(a.message.cmp(&b.message))
+            .then(a.precondition.cmp(&b.precondition))
+    });
+}
+
+fn safety_order(safety: SafetyClass) -> u8 {
+    match safety {
+        SafetyClass::SafeAuto => 0,
+        SafetyClass::AnalyzerConfirmed => 1,
+        SafetyClass::SafeWithPrecondition => 2,
+        SafetyClass::RiskySuggest => 3,
+        SafetyClass::LlmOnly => 4,
+        SafetyClass::NeverAuto => 5,
+    }
+}
+
+fn work_order_for_findings(key: RewriteRegionKey, findings: Vec<&Finding>) -> WorkOrder {
+    let region = key.region();
+    let id = workorder_id_for_region(&key.path, &region);
     WorkOrder {
         schema: "deslop.workorder/1".to_string(),
         kind: WorkOrderKind::RewriteRegion,
         id,
-        path: finding.path.to_path_buf(),
+        path: key.path,
         region,
-        findings: vec![WorkOrderFinding {
-            rule: finding.rule.to_owned(),
-            severity: finding.severity,
-            safety: finding.safety,
-            message: finding.message.to_owned(),
-            precondition: finding.precondition.to_owned(),
-        }],
-        instruction: "Rewrite the region to remove the flagged bloat without changing behavior or the public API. Preserve language and indentation.".to_string(),
+        findings: findings.into_iter().map(work_order_finding).collect(),
+        instruction: "Rewrite the region to address every listed finding that can be resolved without changing behavior or the public API. The safety contract wins if findings conflict. Preserve language and indentation.".to_string(),
         contract: Contract::default(),
+    }
+}
+
+fn work_order_finding(finding: &Finding) -> WorkOrderFinding {
+    WorkOrderFinding {
+        rule: finding.rule.to_owned(),
+        severity: finding.severity,
+        safety: finding.safety,
+        message: finding.message.to_owned(),
+        precondition: finding.precondition.to_owned(),
     }
 }
 
@@ -190,6 +268,27 @@ mod tests {
     use super::*;
     use deslop_core::{DetectedBy, SafetyClass, Severity, Span};
 
+    fn finding(source: &SourceFile, line: usize, rule: &str, safety: SafetyClass) -> Finding {
+        Finding {
+            path: source.path.to_path_buf(),
+            span: Span::new(
+                line,
+                line,
+                source.line_start_byte(line),
+                source.line_end_byte(line),
+            ),
+            rule: rule.to_string(),
+            severity: Severity::Minor,
+            safety,
+            detected_by: DetectedBy::Idiom,
+            message: format!("{rule} message"),
+            suggestion: format!("{rule} suggestion"),
+            precondition: None,
+            edit: None,
+            fingerprint: format!("finding-{line}-{rule}"),
+        }
+    }
+
     #[test]
     fn workorder_schema_matches_spec_surface() {
         let source = SourceFile::new(PathBuf::from("sample.clj"), "(= (count xs) 0)\n".into());
@@ -217,5 +316,109 @@ mod tests {
         assert!(value.get("instruction").is_some());
         assert!(value.get("contract").is_some());
         assert!(value.get("region_fingerprint").is_none());
+    }
+
+    #[test]
+    fn groups_all_non_safe_findings_in_the_same_enclosing_region() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn noisy() {\n    todo!();\n    println!(\"narration\");\n}\n".into(),
+        );
+        let findings = vec![
+            finding(&source, 3, "narrating-comment", SafetyClass::LlmOnly),
+            finding(&source, 2, "placeholder", SafetyClass::RiskySuggest),
+            finding(&source, 2, "safe-format", SafetyClass::SafeAuto),
+        ];
+
+        let work_orders = work_orders_for_source(&source, &findings);
+
+        assert_eq!(work_orders.len(), 1);
+        assert_eq!(work_orders[0].region.start_line, 1);
+        assert_eq!(work_orders[0].region.end_line, 4);
+        assert_eq!(work_orders[0].findings.len(), 2);
+        assert_eq!(work_orders[0].findings[0].rule, "placeholder");
+        assert_eq!(work_orders[0].findings[1].rule, "narrating-comment");
+    }
+
+    #[test]
+    fn emits_distinct_unique_orders_for_distinct_regions() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn first() {\n    todo!();\n}\n\nfn second() {\n    todo!();\n}\n".into(),
+        );
+        let findings = vec![
+            finding(&source, 6, "placeholder", SafetyClass::LlmOnly),
+            finding(&source, 2, "placeholder", SafetyClass::LlmOnly),
+        ];
+
+        let work_orders = work_orders_for_source(&source, &findings);
+
+        assert_eq!(work_orders.len(), 2);
+        assert_eq!(work_orders[0].region.start_line, 1);
+        assert_eq!(work_orders[1].region.start_line, 5);
+        assert_ne!(work_orders[0].id, work_orders[1].id);
+    }
+
+    #[test]
+    fn grouping_is_invariant_to_finding_input_order() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn noisy() {\n    todo!();\n    println!(\"narration\");\n}\n".into(),
+        );
+        let mut left = finding(&source, 2, "placeholder", SafetyClass::RiskySuggest);
+        left.fingerprint = "shared-fingerprint".to_string();
+        left.message = "first message".to_string();
+        let mut right = finding(&source, 2, "placeholder", SafetyClass::LlmOnly);
+        right.fingerprint = "shared-fingerprint".to_string();
+        right.message = "second message".to_string();
+
+        let forward = work_orders_for_source(&source, &[left.clone(), right.clone()]);
+        let reversed = work_orders_for_source(&source, &[right, left]);
+
+        assert_eq!(
+            serde_json::to_value(forward).expect("forward JSON"),
+            serde_json::to_value(reversed).expect("reversed JSON")
+        );
+    }
+
+    #[test]
+    fn source_path_is_the_authoritative_group_and_identity_path() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn noisy() {\n    todo!();\n    println!(\"narration\");\n}\n".into(),
+        );
+        let direct = finding(&source, 2, "placeholder", SafetyClass::RiskySuggest);
+        let mut equivalent = finding(&source, 3, "narration", SafetyClass::LlmOnly);
+        equivalent.path = PathBuf::from("./sample.rs");
+
+        let work_orders = work_orders_for_source(&source, &[direct, equivalent]);
+
+        assert_eq!(work_orders.len(), 1);
+        assert_eq!(work_orders[0].path, source.path);
+        assert_eq!(work_orders[0].findings.len(), 2);
+    }
+
+    #[test]
+    fn overlapping_nested_callable_regions_remain_distinct_targets() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn outer() {\n    todo!();\n    fn inner() {\n        todo!();\n    }\n}\n".into(),
+        );
+        let findings = vec![
+            finding(&source, 2, "outer-placeholder", SafetyClass::LlmOnly),
+            finding(&source, 4, "inner-placeholder", SafetyClass::LlmOnly),
+        ];
+
+        let work_orders = work_orders_for_source(&source, &findings);
+
+        assert_eq!(work_orders.len(), 2);
+        assert_eq!(
+            work_orders
+                .iter()
+                .map(|work_order| (work_order.region.start_line, work_order.region.end_line))
+                .collect::<Vec<_>>(),
+            vec![(1, 6), (3, 5)]
+        );
+        assert_ne!(work_orders[0].id, work_orders[1].id);
     }
 }

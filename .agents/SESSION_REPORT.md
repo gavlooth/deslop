@@ -4650,3 +4650,82 @@ restart is required. The proposed capabilities are not active until their TODO g
 architecture and next checkpoint were written to repo Hindsight and consolidated.
 
 **Signature:** Codex (GPT-5), roadmap integration owner, 2026-07-12.
+
+## 2026-07-12T14:20:29+02:00 — M0.1 unique region work orders
+
+**Objective:** begin the ultimate-deslop implementation with M0.1: make a work order one refactoring
+transaction rather than one finding, eliminate duplicate IDs/overlapping rewrites, preserve all evidence,
+and prove the corrected contract through CLI, LLM-consumer, verifier, and apply paths.
+
+**Target:** `deslop.workorder/1` generation and identity cardinality; repeated/overlapping source-path
+discovery; legacy work-order JSONL ingestion; duplicate patch verification/application; exact corpus and
+consumer regressions. `/root` owned integration; read-only agents independently traced producer/consumer
+flows, compatibility, adversarial cases, and numerical validation.
+
+**Changes:**
+
+- `deslop-protocol` groups non-`safe-auto` findings by authoritative `SourceFile` path and exact enclosing
+  region for the sole current implicit `rewrite-region/v1` recipe, orders regions/evidence
+  deterministically, retains every finding, and preserves existing region-derived IDs/schema.
+- `deslop-analyzer` deduplicates repeated and overlapping scan inputs by canonical physical-file identity,
+  chooses a deterministic normalized display path, and keeps byte-identical distinct files separate.
+- `deslop-slim` rejects duplicate legacy work-order IDs with first/current JSONL line evidence before any
+  LLM call. Its aggregate regression proves one prompt and patch per region and all evidence in the prompt.
+- `deslop-verify` rejects duplicate patch IDs before verification or writes, refuses generated work-order
+  ID collisions instead of silently overwriting, and proves one aggregate patch verifies/applies once.
+- CLI integration regressions cover the audited Rust fixture, full sloppy corpus, overlapping roots,
+  distinct identical files, and equivalent path spelling/order. SPEC wording now directs agents to address
+  every compatible listed finding while making the safety contract authoritative.
+- `.agents/TODO.md` marks M0.1 complete, makes M0.2 the next item, and records M0.12-M0.14 for exact-byte
+  revision guards, proposal-config reconstruction, and the `NeverAuto` policy conflict.
+
+**Measured before/after:**
+
+- `slop_rust.rs`: 13 work-order records / 3 unique IDs / largest repetition 11 -> 3 records / 3 IDs,
+  retaining all 13 findings in group sizes 1, 1, and 11.
+- Entire sloppy corpus: 62 records / 31 IDs / 8 duplicated IDs -> 31 records / 31 IDs / all 62 findings /
+  zero duplicated IDs; largest aggregate remains 11.
+- The eleven-finding region now causes one LLM call, one patch, one verification result, and one atomic
+  file write. Repeated file arguments and file-plus-parent inputs do not duplicate work; two distinct files
+  with identical bytes remain distinct; equivalent path ordering/spelling produces byte-identical JSON.
+
+**Commands/checks run:** Serena activation/instructions/memories and targeted text-symbol search; Hindsight
+active-plan/negative-memory search, checkpoint and negative-memory writes, and consolidation; baseline/live
+CLI `propose` probes with exact JSON aggregation; focused protocol/analyzer/slim/verify/CLI tests; dependent
+report/MCP/slim/verify tests; `cargo fmt --all --check`; `cargo build --workspace`; slim no-default-features
+build; `cargo test --workspace`; `cargo test -p deslop-mcp --features slim-llm`; workspace clippy with
+`-D warnings`; TODO shape/ID checks; `git diff --check HEAD`.
+
+**Verification results:** PASS. Workspace tests: 195 passed. MCP `slim-llm`: 18 passed. Workspace and slim
+builds passed; formatting and warnings-denied clippy passed; exact live acceptance returned 31 orders,
+31 IDs, 62 findings, largest group 11, and no duplicate IDs. No new dependency or schema version was added.
+
+**Failure modes/root causes corrected:** the producer previously mapped each finding to an independently
+serialized order while deriving identity only from its enclosing region; verifier silently overwrote equal
+IDs, slim called the LLM repeatedly, and apply eventually failed on overlapping patches. Source discovery
+also admitted the same physical file through repeated/overlapping roots. Both sources now converge before
+rewriting, and legacy/programmatic duplicate inputs fail early.
+
+**Invalidated assumptions / residual semantic boundary:** `/1` cannot claim the roadmap's full
+`(ProjectSnapshotId, NodeKey, RecipeId)` identity because it has no snapshot/node/recipe fields. It now
+correctly implements one order per exact line-region for its sole implicit recipe. Region fingerprints also
+hash trimmed text rather than exact bytes, verifier reconstructs orders with default analyzer config, and
+SPEC/runtime disagree about proposing `NeverAuto`; these pre-existing defects are recorded as M0.12-M0.14,
+not hidden by the cardinality repair. Verification still proves patch safety, not that every finding cleared;
+expected graph-delta enforcement remains M5/M7.
+
+**Current recommendation/checkpoint:** proceed to M0.2, replacing bare-name graph resolution with scoped
+unique/ambiguous/unresolved facts and exact duplicate-name regressions. Keep M0.1's generated-output and
+duplicate-input gates permanent. True snapshot/recipe transactions remain M1.4/M5.1/M6.1.
+
+**Blockers:** none for M0.1 or M0.2. Serena's configured semantic language remained Python-only, so Rust
+inspection used Serena text search plus local `rg`/targeted reads; this did not block implementation.
+
+**Dependencies/restart:** rebuild/reinstall CLI, MCP, LSP, or bundled slim binaries to activate this code.
+Existing `deslop.workorder/1` IDs and shapes remain compatible; legacy JSONL containing duplicate IDs is now
+rejected deliberately and must be regenerated or manually consolidated.
+
+**Negative-memory status:** durable checkpoint and new identity/config/policy negative memory were written
+to repo Hindsight and consolidated. Recheck conditions are linked to TODO M0.12-M0.14.
+
+**Signature:** Codex (GPT-5), M0.1 integration owner, 2026-07-12.

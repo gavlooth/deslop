@@ -263,9 +263,11 @@ pub fn load_characterization_tests(path: &Path) -> Result<Vec<CharacterizationTe
 }
 
 pub fn parse_patches_jsonl(text: &str) -> Result<Vec<Patch>> {
-    parse_jsonl_records(text, "patch", "deslop.patch/1", |patch: &Patch| {
+    let patches = parse_jsonl_records(text, "patch", "deslop.patch/1", |patch: &Patch| {
         patch.schema.as_str()
-    })
+    })?;
+    ensure_unique_patch_ids(&patches)?;
+    Ok(patches)
 }
 
 pub fn parse_characterization_tests_jsonl(text: &str) -> Result<Vec<CharacterizationTest>> {
@@ -346,6 +348,7 @@ pub fn verify_characterization_tests(
 }
 
 pub fn verify_patches(patches: &[Patch], options: &VerifyOptions) -> Result<VerifyReport> {
+    ensure_unique_patch_ids(patches)?;
     let mut run = verification_run(options)?;
     let mut results = Vec::new();
     for patch in patches {
@@ -369,6 +372,7 @@ pub fn apply_patches(
     options: &VerifyOptions,
     backup: bool,
 ) -> Result<ApplyReport> {
+    ensure_unique_patch_ids(patches)?;
     let mut run = verification_run(options)?;
     let mut results = Vec::new();
     let mut prepared = Vec::new();
@@ -401,6 +405,22 @@ pub fn apply_patches(
         },
         written,
     })
+}
+
+fn ensure_unique_patch_ids(patches: &[Patch]) -> Result<()> {
+    let mut first_record_by_id = BTreeMap::new();
+    for (idx, patch) in patches.iter().enumerate() {
+        if let Some(first_record) = first_record_by_id.insert(patch.workorder_id.as_str(), idx + 1)
+        {
+            bail!(
+                "patch record {} duplicates workorder_id `{}` first seen at record {}",
+                idx + 1,
+                patch.workorder_id,
+                first_record
+            );
+        }
+    }
+    Ok(())
 }
 
 fn verification_run(options: &VerifyOptions) -> Result<VerificationRun> {
@@ -3024,7 +3044,15 @@ fn current_work_orders(root: &Path) -> Result<BTreeMap<String, WorkOrder>> {
     for report in reports {
         let source = SourceFile::read(&report.path)?;
         for work_order in work_orders_for_source(&source, &report.findings) {
-            out.insert(work_order.id.to_owned(), work_order);
+            let id = work_order.id.to_owned();
+            if let Some(existing) = out.insert(id.to_owned(), work_order) {
+                bail!(
+                    "generated duplicate workorder id `{id}` for {}:{}-{}",
+                    existing.path.display(),
+                    existing.region.start_line,
+                    existing.region.end_line
+                );
+            }
         }
     }
     Ok(out)
@@ -4001,6 +4029,74 @@ mod tests {
         let report = verify_single(fixture.temp.path(), patch);
         assert_eq!(report.passed_count(), 0);
         assert!(report.results[0].reasons[0].contains("stale"));
+    }
+
+    #[test]
+    fn duplicate_patch_ids_are_rejected_before_verification_or_apply() {
+        let fixture = clojure_fixture("(= (count xs) 0)\n");
+        let patch = patch_for(&fixture.work_order, "(empty? xs)\n");
+        let patches = [patch.clone(), patch];
+        let options = test_options(fixture.temp.path(), Some("true"), CoverageConfig::Disabled);
+
+        let verify_error =
+            verify_patches(&patches, &options).expect_err("duplicate verify input must fail");
+        assert!(verify_error.to_string().contains("duplicates workorder_id"));
+
+        let apply_error = apply_patches(&patches, &options, false)
+            .expect_err("duplicate apply input must fail before writing");
+        assert!(apply_error.to_string().contains("duplicates workorder_id"));
+        assert_eq!(
+            fs::read_to_string(fixture.temp.path().join("sample.clj")).expect("source text"),
+            "(= (count xs) 0)\n"
+        );
+    }
+
+    #[test]
+    fn aggregated_multi_finding_region_verifies_and_applies_once() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source_path = temp.path().join("slop_rust.rs");
+        fs::write(
+            &source_path,
+            include_str!("../../../tests/corpus/sloppy/slop_rust.rs"),
+        )
+        .expect("write corpus fixture");
+        let work_orders = all_work_orders(temp.path());
+        let target = work_orders
+            .iter()
+            .find(|work_order| work_order.findings.len() == 11)
+            .expect("eleven-finding workorder");
+        let patch = patch_for(
+            target,
+            "fn bloated_pipeline(input: i32) -> i32 {\n    input + 40\n}\n",
+        );
+        let options = VerifyOptions {
+            allow_non_removable: true,
+            ..test_options(temp.path(), Some("true"), CoverageConfig::Disabled)
+        };
+
+        let verified = verify_patches(std::slice::from_ref(&patch), &options).expect("verify");
+        assert_eq!(verified.passed_count(), 1);
+        assert_eq!(verified.results.len(), 1);
+
+        let applied = apply_patches(&[patch], &options, false).expect("apply once");
+        assert_eq!(applied.verified.results.len(), 1);
+        assert_eq!(applied.written, vec![source_path.clone()]);
+        let updated = fs::read_to_string(source_path).expect("updated source");
+        assert_eq!(updated.matches("fn bloated_pipeline").count(), 1);
+        assert!(updated.contains("    input + 40"));
+    }
+
+    #[test]
+    fn patch_jsonl_rejects_duplicate_workorder_ids() {
+        let fixture = clojure_fixture("(= (count xs) 0)\n");
+        let patch = patch_for(&fixture.work_order, "(empty? xs)\n");
+        let record = serde_json::to_string(&patch).expect("patch JSON");
+
+        let error = parse_patches_jsonl(&format!("{record}\n{record}\n"))
+            .expect_err("duplicate patch JSONL must fail");
+
+        assert!(error.to_string().contains("patch record 2"));
+        assert!(error.to_string().contains("first seen at record 1"));
     }
 
     #[test]

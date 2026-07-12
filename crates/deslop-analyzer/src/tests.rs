@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::PathBuf;
 
 use deslop_core::{Finding, Lang, SafetyClass};
@@ -690,4 +691,41 @@ fn suppression_rejects_invalid_glob() {
     let mut builder = Suppression::builder();
     builder.ignore_path("a/[unterminated");
     assert!(builder.build().is_err());
+}
+
+#[test]
+fn scan_paths_deduplicates_repeated_and_overlapping_inputs() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let source_path = temp.path().join("sample.rs");
+    fs::write(&source_path, "fn unfinished() {\n    todo!();\n}\n").expect("write source");
+
+    let reports = scan_paths(&[
+        source_path.clone(),
+        temp.path().to_path_buf(),
+        source_path.clone(),
+    ])
+    .expect("scan overlapping inputs");
+
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].path, source_path);
+}
+
+#[test]
+fn path_deduplication_is_input_order_invariant_and_prefers_relative_paths() {
+    let cwd = std::env::current_dir().expect("current directory");
+    let temp = tempfile::tempdir_in(&cwd).expect("tempdir in current directory");
+    let absolute = temp.path().join("sample.rs");
+    fs::write(&absolute, "fn sample() {}\n").expect("write source");
+    let relative = absolute
+        .strip_prefix(&cwd)
+        .expect("relative fixture path")
+        .to_path_buf();
+    let dotted = PathBuf::from(".").join(&relative);
+
+    let forward =
+        deduplicate_supported_paths(vec![absolute.clone(), dotted.clone(), relative.clone()]);
+    let reversed = deduplicate_supported_paths(vec![relative.clone(), absolute, dotted]);
+
+    assert_eq!(forward, vec![relative.clone()]);
+    assert_eq!(reversed, vec![relative]);
 }

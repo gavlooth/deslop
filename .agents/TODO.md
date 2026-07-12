@@ -12,12 +12,16 @@ reports, benchmark records, and work orders.
 - [x] A0.2 Record numerical correctness/performance probes and current semantic regressions.
 - [x] A0.3 Align the proposed architecture with primary research.
 - [x] A0.4 Write the authoritative product roadmap and dependency-ordered implementation plan.
-- [ ] M0.1 Make each `(snapshot, target region, recipe)` produce one work order that aggregates all
-  supporting findings; add duplicate-ID and proposal-count regressions. **NEXT**
+- [x] M0.1 Repair the current `deslop.workorder/1` implicit `rewrite-region/v1` contract: emit one
+  deterministic work order per authoritative source path and exact enclosing region, aggregate every
+  supporting finding, deduplicate overlapping scan roots, and reject duplicate legacy work-order/patch
+  IDs before rewriting or writes. True `(ProjectSnapshotId, NodeKey, RecipeId)` identity remains in
+  M1.4/M5.1/M6.1. Evidence: `13 -> 3` orders with all 13 findings retained; full sloppy corpus
+  `62 -> 31` with 31 unique IDs; one LLM call/patch/verification/write per region.
 
 ## M0 — Repair present contracts
 
-- [ ] M0.2 Replace bare-name graph resolution with scoped unique/ambiguous/unresolved results.
+- [ ] M0.2 Replace bare-name graph resolution with scoped unique/ambiguous/unresolved results. **NEXT**
 - [ ] M0.3 Add duplicate-definition, shadowing, alias/import, and cross-file resolution regressions.
 - [ ] M0.4 Select distinct JavaScript, TypeScript, TSX, and supported dialect grammars.
 - [ ] M0.5 Add typed TypeScript and JSX/TSX parse/region fixtures with explicit error assertions.
@@ -28,6 +32,12 @@ reports, benchmark records, and work orders.
 - [ ] M0.10 Add the exact clean/sloppy, performance, duplicate-order, and false-resolution probes from
   `.agents/ALGORITHM_AUDIT.md` to automated regression suites.
 - [ ] M0.11 Run focused tests, then full fmt/build/test/clippy gates and record measured before/after values.
+- [ ] M0.12 Separate the exact-byte `RevisionGuard` from the trimmed cross-revision baseline fingerprint;
+  migrate region/work-order IDs explicitly and reject boundary-whitespace staleness.
+- [ ] M0.13 Persist proposal analyzer config, capability, and source-revision context so verify/apply
+  reconstruct the same work-order set instead of silently rescanning with defaults.
+- [ ] M0.14 Reconcile the `NeverAuto` contract: SPEC says report-only while `/1` currently proposes it;
+  choose one policy, update every consumer, and add an end-to-end regression.
 - [ ] M0.DoD Demonstrate zero duplicate work-order IDs, zero falsely resolved ambiguous fixture edges,
   correct grammar selection, and honest partial/capability labels on the M0 corpus.
 

@@ -200,7 +200,7 @@ Stable, versioned, emitted by `--format agent` (JSONL) and over MCP.
       "message": "lines 44-58 duplicate src/io.clj:12-26",
       "precondition": null }
   ],
-  "instruction": "Rewrite the region to remove the flagged bloat without changing behavior or the public API. Preserve language and indentation.",
+  "instruction": "Rewrite the region to address every listed finding that can be resolved without changing behavior or the public API. The safety contract wins if findings conflict. Preserve language and indentation.",
   "contract": { "must_parse": true, "no_new_public_defs": true,
                 "keep_error_handling": true, "max_growth_ratio": 1.0,
                 "check_cmd": "clojure -M:test" } }
