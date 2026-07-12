@@ -198,6 +198,7 @@ mod tests {
     const MALFORMED_TYPESCRIPT: &str =
         include_str!("../../../tests/fixtures/typescript/malformed.ts");
     const MALFORMED_TSX: &str = include_str!("../../../tests/fixtures/typescript/malformed.tsx");
+    const PYTHON_BEHAVIORAL: &str = include_str!("../../../tests/fixtures/python/behavioral.py");
 
     #[test]
     fn extracts_clojure_top_level_list_region() {
@@ -227,6 +228,53 @@ mod tests {
                 .into(),
         );
         assert_enclosing_region(&source, 3, 2, 4, "fn f");
+    }
+
+    #[test]
+    fn python_regions_include_decorators_and_prefer_nested_functions() {
+        let source = SourceFile::new(
+            PathBuf::from("behavioral.py"),
+            PYTHON_BEHAVIORAL.to_string(),
+        );
+        let tree = parse_source(&source)
+            .expect("Python parse")
+            .expect("Python tree");
+
+        assert!(!tree.root_node().has_error());
+        assert_eq!(tree_kind_count(tree.root_node(), "decorated_definition"), 2);
+        assert_eq!(tree_kind_count(tree.root_node(), "function_definition"), 4);
+        assert_eq!(tree_kind_count(tree.root_node(), "async"), 2);
+        assert_enclosing_region(&source, 7, 5, 7, "@wraps(function)");
+        assert_enclosing_region(&source, 14, 13, 18, "@traced");
+        assert_enclosing_region(&source, 16, 15, 16, "def normalize");
+        assert_enclosing_region(&source, 12, 12, 18, "class Service");
+        assert_eq!(
+            source.enclosing_region_for_span(7, 7),
+            RegionSpan {
+                start_line: 5,
+                end_line: 7,
+                start_byte: 56,
+                end_byte: 159,
+            }
+        );
+        assert_eq!(
+            source.enclosing_region_for_span(14, 14),
+            RegionSpan {
+                start_line: 13,
+                end_line: 18,
+                start_byte: 201,
+                end_byte: 363,
+            }
+        );
+        assert_eq!(
+            source.enclosing_region_for_span(16, 16),
+            RegionSpan {
+                start_line: 15,
+                end_line: 16,
+                start_byte: 254,
+                end_byte: 308,
+            }
+        );
     }
 
     #[test]
@@ -368,6 +416,15 @@ mod tests {
         let mut cursor = node.walk();
         node.named_children(&mut cursor)
             .any(|child| tree_has_kind(child, expected))
+    }
+
+    fn tree_kind_count(node: tree_sitter::Node<'_>, expected: &str) -> usize {
+        let mut count = usize::from(node.kind() == expected);
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            count += tree_kind_count(child, expected);
+        }
+        count
     }
 
     fn tree_has_error_or_missing(node: tree_sitter::Node<'_>) -> bool {

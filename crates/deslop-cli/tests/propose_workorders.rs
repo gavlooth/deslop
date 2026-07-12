@@ -67,7 +67,7 @@ fn propose_deduplicates_repeated_and_overlapping_input_paths() {
     assert_eq!(finding_count(&repeated), 13);
 
     let overlapping = propose(&[fixture, corpus_dir]);
-    assert_eq!(overlapping.len(), 31);
+    assert_eq!(overlapping.len(), 28);
     assert_unique_ids(&overlapping);
     assert_eq!(finding_count(&overlapping), 62);
 }

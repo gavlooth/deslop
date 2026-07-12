@@ -591,7 +591,7 @@ fn collect_behavioral_segments(
     segments: &mut Vec<Segment>,
 ) {
     match pack.region_class(node, text) {
-        RegionClass::Declaration => return,
+        RegionClass::Declaration if !pack.is_behavioral_container(node, text) => return,
         RegionClass::Behavioral if !in_body => {
             segments.push(Segment {
                 id: 0,
@@ -600,7 +600,7 @@ fn collect_behavioral_segments(
             });
             return;
         }
-        RegionClass::Behavioral | RegionClass::Other => {}
+        RegionClass::Behavioral | RegionClass::Declaration | RegionClass::Other => {}
     }
 
     let mut cursor = node.walk();

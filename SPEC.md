@@ -259,12 +259,19 @@ Language support is a registry-driven plugin boundary, not a pile of core `match
 arms. `deslop-lang` is the low crate shared by parsing and analysis; it owns path
 detection, tree-sitter grammar selection, CST region extraction, and comment syntax.
 JavaScript/JSX uses `tree-sitter-javascript`. The TypeScript language family keeps one
-public `typescript` identity while `.ts`/`.mts`/`.cts` select the TypeScript grammar and
+public `type-script` identity while `.ts`/`.mts`/`.cts` select the TypeScript grammar and
 `.tsx` selects the distinct TSX grammar from the source path.
 Shared fixtures under `tests/fixtures/typescript` freeze typed TypeScript, JSX, TSX, region,
 and malformed-syntax behavior. Tree-sitter parse success proves CST recovery without `ERROR` or
 missing nodes; it does not prove matching JSX tag names. Cross-consumer partial-analysis policy is
 defined separately in M0.8.
+Python maps `function_definition` to a behavioral region, treats `class_definition` as a
+declaration container whose methods remain discoverable, and treats `decorated_definition` as
+ownership syntax rather than a second symbol. Async callables retain the grammar's
+`function_definition` kind with an anonymous `async` token. Enclosing rewrite and metric spans include
+all decorators, while semantic names/kinds come from the wrapped definition; nested callables select
+the nearest function. Shared fixtures under `tests/fixtures/python` freeze these parser, metric,
+graph-containment, analyzer, and work-order boundaries.
 `deslop-parse` and `deslop-analyzer` query this registry rather than switching on
 `Lang`. Analyzer rule packs and external analyzers attach to the same stable `Lang`
 id. Adding low-level language behavior should require only a new pack module plus one

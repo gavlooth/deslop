@@ -46,6 +46,9 @@ pub trait LangPack: Send + Sync {
     fn is_long_method_region(&self, _node: Node<'_>, _text: &str) -> bool {
         false
     }
+    fn is_behavioral_container(&self, _node: Node<'_>, _text: &str) -> bool {
+        false
+    }
     /// True when `node` is a named-constant definition (e.g. `const`/`static`,
     /// Clojure `def`/`defonce`, Julia `const`). The magic-number rule exempts
     /// numeric literals inside such a definition: binding a literal to a name IS
@@ -442,8 +445,53 @@ impl LangPack for PythonPack {
         ]
     }
 
-    fn enclosing_region(&self, _node: Node<'_>, _text: &str) -> Option<RegionSpan> {
-        None
+    fn region_class(&self, node: Node<'_>, _text: &str) -> RegionClass {
+        match python_definition_kind(node) {
+            Some("function_definition") => RegionClass::Behavioral,
+            Some("class_definition") => RegionClass::Declaration,
+            _ => RegionClass::Other,
+        }
+    }
+
+    fn is_long_method_region(&self, node: Node<'_>, _text: &str) -> bool {
+        match node.kind() {
+            "decorated_definition" => python_definition_kind(node) == Some("function_definition"),
+            "function_definition" => node
+                .parent()
+                .is_none_or(|parent| parent.kind() != "decorated_definition"),
+            _ => false,
+        }
+    }
+
+    fn is_behavioral_container(&self, node: Node<'_>, _text: &str) -> bool {
+        python_definition_kind(node) == Some("class_definition")
+    }
+
+    fn enclosing_region(&self, mut node: Node<'_>, text: &str) -> Option<RegionSpan> {
+        loop {
+            if matches!(node.kind(), "function_definition" | "class_definition") {
+                if let Some(parent) = node.parent()
+                    && parent.kind() == "decorated_definition"
+                {
+                    return Some(region_from_node(parent, text));
+                }
+                return Some(region_from_node(node, text));
+            }
+            if node.kind() == "decorated_definition" {
+                return Some(region_from_node(node, text));
+            }
+            node = node.parent()?;
+        }
+    }
+}
+
+fn python_definition_kind(node: Node<'_>) -> Option<&str> {
+    match node.kind() {
+        "function_definition" | "class_definition" => Some(node.kind()),
+        "decorated_definition" => node
+            .child_by_field_name("definition")
+            .map(|node| node.kind()),
+        _ => None,
     }
 }
 

@@ -250,7 +250,6 @@ fn collect_long_methods(
                 None,
             ));
         }
-        return;
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {

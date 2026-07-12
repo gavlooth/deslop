@@ -423,7 +423,9 @@ fn collect_regions(
         regions.push(MetricRegion {
             name: region_name(node, text),
             kind: node.kind().to_string(),
-            span: region_from_node(node, text),
+            span: pack
+                .enclosing_region(node, text)
+                .unwrap_or_else(|| region_from_node(node, text)),
             node: Some(node_range(node)),
         });
     }
@@ -1554,6 +1556,32 @@ mod tests {
                 .iter()
                 .any(|region| region.kind == "function_definition")
         );
+    }
+
+    #[test]
+    fn python_metrics_keep_async_decorated_and_nested_callable_regions() {
+        let source = SourceFile::new(
+            PathBuf::from("behavioral.py"),
+            include_str!("../../../tests/fixtures/python/behavioral.py").to_string(),
+        );
+        let report = metrics_source(&source).expect("Python metrics");
+        let expected = [
+            ("traced", 4, 9),
+            ("wrapper", 5, 7),
+            ("Service", 12, 18),
+            ("process", 13, 18),
+            ("normalize", 15, 16),
+        ];
+
+        for (name, start_line, end_line) in expected {
+            let region = report
+                .iter()
+                .find(|region| region.name == name)
+                .unwrap_or_else(|| panic!("missing Python metric region {name}"));
+            assert_eq!(region.span.start_line, start_line, "{name}");
+            assert_eq!(region.span.end_line, end_line, "{name}");
+        }
+        assert!(report.iter().all(|region| region.kind != "file"));
     }
 
     #[test]

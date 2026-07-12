@@ -656,6 +656,54 @@ mod tests {
     }
 
     #[test]
+    fn python_graph_preserves_nested_callable_ownership_through_decorators() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("behavioral.py");
+        std::fs::write(
+            &path,
+            include_str!("../../../tests/fixtures/python/behavioral.py"),
+        )
+        .expect("Python fixture");
+        let graph = graph_paths(&[path], GraphConfig::default()).expect("Python graph");
+
+        assert!(graph.notices.is_empty(), "{:#?}", graph.notices);
+        let file = file_node(&graph, "behavioral.py");
+        let traced = node_named_in_file(&graph, "traced", "behavioral.py");
+        let wrapper = node_named_in_file(&graph, "wrapper", "behavioral.py");
+        let service = node_named_in_file(&graph, "Service", "behavioral.py");
+        let process = node_named_in_file(&graph, "process", "behavioral.py");
+        let normalize = node_named_in_file(&graph, "normalize", "behavioral.py");
+
+        assert_eq!(traced.kind, GraphNodeKind::Function);
+        assert_eq!(wrapper.kind, GraphNodeKind::Function);
+        assert_eq!(service.kind, GraphNodeKind::Class);
+        assert_eq!(process.kind, GraphNodeKind::Method);
+        assert_eq!(normalize.kind, GraphNodeKind::Function);
+        for (owner, child) in [
+            (&file.id, &traced.id),
+            (&traced.id, &wrapper.id),
+            (&file.id, &service.id),
+            (&service.id, &process.id),
+            (&process.id, &normalize.id),
+        ] {
+            assert!(graph.edges.iter().any(|edge| {
+                edge.kind == GraphEdgeKind::Contains
+                    && edge.from == *owner
+                    && edge.to == *child
+                    && edge.confidence == GraphConfidence::Resolved
+            }));
+        }
+        assert_eq!(
+            graph
+                .nodes
+                .iter()
+                .filter(|node| node.name == "decorated_definition")
+                .count(),
+            0
+        );
+    }
+
+    #[test]
     fn dot_render_includes_edge_labels() {
         let graph = DependencyGraph {
             schema: SCHEMA.to_string(),

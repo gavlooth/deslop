@@ -5049,3 +5049,85 @@ mismatched JSX tag names as parse-error evidence. Hindsight consolidation passed
 analysis at M0.8 and serialized dialect provenance at M2.
 
 **Signature:** Codex (GPT-5), M0.5 integration owner, 2026-07-12.
+
+## 2026-07-12T20:47:33+02:00 — M0.6 Python behavioral regions
+
+**Objective:** repair Python's adapter contract so async, decorated, method, and nested-function nodes
+produce stable per-callable analysis and rewrite ownership instead of falling back to finding lines or
+silently disabling long-method and behavioral-duplication analysis.
+
+**Target:** `PythonPack` canonical roles and region ownership, analyzer behavioral segmentation and nested
+long-method traversal, metric spans, protocol grouping, graph containment, shared fixture coverage, and the
+corpus-level CLI work-order baseline. `/root` owned implementation/integration and all verification. One
+read-only agent completed an exact pinned-grammar/CST audit; two broader read-only audits were stopped when
+their orchestration overhead no longer paid for itself.
+
+**Changes:**
+
+- Added `tests/fixtures/python/behavioral.py`, freezing a top-level function, decorated nested async
+  wrapper, class, decorated async method, and nested normalizer.
+- Implemented Python `region_class`, `is_long_method_region`, `is_behavioral_container`, and
+  `enclosing_region`. `function_definition` is behavioral; classes are declaration containers that expose
+  contained methods; `decorated_definition` derives its semantic role from the `definition` field.
+- Decorated callables are one semantic region: the name/kind comes from the wrapped definition, while the
+  ownership span starts at the first decorator. The wrapped definition is excluded from duplicate
+  long-method evaluation. Nearest nested callable wins for enclosing-region/work-order selection.
+- Added exact parser assertions for two `decorated_definition` nodes, four `function_definition` nodes,
+  two anonymous `async` tokens, and stable line/byte spans. The pinned grammar has no
+  `async_function_definition` node.
+- Added `LangPack::is_behavioral_container`, defaulting false. Python opts classes in so declaration
+  semantics do not prune their methods from duplication analysis without changing unrelated adapters.
+- Long-method traversal now continues into nested callables, so outer and inner function nodes are each
+  evaluated. Decorated wrapper/inner syntax still yields only one semantic result.
+- Metrics now ask the language adapter for the ownership span while retaining the declared node for metric
+  evidence. Python tests lock `traced`, `wrapper`, `Service`, `process`, and `normalize` regions and prevent
+  whole-file fallback.
+- Protocol tests prove decorated method findings cover lines 13–18 including `@traced`, while a nested
+  finding selects only lines 15–16. Graph tests lock resolved containment as
+  file → `traced` → `wrapper` and file → `Service` → `process` → `normalize`, with no synthetic decorator
+  symbol.
+- Added analyzer regressions for Python decorated/nested long methods and callable duplication. The broader
+  sloppy corpus still has 62 findings, now grouped into 28 unique work orders instead of 31 because Python
+  line-level findings merge at callable ownership boundaries; the CLI integration baseline was updated.
+- Updated SPEC and `.agents/TODO.md`, including correction of the existing public TypeScript serde spelling
+  to `type-script`; M0.7 is **NEXT**.
+
+**Commands/checks run:** pinned grammar `node-types.json`/`grammar.json` inspection; targeted `rg`/`sed` flow
+audits; focused parse/lang/analyzer/metrics/protocol/graph tests and clippy; a measured CLI `propose` corpus
+run with `jq`; `cargo fmt --all --check`; `git diff --check`; exact TODO checklist identity validation;
+`cargo build --workspace`; `cargo build -p deslop-slim --no-default-features`; `cargo test --workspace`;
+`cargo test -p deslop-mcp --features slim-llm`; and `cargo clippy --workspace -- -D warnings`. Hindsight
+checkpoint and negative memories were written and consolidated.
+
+**Verification results:** PASS. Workspace: 234 tests. Feature-enabled MCP: 20 tests. Formatting, patch
+whitespace, workspace/slim builds, TODO identity, and warnings-denied clippy passed. Measured corpus:
+28 work orders, 62 findings, 28 unique IDs, including one Python work order.
+
+**Failed iterations / invalidated assumptions:** the first segmentation change made every declaration node
+transparent. Full integration exposed that this broadened unrelated adapter behavior; it was replaced with
+the explicit, default-false `is_behavioral_container` capability and Python-only class opt-in. A first TODO
+uniqueness shell probe incorrectly treated references in descriptive text and the distinct `M7.3`/`M7.3a`
+IDs as duplicates; the corrected probe extracts complete checklist IDs only. The initial corpus assertion
+failure was not lost findings: measurement proved the same 62 findings were grouped into 28 rather than 31
+regions under the repaired Python ownership contract.
+
+**Residual semantic boundary:** nested long-method nodes are now evaluated individually, but an outer
+callable's present metrics remain inclusive of nested syntax. Exclusive/inclusive per-node aggregation is
+an M1 shared-snapshot concern. Graph symbol spans intentionally describe inner definitions while metric and
+work-order ownership spans include decorators; versioned adapter facts in M2 must make that distinction
+explicit. Stacked-decorator syntax follows the same grammar wrapper but is not yet a separate fixture.
+
+**Current recommendation/checkpoint:** execute M0.7 next by repairing Clojure branch/decision roles and
+freezing reader/macro edge cases before choosing the cross-surface partial-parse policy in M0.8.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; targeted text/local Rust
+inspection remains the active fallback.
+
+**Dependencies/restart:** rebuild or reinstall CLI/MCP binaries to activate Python grouping. No dependency,
+migration, public schema, or configuration change is required.
+
+**Negative-memory status:** durable negative memory supersedes global declaration transparency with the
+adapter-scoped behavioral-container callback. Recheck at M1 canonical-role/owned-snapshot work or an
+intentional JS/TS class segmentation repair. Hindsight consolidation passed.
+
+**Signature:** Codex (GPT-5), M0.6 integration owner, 2026-07-12.

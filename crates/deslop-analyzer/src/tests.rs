@@ -343,6 +343,52 @@ fn per_language_long_method_threshold_overrides_global() {
 }
 
 #[test]
+fn python_behavioral_regions_enable_decorated_long_method_detection() {
+    let fixture = source(
+        "behavioral.py",
+        include_str!("../../../tests/fixtures/python/behavioral.py"),
+    );
+    let report = scan_source_with_config(
+        &fixture,
+        AnalyzerConfig {
+            min_duplication_tokens: 0,
+            long_method_nloc: 3,
+            ..AnalyzerConfig::default()
+        },
+    );
+
+    assert!(report.findings.iter().any(|finding| {
+        finding.rule == "long-method" && finding.span.start_line == 5 && finding.span.end_line == 7
+    }));
+    assert!(report.findings.iter().any(|finding| {
+        finding.rule == "long-method"
+            && finding.span.start_line == 13
+            && finding.span.end_line == 18
+    }));
+}
+
+#[test]
+fn python_behavioral_regions_enable_callable_duplication_detection() {
+    let fixture = source(
+        "duplicates.py",
+        "def left(value):\n    result = value * 3\n    if result > 10:\n        return result - 1\n    return result + 1\n\ndef right(item):\n    output = item * 3\n    if output > 10:\n        return output - 1\n    return output + 1\n",
+    );
+    let report = scan_source_with_config(
+        &fixture,
+        AnalyzerConfig {
+            min_duplication_tokens: 10,
+            min_meaningful_tokens: 4,
+            ..AnalyzerConfig::default()
+        },
+    );
+
+    assert!(
+        !duplicate_rules(&report).is_empty(),
+        "Python callable bodies should participate in duplication analysis"
+    );
+}
+
+#[test]
 fn fp_corpus_clean_structural_code_has_no_duplication_findings() {
     assert_duplication_findings(CLEAN_DUPLICATION_FIXTURES, false);
 }

@@ -364,6 +364,28 @@ mod tests {
     }
 
     #[test]
+    fn python_findings_target_decorated_and_nested_callable_regions() {
+        let source = SourceFile::new(
+            PathBuf::from("behavioral.py"),
+            include_str!("../../../tests/fixtures/python/behavioral.py").to_string(),
+        );
+        let findings = vec![
+            finding(&source, 14, "async-cleanup", SafetyClass::LlmOnly),
+            finding(&source, 16, "nested-cleanup", SafetyClass::LlmOnly),
+        ];
+        let work_orders = work_orders_for_source(&source, &findings);
+
+        assert_eq!(source.lang, deslop_core::Lang::Python);
+        assert_eq!(work_orders.len(), 2);
+        assert_eq!(work_orders[0].region.start_line, 13);
+        assert_eq!(work_orders[0].region.end_line, 18);
+        assert!(work_orders[0].region.text.starts_with("    @traced"));
+        assert_eq!(work_orders[1].region.start_line, 15);
+        assert_eq!(work_orders[1].region.end_line, 16);
+        assert!(work_orders[1].region.text.contains("def normalize"));
+    }
+
+    #[test]
     fn emits_distinct_unique_orders_for_distinct_regions() {
         let source = SourceFile::new(
             PathBuf::from("sample.rs"),

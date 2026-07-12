@@ -45,8 +45,14 @@ reports, benchmark records, and work orders.
   and generic JSX type arguments; prove valid analyzer/metrics/graph/protocol consumers and verifier
   rejection of malformed `.ts`/`.tsx`. Preserve public `TypeScript` identity and defer malformed-file
   cross-consumer policy to M0.8.
-- [ ] M0.6 Emit Python behavioral regions and add async/decorator/nested-function fixtures. **NEXT**
-- [ ] M0.7 Correct Clojure branch/decision counting and add reader/macro-edge fixtures.
+- [x] M0.6 Emit decorator-aware Python behavioral regions and add a shared async/decorator/
+  nested-function/class-method fixture. Class declarations remain canonical declaration containers
+  without hiding methods from behavioral duplication; long-method traversal evaluates nested
+  callables; metrics use the decorated ownership span without duplicating the wrapped definition;
+  protocol selects the nearest callable; graph containment remains file → function/class → nested
+  callable with no synthetic decorator symbol. Evidence: exact CST kind/count/byte assertions plus
+  parser, analyzer long-method/duplication, metrics, protocol, and graph consumer regressions.
+- [ ] M0.7 Correct Clojure branch/decision counting and add reader/macro-edge fixtures. **NEXT**
 - [ ] M0.8 Define one parse-error/partial-analysis policy across scan, metrics, graph, LSP, MCP, and slim.
 - [ ] M0.9 Relabel or remove uncalibrated health/readability/refactor-confidence gates.
 - [ ] M0.10 Add the exact clean/sloppy, performance, duplicate-order, and false-resolution probes from
