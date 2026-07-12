@@ -22,6 +22,8 @@ pub(crate) struct GraphBuilder {
     local_symbols: BTreeMap<String, Vec<String>>,
     qualified_symbols: BTreeMap<String, Vec<String>>,
     symbols_by_owner_name: BTreeMap<(String, String), Vec<String>>,
+    local_bindings_by_owner_name: BTreeSet<(String, String)>,
+    import_bindings_by_owner_name: BTreeSet<(String, String)>,
     parent_by_symbol: BTreeMap<String, String>,
     files_by_module_key: BTreeMap<String, Vec<String>>,
     notices: Vec<GraphNotice>,
@@ -46,6 +48,8 @@ impl GraphBuilder {
             local_symbols: BTreeMap::new(),
             qualified_symbols: BTreeMap::new(),
             symbols_by_owner_name: BTreeMap::new(),
+            local_bindings_by_owner_name: BTreeSet::new(),
+            import_bindings_by_owner_name: BTreeSet::new(),
             parent_by_symbol: BTreeMap::new(),
             files_by_module_key: BTreeMap::new(),
             notices: Vec::new(),
@@ -219,6 +223,18 @@ impl GraphBuilder {
         });
     }
 
+    pub(crate) fn add_binding(&mut self, owner: &Owner, name: String, is_import: bool) {
+        let name = simple_name(&name);
+        if !name.is_empty() {
+            let bindings = if is_import {
+                &mut self.import_bindings_by_owner_name
+            } else {
+                &mut self.local_bindings_by_owner_name
+            };
+            bindings.insert((owner.id.clone(), name));
+        }
+    }
+
     fn add_edge(&mut self, edge: GraphEdge) {
         let key = EdgeKey {
             kind: edge.kind,
@@ -267,20 +283,26 @@ impl GraphBuilder {
         let segments = qualified_segments(&pending.label);
 
         let scoped = if segments.len() == 1 {
-            self.nearest_scope_candidates(&pending.from, &simple, false)
+            self.nearest_scope_candidates(&pending.from, &simple, false, true)
         } else if is_self_qualifier(&segments) {
-            self.nearest_scope_candidates(&pending.from, &simple, true)
+            self.nearest_scope_candidates(&pending.from, &simple, true, false)
         } else {
             self.named_owner_candidates(&pending.from, &segments, &simple)
         };
-        if !scoped.is_empty() {
+        if let Some(scoped) = scoped {
             return self.classify_reference(pending, scoped);
         }
 
         if segments.len() > 1 {
+            if self.qualifier_is_locally_bound(&pending.from, &segments) {
+                return self.classify_reference(pending, Vec::new());
+            }
             let module_candidates = self.module_qualified_candidates(&segments, &simple);
             if !module_candidates.is_empty() {
                 return self.classify_reference(pending, module_candidates);
+            }
+            if self.qualifier_is_import_bound(&pending.from, &segments) {
+                return self.classify_reference(pending, Vec::new());
             }
             if let Some(candidates) = self
                 .qualified_symbols
@@ -291,8 +313,7 @@ impl GraphBuilder {
             }
         }
 
-        let candidates = self.local_symbols.get(&simple).cloned().unwrap_or_default();
-        self.classify_reference(pending, candidates)
+        self.classify_reference(pending, Vec::new())
     }
 
     fn resolve_import(&mut self, pending: &PendingEdge) -> (String, GraphConfidence) {
@@ -332,9 +353,20 @@ impl GraphBuilder {
         from: &str,
         simple: &str,
         include_type_scopes: bool,
-    ) -> Vec<String> {
+        respect_bindings: bool,
+    ) -> Option<Vec<String>> {
         let mut scope = Some(from);
         while let Some(id) = scope {
+            if respect_bindings
+                && (self
+                    .local_bindings_by_owner_name
+                    .contains(&(id.to_string(), simple.to_string()))
+                    || self
+                        .import_bindings_by_owner_name
+                        .contains(&(id.to_string(), simple.to_string())))
+            {
+                return Some(Vec::new());
+            }
             let searchable = self
                 .nodes
                 .get(id)
@@ -344,17 +376,20 @@ impl GraphBuilder {
                     .symbols_by_owner_name
                     .get(&(id.to_string(), simple.to_string()))
             {
-                return candidates.clone();
+                return Some(candidates.clone());
             }
             scope = self.parent_by_symbol.get(id).map(String::as_str);
         }
-        Vec::new()
+        None
     }
 
-    fn named_owner_candidates(&self, from: &str, segments: &[String], simple: &str) -> Vec<String> {
-        let Some(qualifier) = segments.get(segments.len().saturating_sub(2)) else {
-            return Vec::new();
-        };
+    fn named_owner_candidates(
+        &self,
+        from: &str,
+        segments: &[String],
+        simple: &str,
+    ) -> Option<Vec<String>> {
+        let qualifier = segments.get(segments.len().saturating_sub(2))?;
         let mut scope = Some(from);
         while let Some(id) = scope {
             if self.nodes.get(id).is_some_and(|node| {
@@ -372,11 +407,38 @@ impl GraphBuilder {
                 .symbols_by_owner_name
                 .get(&(id.to_string(), simple.to_string()))
             {
-                return candidates.clone();
+                return Some(candidates.clone());
             }
             scope = self.parent_by_symbol.get(id).map(String::as_str);
         }
-        Vec::new()
+        None
+    }
+
+    fn qualifier_is_locally_bound(&self, from: &str, segments: &[String]) -> bool {
+        self.qualifier_has_binding(from, segments, &self.local_bindings_by_owner_name)
+    }
+
+    fn qualifier_is_import_bound(&self, from: &str, segments: &[String]) -> bool {
+        self.qualifier_has_binding(from, segments, &self.import_bindings_by_owner_name)
+    }
+
+    fn qualifier_has_binding(
+        &self,
+        from: &str,
+        segments: &[String],
+        bindings: &BTreeSet<(String, String)>,
+    ) -> bool {
+        let Some(qualifier) = segments.first() else {
+            return false;
+        };
+        let mut scope = Some(from);
+        while let Some(id) = scope {
+            if bindings.contains(&(id.to_string(), qualifier.to_string())) {
+                return true;
+            }
+            scope = self.parent_by_symbol.get(id).map(String::as_str);
+        }
+        false
     }
 
     fn module_qualified_candidates(&self, segments: &[String], simple: &str) -> Vec<String> {

@@ -223,7 +223,7 @@ fn metrics_tool_spec() -> Value {
 fn graph_tool_spec() -> Value {
     tool(
         "graph",
-        "Read-only. Return deslop.graph/1 JSON for refactor planning. Contains edges are resolved syntax ownership. Calls/imports/inherits are syntactic best-candidate or ambiguous evidence until a scope/type authority proves binding; syntactic is not resolution proof. No writes, no network.",
+        "Read-only. Return deslop.graph/1 JSON for refactor planning. Contains edges are resolved syntax ownership. Calls/imports/inherits are syntactic planning hints or ambiguous evidence; a syntactic external-symbol target is unresolved, not proven external, and syntactic is not resolution proof. No writes, no network.",
         ToolBehavior::read_only("Refactor dependency graph"),
         object_schema(json!({
             "paths": paths_schema(),

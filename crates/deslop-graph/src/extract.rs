@@ -34,6 +34,13 @@ struct SourceExtractor<'a> {
 
 impl SourceExtractor<'_> {
     fn visit(&mut self, node: Node<'_>) {
+        let current_owner = self.owner().clone();
+        let is_import_binding = is_import_binding_node(self.source.lang, node, self.source);
+        for name in opaque_binding_names(self.source.lang, node, self.source) {
+            self.builder
+                .add_binding(&current_owner, name, is_import_binding);
+        }
+
         if let Some(label) = import_label(self.source.lang, node, self.source) {
             self.add_extracted_edge(GraphEdgeKind::Imports, node, label);
         }
@@ -83,6 +90,237 @@ impl SourceExtractor<'_> {
     fn owner(&self) -> &Owner {
         self.owners.last().expect("source extractor owner")
     }
+}
+
+fn opaque_binding_names(lang: Lang, node: Node<'_>, source: &SourceFile) -> Vec<String> {
+    if is_import_binding_node(lang, node, source) {
+        return import_binding_names(lang, node_text(source, node));
+    }
+    if lang == Lang::Clojure
+        && matches!(node.kind(), "vec_lit" | "vector_lit")
+        && let Some(names) = clojure_binding_names(node, source)
+    {
+        return names;
+    }
+
+    let binding = match lang {
+        Lang::Rust if node.kind() == "let_declaration" => node.child_by_field_name("pattern"),
+        Lang::Python
+            if matches!(
+                node.kind(),
+                "assignment" | "named_expression" | "for_statement" | "with_item"
+            ) =>
+        {
+            node.child_by_field_name("left")
+                .or_else(|| node.child_by_field_name("name"))
+                .or_else(|| node.child_by_field_name("alias"))
+        }
+        Lang::JavaScript | Lang::TypeScript if node.kind() == "variable_declarator" => {
+            if node.child_by_field_name("value").is_some_and(|value| {
+                matches!(value.kind(), "arrow_function" | "function_expression")
+            }) {
+                None
+            } else {
+                node.child_by_field_name("name")
+            }
+        }
+        Lang::JavaScript | Lang::TypeScript
+            if matches!(node.kind(), "catch_clause" | "for_in_statement") =>
+        {
+            node.child_by_field_name("parameter")
+                .or_else(|| node.child_by_field_name("left"))
+        }
+        Lang::Julia if matches!(node.kind(), "assignment" | "for_binding") => node
+            .child_by_field_name("left")
+            .or_else(|| node.child_by_field_name("name"))
+            .or_else(|| node.named_child(0)),
+        _ => None,
+    };
+    if let Some(binding) = binding {
+        return pattern_names(binding, source);
+    }
+
+    if is_parameter_container(lang, node.kind()) {
+        let mut names = BTreeSet::new();
+        let mut cursor = node.walk();
+        for parameter in node.named_children(&mut cursor) {
+            let binding = parameter
+                .child_by_field_name("pattern")
+                .or_else(|| parameter.child_by_field_name("name"))
+                .unwrap_or(parameter);
+            let name = if identifier_kind(binding.kind()) {
+                Some(node_text(source, binding).trim().to_string())
+            } else {
+                first_identifier(binding, source)
+            };
+            if let Some(name) = name {
+                names.insert(name);
+            }
+        }
+        return names.into_iter().collect();
+    }
+
+    Vec::new()
+}
+
+fn clojure_binding_names(node: Node<'_>, source: &SourceFile) -> Option<Vec<String>> {
+    let parent = node.parent()?;
+    if parent.kind() != "list_lit" {
+        return None;
+    }
+    let head = clojure_tokens(node_text(source, parent))
+        .into_iter()
+        .next()?;
+    let tokens = clojure_tokens(node_text(source, node));
+    let names = match head.as_str() {
+        "defn" | "defn-" | "defmacro" | "fn" | "defmethod" => tokens,
+        "let" | "letfn" | "loop" | "for" | "doseq" | "binding" | "with-open" | "if-let"
+        | "when-let" => tokens.into_iter().step_by(2).collect(),
+        _ => return None,
+    };
+    Some(
+        names
+            .into_iter()
+            .filter(|name| valid_binding_token(name) && name != "_")
+            .collect(),
+    )
+}
+
+fn is_import_binding_node(lang: Lang, node: Node<'_>, source: &SourceFile) -> bool {
+    is_import_node(lang, node.kind())
+        && (lang != Lang::Clojure || import_label(lang, node, source).is_some())
+}
+
+fn is_import_node(lang: Lang, kind: &str) -> bool {
+    match lang {
+        Lang::Rust => matches!(kind, "use_declaration" | "extern_crate_declaration"),
+        Lang::Python => matches!(kind, "import_statement" | "import_from_statement"),
+        Lang::JavaScript | Lang::TypeScript => matches!(kind, "import_statement"),
+        Lang::Julia => matches!(kind, "import_statement" | "using_statement"),
+        Lang::Clojure => kind == "list_lit",
+        Lang::Generic => false,
+    }
+}
+
+fn is_parameter_container(lang: Lang, kind: &str) -> bool {
+    match lang {
+        Lang::Rust | Lang::Python | Lang::Julia => kind == "parameters",
+        Lang::JavaScript | Lang::TypeScript => kind == "formal_parameters",
+        Lang::Clojure | Lang::Generic => false,
+    }
+}
+
+fn pattern_names(node: Node<'_>, source: &SourceFile) -> Vec<String> {
+    let mut names = BTreeSet::new();
+    collect_pattern_names(node, source, &mut names);
+    names.into_iter().collect()
+}
+
+fn collect_pattern_names(node: Node<'_>, source: &SourceFile, names: &mut BTreeSet<String>) {
+    if matches!(node.kind(), "identifier" | "identifier_lit" | "symbol") {
+        let name = node_text(source, node).trim().to_string();
+        if !name.is_empty() && name != "_" {
+            names.insert(name);
+        }
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_pattern_names(child, source, names);
+    }
+}
+
+fn import_binding_names(lang: Lang, text: &str) -> Vec<String> {
+    if matches!(lang, Lang::JavaScript | Lang::TypeScript)
+        && text
+            .trim_start()
+            .strip_prefix("import")
+            .is_some_and(|rest| rest.trim_start().starts_with(['"', '\'']))
+    {
+        return Vec::new();
+    }
+    let normalized = text.replace(
+        [',', ';', '(', ')', '[', ']', '{', '}', '"', '\'', ':'],
+        " ",
+    );
+    let tokens = normalized.split_whitespace().collect::<Vec<_>>();
+    let mut names = BTreeSet::new();
+
+    for pair in tokens.windows(2) {
+        if matches!(pair[0], "as" | ":as") && valid_binding_token(pair[1]) {
+            names.insert(pair[1].to_string());
+        }
+    }
+
+    match lang {
+        Lang::Rust => {
+            if !tokens.contains(&"as")
+                && let Some(name) = tokens.iter().rev().find(|token| valid_binding_token(token))
+            {
+                names.insert(simple_path_component(name));
+            }
+        }
+        Lang::Python => {
+            if let Some(import_at) = tokens.iter().position(|token| *token == "import") {
+                for name in tokens.iter().skip(import_at + 1) {
+                    if *name == "as" {
+                        break;
+                    }
+                    if valid_binding_token(name) {
+                        names.insert(simple_path_component(name));
+                    }
+                }
+            }
+        }
+        Lang::JavaScript | Lang::TypeScript => {
+            for name in tokens.iter().skip(1).take_while(|token| **token != "from") {
+                if !["as", "*"].contains(name) && valid_binding_token(name) {
+                    names.insert(simple_path_component(name));
+                }
+            }
+        }
+        Lang::Julia => {
+            for name in tokens.iter().skip(1) {
+                if !["as", "using", "import"].contains(name) && valid_binding_token(name) {
+                    names.insert(simple_path_component(name));
+                }
+            }
+        }
+        Lang::Clojure => {
+            for pair in tokens.windows(2) {
+                if pair[0] == "as" && valid_binding_token(pair[1]) {
+                    names.insert(pair[1].to_string());
+                }
+            }
+        }
+        Lang::Generic => {}
+    }
+
+    names
+        .into_iter()
+        .filter(|name| {
+            !matches!(
+                name.as_str(),
+                "use" | "extern" | "crate" | "from" | "import"
+            )
+        })
+        .collect()
+}
+
+fn valid_binding_token(token: &str) -> bool {
+    !token.is_empty()
+        && token != "*"
+        && token
+            .chars()
+            .any(|character| character.is_alphanumeric() || character == '_')
+}
+
+fn simple_path_component(token: &str) -> String {
+    token
+        .split([':', '.', '/'])
+        .rfind(|part| !part.is_empty())
+        .unwrap_or(token)
+        .to_string()
 }
 
 fn symbol_def(lang: Lang, node: Node<'_>, source: &SourceFile, owner: &Owner) -> Option<SymbolDef> {
@@ -298,9 +536,35 @@ fn clojure_non_call_heads() -> &'static BTreeSet<&'static str> {
     static HEADS: std::sync::OnceLock<BTreeSet<&'static str>> = std::sync::OnceLock::new();
     HEADS.get_or_init(|| {
         [
-            "ns", "require", "import", "def", "defonce", "defn", "defn-", "defmacro", "fn", "let",
-            "letfn", "if", "when", "when-let", "when-not", "do", "loop", "recur", "case", "cond",
-            "cond->", "cond->>", "for", "doseq", "quote", "var",
+            "ns",
+            "require",
+            "import",
+            "def",
+            "defonce",
+            "defn",
+            "defn-",
+            "defmacro",
+            "fn",
+            "let",
+            "letfn",
+            "if",
+            "when",
+            "when-let",
+            "when-not",
+            "do",
+            "loop",
+            "recur",
+            "case",
+            "cond",
+            "cond->",
+            "cond->>",
+            "for",
+            "doseq",
+            "quote",
+            "var",
+            ":require",
+            ":import",
+            ":refer-clojure",
         ]
         .into_iter()
         .collect()

@@ -227,10 +227,11 @@ mod tests {
             graph_node(&graph, &edge.to).kind,
             GraphNodeKind::ExternalSymbol
         );
+        assert!(render_dot(&graph).contains("calls: helper (ambiguous)"));
     }
 
     #[test]
-    fn remote_duplicate_names_make_a_bare_third_file_call_ambiguous() {
+    fn remote_duplicate_names_do_not_make_a_bare_third_file_call_look_bound() {
         let temp = tempfile::tempdir().expect("tempdir");
         std::fs::write(temp.path().join("left.rs"), "fn helper() {}\n").expect("left");
         std::fs::write(temp.path().join("right.rs"), "fn helper() {}\n").expect("right");
@@ -239,11 +240,15 @@ mod tests {
         let graph = graph_paths(&[temp.path().to_path_buf()], GraphConfig::default()).unwrap();
         let edge = edge_with_label(&graph, GraphEdgeKind::Calls, "helper");
 
-        assert_eq!(edge.confidence, GraphConfidence::Ambiguous);
+        assert_eq!(edge.confidence, GraphConfidence::Syntactic);
+        assert_eq!(
+            graph_node(&graph, &edge.to).kind,
+            GraphNodeKind::ExternalSymbol
+        );
     }
 
     #[test]
-    fn unique_remote_bare_name_is_only_a_syntactic_candidate() {
+    fn unique_remote_bare_name_is_an_unresolved_syntactic_placeholder() {
         let temp = tempfile::tempdir().expect("tempdir");
         let caller = temp.path().join("caller.rs");
         let remote = temp.path().join("remote.rs");
@@ -255,8 +260,8 @@ mod tests {
 
         assert_eq!(edge.confidence, GraphConfidence::Syntactic);
         assert_eq!(
-            edge.to,
-            node_named_in_file(&graph, "helper", "remote.rs").id
+            graph_node(&graph, &edge.to).kind,
+            GraphNodeKind::ExternalSymbol
         );
     }
 
@@ -275,6 +280,156 @@ mod tests {
 
         assert_eq!(edge.confidence, GraphConfidence::Syntactic);
         assert_ne!(edge.confidence, GraphConfidence::Resolved);
+        assert_eq!(
+            graph_node(&graph, &edge.to).kind,
+            GraphNodeKind::ExternalSymbol
+        );
+    }
+
+    #[test]
+    fn parameter_shadow_targets_an_unresolved_placeholder() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("sample.rs");
+        std::fs::write(
+            &path,
+            "fn helper() {}\nfn run(helper: fn()) { helper(); }\n",
+        )
+        .expect("write");
+
+        let graph = graph_paths(&[path], GraphConfig::default()).unwrap();
+        let edge = edge_with_label(&graph, GraphEdgeKind::Calls, "helper");
+
+        assert_eq!(edge.confidence, GraphConfidence::Syntactic);
+        assert_eq!(
+            graph_node(&graph, &edge.to).kind,
+            GraphNodeKind::ExternalSymbol
+        );
+    }
+
+    #[test]
+    fn receiver_binding_blocks_a_same_named_module_candidate() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(temp.path().join("service.rs"), "pub fn run() {}\n").expect("service");
+        std::fs::write(
+            temp.path().join("caller.rs"),
+            "fn invoke(service: Service) { service.run(); }\n",
+        )
+        .expect("caller");
+
+        let graph = graph_paths(&[temp.path().to_path_buf()], GraphConfig::default()).unwrap();
+        let edge = edge_with_label(&graph, GraphEdgeKind::Calls, "service.run");
+
+        assert_eq!(edge.confidence, GraphConfidence::Syntactic);
+        assert_eq!(
+            graph_node(&graph, &edge.to).kind,
+            GraphNodeKind::ExternalSymbol
+        );
+    }
+
+    #[test]
+    fn local_bindings_shadow_project_functions_in_each_supported_adapter() {
+        let cases = [
+            ShadowCase {
+                extension: "py",
+                source: "def helper():\n    pass\ndef run():\n    helper = lambda: None\n    helper()\n",
+            },
+            ShadowCase {
+                extension: "js",
+                source: "function helper() {}\nfunction run() { const helper = value; helper(); }\n",
+            },
+            ShadowCase {
+                extension: "ts",
+                source: "function helper() {}\nfunction run() { const helper = value; helper(); }\n",
+            },
+            ShadowCase {
+                extension: "jl",
+                source: "function helper()\nend\nfunction run()\n    helper = value\n    helper()\nend\n",
+            },
+            ShadowCase {
+                extension: "clj",
+                source: "(defn helper [] nil)\n(defn run [] (let [helper value] (helper)))\n",
+            },
+        ];
+
+        for case in cases {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let path = temp.path().join(format!("sample.{}", case.extension));
+            std::fs::write(&path, case.source).expect("write shadow fixture");
+            let graph = graph_paths(&[path], GraphConfig::default())
+                .unwrap_or_else(|error| panic!("{} shadow graph: {error:#}", case.extension));
+            let edge = edge_with_label_from_owner(&graph, GraphEdgeKind::Calls, "helper", "run");
+
+            assert_eq!(
+                edge.confidence,
+                GraphConfidence::Syntactic,
+                "{}",
+                case.extension
+            );
+            assert_eq!(
+                graph_node(&graph, &edge.to).kind,
+                GraphNodeKind::ExternalSymbol,
+                "{} local binding must block the project function",
+                case.extension
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_import_aliases_never_target_unrelated_global_names() {
+        let cases = [
+            AliasCase {
+                extension: "rs",
+                origin: "pub fn helper() {}\n",
+                unrelated: "pub fn alias() {}\n",
+                caller: "use crate::origin::helper as alias;\nfn run() { alias(); }\n",
+                import_label: "crate::origin::helper as alias",
+                call_label: "alias",
+            },
+            AliasCase {
+                extension: "py",
+                origin: "def helper():\n    pass\n",
+                unrelated: "def alias():\n    pass\n",
+                caller: "from origin import helper as alias\ndef run():\n    alias()\n",
+                import_label: "from origin import helper as alias",
+                call_label: "alias",
+            },
+            AliasCase {
+                extension: "js",
+                origin: "export function helper() {}\n",
+                unrelated: "export function alias() {}\n",
+                caller: "import { helper as alias } from './origin.js';\nfunction run() { alias(); }\n",
+                import_label: "./origin.js",
+                call_label: "alias",
+            },
+            AliasCase {
+                extension: "ts",
+                origin: "export function helper() {}\n",
+                unrelated: "export function alias() {}\n",
+                caller: "import { helper as alias } from './origin.ts';\nfunction run() { alias(); }\n",
+                import_label: "./origin.ts",
+                call_label: "alias",
+            },
+            AliasCase {
+                extension: "jl",
+                origin: "module origin\nfunction helper()\nend\nend\n",
+                unrelated: "function alias()\nend\n",
+                caller: "import .origin: helper as alias\nfunction run()\n    alias()\nend\n",
+                import_label: ".origin: helper as alias",
+                call_label: "alias",
+            },
+            AliasCase {
+                extension: "clj",
+                origin: "(ns origin)\n(defn helper [] nil)\n",
+                unrelated: "(ns alias)\n(defn alias [] nil)\n",
+                caller: "(ns caller (:require [origin :as o]))\n(defn run [] (o/helper))\n",
+                import_label: "ns caller :require origin :as o",
+                call_label: "o/helper",
+            },
+        ];
+
+        for case in cases {
+            assert_alias_case(case);
+        }
     }
 
     #[test]
@@ -496,6 +651,76 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy)]
+    struct AliasCase {
+        extension: &'static str,
+        origin: &'static str,
+        unrelated: &'static str,
+        caller: &'static str,
+        import_label: &'static str,
+        call_label: &'static str,
+    }
+
+    #[derive(Clone, Copy)]
+    struct ShadowCase {
+        extension: &'static str,
+        source: &'static str,
+    }
+
+    fn assert_alias_case(case: AliasCase) {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let origin = temp.path().join(format!("origin.{}", case.extension));
+        let unrelated = temp.path().join(format!("alias.{}", case.extension));
+        let caller = temp.path().join(format!("caller.{}", case.extension));
+        std::fs::write(&origin, case.origin).expect("write origin");
+        std::fs::write(&unrelated, case.unrelated).expect("write unrelated");
+        std::fs::write(&caller, case.caller).expect("write caller");
+
+        let graph = graph_paths(&[temp.path().to_path_buf()], GraphConfig::default())
+            .unwrap_or_else(|error| panic!("{} alias graph: {error:#}", case.extension));
+        let call = edge_with_label_in_file(
+            &graph,
+            GraphEdgeKind::Calls,
+            case.call_label,
+            &format!("caller.{}", case.extension),
+        );
+        let import = edge_with_label_in_file(
+            &graph,
+            GraphEdgeKind::Imports,
+            case.import_label,
+            &format!("caller.{}", case.extension),
+        );
+
+        assert_eq!(
+            call.confidence,
+            GraphConfidence::Syntactic,
+            "{}",
+            case.extension
+        );
+        assert_eq!(
+            graph_node(&graph, &call.to).kind,
+            GraphNodeKind::ExternalSymbol,
+            "{} must not target alias.{}",
+            case.extension,
+            case.extension
+        );
+        assert_eq!(
+            import.confidence,
+            GraphConfidence::Syntactic,
+            "{}",
+            case.extension
+        );
+        assert_eq!(
+            import.to,
+            file_node(&graph, &format!("origin.{}", case.extension)).id
+        );
+        if case.extension == "clj" {
+            assert!(!graph.edges.iter().any(|edge| {
+                edge.kind == GraphEdgeKind::Calls && edge.label.as_deref() == Some(":require")
+            }));
+        }
+    }
+
     fn has_node(graph: &DependencyGraph, kind: GraphNodeKind, name: &str) -> bool {
         graph
             .nodes
@@ -553,6 +778,43 @@ mod tests {
             .iter()
             .find(|edge| edge.kind == kind && edge.label.as_deref() == Some(label))
             .unwrap_or_else(|| panic!("missing {kind:?} edge {label}"))
+    }
+
+    fn edge_with_label_in_file<'a>(
+        graph: &'a DependencyGraph,
+        kind: GraphEdgeKind,
+        label: &str,
+        file_name: &str,
+    ) -> &'a GraphEdge {
+        graph
+            .edges
+            .iter()
+            .find(|edge| {
+                edge.kind == kind
+                    && edge.label.as_deref() == Some(label)
+                    && graph_node(graph, &edge.from)
+                        .path
+                        .as_deref()
+                        .is_some_and(|path| path.ends_with(file_name))
+            })
+            .unwrap_or_else(|| panic!("missing {kind:?} edge {label} in {file_name}"))
+    }
+
+    fn edge_with_label_from_owner<'a>(
+        graph: &'a DependencyGraph,
+        kind: GraphEdgeKind,
+        label: &str,
+        owner_name: &str,
+    ) -> &'a GraphEdge {
+        graph
+            .edges
+            .iter()
+            .find(|edge| {
+                edge.kind == kind
+                    && edge.label.as_deref() == Some(label)
+                    && graph_node(graph, &edge.from).name == owner_name
+            })
+            .unwrap_or_else(|| panic!("missing {kind:?} edge {label} from {owner_name}"))
     }
 
     fn has_edge(

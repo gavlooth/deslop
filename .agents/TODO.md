@@ -26,8 +26,14 @@ reports, benchmark records, and work orders.
 
 ## M0 — Repair present contracts
 
-- [ ] M0.3 Add duplicate-definition, shadowing, alias/import, and cross-file resolution regressions. **NEXT**
-- [ ] M0.4 Select distinct JavaScript, TypeScript, TSX, and supported dialect grammars.
+- [x] M0.3 Harden duplicate-definition, shadowing, alias/import, and cross-file resolution behavior:
+  remove project-wide bare-name fallback, block outer/module candidates behind local, parameter,
+  receiver, and import bindings, resolve import edges from source modules rather than aliases, and keep
+  unsupported aliases on unresolved syntactic placeholders. Evidence: 19 graph tests across Rust,
+  Python, JavaScript, TypeScript-compatible syntax, Julia, and Clojure plus CLI JSON/DOT and MCP
+  structured-output regressions; live corpus has zero resolved reference edges and zero false Clojure
+  `:require` calls.
+- [ ] M0.4 Select distinct JavaScript, TypeScript, TSX, and supported dialect grammars. **NEXT**
 - [ ] M0.5 Add typed TypeScript and JSX/TSX parse/region fixtures with explicit error assertions.
 - [ ] M0.6 Emit Python behavioral regions and add async/decorator/nested-function fixtures.
 - [ ] M0.7 Correct Clojure branch/decision counting and add reader/macro-edge fixtures.

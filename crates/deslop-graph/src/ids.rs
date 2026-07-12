@@ -86,25 +86,80 @@ pub(crate) fn module_keys(path: &Path, lang: Lang) -> Vec<String> {
 }
 
 pub(crate) fn import_keys(path: &Path, lang: Lang, label: &str) -> Vec<String> {
-    let cleaned = label
-        .trim()
-        .trim_matches(|ch| matches!(ch, '"' | '\'' | ';'));
-    let mut keys = vec![cleaned.to_string()];
+    let cleaned = import_module_label(lang, label);
+    let mut keys = vec![cleaned.clone()];
     keys.push(cleaned.replace("::", "."));
     keys.push(cleaned.replace('.', "/"));
     if matches!(lang, Lang::JavaScript | Lang::TypeScript)
         && cleaned.starts_with('.')
         && let Some(parent) = path.parent()
     {
-        let joined = parent.join(cleaned);
+        let joined = parent.join(cleaned.trim_start_matches("./"));
         keys.extend(module_keys(&joined, lang));
     }
     if matches!(lang, Lang::Rust) {
-        keys.push(simple_name(cleaned));
+        let stripped = cleaned
+            .strip_prefix("crate::")
+            .or_else(|| cleaned.strip_prefix("self::"))
+            .or_else(|| cleaned.strip_prefix("super::"))
+            .unwrap_or(&cleaned);
+        keys.push(stripped.to_string());
+        if let Some((parent, _)) = stripped.rsplit_once("::") {
+            keys.push(parent.to_string());
+            keys.push(simple_name(parent));
+        } else {
+            keys.push(simple_name(stripped));
+        }
     }
     keys.sort();
     keys.dedup();
     keys
+}
+
+fn import_module_label(lang: Lang, label: &str) -> String {
+    let cleaned = label
+        .trim()
+        .trim_matches(|ch| matches!(ch, '"' | '\'' | ';'));
+    match lang {
+        Lang::Rust => cleaned
+            .split_once(" as ")
+            .map_or(cleaned, |(source, _)| source)
+            .to_string(),
+        Lang::Python => {
+            if let Some(rest) = cleaned.strip_prefix("from ") {
+                rest.split_once(" import ")
+                    .map_or(rest, |(module, _)| module)
+                    .to_string()
+            } else {
+                cleaned
+                    .strip_prefix("import ")
+                    .unwrap_or(cleaned)
+                    .split([',', ' '])
+                    .next()
+                    .unwrap_or(cleaned)
+                    .to_string()
+            }
+        }
+        Lang::Julia => {
+            let source = cleaned
+                .split_once(':')
+                .map_or(cleaned, |(module, _)| module);
+            source
+                .split_once(" as ")
+                .map_or(source, |(module, _)| module)
+                .trim_start_matches('.')
+                .to_string()
+        }
+        Lang::Clojure => cleaned
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .find(|pair| matches!(pair[0], ":require" | "require"))
+            .map(|pair| pair[1])
+            .unwrap_or(cleaned)
+            .to_string(),
+        Lang::JavaScript | Lang::TypeScript | Lang::Generic => cleaned.to_string(),
+    }
 }
 
 pub(crate) fn node_kind_label(kind: GraphNodeKind) -> &'static str {

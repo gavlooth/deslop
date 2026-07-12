@@ -360,11 +360,13 @@ deslop rules                                                   # class, precondi
   and separate measurement/refactor confidence; ranks absolute refactor candidates and
   repo-relative bloat hotspots; emits text or JSON.
 - **`graph`**: emits `deslop.graph/1`, a deterministic Tree-sitter-derived dependency graph
-  for LLM refactor planning. Nodes are files, symbols, and explicit external symbols; edges are
+  for LLM refactor planning. Nodes are files, symbols, and external-or-unresolved placeholders; edges are
   `contains`, `imports`, `calls`, and `inherits`. In graph/1, `resolved` is exact syntax ownership
   on `contains`; reference edges are `syntactic` best-candidate or `ambiguous` evidence until a
-  scope/type authority proves binding. `syntactic` is not resolution proof, and every graph edge
-  remains planning evidence that needs normal verification before edits.
+  scope/type authority proves binding. A syntactic edge to an `external-symbol` node means unresolved,
+  not proven external; every reference `to` is a planning hint rather than a proven binding.
+  `syntactic` is not resolution proof, and every graph edge remains planning evidence that needs normal
+  verification before edits.
 - **`fix`**: the bundled `deslop-slim` consumer. It proposes work orders from `--paths` or
   reads JSONL from `--workorders`, builds prompts, asks a swappable `LlmClient`, converts
   rewrites into `deslop.patch/1`, verifies them, and prints a dry-run JSON report unless

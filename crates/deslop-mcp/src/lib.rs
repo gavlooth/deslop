@@ -266,7 +266,7 @@ fn metrics_tool_spec() -> Value {
 fn graph_tool_spec() -> Value {
     tool(
         "graph",
-        "Return read-only deslop.graph/1 JSON for refactor planning. Contains edges are resolved syntax ownership. Calls/imports/inherits are syntactic best-candidate or ambiguous evidence until a scope/type authority proves binding; syntactic is not resolution proof. No writes, no network.",
+        "Return read-only deslop.graph/1 JSON for refactor planning. Contains edges are resolved syntax ownership. Calls/imports/inherits are syntactic planning hints or ambiguous evidence; a syntactic external-symbol target is unresolved, not proven external, and syntactic is not resolution proof. No writes, no network.",
         object_schema(json!({
             "paths": paths_schema(),
             "include_calls": { "type": "boolean", "default": true }
@@ -1023,6 +1023,12 @@ mod tests {
                 .expect("graph description")
                 .contains("syntactic is not resolution proof")
         );
+        assert!(
+            tool_by_name(tools, "graph")["description"]
+                .as_str()
+                .expect("graph description")
+                .contains("unresolved, not proven external")
+        );
     }
 
     #[test]
@@ -1214,6 +1220,50 @@ mod tests {
                         && edge["label"] == "helper"
                 }),
             "{content:#}"
+        );
+    }
+
+    #[test]
+    fn graph_tool_preserves_unresolved_alias_placeholders() {
+        let _guard = temp_test_lock();
+        let temp = tempfile::tempdir_in(".").expect("tempdir");
+        let origin = repo_relative_temp_path(&temp, "origin.rs");
+        let unrelated = repo_relative_temp_path(&temp, "chosen.rs");
+        let caller = repo_relative_temp_path(&temp, "caller.rs");
+        fs::write(&origin, "pub fn helper() {}\n").expect("origin");
+        fs::write(&unrelated, "pub fn chosen() {}\n").expect("unrelated");
+        fs::write(
+            &caller,
+            "use crate::origin::helper as chosen;\nfn run() { chosen(); }\n",
+        )
+        .expect("caller");
+
+        let response =
+            call_tool("graph", json!({ "paths": [origin, unrelated, caller] })).expect("graph");
+        let content = structured_content(&response);
+        let call = content["edges"]
+            .as_array()
+            .expect("edges")
+            .iter()
+            .find(|edge| edge["kind"] == "calls" && edge["label"] == "chosen")
+            .expect("chosen call");
+        let target = content["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["id"] == call["to"])
+            .expect("call target");
+
+        assert_eq!(call["confidence"], "syntactic");
+        assert_eq!(target["kind"], "external-symbol");
+        assert!(
+            content["agent_notes"]
+                .as_array()
+                .expect("agent notes")
+                .iter()
+                .any(|note| note
+                    .as_str()
+                    .is_some_and(|note| note.contains("unresolved placeholder")))
         );
     }
 

@@ -4806,3 +4806,93 @@ assumption and the graph/1 authority downgrade; repo Hindsight consolidation com
 alias fixtures and M3 graph/2 binding/provenance implementation.
 
 **Signature:** Codex (GPT-5), M0.2 integration owner, 2026-07-12.
+
+## 2026-07-12T19:35:03+02:00 — M0.3 alias and binding safety regressions
+
+**Objective:** continue the ultimate-deslop implementation with M0.3: convert the remaining duplicate,
+shadowing, alias/import, and cross-file graph cases into authoritative regressions, then remove every
+observed false planning target without overstating graph/1 semantic authority.
+
+**Target:** private graph extraction/indexing for bindings and import sources; bare, qualified, and import
+reference routing; Clojure form classification; graph/1 authority documentation; CLI JSON/DOT and MCP
+structured-output consumers. `/root` owned integration and full verification. Three read-only agents
+audited language fixtures, implementation flow, and consumer/schema compatibility; they made no edits.
+
+**Changes:**
+
+- Removed project-wide bare-name fallback. A call with no scoped/import/module evidence now targets a
+  syntactic unresolved placeholder even when exactly one same-named project function exists; multiple
+  remote definitions likewise cannot manufacture ambiguity or a binding without visibility evidence.
+- Added private, deterministic local/import binding indexes. Rust, Python, JavaScript, JS-compatible
+  TypeScript, Julia, and Clojure extraction records common parameters, assignments/declarations, receiver
+  names, local binding forms, and import names. Local bindings block same-named outer or module candidates;
+  unsupported aliases block fallback and remain syntactic placeholders.
+- Distinguished local qualifiers from imported qualifiers internally: local receivers block module-stem
+  coincidence before lookup, while a syntactically exact imported module may still narrow a qualified call.
+  No reference edge is promoted to `Resolved`.
+- Reworked import-key derivation so Rust/Python/Julia/Clojure forms use the source module rather than an
+  `as` alias; relative JavaScript/TypeScript sources retain path-based matching. Cross-language fixtures
+  prove import edges point to `origin`, while alias calls cannot point to an unrelated `alias` function.
+- Added Clojure `:require`, `:import`, and `:refer-clojure` to non-call forms, eliminating the observed false
+  `:require` call edge.
+- Expanded `deslop-graph` to 19 tests: same-scope and qualified duplicates, remote unresolved names,
+  nested definitions, local/parameter/receiver shadowing, five non-Rust local-shadow adapters, six-language
+  import aliases, cross-file import sources, ambiguity DOT labels, path determinism, inheritance, and the
+  live `compact_label` regression.
+- Added a real CLI integration test asserting graph/1 JSON placeholder semantics, no resolved references,
+  agent notes, and DOT `(syntactic)` rendering. MCP now preserves the same alias placeholder in structured
+  output and describes unresolved `external-symbol` targets accurately. `SPEC.md` defines reference `to`
+  as a planning hint, not a proven binding.
+- `.agents/TODO.md` marks M0.3 complete and advances **NEXT** to M0.4, distinct JavaScript/TypeScript/TSX
+  grammar selection.
+
+**Measured evidence:** the live graph-source probe still has 2 `compact_label` definitions and 10 calls;
+10/10 calls are syntactic and every target is in the caller's file. The current source graph has 6 files,
+160 symbols, 505 external-or-unresolved placeholders, 1,423 edges, 160 resolved containment edges, zero
+ambiguous edges on that source set, and zero externally proven edges. The corpus probe has zero resolved
+reference edges and zero false Clojure `:require`/`require` calls.
+
+**Commands/checks run:** Serena activation/instructions and required global/repo memories; Hindsight startup
+recall/search, two corrective checkpoint writes, and `improve`; targeted `rg`/`sed` flow inspection; focused
+graph tests and warnings-denied clippy; CLI graph integration; default MCP graph/tools and complete suite;
+exact CLI graph JSON plus `jq` source/corpus assertions; `git diff --check`; TODO ID uniqueness;
+`cargo fmt --all --check`; workspace build; slim no-default-features build; `cargo test --workspace`;
+`cargo test -p deslop-mcp --features slim-llm`; and workspace clippy with `-D warnings`.
+
+**Verification results:** PASS. `deslop-graph`: 19 passed. CLI: 24 passed across unit/integration suites.
+Default MCP: 17 passed. Workspace: 213 passed. MCP `slim-llm`: 19 passed. Formatting, workspace/slim builds,
+patch whitespace, TODO identity, live probes, and warnings-denied workspace clippy passed. No dependency or
+public schema version was added.
+
+**Failed iterations / invalidated assumptions:** the first compile exposed incorrect reference patterns in
+new token filtering and was corrected immediately. The first focused run correctly made two old remote-name
+expectations stale and exposed that the shadow test only checked confidence, not its false target; expectations
+were strengthened to require placeholders. A Julia fixture initially selected the signature call in the
+unrelated file rather than the caller edge, so edge selection was made owner/file-specific. Julia assignment
+nodes lack the expected `left` field; the adapter now conservatively uses their first named child. The
+`compact_label` live count briefly rose because new code called the audited helper; identifier extraction was
+made direct, preserving the exact 2-definition/10-call acceptance probe.
+
+**Residual semantic boundary:** M0.3 blockers are intentionally owner-level and conservative; they may
+over-block outside an inner lexical block and do not implement exact declaration order, destructuring,
+wildcards, re-exports, visibility, package/build roots, or alias-to-symbol provenance. TypeScript cases remain
+JavaScript-compatible because the current TypeScript pack still selects the JavaScript grammar. Span-accurate
+bindings, candidate lists, explicit resolution status/authority/provenance, and compiler facts remain M3 and
+graph/2 work; typed TypeScript/TSX correctness is M0.4/M0.5.
+
+**Current recommendation/checkpoint:** execute M0.4 next by selecting maintained, distinct JavaScript,
+TypeScript, and TSX grammars and proving the registry never silently parses typed syntax with JavaScript.
+Then add typed/JSX error fixtures in M0.5 before broader adapter repairs.
+
+**Blockers:** none for M0.3 or M0.4. Serena remains configured for Python-only symbols, so Rust inspection
+used Serena text search plus local targeted reads; this did not block implementation.
+
+**Dependencies/restart:** rebuild or reinstall CLI/MCP binaries to activate the hardening. `deslop.graph/1`
+shape remains compatible, but consumers must accept that previously targeted unique remote bare names now
+produce syntactic unresolved placeholders and must never authorize edits from reference `to` alone.
+
+**Negative-memory status:** corrective repo memory supersedes the weaker M0.2 project-wide bare-name
+candidate allowance and records the remaining conservative scope limitation; Hindsight consolidation passed.
+Recheck at M0.4/M0.5 grammar fixtures and M3 graph/2 scope/binding implementation.
+
+**Signature:** Codex (GPT-5), M0.3 integration owner, 2026-07-12.
