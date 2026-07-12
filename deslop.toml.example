@@ -37,6 +37,7 @@
 #
 # [analyzer.typescript]
 # long_method_nloc = 45
+# Applies to .ts/.mts/.cts and .tsx; .tsx selects the TSX grammar automatically.
 
 # Config-boundary analysis: flags "dishonest wiring" — config keys that are declared,
 # parsed, and echoed but never behaviorally consumed (config-key-unread /

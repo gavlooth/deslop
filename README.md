@@ -163,7 +163,9 @@ are skipped by default.
 ## Languages
 
 Full analysis packs for **Rust, Clojure, Julia**, seeded idiom packs for **Python** and
-**JavaScript/TypeScript**, plus the language-agnostic rules that apply to all sources.
+**JavaScript/TypeScript/TSX**, plus the language-agnostic rules that apply to all sources.
+JavaScript/JSX, TypeScript (`.ts`/`.mts`/`.cts`), and TSX use distinct Tree-sitter grammar
+selection; TSX shares TypeScript analyzer thresholds and rules.
 
 ## Workspace
 

@@ -10,8 +10,8 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::scan_paths;
 use deslop_core::Lang;
-use deslop_mutate::generate_mutants;
-use deslop_parse::{SourceFile, parses_without_errors};
+use deslop_mutate::{generate_mutants, supports_lang as supports_mutation_lang};
+use deslop_parse::{SourceFile, source_parses_without_errors};
 use deslop_protocol::{
     CharacterizationTest, Patch, WorkOrder, characterization_work_order_for,
     work_orders_for_source, workorder_region_fingerprint,
@@ -687,7 +687,7 @@ fn reject_parse_errors(
     candidate: &str,
     reasons: &mut Vec<String>,
 ) -> Result<()> {
-    if work_order.contract.must_parse && !parse_check_passes(lang, candidate)? {
+    if work_order.contract.must_parse && !parse_check_passes(&work_order.path, lang, candidate)? {
         reasons.push(
             "must_parse guard rejected tree-sitter ERROR nodes or unbalanced delimiters"
                 .to_string(),
@@ -947,7 +947,7 @@ impl MutationProbe for TreeSitterMutationProbe {
     }
 
     fn supports(&self, source: &SourceFile) -> bool {
-        source.lang != Lang::Generic
+        supports_mutation_lang(source.lang)
     }
 
     fn assess(&mut self, request: MutationRequest<'_>) -> Result<MutationAssessment> {
@@ -1234,7 +1234,7 @@ fn default_native_mutant_runner(
     context: NativeMutationContext<'_>,
 ) -> NativeMutantAction {
     let detail = NativeMutantDetail::from(&job);
-    if let Some(action) = native_mutant_parse_action(&job, context.source.lang, &detail) {
+    if let Some(action) = native_mutant_parse_action(&job, context.source, &detail) {
         return action;
     }
     let status = match score_native_mutant(&job, context) {
@@ -1248,10 +1248,10 @@ fn default_native_mutant_runner(
 
 fn native_mutant_parse_action(
     job: &NativeMutantJob,
-    lang: Lang,
+    source: &SourceFile,
     detail: &NativeMutantDetail,
 ) -> Option<NativeMutantAction> {
-    match parse_check_passes(lang, &job.mutant.mutated_source) {
+    match parse_check_passes(&source.path, source.lang, &job.mutant.mutated_source) {
         Ok(false) => Some(NativeMutantAction::Outcome(NativeMutantOutcome {
             detail: detail.clone(),
             status: NativeMutantStatus::Unviable,
@@ -3135,8 +3135,9 @@ fn closes_last_open(close: char, stack: &mut Vec<char>) -> bool {
     stack.pop() == Some(expected_open)
 }
 
-fn parse_check_passes(lang: Lang, text: &str) -> Result<bool> {
-    match parses_without_errors(lang, text)? {
+fn parse_check_passes(path: &Path, lang: Lang, text: &str) -> Result<bool> {
+    let source = SourceFile::new_with_lang(path.to_path_buf(), text.to_string(), lang);
+    match source_parses_without_errors(&source)? {
         Some(ok) => Ok(ok),
         None => Ok(balanced_after_reparse(text)),
     }
@@ -4562,6 +4563,30 @@ mod tests {
                     && reason.contains("surviving mutant")),
             "{:#?}",
             report.results[0].reasons
+        );
+    }
+
+    #[test]
+    fn native_mutation_does_not_claim_typescript_support() {
+        let typescript = SourceFile::new(
+            PathBuf::from("sample.tsx"),
+            "const view: JSX.Element = <div />;\n".to_string(),
+        );
+
+        assert!(!TreeSitterMutationProbe.supports(&typescript));
+    }
+
+    #[test]
+    fn parse_guard_selects_tsx_from_work_order_path() {
+        let typed_jsx = "const view: JSX.Element = <div />;\n";
+
+        assert!(
+            parse_check_passes(Path::new("sample.tsx"), Lang::TypeScript, typed_jsx)
+                .expect("tsx parse")
+        );
+        assert!(
+            !parse_check_passes(Path::new("sample.ts"), Lang::TypeScript, typed_jsx)
+                .expect("typescript parse")
         );
     }
 

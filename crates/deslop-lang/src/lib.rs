@@ -31,6 +31,9 @@ pub trait LangPack: Send + Sync {
     fn lang(&self) -> Lang;
     fn extensions(&self) -> &'static [&'static str];
     fn grammar(&self) -> Option<tree_sitter::Language>;
+    fn grammar_for_path(&self, _path: &Path) -> Option<tree_sitter::Language> {
+        self.grammar()
+    }
     fn line_comments(&self) -> &'static [&'static str];
     fn metrics_regions(&self) -> &'static [&'static str];
     fn metrics_branches(&self) -> &'static [&'static str];
@@ -580,7 +583,15 @@ impl LangPack for TypeScriptPack {
     }
 
     fn grammar(&self) -> Option<tree_sitter::Language> {
-        Some(tree_sitter_javascript::LANGUAGE.into())
+        Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+    }
+
+    fn grammar_for_path(&self, path: &Path) -> Option<tree_sitter::Language> {
+        if path.extension().and_then(|extension| extension.to_str()) == Some("tsx") {
+            Some(tree_sitter_typescript::LANGUAGE_TSX.into())
+        } else {
+            self.grammar()
+        }
     }
 
     fn line_comments(&self) -> &'static [&'static str] {
@@ -902,6 +913,26 @@ mod tests {
         assert_eq!(
             registry.pack_for_path(Path::new("sample.unknown")).lang(),
             Lang::Generic
+        );
+        for extension in ["js", "jsx"] {
+            assert_eq!(
+                registry
+                    .pack_for_path(Path::new(&format!("sample.{extension}")))
+                    .lang(),
+                Lang::JavaScript
+            );
+        }
+        for extension in ["ts", "mts", "cts"] {
+            assert_eq!(
+                registry
+                    .pack_for_path(Path::new(&format!("sample.{extension}")))
+                    .lang(),
+                Lang::TypeScript
+            );
+        }
+        assert_eq!(
+            registry.pack_for_path(Path::new("sample.tsx")).lang(),
+            Lang::TypeScript
         );
     }
 }

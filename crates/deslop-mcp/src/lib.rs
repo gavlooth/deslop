@@ -378,6 +378,8 @@ fn analyzer_schema() -> Value {
             "clojure": lang_schema(),
             "julia": lang_schema(),
             "python": lang_schema(),
+            "javascript": lang_schema(),
+            "typescript": lang_schema(),
             "generic": lang_schema()
         },
         "additionalProperties": false
@@ -609,6 +611,10 @@ struct McpAnalyzerConfig {
     #[serde(default)]
     python: Option<McpAnalyzerLangConfig>,
     #[serde(default)]
+    javascript: Option<McpAnalyzerLangConfig>,
+    #[serde(default)]
+    typescript: Option<McpAnalyzerLangConfig>,
+    #[serde(default)]
     generic: Option<McpAnalyzerLangConfig>,
 }
 
@@ -766,6 +772,8 @@ fn apply_mcp_analyzer_config(config: &mut AnalyzerConfig, analyzer: &McpAnalyzer
     apply_mcp_lang_config(&mut config.clojure, analyzer.clojure.as_ref());
     apply_mcp_lang_config(&mut config.julia, analyzer.julia.as_ref());
     apply_mcp_lang_config(&mut config.python, analyzer.python.as_ref());
+    apply_mcp_lang_config(&mut config.javascript, analyzer.javascript.as_ref());
+    apply_mcp_lang_config(&mut config.typescript, analyzer.typescript.as_ref());
     apply_mcp_lang_config(&mut config.generic, analyzer.generic.as_ref());
 }
 
@@ -1133,6 +1141,14 @@ mod tests {
             "integer"
         );
         assert_eq!(
+            properties["analyzer"]["properties"]["javascript"]["properties"]["long_method_nloc"]["type"],
+            "integer"
+        );
+        assert_eq!(
+            properties["analyzer"]["properties"]["typescript"]["properties"]["long_method_nloc"]["type"],
+            "integer"
+        );
+        assert_eq!(
             properties["analyzer"]["description"],
             "Analyzer overrides. Global values apply first; per-language long_method_nloc overrides the global threshold for that language. Suppression (disabled_rules, ignore_paths, rules) filters findings after they are produced; unknown rule names are rejected."
         );
@@ -1282,6 +1298,20 @@ mod tests {
         )
         .expect("scan");
         assert_scan_has_rule(&response, "long-method");
+    }
+
+    #[test]
+    fn mcp_analyzer_config_accepts_javascript_and_typescript_thresholds() {
+        let config = mcp_analyzer_config(&json!({
+            "analyzer": {
+                "javascript": { "long_method_nloc": 31 },
+                "typescript": { "long_method_nloc": 37 }
+            }
+        }))
+        .expect("analyzer config");
+
+        assert_eq!(config.javascript.long_method_nloc, Some(31));
+        assert_eq!(config.typescript.long_method_nloc, Some(37));
     }
 
     #[test]

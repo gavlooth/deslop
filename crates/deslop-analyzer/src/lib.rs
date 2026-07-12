@@ -12,7 +12,7 @@ use deslop_external::{
     CljKondoAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait, ExternalFindings, JuliaAnalyzer,
 };
 use deslop_lang::{Registry as LangRegistry, Rule};
-use deslop_parse::{SourceFile, parse_tree};
+use deslop_parse::{SourceFile, parse_source};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 
@@ -799,7 +799,7 @@ impl InlineSuppressions {
 
 fn inline_suppression_lines(source: &SourceFile) -> InlineSuppressions {
     let mut directives = InlineSuppressions::default();
-    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+    let Some(tree) = parse_source(source).ok().flatten() else {
         return directives;
     };
     if tree.root_node().has_error() {

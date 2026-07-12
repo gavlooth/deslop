@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::Result;
 use deslop_core::{Lang, Span};
 use deslop_lang::Registry;
-use deslop_parse::{SourceFile, parse_tree};
+use deslop_parse::{SourceFile, parse_source};
 
 use crate::extract::{extract_source, signature_for_node, span_for_node};
 use crate::ids::{external_id, file_id, import_keys, module_keys, simple_name, symbol_id};
@@ -71,7 +71,7 @@ impl GraphBuilder {
     pub(crate) fn add_source(&mut self, source: &SourceFile, registry: &Registry) -> Result<()> {
         let pack = registry.pack_for_lang(source.lang);
         let file_id = self.add_file_node(source);
-        let Some(tree) = parse_tree(source.lang, &source.text)? else {
+        let Some(tree) = parse_source(source)? else {
             self.notices.push(GraphNotice {
                 path: source.path.clone(),
                 message: format!("{} has no tree-sitter grammar", pack.name()),

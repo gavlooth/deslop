@@ -85,7 +85,7 @@ impl SourceFile {
     pub fn enclosing_region_for_span(&self, start_line: usize, end_line: usize) -> RegionSpan {
         let start_byte = self.line_start_byte(start_line);
         let end_byte = self.line_end_byte(end_line).max(start_byte);
-        enclosing_region(self.lang, &self.text, start_byte, end_byte).unwrap_or(RegionSpan {
+        enclosing_region_for_source(self, start_byte, end_byte).unwrap_or(RegionSpan {
             start_line,
             end_line,
             start_byte,
@@ -97,10 +97,19 @@ impl SourceFile {
 pub fn parse_tree(lang: Lang, text: &str) -> Result<Option<Tree>> {
     let registry = Registry::default();
     let pack = registry.pack_for_lang(lang);
-    let Some(mut parser) = parser_for_pack(pack)? else {
+    let Some(mut parser) = parser_for_pack(pack, None)? else {
         return Ok(None);
     };
     Ok(parser.parse(text, None))
+}
+
+pub fn parse_source(source: &SourceFile) -> Result<Option<Tree>> {
+    let registry = Registry::default();
+    let pack = registry.pack_for_path(&source.path);
+    let Some(mut parser) = parser_for_pack(pack, Some(&source.path))? else {
+        return Ok(None);
+    };
+    Ok(parser.parse(&source.text, None))
 }
 
 pub fn has_tree_sitter_errors(lang: Lang, text: &str) -> Result<Option<bool>> {
@@ -112,6 +121,10 @@ pub fn has_tree_sitter_errors(lang: Lang, text: &str) -> Result<Option<bool>> {
 
 pub fn parses_without_errors(lang: Lang, text: &str) -> Result<Option<bool>> {
     Ok(has_tree_sitter_errors(lang, text)?.map(|has_errors| !has_errors))
+}
+
+pub fn source_parses_without_errors(source: &SourceFile) -> Result<Option<bool>> {
+    Ok(parse_source(source)?.map(|tree| !tree.root_node().has_error()))
 }
 
 pub fn enclosing_region(
@@ -132,6 +145,23 @@ pub fn enclosing_region(
     pack.enclosing_region(node, text)
 }
 
+fn enclosing_region_for_source(
+    source: &SourceFile,
+    start_byte: usize,
+    end_byte: usize,
+) -> Option<RegionSpan> {
+    let registry = Registry::default();
+    let pack = registry.pack_for_path(&source.path);
+    let tree = parse_source(source).ok().flatten()?;
+    if tree.root_node().has_error() {
+        return None;
+    }
+    let root = tree.root_node();
+    let end_byte = end_byte.max(start_byte).min(source.text.len());
+    let node = root.descendant_for_byte_range(start_byte, end_byte)?;
+    pack.enclosing_region(node, &source.text)
+}
+
 pub fn is_supported_source(path: &Path) -> bool {
     deslop_lang::is_supported_source(path)
 }
@@ -146,8 +176,9 @@ fn line_starts(text: &str) -> Vec<usize> {
     out
 }
 
-fn parser_for_pack(pack: &dyn LangPack) -> Result<Option<Parser>> {
-    let Some(language) = pack.grammar() else {
+fn parser_for_pack(pack: &dyn LangPack, path: Option<&Path>) -> Result<Option<Parser>> {
+    let language = path.map_or_else(|| pack.grammar(), |path| pack.grammar_for_path(path));
+    let Some(language) = language else {
         return Ok(None);
     };
     let mut parser = Parser::new();
@@ -189,6 +220,61 @@ mod tests {
                 .into(),
         );
         assert_enclosing_region(&source, 3, 2, 4, "fn f");
+    }
+
+    #[test]
+    fn selects_javascript_typescript_and_tsx_grammars_by_dialect() {
+        let jsx = "const view = <div>{value}</div>;\n";
+        let typed = "const value: number = 1;\n";
+        for extension in ["js", "jsx"] {
+            let source = SourceFile::new(
+                PathBuf::from(format!("sample.{extension}")),
+                jsx.to_string(),
+            );
+            assert_eq!(source.lang, Lang::JavaScript);
+            assert_eq!(source_parses_without_errors(&source).unwrap(), Some(true));
+            let tree = parse_source(&source).unwrap().expect("JavaScript tree");
+            assert!(tree_has_kind(tree.root_node(), "jsx_element"));
+        }
+        for extension in ["ts", "mts", "cts"] {
+            let source = SourceFile::new(
+                PathBuf::from(format!("sample.{extension}")),
+                typed.to_string(),
+            );
+            assert_eq!(source.lang, Lang::TypeScript);
+            assert_eq!(source_parses_without_errors(&source).unwrap(), Some(true));
+            let tree = parse_source(&source).unwrap().expect("TypeScript tree");
+            assert!(tree_has_kind(tree.root_node(), "type_annotation"));
+        }
+        let tsx = SourceFile::new(
+            PathBuf::from("sample.tsx"),
+            "const view: JSX.Element = <div>{value}</div>;\n".into(),
+        );
+
+        assert_eq!(tsx.lang, Lang::TypeScript);
+        assert_eq!(source_parses_without_errors(&tsx).unwrap(), Some(true));
+        let tsx_tree = parse_source(&tsx).unwrap().expect("TSX tree");
+        assert!(tree_has_kind(tsx_tree.root_node(), "type_annotation"));
+        assert!(tree_has_kind(tsx_tree.root_node(), "jsx_element"));
+        assert_eq!(
+            parses_without_errors(Lang::JavaScript, typed).unwrap(),
+            Some(false),
+            "the JavaScript grammar must not silently accept typed syntax"
+        );
+        assert_eq!(
+            parses_without_errors(Lang::TypeScript, &tsx.text).unwrap(),
+            Some(false),
+            "the TypeScript grammar must not silently accept TSX syntax"
+        );
+    }
+
+    fn tree_has_kind(node: tree_sitter::Node<'_>, expected: &str) -> bool {
+        if node.kind() == expected {
+            return true;
+        }
+        let mut cursor = node.walk();
+        node.named_children(&mut cursor)
+            .any(|child| tree_has_kind(child, expected))
     }
 
     fn assert_enclosing_region(

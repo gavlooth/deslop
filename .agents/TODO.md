@@ -33,8 +33,13 @@ reports, benchmark records, and work orders.
   Python, JavaScript, TypeScript-compatible syntax, Julia, and Clojure plus CLI JSON/DOT and MCP
   structured-output regressions; live corpus has zero resolved reference edges and zero false Clojure
   `:require` calls.
-- [ ] M0.4 Select distinct JavaScript, TypeScript, TSX, and supported dialect grammars. **NEXT**
-- [ ] M0.5 Add typed TypeScript and JSX/TSX parse/region fixtures with explicit error assertions.
+- [x] M0.4 Select distinct JavaScript, TypeScript, TSX, and supported dialect grammars: add the
+  maintained official `tree-sitter-typescript` grammar, keep public language identity compatible,
+  select TypeScript versus TSX from the source path, and migrate analyzer, metrics, graph, mutation,
+  verifier, LSP, CLI, and MCP parsing/config consumers to the path-aware contract. Evidence: extension
+  and positive/negative grammar truth table, typed graph/metrics regions, analyzer/LSP suppression,
+  verifier TSX parse guard, honest mutation capability, and MCP TypeScript configuration regressions.
+- [ ] M0.5 Add typed TypeScript and JSX/TSX parse/region fixtures with explicit error assertions. **NEXT**
 - [ ] M0.6 Emit Python behavioral regions and add async/decorator/nested-function fixtures.
 - [ ] M0.7 Correct Clojure branch/decision counting and add reader/macro-edge fixtures.
 - [ ] M0.8 Define one parse-error/partial-analysis policy across scan, metrics, graph, LSP, MCP, and slim.

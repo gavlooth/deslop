@@ -4896,3 +4896,86 @@ candidate allowance and records the remaining conservative scope limitation; Hin
 Recheck at M0.4/M0.5 grammar fixtures and M3 graph/2 scope/binding implementation.
 
 **Signature:** Codex (GPT-5), M0.3 integration owner, 2026-07-12.
+
+## 2026-07-12T20:08:05+02:00 — M0.4 path-selected TypeScript and TSX grammars
+
+**Objective:** continue the ultimate-deslop implementation with M0.4: stop parsing TypeScript and TSX
+through the JavaScript grammar, select every JavaScript-family dialect deliberately, and propagate that
+selection through all parse-owning consumers without breaking existing public language schemas.
+
+**Target:** grammar dependency resolution, `LangPack`/registry selection, `SourceFile` parsing and region
+ownership, analyzer/metrics/graph/mutation/verifier/LSP/MCP consumers, configuration inheritance, and exact
+positive/negative dialect regressions. `/root` owned integration and full verification; three read-only
+agents audited dependency/schema compatibility, consumer flow, and a decisive syntax truth table.
+
+**Changes:**
+
+- Added the maintained official `tree-sitter-typescript 0.23.2` dependency. Its
+  `LANGUAGE_TYPESCRIPT` and `LANGUAGE_TSX` constants both use parser ABI 14, compatible with workspace
+  `tree-sitter 0.25.10` (supported 13 through 15); Cargo resolves one shared
+  `tree-sitter-language 0.1.7`.
+- Added `LangPack::grammar_for_path`. JavaScript/JSX continues to use `tree-sitter-javascript`;
+  `.ts`, `.mts`, and `.cts` use `LANGUAGE_TYPESCRIPT`; `.tsx` uses `LANGUAGE_TSX`.
+- Kept the public language family compatible: `.tsx` remains `Lang::TypeScript` and serializes as
+  `"typescript"`. Grammar dialect is path-bound parser provenance, not an unversioned public enum value.
+- Added `parse_source` and `source_parses_without_errors`; `SourceFile` region lookup is path-aware.
+  Migrated analyzer agnostic passes, boundary analysis, token analysis, Rust pack parsing, metrics,
+  graph extraction, native mutation generation, verifier candidate/mutant parse guards, and downstream
+  LSP analysis to the source-aware parser. The legacy `parse_tree(Lang, text)` remains the non-TSX default
+  for callers that have no path.
+- Added a decisive grammar truth table: `.js/.jsx` parse JSX and reject type annotations;
+  `.ts/.mts/.cts` parse type annotations and reject TSX; `.tsx` parses typed JSX. Tests assert actual
+  `jsx_element` and `type_annotation` nodes rather than only the absence of `ERROR`.
+- Added typed consumer regressions: analyzer and LSP inline suppression over TS/TSX, named metrics
+  function regions, graph function/interface extraction without notices, and verifier TSX parse guards.
+- Made mutation capability honest: the verifier now queries the registered native mutation packs, so
+  JavaScript/TypeScript return no-probe/unknown rather than claiming unsupported native mutation.
+- Completed MCP analyzer parity by accepting, applying, and advertising `javascript` and `typescript`
+  threshold tables; TSX deliberately inherits `[analyzer.typescript]`. README, SPEC, `docs/CONFIG.md`, and
+  `deslop.toml.example` document grammar selection and configuration inheritance.
+- `.agents/TODO.md` marks M0.4 complete and advances **NEXT** to M0.5 typed construct, JSX/TSX region,
+  and explicit error-policy fixtures.
+
+**Commands/checks run:** Serena activation/instructions and required memories from the continued session;
+Hindsight recall/search, checkpoint and negative-memory writes, and `improve`; Context7 official
+tree-sitter-typescript documentation; `cargo search`/`cargo info` version checks; `cargo tree` dependency
+resolution; targeted `rg`/`sed` consumer audits; focused lang/parse/analyzer/metrics/graph/mutate/verify/LSP/
+MCP tests and clippy; `cargo check --workspace`; `git diff --check`; TODO ID uniqueness;
+`cargo fmt --all --check`; workspace build; slim no-default-features build; `cargo test --workspace`;
+`cargo test -p deslop-mcp --features slim-llm`; and workspace clippy with `-D warnings`.
+
+**Verification results:** PASS. Workspace: 223 tests. Feature-enabled MCP: 20 tests. Focused suites include
+53 analyzer, 20 graph, 12 metrics, 7 mutation, 39 verifier, 7 LSP, and 18 default MCP tests. Formatting,
+workspace/slim builds, dependency unification, patch whitespace, TODO identity, and warnings-denied workspace
+clippy passed. One maintained dependency was added; no public schema or serialized `Lang` value changed.
+
+**Failed iterations / invalidated assumptions:** the first working design temporarily introduced
+`Lang::Tsx`. Compatibility review invalidated it before checkpoint: grammar dialect is not a language family,
+and a new serialized enum value would break strict findings/metrics/graph consumers without versioning.
+The implementation was replaced with source-path-bound grammar selection and every source-aware parse caller
+was migrated. A verifier migration initially referenced the nonexistent `WorkOrder.source_path` instead of
+`WorkOrder.path`, and final focused clippy caught one needless borrow; both were corrected before full gates.
+
+**Residual semantic boundary:** M0.4 proves correct grammar selection with one annotation, interface,
+and JSX element plus consumer preservation. It does not yet freeze the broader typed construct matrix,
+generic-arrow TSX ambiguity, decorators, overloads, type-only imports/exports, JSX fragments/spreads/member
+tags, malformed-node spans, or the cross-surface partial-analysis policy. Those are M0.5 and M0.8. Explicit
+grammar dialect/version provenance in serialized facts remains a versioned M2 adapter-schema concern.
+
+**Current recommendation/checkpoint:** execute M0.5 next with frozen typed TypeScript and JSX/TSX positive,
+negative, region, and error fixtures across parser, metrics, graph, analyzer, verifier, CLI, MCP, and LSP as
+appropriate. Keep public `Lang::TypeScript`; expose dialect provenance only through a versioned contract.
+
+**Blockers:** none for M0.4 or M0.5. Serena remains configured for Python-only symbols, so Rust flow
+inspection used Serena text search plus local targeted reads; this did not block implementation.
+
+**Dependencies/restart:** rebuild or reinstall binaries to activate the grammar. The new crate is compiled
+into parser consumers; no migration or config key is required. Existing `[analyzer.typescript]` now applies
+to both TypeScript and TSX through CLI/LSP/MCP. JavaScript/TypeScript native mutation remains honestly
+unsupported and therefore cannot provide a mutation proof.
+
+**Negative-memory status:** durable corrective memory records and supersedes the rejected public
+`Lang::Tsx` approach; path-aware family/dialect separation is the active rule. Repo Hindsight consolidation
+passed. Recheck only when M2 versions explicit adapter/dialect provenance.
+
+**Signature:** Codex (GPT-5), M0.4 integration owner, 2026-07-12.

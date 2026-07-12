@@ -1,6 +1,6 @@
 use deslop_core::{DetectedBy, Edit, EditKind, Finding, Lang, SafetyClass, Severity, Splice};
 use deslop_lang::{LangPack, Registry as LangRegistry, TailPositionClass};
-use deslop_parse::{SourceFile, parse_tree};
+use deslop_parse::{SourceFile, parse_source};
 use regex::Regex;
 use tree_sitter::Node;
 
@@ -58,7 +58,7 @@ fn incompleteness(source: &SourceFile) -> Vec<Finding> {
 /// or this rule's own pattern definition containing "TODO"). Empty when the
 /// language has no tree-sitter grammar.
 fn string_comment_ranges(source: &SourceFile) -> Vec<(usize, usize)> {
-    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+    let Some(tree) = parse_source(source).ok().flatten() else {
         return Vec::new();
     };
     let mut ranges = Vec::new();
@@ -125,7 +125,7 @@ fn magic_numbers(source: &SourceFile) -> Vec<Finding> {
 /// literal that is itself the named constant. Empty when the language has no
 /// tree-sitter grammar.
 fn constant_definition_ranges(source: &SourceFile) -> Vec<(usize, usize)> {
-    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+    let Some(tree) = parse_source(source).ok().flatten() else {
         return Vec::new();
     };
     let registry = LangRegistry::default();
@@ -212,7 +212,7 @@ fn long_methods(source: &SourceFile, long_method_nloc: usize) -> Vec<Finding> {
     if pack.metrics_regions().is_empty() {
         return Vec::new();
     }
-    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+    let Some(tree) = parse_source(source).ok().flatten() else {
         return Vec::new();
     };
     if tree.root_node().has_error() {
@@ -275,7 +275,7 @@ fn needless_tail_returns(source: &SourceFile) -> Vec<Finding> {
         return Vec::new();
     }
 
-    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+    let Some(tree) = parse_source(source).ok().flatten() else {
         return Vec::new();
     };
     if tree.root_node().has_error() {

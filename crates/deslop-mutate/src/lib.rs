@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use anyhow::Result;
 use deslop_core::Lang;
-use deslop_parse::{SourceFile, parse_tree};
+use deslop_parse::{SourceFile, parse_source};
 use tree_sitter::Node;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +77,10 @@ impl MutationRegistry {
     fn pack_for_lang(&self, lang: Lang) -> Option<&'static dyn MutationPack> {
         self.packs.iter().copied().find(|pack| pack.lang() == lang)
     }
+}
+
+pub fn supports_lang(lang: Lang) -> bool {
+    MutationRegistry::default().pack_for_lang(lang).is_some()
 }
 
 const RELATIONAL_INFIX: TokenSwap = TokenSwap {
@@ -265,7 +269,7 @@ pub fn generate_mutants(
     let Some(pack) = registry.pack_for_lang(source.lang) else {
         return Ok(Vec::new());
     };
-    let Some(tree) = parse_tree(source.lang, &source.text)? else {
+    let Some(tree) = parse_source(source)? else {
         return Ok(Vec::new());
     };
     if tree.root_node().has_error() {
@@ -527,6 +531,16 @@ fn line_for_byte(text: &str, byte: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn support_matches_registered_mutation_packs() {
+        for lang in [Lang::Rust, Lang::Python, Lang::Julia, Lang::Clojure] {
+            assert!(supports_lang(lang));
+        }
+        for lang in [Lang::JavaScript, Lang::TypeScript, Lang::Generic] {
+            assert!(!supports_lang(lang));
+        }
+    }
     use std::path::PathBuf;
 
     fn mutated_texts(path: &str, text: &str) -> Vec<(usize, &'static str, String, String)> {

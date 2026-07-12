@@ -1,6 +1,6 @@
 use deslop_core::{DetectedBy, Finding, Lang, SafetyClass, Severity, Span, fingerprint};
 use deslop_external::{ClippyAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait};
-use deslop_parse::{SourceFile, parse_tree};
+use deslop_parse::{SourceFile, parse_source};
 use regex::Regex;
 use tree_sitter::Node;
 
@@ -113,7 +113,7 @@ struct RustNodeRule {
 }
 
 fn node_rule_findings(source: &SourceFile, rule: &RustNodeRule) -> Vec<Finding> {
-    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+    let Some(tree) = parse_source(source).ok().flatten() else {
         return Vec::new();
     };
     let mut out = Vec::new();

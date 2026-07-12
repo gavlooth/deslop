@@ -773,6 +773,19 @@ mod tests {
     }
 
     #[test]
+    fn tsx_document_analysis_uses_the_path_selected_grammar() {
+        let text = "function View(value: string): JSX.Element {\n  // deslop:ignore-next-line js-var-declaration\n  var copy: JSX.Element = <span>{value}</span>;\n  return copy;\n}\n";
+        let findings =
+            analyze_text_with_config(Path::new("sample.tsx"), text, &AnalyzerConfig::default());
+
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.rule == "js-var-declaration")
+        );
+    }
+
+    #[test]
     fn code_actions_only_offer_safe_fixable_findings() -> Result<()> {
         let text = "(not (= a b))\n(= (count xs) 0)\n";
         let findings = sample_findings(text);

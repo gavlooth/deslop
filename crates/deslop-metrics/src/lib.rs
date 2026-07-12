@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use deslop_core::{Lang, Span};
 use deslop_lang::{LangPack, RegionClass, RegionSpan, Registry};
-use deslop_parse::{SourceFile, parse_tree};
+use deslop_parse::{SourceFile, parse_source};
 use ignore::WalkBuilder;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
@@ -392,7 +392,7 @@ fn input_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
 }
 
 fn metric_regions(pack: &dyn LangPack, source: &SourceFile) -> Result<Vec<MetricRegion>> {
-    let Some(tree) = parse_tree(source.lang, &source.text)? else {
+    let Some(tree) = parse_source(source)? else {
         return Ok(vec![whole_file_region(source, None)]);
     };
     if tree.root_node().has_error() {
@@ -500,14 +500,11 @@ fn ast_stats_for_region(
     node: Option<NodeRange>,
 ) -> AstStats {
     node.and_then(|range| {
-        parse_tree(source.lang, &source.text)
-            .ok()
-            .flatten()
-            .and_then(|tree| {
-                tree.root_node()
-                    .descendant_for_byte_range(range.start_byte, range.end_byte)
-                    .map(|node| ast_complexity(node, pack, &source.text))
-            })
+        parse_source(source).ok().flatten().and_then(|tree| {
+            tree.root_node()
+                .descendant_for_byte_range(range.start_byte, range.end_byte)
+                .map(|node| ast_complexity(node, pack, &source.text))
+        })
     })
     .unwrap_or_default()
 }
@@ -1557,6 +1554,33 @@ mod tests {
                 .iter()
                 .any(|region| region.kind == "function_definition")
         );
+    }
+
+    #[test]
+    fn typed_typescript_and_tsx_functions_keep_dialect_regions() {
+        let cases = [
+            (
+                "sample.ts",
+                Lang::TypeScript,
+                "function greet(name: string): string { return name; }\n",
+                "greet",
+            ),
+            (
+                "sample.tsx",
+                Lang::TypeScript,
+                "function View(title: string): JSX.Element { return <h1>{title}</h1>; }\n",
+                "View",
+            ),
+        ];
+
+        for (path, lang, text, name) in cases {
+            let source = SourceFile::new(PathBuf::from(path), text.to_string());
+            let report = metrics_source(&source).expect("typed metrics");
+            assert_eq!(source.lang, lang);
+            assert!(report.iter().any(|region| {
+                region.lang == lang && region.name == name && region.kind == "function_declaration"
+            }));
+        }
     }
 
     #[test]

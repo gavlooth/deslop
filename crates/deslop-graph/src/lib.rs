@@ -608,6 +608,35 @@ mod tests {
     }
 
     #[test]
+    fn graph_parses_typescript_and_tsx_with_one_language_family() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            temp.path().join("typed.ts"),
+            "export function greet(name: string): string { return name; }\n",
+        )
+        .expect("typescript");
+        std::fs::write(
+            temp.path().join("view.tsx"),
+            "interface Props { title: string }\nexport function View(props: Props): JSX.Element { return <h1>{props.title}</h1>; }\n",
+        )
+        .expect("tsx");
+
+        let graph = graph_paths(&[temp.path().to_path_buf()], GraphConfig::default()).unwrap();
+
+        assert!(graph.notices.is_empty(), "{:#?}", graph.notices);
+        assert!(graph.nodes.iter().any(|node| {
+            node.name == "greet"
+                && node.kind == GraphNodeKind::Function
+                && node.lang == Lang::TypeScript
+        }));
+        assert!(graph.nodes.iter().any(|node| {
+            node.name == "View"
+                && node.kind == GraphNodeKind::Function
+                && node.lang == Lang::TypeScript
+        }));
+    }
+
+    #[test]
     fn dot_render_includes_edge_labels() {
         let graph = DependencyGraph {
             schema: SCHEMA.to_string(),

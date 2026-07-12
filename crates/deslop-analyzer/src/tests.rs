@@ -509,7 +509,7 @@ fn python_idiom_pack_flags_seed_rules() {
 
 #[test]
 fn javascript_and_typescript_packs_flag_seed_rules() {
-    for path in ["sample.js", "sample.ts"] {
+    for path in ["sample.js", "sample.ts", "sample.tsx"] {
         let fixture = source(
             path,
             "var count = 0;\nif (count == null) {\n  count = 1;\n}\nasync function load() {\n  return await fetch('/x');\n}\n",
@@ -522,6 +522,40 @@ fn javascript_and_typescript_packs_flag_seed_rules() {
         ] {
             assert!(has_rule(&report, rule), "{path} missing {rule}");
         }
+    }
+}
+
+#[test]
+fn tsx_uses_typescript_threshold_configuration() {
+    let config = AnalyzerConfig {
+        typescript: AnalyzerLangConfig {
+            long_method_nloc: Some(37),
+        },
+        ..AnalyzerConfig::default()
+    };
+
+    let tsx = source("sample.tsx", "const view: JSX.Element = <div />;\n");
+    assert_eq!(tsx.lang, Lang::TypeScript);
+    assert_eq!(config.long_method_nloc_for(tsx.lang), 37);
+}
+
+#[test]
+fn typed_typescript_dialects_preserve_inline_suppression() {
+    let cases = [
+        (
+            "sample.ts",
+            "function typed(value: number): number {\n  // deslop:ignore-next-line js-var-declaration\n  var copy: number = value;\n  return copy;\n}\n",
+        ),
+        (
+            "sample.tsx",
+            "function View(value: string): JSX.Element {\n  // deslop:ignore-next-line js-var-declaration\n  var copy: JSX.Element = <span>{value}</span>;\n  return copy;\n}\n",
+        ),
+    ];
+
+    for (path, text) in cases {
+        let report = scan_source(&source(path, text));
+        assert_eq!(report.lang, Lang::TypeScript);
+        assert!(!has_rule(&report, "js-var-declaration"), "{path}");
     }
 }
 

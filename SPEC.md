@@ -250,7 +250,7 @@ pub struct Finding {
     pub fingerprint: u64,          // stable: rule + norm-path + span-shape + node-text
 }
 pub struct Edit { pub splices: Vec<Splice>, pub kind: EditKind }   // ropey, fmt-preserving
-pub enum Lang { Clojure, Julia, Rust, Python, Generic }
+pub enum Lang { Clojure, Julia, Python, JavaScript, TypeScript, Rust, Generic }
 ```
 
 ## 6a. Plugin architecture (`LangPack`, `Rule`, `ExternalAnalyzer`)
@@ -258,6 +258,9 @@ pub enum Lang { Clojure, Julia, Rust, Python, Generic }
 Language support is a registry-driven plugin boundary, not a pile of core `match`
 arms. `deslop-lang` is the low crate shared by parsing and analysis; it owns path
 detection, tree-sitter grammar selection, CST region extraction, and comment syntax.
+JavaScript/JSX uses `tree-sitter-javascript`. The TypeScript language family keeps one
+public `typescript` identity while `.ts`/`.mts`/`.cts` select the TypeScript grammar and
+`.tsx` selects the distinct TSX grammar from the source path.
 `deslop-parse` and `deslop-analyzer` query this registry rather than switching on
 `Lang`. Analyzer rule packs and external analyzers attach to the same stable `Lang`
 id. Adding low-level language behavior should require only a new pack module plus one
@@ -269,6 +272,7 @@ pub trait LangPack {
     fn lang(&self) -> Lang;
     fn extensions(&self) -> &'static [&'static str];      // detection
     fn grammar(&self) -> Option<TreeSitterGrammar>;       // parse + ERROR-node check
+    fn grammar_for_path(&self, path: &Path) -> Option<TreeSitterGrammar>; // dialect override
     fn line_comments(&self) -> &'static [&'static str];   // tokenizer/comment rules
     fn enclosing_region(&self, node: Node, text: &str) -> Option<RegionSpan>;
 }

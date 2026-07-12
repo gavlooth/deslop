@@ -40,7 +40,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use deslop_core::{DetectedBy, FileReport, Finding, Lang, SafetyClass, Severity};
-use deslop_parse::{SourceFile, parse_tree};
+use deslop_parse::{SourceFile, parse_source};
 use regex::Regex;
 use tree_sitter::Node;
 
@@ -524,7 +524,7 @@ fn collect_code_evidence(
     ignore: &impl Fn(&str, &str) -> bool,
     boundary: &BoundaryConfig,
 ) {
-    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+    let Some(tree) = parse_source(source).ok().flatten() else {
         return;
     };
     let root = tree.root_node();

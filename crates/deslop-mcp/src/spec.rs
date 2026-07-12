@@ -338,6 +338,8 @@ fn analyzer_schema() -> Value {
             "clojure": lang_schema(),
             "julia": lang_schema(),
             "python": lang_schema(),
+            "javascript": lang_schema(),
+            "typescript": lang_schema(),
             "generic": lang_schema()
         },
         "additionalProperties": false

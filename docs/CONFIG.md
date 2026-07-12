@@ -108,6 +108,8 @@ meaningful-token count required before token duplication findings are emitted.
 
 Per-language analyzer tables can override `long_method_nloc` for `rust`, `clojure`,
 `julia`, `python`, `javascript`, `typescript`, or `generic` without changing the global fallback.
+TSX files use the path-selected TSX grammar but remain in the `typescript` language family, so
+`[analyzer.typescript]` applies to both TypeScript and TSX.
 
 Unknown keys under `[analyzer]` are rejected, not silently ignored. A typo such as
 `ignore_comments = true` is a hard parse error rather than a no-op.

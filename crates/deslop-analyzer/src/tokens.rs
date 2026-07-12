@@ -1,6 +1,6 @@
 use deslop_core::{DetectedBy, Finding, Lang, SafetyClass, Severity};
 use deslop_lang::{LangPack, RegionClass, Registry as LangRegistry};
-use deslop_parse::{SourceFile, parse_tree};
+use deslop_parse::{SourceFile, parse_source};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tree_sitter::Node;
@@ -513,7 +513,7 @@ fn behavioral_segments(source: &SourceFile, pack: &dyn LangPack) -> Vec<Segment>
         }];
     }
 
-    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+    let Some(tree) = parse_source(source).ok().flatten() else {
         return vec![Segment {
             id: 0,
             start_byte: 0,
@@ -537,7 +537,7 @@ fn behavioral_segments(source: &SourceFile, pack: &dyn LangPack) -> Vec<Segment>
 }
 
 fn token_masks(source: &SourceFile, pack: &dyn LangPack) -> Vec<MaskRange> {
-    let Some(tree) = parse_tree(source.lang, &source.text).ok().flatten() else {
+    let Some(tree) = parse_source(source).ok().flatten() else {
         return Vec::new();
     };
     if tree.root_node().has_error() {
@@ -640,7 +640,7 @@ fn token_windows_match(left: &[Token], right: &[Token], field: impl Fn(&Token) -
 
 fn rust_tree(source: &SourceFile) -> Option<tree_sitter::Tree> {
     (source.lang == Lang::Rust)
-        .then(|| parse_tree(source.lang, &source.text).ok().flatten())?
+        .then(|| parse_source(source).ok().flatten())?
         .filter(|tree| !tree.root_node().has_error())
 }
 
