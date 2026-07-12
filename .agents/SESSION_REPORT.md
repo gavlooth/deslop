@@ -5131,3 +5131,69 @@ adapter-scoped behavioral-container callback. Recheck at M1 canonical-role/owned
 intentional JS/TS class segmentation repair. Hindsight consolidation passed.
 
 **Signature:** Codex (GPT-5), M0.6 integration owner, 2026-07-12.
+
+## 2026-07-12T20:59:42+02:00 — M0.7 contextual Clojure complexity roles
+
+**Objective:** stop deriving Clojure decisions and nesting from impossible raw CST-kind matches, so
+control forms contribute complexity, ordinary calls do not, and reader/macro data is not mistaken for
+executed behavior.
+
+**Target:** `LangPack` metric-role callbacks, `ClojurePack` form/context mapping, metric aggregation,
+reader/macro fixtures, parser assertions, SPEC, and the durable roadmap. `/root` owned implementation,
+integration, and all verification; prior M0.6 subagent work had ended and no delegation was needed.
+
+**Changes:**
+
+- Added default adapter callbacks `metric_branch_contribution`, `is_metric_nesting`, and
+  `is_metric_flow_break`; existing adapters retain raw-kind-array behavior without central matches.
+- Clojure now maps evaluated `list_lit` heads contextually. `if`/`when` variants,
+  `cond`/`condp`/`case`, comprehensions, and loop forms contribute one decision and nesting level.
+  Ordinary calls contribute neither. `throw` and `recur` are flow breaks; `recur` is no longer a branch.
+- Added reader-context evaluation tracking. Discard, quote, var quote, reader eval, and syntax-quoted
+  templates are data for complexity; unquote and unquote-splicing re-enter evaluated context.
+- Reclassified `defmacro` and `defmethod` as behavioral regions and aligned declared Clojure metric and
+  Halstead operator lists with the contextual callbacks.
+- Added `tests/fixtures/clojure/control_edges.clj` with nested `if`/`when`, ordinary calls, a syntax-quoted
+  macro template, quote/discard edges, a live form inside a macro call, and `loop`/`recur`.
+- Parser tests lock the exact quote/discard/syntax-quote/unquote node counts and top-level regions. Metrics
+  lock cyclomatic/cognitive/max-nesting triples: classifier `3/3/2`, ordinary calls `1/0/0`, macro
+  template `1/0/0`, quoted/discarded plus one live branch `2/1/1`, and loop+if+recur `3/4/2`.
+- Updated SPEC and `.agents/TODO.md`; M0.8 partial-analysis policy is **NEXT**.
+
+**Commands/checks run:** pinned grammar file/node inspection; targeted `rg`/`sed`; measured CLI JSON
+metrics with `jq`; focused lang/parse/metrics tests and clippy; `cargo fmt --all --check`;
+`git diff --check`; exact TODO identity validation; workspace build; slim no-default-features build;
+`cargo test --workspace`; feature-enabled MCP tests; and warnings-denied workspace clippy. Hindsight
+checkpoint and constraint memories were written and consolidated.
+
+**Verification results:** PASS. Workspace: 236 tests. Feature-enabled MCP: 20 tests. Formatting, patch
+whitespace, both builds, TODO identity, and workspace clippy passed. No dependency, public schema, or
+configuration change was made.
+
+**Failed iterations / invalidated assumptions:** the audit invalidated both existing raw declarations:
+Clojure branch names could never equal the grammar's `list_lit` kind, while declaring every `list_lit` as
+nesting made ordinary calls inflate depth. The first manual patch placed the Clojure override methods in
+`GenericPack`; a measured CLI run immediately exposed unchanged Clojure scores, and the methods were moved
+to `ClojurePack` before focused/full gates.
+
+**Residual semantic boundary:** each listed `cond`/`case` form currently contributes one decision rather
+than clause-count contributions. Boolean-chain and multi-arm normalization belongs to the cross-language
+construct matrix/per-node IR work. Syntax-quoted templates are not macroexpanded, and reader conditionals
+are not active-dialect selected because the callback has no path/dialect provenance; do not claim expanded
+or platform-exact complexity.
+
+**Current recommendation/checkpoint:** execute M0.8 next by selecting and enforcing one explicit
+parse-error/partial-analysis policy across scan, metrics, graph, LSP, MCP, and slim, including provenance
+that prevents partial facts from authorizing unsafe rewrites.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; targeted local Rust reads
+remain the active fallback.
+
+**Dependencies/restart:** rebuild or reinstall CLI/MCP binaries to activate corrected Clojure metrics.
+No migration or config change is required.
+
+**Negative-memory status:** durable constraint memory rejects raw `list_lit` kind matching and records the
+no-macro-expansion/no-reader-dialect boundary. Recheck under M1/M2 owned syntax facts and M0.8 uncertainty
+notices. Hindsight consolidation passed.
+
+**Signature:** Codex (GPT-5), M0.7 integration owner, 2026-07-12.

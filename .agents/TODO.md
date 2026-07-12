@@ -52,8 +52,14 @@ reports, benchmark records, and work orders.
   protocol selects the nearest callable; graph containment remains file → function/class → nested
   callable with no synthetic decorator symbol. Evidence: exact CST kind/count/byte assertions plus
   parser, analyzer long-method/duplication, metrics, protocol, and graph consumer regressions.
-- [ ] M0.7 Correct Clojure branch/decision counting and add reader/macro-edge fixtures. **NEXT**
-- [ ] M0.8 Define one parse-error/partial-analysis policy across scan, metrics, graph, LSP, MCP, and slim.
+- [x] M0.7 Correct Clojure branch/decision/nesting counting with contextual adapter callbacks and add a
+  shared reader/macro-edge fixture. Control-form list heads contribute decisions; ordinary calls do not;
+  `recur` is a flow break rather than a branch; quoted, syntax-template, var-quoted, reader-eval, and
+  discarded forms do not contribute, while unquoted forms re-enter evaluated context. Treat `defmacro`
+  and `defmethod` as behavioral regions. Evidence: exact reader CST counts/regions and measured
+  cyclomatic/cognitive/nesting regressions for nested `if`/`when`, ordinary calls, macro templates,
+  quote/discard edges, live forms, and `loop`/`recur`.
+- [ ] M0.8 Define one parse-error/partial-analysis policy across scan, metrics, graph, LSP, MCP, and slim. **NEXT**
 - [ ] M0.9 Relabel or remove uncalibrated health/readability/refactor-confidence gates.
 - [ ] M0.10 Add the exact clean/sloppy, performance, duplicate-order, and false-resolution probes from
   `.agents/ALGORITHM_AUDIT.md` to automated regression suites.

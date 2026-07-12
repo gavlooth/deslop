@@ -199,6 +199,8 @@ mod tests {
         include_str!("../../../tests/fixtures/typescript/malformed.ts");
     const MALFORMED_TSX: &str = include_str!("../../../tests/fixtures/typescript/malformed.tsx");
     const PYTHON_BEHAVIORAL: &str = include_str!("../../../tests/fixtures/python/behavioral.py");
+    const CLOJURE_CONTROL_EDGES: &str =
+        include_str!("../../../tests/fixtures/clojure/control_edges.clj");
 
     #[test]
     fn extracts_clojure_top_level_list_region() {
@@ -208,6 +210,30 @@ mod tests {
                 .into(),
         );
         assert_enclosing_region(&source, 5, 3, 5, "defn f");
+    }
+
+    #[test]
+    fn parses_clojure_reader_and_macro_edge_fixture() {
+        let source = SourceFile::new(
+            PathBuf::from("control_edges.clj"),
+            CLOJURE_CONTROL_EDGES.to_string(),
+        );
+        let tree = parse_source(&source)
+            .expect("Clojure parse")
+            .expect("Clojure tree");
+
+        assert!(!tree.root_node().has_error());
+        for (kind, expected) in [
+            ("quoting_lit", 1),
+            ("dis_expr", 1),
+            ("syn_quoting_lit", 1),
+            ("unquoting_lit", 1),
+            ("unquote_splicing_lit", 1),
+        ] {
+            assert_eq!(tree_kind_count(tree.root_node(), kind), expected, "{kind}");
+        }
+        assert_enclosing_region(&source, 19, 17, 23, "defn quoted-and-discarded");
+        assert_enclosing_region(&source, 28, 25, 29, "defn consume");
     }
 
     #[test]

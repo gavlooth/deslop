@@ -272,6 +272,12 @@ ownership syntax rather than a second symbol. Async callables retain the grammar
 all decorators, while semantic names/kinds come from the wrapped definition; nested callables select
 the nearest function. Shared fixtures under `tests/fixtures/python` freeze these parser, metric,
 graph-containment, analyzer, and work-order boundaries.
+Clojure maps `list_lit` contextually rather than comparing its raw CST kind with form names.
+`if`/`when` variants, `cond`/`case`, comprehensions, loops, and related control forms contribute one
+decision and one nesting level per form; ordinary calls contribute neither, and `recur` is a flow break
+rather than a new branch. Quoted, syntax-quoted template, var-quoted, reader-eval, and discarded forms are
+data for complexity purposes; an unquote re-enters evaluated context. `defmacro` and `defmethod` are
+behavioral regions. The reader/macro fixture under `tests/fixtures/clojure` freezes these boundaries.
 `deslop-parse` and `deslop-analyzer` query this registry rather than switching on
 `Lang`. Analyzer rule packs and external analyzers attach to the same stable `Lang`
 id. Adding low-level language behavior should require only a new pack module plus one

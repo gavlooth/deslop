@@ -39,6 +39,15 @@ pub trait LangPack: Send + Sync {
     fn metrics_branches(&self) -> &'static [&'static str];
     fn metrics_nesting(&self) -> &'static [&'static str];
     fn metrics_flow_breaks(&self) -> &'static [&'static str];
+    fn metric_branch_contribution(&self, node: Node<'_>, _text: &str) -> usize {
+        usize::from(self.metrics_branches().contains(&node.kind()))
+    }
+    fn is_metric_nesting(&self, node: Node<'_>, _text: &str) -> bool {
+        self.metrics_nesting().contains(&node.kind())
+    }
+    fn is_metric_flow_break(&self, node: Node<'_>, _text: &str) -> bool {
+        self.metrics_flow_breaks().contains(&node.kind())
+    }
     fn halstead_operator_tokens(&self) -> &'static [&'static str];
     fn region_class(&self, _node: Node<'_>, _text: &str) -> RegionClass {
         RegionClass::Other
@@ -243,12 +252,27 @@ impl LangPack for ClojurePack {
 
     fn metrics_branches(&self) -> &'static [&'static str] {
         &[
-            "if", "when", "cond", "case", "for", "doseq", "loop", "recur",
+            "if",
+            "if-not",
+            "if-let",
+            "if-some",
+            "when",
+            "when-not",
+            "when-let",
+            "when-some",
+            "cond",
+            "condp",
+            "case",
+            "for",
+            "doseq",
+            "dotimes",
+            "while",
+            "loop",
         ]
     }
 
     fn metrics_nesting(&self) -> &'static [&'static str] {
-        &["list_lit"]
+        self.metrics_branches()
     }
 
     fn metrics_flow_breaks(&self) -> &'static [&'static str] {
@@ -257,9 +281,74 @@ impl LangPack for ClojurePack {
 
     fn halstead_operator_tokens(&self) -> &'static [&'static str] {
         &[
-            "defn", "fn", "let", "if", "when", "cond", "case", "for", "doseq", "loop", "recur",
-            "=", "not=", "+", "-", "*", "/", ">", "<", ">=", "<=",
+            "defn",
+            "defmacro",
+            "defmethod",
+            "fn",
+            "let",
+            "if",
+            "if-not",
+            "if-let",
+            "if-some",
+            "when",
+            "when-not",
+            "when-let",
+            "when-some",
+            "cond",
+            "condp",
+            "case",
+            "for",
+            "doseq",
+            "dotimes",
+            "while",
+            "loop",
+            "recur",
+            "=",
+            "not=",
+            "+",
+            "-",
+            "*",
+            "/",
+            ">",
+            "<",
+            ">=",
+            "<=",
         ]
+    }
+
+    fn metric_branch_contribution(&self, node: Node<'_>, text: &str) -> usize {
+        usize::from(
+            clojure_form_is_evaluated(node)
+                && matches!(
+                    node_head_token(node, text),
+                    Some(
+                        "if" | "if-not"
+                            | "if-let"
+                            | "if-some"
+                            | "when"
+                            | "when-not"
+                            | "when-let"
+                            | "when-some"
+                            | "cond"
+                            | "condp"
+                            | "case"
+                            | "for"
+                            | "doseq"
+                            | "dotimes"
+                            | "while"
+                            | "loop"
+                    )
+                ),
+        )
+    }
+
+    fn is_metric_nesting(&self, node: Node<'_>, text: &str) -> bool {
+        self.metric_branch_contribution(node, text) > 0
+    }
+
+    fn is_metric_flow_break(&self, node: Node<'_>, text: &str) -> bool {
+        clojure_form_is_evaluated(node)
+            && matches!(node_head_token(node, text), Some("throw" | "recur"))
     }
 
     fn region_class(&self, node: Node<'_>, text: &str) -> RegionClass {
@@ -267,10 +356,10 @@ impl LangPack for ClojurePack {
             return RegionClass::Other;
         }
         match node_head_token(node, text) {
-            Some("defn" | "fn") => RegionClass::Behavioral,
+            Some("defn" | "defmacro" | "defmethod" | "fn") => RegionClass::Behavioral,
             Some(
                 "ns" | "require" | "import" | "def" | "defrecord" | "deftype" | "defprotocol"
-                | "definterface" | "defmulti" | "defmethod",
+                | "definterface" | "defmulti",
             ) => RegionClass::Declaration,
             _ => RegionClass::Other,
         }
@@ -291,6 +380,25 @@ impl LangPack for ClojurePack {
     fn enclosing_region(&self, node: Node<'_>, text: &str) -> Option<RegionSpan> {
         top_level_clojure_list(node, text)
     }
+}
+
+fn clojure_form_is_evaluated(node: Node<'_>) -> bool {
+    if node.kind() != "list_lit" {
+        return false;
+    }
+    let mut pending_unquotes = 0usize;
+    let mut ancestor = node.parent();
+    while let Some(parent) = ancestor {
+        match parent.kind() {
+            "dis_expr" | "quoting_lit" | "var_quoting_lit" | "evaling_lit" => return false,
+            "unquoting_lit" | "unquote_splicing_lit" => pending_unquotes += 1,
+            "syn_quoting_lit" if pending_unquotes == 0 => return false,
+            "syn_quoting_lit" => pending_unquotes -= 1,
+            _ => {}
+        }
+        ancestor = parent.parent();
+    }
+    true
 }
 
 impl LangPack for JuliaPack {

@@ -554,13 +554,13 @@ fn ast_complexity(node: Node<'_>, pack: &dyn LangPack, text: &str) -> AstStats {
                 *leaf_tokens.entry(token.to_string()).or_insert(0) += 1;
             }
         }
-        let is_branch = pack.metrics_branches().contains(&kind);
-        let is_nesting = pack.metrics_nesting().contains(&kind);
-        if is_branch {
-            stats.branch_count += 1;
-            stats.cognitive += 1 + nesting;
+        let branch_contribution = pack.metric_branch_contribution(node, text);
+        let is_nesting = pack.is_metric_nesting(node, text);
+        if branch_contribution > 0 {
+            stats.branch_count += branch_contribution;
+            stats.cognitive += branch_contribution * (1 + nesting);
         }
-        if pack.metrics_flow_breaks().contains(&kind) {
+        if pack.is_metric_flow_break(node, text) {
             stats.cognitive += 1;
         }
         let next_nesting = if is_nesting { nesting + 1 } else { nesting };
@@ -1639,6 +1639,38 @@ mod tests {
         );
         let report = metrics_source(&source).expect("metrics");
         assert_eq!(report.len(), 1);
+    }
+
+    #[test]
+    fn clojure_complexity_counts_control_forms_not_call_lists_or_reader_data() {
+        let source = SourceFile::new(
+            PathBuf::from("control_edges.clj"),
+            include_str!("../../../tests/fixtures/clojure/control_edges.clj").to_string(),
+        );
+        let report = metrics_source(&source).expect("Clojure metrics");
+
+        let expected = [
+            (3, 3.0, 3.0, 2),
+            (9, 1.0, 0.0, 0),
+            (13, 1.0, 0.0, 0),
+            (17, 2.0, 1.0, 1),
+            (25, 3.0, 4.0, 2),
+        ];
+        for (start_line, cyclomatic, cognitive, max_nesting) in expected {
+            let region = report
+                .iter()
+                .find(|region| region.span.start_line == start_line)
+                .unwrap_or_else(|| panic!("missing Clojure region at line {start_line}"));
+            assert_eq!(
+                region.complexity.cyclomatic, cyclomatic,
+                "line {start_line}"
+            );
+            assert_eq!(region.complexity.cognitive, cognitive, "line {start_line}");
+            assert_eq!(
+                region.complexity.max_nesting, max_nesting,
+                "line {start_line}"
+            );
+        }
     }
 
     #[test]
