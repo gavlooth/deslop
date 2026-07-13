@@ -5980,3 +5980,88 @@ parse ledgers belong to one build; source revision and bytes must be inseparable
 must never be lossy. Recheck when M1.3 stores arena facts or M1.8 adds parse-artifact reuse.
 
 **Signature:** Codex (GPT-5), M1.2 integration owner, 2026-07-13.
+
+---
+
+## M1.3 checkpoint — deterministic owned syntax arena
+
+**Date/time:** 2026-07-13T18:13:17+02:00
+
+**Objective/target:** copy every private Tree-sitter tree into immutable revision-bound Rust storage
+without exposing borrowed nodes or prematurely creating public identity authority. Preserve raw CST
+facts, exact byte ownership, recovery state, grammar provenance, deterministic order, and M1.2's one
+parse owner/ledger contract.
+
+**Changes:** added `deslop-parse::arena` with `deslop-raw-arena/1` and attached one optional owned
+arena to every successfully parsed `ParsedFile`. Construction is iterative deterministic preorder
+over every concrete named and anonymous child. Nodes retain visible and alias-free grammar
+kind/name IDs, incoming field, exact half-open byte and raw Tree-sitter point spans, reciprocal
+parent/ordered children, named/extra/error/missing/has-error flags, and exact source-slice
+coordinates. Arena-level grammar provenance is copied from the snapshot's atomic
+`GrammarSelection`; no grammar is reselected. Positive-width non-extra leaves are raw tokens;
+non-error extra subtrees and direct-child gaps are trivia. Recovery `ERROR` nodes remain tokens even
+when Tree-sitter marks them extra. Root-external leading/trailing bytes use an explicit file owner,
+so every source byte is owned exactly once and every syntax-owned segment remains inside its owner
+span. Zero-width missing nodes remain addressable but own no bytes. Raw slots and slicing helpers
+remain crate-private; M1.4 owns analysis-tagged public `NodeId` and structured wrong-snapshot lookup.
+`ProjectAnalysisId` now commits to arena schema `/1`; invalid UTF-8 still has no Tree or arena.
+
+**Commands/checks run:** targeted Hindsight M1.3/negative-memory searches; Serena symbol attempt
+(unavailable for Rust because this project is indexed as Python-only); local `rg`/`sed` inspection of
+the ADR, snapshot, consumers, and pinned Tree-sitter 0.25.10 API; three read-only agent audits for
+arena fidelity, downstream integration, and numerical contracts; focused `cargo test -p
+deslop-parse --lib`; focused strict parse clippy; the exact M0 DoD test; `cargo test --workspace`;
+`cargo test -p deslop-mcp --features slim-llm -- --test-threads=1`; `cargo build --workspace`;
+`cargo build -p deslop-slim --no-default-features`; `cargo fmt --all -- --check`; `cargo clippy
+--workspace --all-targets --all-features -- -D warnings`; and `git diff --check`.
+
+**Verification results:** PASS. `deslop-parse` has 34 passing tests. The 58-byte Unicode/comment
+oracle owns 22 nodes and 28 segments (14 token/26 bytes, 14 trivia/32 bytes) in exact preorder; the
+35-byte missing-node oracle retains one zero-width `)` at byte 20 with 20 nodes and an exact
+11-token/7-trivia partition. Pinned malformed TypeScript is 66 bytes/27 nodes/24 segments with one
+ERROR; malformed TSX is 97 bytes/52 nodes/46 segments with one ERROR. A seven-byte whitespace-only
+file has one zero-width syntax root and one file-owned trivia segment; empty input has one root and
+no segments. Tree/arena lockstep checks every kind, ID, field, point, flag, child order, and slice;
+alias and repeated-field witnesses pass; repeated arena reads leave both parse ledgers at exact
+1 request/1 owner/1 invocation/0 reuse. Workspace: 314 passing tests plus one intentional ignored
+performance probe and all doc-tests. The unchanged M0 numerical gate still reports 30 workorders,
+30 IDs, 30 targets, 65 findings, 21 files/74 symbols/197 graph edges/123 syntactic edges/zero false
+resolution, one true ambiguous edge, three complete grammar sentinels, two quarantined partial
+fixtures, and one unavailable JET observation. Feature-enabled MCP has 23 passing tests. Both build
+modes, formatting, whitespace, and strict all-target/all-feature clippy pass.
+
+**Failure modes / invalidated assumptions:** requiring the grammar root to span the entire input was
+invalidated by Rust files whose Tree-sitter root excludes leading whitespace; assigning those bytes
+to that syntax root was also invalid because the segment then escaped its owner span. The accepted
+model uses an explicit file owner for root-external trivia. Treating every `is_extra` ancestry as
+trivia was invalidated because recovery `ERROR` nodes may be extra and can cover an entire malformed
+TSX program; only non-error extras propagate trivia ownership. A Rust missing-brace fixture did not
+actually produce a Tree-sitter missing node and was replaced by a pinned TypeScript zero-width
+missing-`)` witness. Self-reciprocity alone did not prove Tree fidelity, so the suite now traverses
+the private Tree and owned arena in exact lockstep. Bare public arena indices were invalidated because
+same-valued slots could be mixed across files before M1.4's owner validation; they remain internal.
+Tree-sitter point columns are byte columns, not Unicode or UTF-16 columns, and the Unicode oracle
+locks that distinction for later LSP conversion.
+
+**Current recommendation/checkpoint:** M1.3 is complete. Implement M1.4 with a process-local
+analysis-owner tag plus dense project-global slot for non-Serde `NodeId`, structured wrong-analysis
+and out-of-range errors, revision-bound serialized `NodeKey/1` using raw grammar structure, a
+separate cross-revision baseline fingerprint, and exact `RevisionGuard`. Keep canonical roles out of
+`NodeKey/1` and never let any fuzzy identity authorize writes.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; local Rust tools are
+the documented fallback.
+
+**Dependencies/restart:** rebuild Rust consumers to pick up the additive internal arena. No service
+restart, external schema migration, wire change, or third-party dependency was introduced. Existing
+consumers still use legacy parse paths until M1.9/M1.10; this milestone intentionally adds storage,
+not migration.
+
+**Negative-memory status:** record that grammar roots need not cover leading/trailing bytes; such
+trivia needs a file owner rather than a lying syntax span. Do not classify recovery ERROR subtrees as
+trivia merely because `is_extra` is true. Do not expose bare dense arena slots before analysis-owner
+validation. Tree parity needs a lockstep oracle, missing-node claims need an actual pinned missing
+fixture, and byte point columns must be converted rather than published as UTF-16. Recheck when M1.4
+adds identity or M1.5 adds containment.
+
+**Signature:** Codex (GPT-5), M1.3 integration owner, 2026-07-13.

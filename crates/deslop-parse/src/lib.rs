@@ -9,6 +9,9 @@ use tree_sitter::{Parser, Tree};
 
 pub use deslop_lang::RegionSpan;
 
+// M1.3 owns the raw arena internally; M1.4 adds owner-validated public node views.
+#[allow(dead_code)]
+mod arena;
 mod snapshot;
 
 pub use snapshot::{

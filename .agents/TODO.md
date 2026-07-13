@@ -128,11 +128,19 @@ reports, benchmark records, and work orders.
   indices, `ps1_`/`pa1_` identities, and isolated parse ledgers. Focused tests cover 26 parse cases,
   one request/owner/invocation for valid/partial revisions, zero invocation for invalid UTF-8,
   deterministic paths/variants, shared blobs, escapes, and exact-empty scope; full gates pass.
-- [ ] M1.3 Implement the owned node arena with raw kind, field, span, parent/children, named/error flags,
+- [x] M1.3 Implement the owned node arena with raw kind, field, span, parent/children, named/error flags,
   token/trivia ownership, source slice, and grammar provenance.
-  **NEXT**
+  Evidence: `deslop-parse` now copies each private Tree into deterministic preorder
+  `deslop-raw-arena/1` storage with visible and grammar kind IDs/names, incoming fields, exact
+  byte/point spans, reciprocal ordered structure, named/extra/error/missing flags, grammar
+  provenance, and a lossless token/trivia byte partition. File-boundary trivia has an explicit file
+  owner; syntax-owned segments are contained by their owner. Arena slots remain private until M1.4.
+  Thirty-four parse tests lock private-Tree parity, aliases/repeated fields, Unicode byte columns,
+  comments/gaps, empty/whitespace inputs, zero-width missing nodes, partial TS/TSX recovery, exact
+  source reconstruction, deterministic IDs, and unchanged one-parse ledgers; full gates pass.
 - [ ] M1.4 Define scan-local `NodeId`, serialized revision-bound `NodeKey`, cross-revision baseline
   fingerprint, and exact `RevisionGuard`; test collisions/expiry and prohibit fuzzy write authorization.
+  **NEXT**
 - [ ] M1.5 Build containment and smallest-exclusive-region indices.
 - [ ] M1.6 Implement exclusive local and declared inclusive aggregation APIs.
 - [ ] M1.7 Expose query/cursor-derived captures without reparsing source fragments.

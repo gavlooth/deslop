@@ -10,6 +10,9 @@ use ignore::WalkBuilder;
 use tree_sitter::{Parser, Tree};
 
 use crate::analysis_provenance_for_tree;
+#[cfg(test)]
+use crate::arena::{ArenaNodeIndex, ArenaSegmentIndex};
+use crate::arena::{RAW_ARENA_SCHEMA, SyntaxArena};
 
 const SOURCE_REVISION_DOMAIN: &str = "deslop source revision v1";
 const SNAPSHOT_ID_DOMAIN: &str = "deslop project snapshot v1";
@@ -21,7 +24,6 @@ const PARSER_BUILD: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     "+tree-sitter/0.25.10"
 );
-const RAW_ARENA_SCHEMA: &str = "deslop-raw-arena/0";
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SourceRevision(String);
@@ -618,6 +620,7 @@ pub struct ParsedFile {
     source: Arc<StoredSource>,
     text: Option<Arc<str>>,
     tree: Option<Tree>,
+    arena: Option<SyntaxArena>,
     provenance: AnalysisProvenance,
     line_starts: Vec<usize>,
 }
@@ -645,6 +648,25 @@ impl ParsedFile {
 
     pub fn has_tree(&self) -> bool {
         self.tree.is_some()
+    }
+
+    pub fn has_arena(&self) -> bool {
+        self.arena.is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn arena(&self) -> Option<&SyntaxArena> {
+        self.arena.as_ref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn node_source(&self, index: ArenaNodeIndex) -> Option<&[u8]> {
+        self.arena.as_ref()?.node_source(self.source(), index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn segment_source(&self, index: ArenaSegmentIndex) -> Option<&[u8]> {
+        self.arena.as_ref()?.segment_source(self.source(), index)
     }
 
     pub fn line_starts(&self) -> &[usize] {
@@ -744,6 +766,7 @@ fn parse_owned_file(
                 source: entry.source.clone(),
                 text: None,
                 tree: None,
+                arena: None,
                 provenance: AnalysisProvenance::failed(vec![AnalysisDiagnostic {
                     code: "invalid-utf8".to_string(),
                     message: format!("source is not valid UTF-8: {error}"),
@@ -775,11 +798,17 @@ fn parse_owned_file(
         },
         analysis_provenance_for_tree,
     );
+    let arena = tree
+        .as_ref()
+        .map(|tree| SyntaxArena::from_tree(tree, entry.bytes(), key.grammar.clone()))
+        .transpose()
+        .with_context(|| format!("failed to own syntax arena for {}", entry.path.display()))?;
     Ok(ParsedFile {
         key,
         source: entry.source.clone(),
         text: Some(text),
         tree,
+        arena,
         provenance,
         line_starts,
     })
@@ -1080,6 +1109,7 @@ fn path_bytes(path: &Path) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arena::{RAW_ARENA_SCHEMA, SyntaxSegmentKind, SyntaxSegmentOwner};
     use deslop_core::AnalysisStatus;
 
     fn repository() -> RepositoryId {
@@ -1277,10 +1307,34 @@ mod tests {
                 .status,
             AnalysisStatus::Complete
         );
+        for path in ["view.ts", "view.tsx"] {
+            let file = analysis.file(Path::new(path)).unwrap();
+            assert_eq!(file.arena().unwrap().grammar(), file.grammar());
+            assert_eq!(file.arena().unwrap().grammar(), &file.key().grammar);
+        }
         let counts = analysis.parse_counts();
         let keys = counts.keys().collect::<Vec<_>>();
         assert_eq!(keys[0].source, keys[1].source);
         assert_ne!(keys[0].grammar, keys[1].grammar);
+        assert!(counts.values().all(|count| {
+            count
+                == &FileParseCount {
+                    requested: 1,
+                    owners: 1,
+                    parser_invocations: 1,
+                    reused: 0,
+                }
+        }));
+        for file in analysis.files() {
+            let arena = file.arena().unwrap();
+            for (index, _) in arena.indexed_nodes() {
+                let _ = file.node_source(index);
+            }
+            for (index, _) in arena.indexed_segments() {
+                let _ = file.segment_source(index);
+            }
+        }
+        assert_eq!(analysis.parse_counts(), counts);
     }
 
     #[test]
@@ -1414,6 +1468,14 @@ mod tests {
         let file = analysis.file(Path::new("broken.ts")).unwrap();
         assert_eq!(file.provenance().status, AnalysisStatus::Partial);
         assert!(file.has_tree());
+        let arena = file.arena().expect("partial source retains owned arena");
+        assert!(
+            arena
+                .nodes()
+                .iter()
+                .any(|node| node.is_error() || node.is_missing())
+        );
+        assert!(arena.node(arena.root()).unwrap().has_error());
         assert_eq!(file.line_starts(), &[0, 20]);
         assert_eq!(
             analysis.parse_counts().values().next().copied(),
@@ -1427,6 +1489,214 @@ mod tests {
     }
 
     #[test]
+    fn zero_width_recovery_nodes_remain_owned_without_claiming_bytes() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = b"function f(a: string { return a; }\n";
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("missing.ts", source.to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let file = analysis.file(Path::new("missing.ts")).unwrap();
+        assert_eq!(file.provenance().status, AnalysisStatus::Partial);
+        assert!(
+            file.provenance()
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "tree-sitter-missing-node")
+        );
+        let arena = file.arena().unwrap();
+        let missing = arena
+            .indexed_nodes()
+            .filter(|(_, node)| node.is_missing())
+            .collect::<Vec<_>>();
+        assert_eq!(arena.nodes().len(), 20);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].1.parent().map(ArenaNodeIndex::as_usize), Some(4));
+        assert_eq!(
+            arena
+                .node(missing[0].1.parent().unwrap())
+                .unwrap()
+                .raw_kind(),
+            "formal_parameters"
+        );
+        assert!(missing.iter().all(|(_, node)| {
+            node.raw_kind() == ")"
+                && node.span().byte_range() == (20..20)
+                && node.span().start_point().row() == 0
+                && node.span().start_point().column() == 20
+                && file.node_source(missing[0].0) == Some(b"".as_slice())
+                && node.owned_segment_indices().is_empty()
+        }));
+        assert_eq!(arena.segments().len(), 18);
+        assert_eq!(
+            arena
+                .segments()
+                .iter()
+                .filter(|segment| segment.kind() == SyntaxSegmentKind::Token)
+                .map(|segment| segment.byte_range().len())
+                .sum::<usize>(),
+            28
+        );
+        assert_eq!(
+            arena
+                .segments()
+                .iter()
+                .filter(|segment| segment.kind() == SyntaxSegmentKind::Trivia)
+                .map(|segment| segment.byte_range().len())
+                .sum::<usize>(),
+            7
+        );
+        assert_eq!(
+            arena
+                .segments()
+                .iter()
+                .filter(|segment| segment.kind() == SyntaxSegmentKind::Token)
+                .count(),
+            11
+        );
+        assert_eq!(
+            arena
+                .segments()
+                .iter()
+                .filter(|segment| segment.kind() == SyntaxSegmentKind::Trivia)
+                .count(),
+            7
+        );
+        assert_eq!(
+            arena
+                .segments()
+                .iter()
+                .map(|segment| segment.byte_range().len())
+                .sum::<usize>(),
+            file.source().len()
+        );
+        assert_eq!(
+            analysis
+                .parse_counts()
+                .values()
+                .next()
+                .unwrap()
+                .parser_invocations,
+            1
+        );
+    }
+
+    #[test]
+    fn typed_partial_arenas_retain_exact_error_recovery() {
+        let temp = tempfile::tempdir().unwrap();
+        let malformed_ts = include_bytes!("../../../tests/fixtures/typescript/malformed.ts");
+        let malformed_tsx = include_bytes!("../../../tests/fixtures/typescript/malformed.tsx");
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("malformed.ts", malformed_ts.to_vec())
+            .unwrap()
+            .with_overlay("malformed.tsx", malformed_tsx.to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let cases = [
+            (
+                "malformed.ts",
+                malformed_ts.as_slice(),
+                27,
+                24,
+                15,
+                55,
+                9,
+                11,
+                62..63,
+            ),
+            (
+                "malformed.tsx",
+                malformed_tsx.as_slice(),
+                52,
+                46,
+                35,
+                84,
+                11,
+                13,
+                0..96,
+            ),
+        ];
+        for (
+            path,
+            source,
+            node_count,
+            segment_count,
+            token_count,
+            token_bytes,
+            trivia_count,
+            trivia_bytes,
+            error_range,
+        ) in cases
+        {
+            let file = analysis.file(Path::new(path)).unwrap();
+            assert_eq!(file.provenance().status, AnalysisStatus::Partial, "{path}");
+            assert_eq!(file.provenance().diagnostics.len(), 1, "{path}");
+            assert_eq!(
+                file.provenance().diagnostics[0]
+                    .span
+                    .as_ref()
+                    .map(|span| span.start_byte..span.end_byte),
+                Some(error_range.clone()),
+                "{path}"
+            );
+            let arena = file.arena().unwrap();
+            assert_eq!(arena.nodes().len(), node_count, "{path}");
+            assert_eq!(arena.segments().len(), segment_count, "{path}");
+            let errors = arena
+                .nodes()
+                .iter()
+                .filter(|node| node.is_error())
+                .collect::<Vec<_>>();
+            assert_eq!(errors.len(), 1, "{path}");
+            assert_eq!(errors[0].span().byte_range(), error_range, "{path}");
+            assert_eq!(
+                arena
+                    .nodes()
+                    .iter()
+                    .filter(|node| node.is_missing())
+                    .count(),
+                0,
+                "{path}"
+            );
+            let count_bytes = |kind| {
+                arena
+                    .segments()
+                    .iter()
+                    .filter(|segment| segment.kind() == kind)
+                    .fold((0, 0), |(count, bytes), segment| {
+                        (count + 1, bytes + segment.byte_range().len())
+                    })
+            };
+            assert_eq!(
+                count_bytes(SyntaxSegmentKind::Token),
+                (token_count, token_bytes)
+            );
+            assert_eq!(
+                count_bytes(SyntaxSegmentKind::Trivia),
+                (trivia_count, trivia_bytes)
+            );
+            let reconstructed = arena
+                .indexed_segments()
+                .flat_map(|(index, _)| file.segment_source(index).unwrap())
+                .copied()
+                .collect::<Vec<_>>();
+            assert_eq!(reconstructed, source, "{path}");
+        }
+        assert!(analysis.parse_counts().values().all(|count| {
+            count.requested == 1
+                && count.owners == 1
+                && count.parser_invocations == 1
+                && count.reused == 0
+        }));
+    }
+
+    #[test]
     fn snapshot_types_are_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<SourceStore>();
@@ -1435,6 +1705,443 @@ mod tests {
         assert_send_sync::<ParseLedger>();
         assert_send_sync::<ParsedFile>();
         assert_send_sync::<ProjectAnalysis>();
+        assert_send_sync::<SyntaxArena>();
+    }
+
+    #[test]
+    fn owned_arena_is_deterministic_reciprocal_and_source_bound() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = b"fn greet(name: &str) {\n  // note\n  println!(\"h\xc3\xa9, {name}\");\n}\n";
+        let build = || {
+            let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+                .unwrap()
+                .with_overlay("arena.rs", source.to_vec())
+                .unwrap()
+                .build()
+                .unwrap();
+            ProjectAnalysis::build(snapshot).unwrap()
+        };
+        let first = build();
+        let second = build();
+        assert_eq!(first.id(), second.id());
+        let file = first.file(Path::new("arena.rs")).unwrap();
+        let arena = file.arena().expect("valid source owns an arena");
+        assert_eq!(arena.schema(), RAW_ARENA_SCHEMA);
+        assert_eq!(arena.schema(), "deslop-raw-arena/1");
+        assert_eq!(arena.grammar(), file.grammar());
+        assert_eq!(arena.source_len(), source.len());
+        assert_eq!(
+            arena,
+            second.file(Path::new("arena.rs")).unwrap().arena().unwrap()
+        );
+
+        let root = arena.node(arena.root()).unwrap();
+        assert!(root.parent().is_none());
+        assert_eq!(root.span().byte_range(), 0..source.len());
+        assert_eq!(file.node_source(arena.root()), Some(source.as_slice()));
+
+        let mut saw_field = false;
+        let mut saw_anonymous = false;
+        let mut saw_unicode_slice = false;
+        let mut saw_byte_column_after_unicode = false;
+        for (index, node) in arena.indexed_nodes() {
+            let raw_index = index.as_usize();
+            if node.field().is_some() {
+                saw_field = true;
+            }
+            if !node.is_named() {
+                saw_anonymous = true;
+            }
+            if file
+                .node_source(index)
+                .is_some_and(|bytes| bytes.windows(2).any(|pair| pair == "é".as_bytes()))
+            {
+                saw_unicode_slice = true;
+            }
+            if file.node_source(index) == Some(b"name".as_slice())
+                && node.span().start_point().row() == 0
+            {
+                let byte_column = source
+                    .windows(b"name".len())
+                    .position(|window| window == b"name")
+                    .unwrap();
+                assert_eq!(node.span().start_point().column(), byte_column);
+            }
+            assert!(!node.raw_kind().is_empty());
+            assert!(!node.raw_grammar_kind().is_empty());
+            for child_index in node.children() {
+                assert!(child_index.as_usize() > raw_index, "preorder child index");
+                let child = arena.node(*child_index).unwrap();
+                assert_eq!(child.parent(), Some(index));
+                assert!(child.span().start_byte() >= node.span().start_byte());
+                assert!(child.span().end_byte() <= node.span().end_byte());
+            }
+            if let Some(parent_index) = node.parent() {
+                assert!(
+                    arena
+                        .node(parent_index)
+                        .unwrap()
+                        .children()
+                        .contains(&index)
+                );
+            }
+            for segment_index in node.owned_segment_indices() {
+                assert_eq!(
+                    arena.segment(*segment_index).unwrap().owner(),
+                    SyntaxSegmentOwner::Node(index)
+                );
+            }
+        }
+        assert!(saw_field);
+        assert!(saw_anonymous);
+        assert!(saw_unicode_slice);
+        let unicode_line = b"fn f() { let text = \"h\xc3\xa9\"; let after = 1; }\n";
+        let unicode_snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("unicode.rs", unicode_line.to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let unicode_analysis = ProjectAnalysis::build(unicode_snapshot).unwrap();
+        let unicode_file = unicode_analysis.file(Path::new("unicode.rs")).unwrap();
+        for (index, node) in unicode_file.arena().unwrap().indexed_nodes() {
+            if unicode_file.node_source(index) == Some(b"after".as_slice()) {
+                let expected = unicode_line
+                    .windows(b"after".len())
+                    .position(|window| window == b"after")
+                    .unwrap();
+                assert_eq!(node.span().start_point().column(), expected);
+                assert!(
+                    expected
+                        > String::from_utf8_lossy(&unicode_line[..expected])
+                            .chars()
+                            .count()
+                );
+                saw_byte_column_after_unicode = true;
+            }
+        }
+        assert!(saw_byte_column_after_unicode);
+    }
+
+    #[test]
+    fn owned_arena_matches_private_tree_node_for_node() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = b"\t// caf\xc3\xa9 \xf0\x9f\x98\x80\r\nfn caf\xc3\xa9(\xcf\x80: i32) -> i32 {\n    \xcf\x80 + 1  \n}\n";
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("mirror.rs", source.to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let file = analysis.file(Path::new("mirror.rs")).unwrap();
+        let tree = file.tree.as_ref().unwrap();
+        let arena = file.arena().unwrap();
+        assert_eq!(source.len(), 58);
+        assert_eq!(file.line_starts(), &[0, 16, 43, 56, 58]);
+        assert_eq!(arena.nodes().len(), 22);
+        assert_eq!(arena.segments().len(), 28);
+        assert_eq!(
+            arena
+                .nodes()
+                .iter()
+                .map(|node| node.raw_kind())
+                .collect::<Vec<_>>(),
+            [
+                "source_file",
+                "line_comment",
+                "//",
+                "function_item",
+                "fn",
+                "identifier",
+                "parameters",
+                "(",
+                "parameter",
+                "identifier",
+                ":",
+                "primitive_type",
+                ")",
+                "->",
+                "primitive_type",
+                "block",
+                "{",
+                "binary_expression",
+                "identifier",
+                "+",
+                "integer_literal",
+                "}",
+            ]
+        );
+        let (token_count, token_bytes, trivia_count, trivia_bytes) =
+            arena
+                .segments()
+                .iter()
+                .fold((0, 0, 0, 0), |mut totals, segment| {
+                    let len = segment.byte_range().len();
+                    match segment.kind() {
+                        SyntaxSegmentKind::Token => {
+                            totals.0 += 1;
+                            totals.1 += len;
+                        }
+                        SyntaxSegmentKind::Trivia => {
+                            totals.2 += 1;
+                            totals.3 += len;
+                        }
+                    }
+                    totals
+                });
+        assert_eq!((token_count, token_bytes), (14, 26));
+        assert_eq!((trivia_count, trivia_bytes), (14, 32));
+
+        let mut expected = Vec::new();
+        let mut expected_children = Vec::<Vec<usize>>::new();
+        let mut pending: Vec<(tree_sitter::Node<'_>, Option<usize>, Option<&'static str>)> =
+            vec![(tree.root_node(), None, None)];
+        while let Some((node, parent, field)) = pending.pop() {
+            let index = expected.len();
+            expected.push((node, parent, field));
+            expected_children.push(Vec::new());
+            if let Some(parent) = parent {
+                expected_children[parent].push(index);
+            }
+            let mut cursor = node.walk();
+            let children = node
+                .children(&mut cursor)
+                .enumerate()
+                .map(|(child_index, child)| {
+                    (
+                        child,
+                        Some(index),
+                        node.field_name_for_child(child_index as u32),
+                    )
+                })
+                .collect::<Vec<_>>();
+            pending.extend(children.into_iter().rev());
+        }
+
+        assert_eq!(arena.nodes().len(), expected.len());
+        for (index, arena_node) in arena.indexed_nodes() {
+            let (tree_node, parent, field) = expected[index.as_usize()];
+            assert_eq!(arena_node.raw_kind(), tree_node.kind());
+            assert_eq!(arena_node.raw_kind_id(), tree_node.kind_id());
+            assert_eq!(arena_node.raw_grammar_kind(), tree_node.grammar_name());
+            assert_eq!(arena_node.raw_grammar_kind_id(), tree_node.grammar_id());
+            assert_eq!(arena_node.field(), field);
+            assert_eq!(arena_node.parent().map(ArenaNodeIndex::as_usize), parent);
+            assert_eq!(
+                arena_node
+                    .children()
+                    .iter()
+                    .map(|child| child.as_usize())
+                    .collect::<Vec<_>>(),
+                expected_children[index.as_usize()]
+            );
+            assert_eq!(arena_node.span().start_byte(), tree_node.start_byte());
+            assert_eq!(arena_node.span().end_byte(), tree_node.end_byte());
+            assert_eq!(
+                arena_node.span().start_point().row(),
+                tree_node.start_position().row
+            );
+            assert_eq!(
+                arena_node.span().start_point().column(),
+                tree_node.start_position().column
+            );
+            assert_eq!(
+                arena_node.span().end_point().row(),
+                tree_node.end_position().row
+            );
+            assert_eq!(
+                arena_node.span().end_point().column(),
+                tree_node.end_position().column
+            );
+            assert_eq!(arena_node.is_named(), tree_node.is_named());
+            assert_eq!(arena_node.is_extra(), tree_node.is_extra());
+            assert_eq!(arena_node.is_error(), tree_node.is_error());
+            assert_eq!(arena_node.is_missing(), tree_node.is_missing());
+            assert_eq!(arena_node.has_error(), tree_node.has_error());
+            assert_eq!(file.node_source(index), source.get(tree_node.byte_range()));
+        }
+    }
+
+    #[test]
+    fn arena_preserves_alias_kinds_and_repeated_fields() {
+        let temp = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("alias.rs", b"type A = Vec<String>;\n".to_vec())
+            .unwrap()
+            .with_overlay("fields.py", b"from pkg import a, b, c as d\n".to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+
+        let rust = analysis.file(Path::new("alias.rs")).unwrap();
+        let rust_arena = rust.arena().unwrap();
+        let aliased = rust_arena
+            .indexed_nodes()
+            .find(|(index, node)| {
+                node.raw_kind() == "type_identifier"
+                    && node.raw_grammar_kind() == "identifier"
+                    && rust.node_source(*index) == Some(b"A".as_slice())
+            })
+            .expect("Rust type alias must retain visible and grammar kind identities");
+        assert_ne!(aliased.1.raw_kind_id(), aliased.1.raw_grammar_kind_id());
+
+        let python = analysis.file(Path::new("fields.py")).unwrap();
+        let python_arena = python.arena().unwrap();
+        let repeated_name_fields = python_arena
+            .nodes()
+            .iter()
+            .map(|parent| {
+                parent
+                    .children()
+                    .iter()
+                    .filter(|child| python_arena.node(**child).unwrap().field() == Some("name"))
+                    .count()
+            })
+            .max()
+            .unwrap();
+        assert_eq!(repeated_name_fields, 3);
+    }
+
+    #[test]
+    fn token_and_trivia_segments_partition_every_source_byte_once() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = b"\n  fn value() -> &'static str { /* c */ \"h\xc3\xa9\" }\n\t";
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("partition.rs", source.to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let file = analysis.file(Path::new("partition.rs")).unwrap();
+        let arena = file.arena().unwrap();
+
+        let mut cursor = 0;
+        let mut reconstructed = Vec::new();
+        let mut token_count = 0;
+        let mut trivia_count = 0;
+        for (index, segment) in arena.indexed_segments() {
+            let range = segment.byte_range();
+            assert_eq!(range.start, cursor);
+            assert!(range.end > range.start);
+            reconstructed.extend_from_slice(file.segment_source(index).unwrap());
+            cursor = range.end;
+
+            let owner_index = match segment.owner() {
+                SyntaxSegmentOwner::File => {
+                    assert_eq!(segment.kind(), SyntaxSegmentKind::Trivia);
+                    let root = arena.node(arena.root()).unwrap().span();
+                    assert!(range.end <= root.start_byte() || range.start >= root.end_byte());
+                    continue;
+                }
+                SyntaxSegmentOwner::Node(owner) => owner,
+            };
+            let owner = arena.node(owner_index).unwrap();
+            assert!(owner.owned_segment_indices().contains(&index));
+            assert!(range.start >= owner.span().start_byte());
+            assert!(range.end <= owner.span().end_byte());
+            match segment.kind() {
+                SyntaxSegmentKind::Token => {
+                    token_count += 1;
+                    assert!(owner.is_leaf());
+                    assert_eq!(owner.span().byte_range(), range);
+                }
+                SyntaxSegmentKind::Trivia => {
+                    trivia_count += 1;
+                    if owner.is_leaf() {
+                        assert!(
+                            owner.is_extra() || {
+                                let mut ancestor = owner.parent();
+                                let mut within_extra = false;
+                                while let Some(index) = ancestor {
+                                    let node = arena.node(index).unwrap();
+                                    within_extra |= node.is_extra();
+                                    ancestor = node.parent();
+                                }
+                                within_extra
+                            }
+                        );
+                    } else {
+                        assert!(owner.children().iter().all(|child| {
+                            let child = arena.node(*child).unwrap().span();
+                            range.end <= child.start_byte() || range.start >= child.end_byte()
+                        }));
+                    }
+                }
+            }
+        }
+        assert_eq!(cursor, source.len());
+        assert_eq!(reconstructed, source);
+        assert!(token_count > 0);
+        assert!(trivia_count > 0);
+        assert_eq!(
+            analysis.parse_counts().values().next().copied(),
+            Some(FileParseCount {
+                requested: 1,
+                owners: 1,
+                parser_invocations: 1,
+                reused: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn empty_source_has_a_root_and_an_empty_byte_partition() {
+        let temp = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("empty.rs", Vec::new())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let file = analysis.file(Path::new("empty.rs")).unwrap();
+        let arena = file.arena().unwrap();
+        assert_eq!(arena.nodes().len(), 1);
+        assert_eq!(arena.node(arena.root()).unwrap().span().byte_range(), 0..0);
+        assert!(arena.segments().is_empty());
+        assert_eq!(arena.source_len(), 0);
+    }
+
+    #[test]
+    fn whitespace_only_source_is_root_owned_trivia() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = b"\t \r\n  \n";
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("whitespace.rs", source.to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let file = analysis.file(Path::new("whitespace.rs")).unwrap();
+        let arena = file.arena().unwrap();
+        let root = arena.node(arena.root()).unwrap();
+        assert_eq!(source.len(), 7);
+        assert_eq!(arena.nodes().len(), 1);
+        assert_eq!(root.span().byte_range(), 7..7);
+        assert_eq!(root.span().start_point().row(), 2);
+        assert_eq!(root.span().start_point().column(), 0);
+        assert_eq!(file.node_source(arena.root()), Some(b"".as_slice()));
+        assert_eq!(arena.segments().len(), 1);
+        assert_eq!(arena.segments()[0].kind(), SyntaxSegmentKind::Trivia);
+        assert_eq!(arena.segments()[0].byte_range(), 0..7);
+        assert_eq!(arena.segments()[0].owner(), SyntaxSegmentOwner::File);
+        assert!(root.owned_segment_indices().is_empty());
+        let segment_index = arena.indexed_segments().next().unwrap().0;
+        assert_eq!(file.segment_source(segment_index), Some(source.as_slice()));
+        assert_eq!(
+            analysis.parse_counts().values().next().copied(),
+            Some(FileParseCount {
+                requested: 1,
+                owners: 1,
+                parser_invocations: 1,
+                reused: 0,
+            })
+        );
     }
 
     #[test]
@@ -1454,6 +2161,7 @@ mod tests {
         assert_eq!(file.key().source, SourceRevision::for_bytes(&[0xff, 0xfe]));
         assert!(file.text().is_none());
         assert!(!file.has_tree());
+        assert!(!file.has_arena());
         assert_eq!(
             analysis.parse_counts().values().next().copied(),
             Some(FileParseCount {
