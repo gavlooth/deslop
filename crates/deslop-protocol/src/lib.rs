@@ -1,9 +1,14 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
+use anyhow::{Context as _, Result, bail};
+use deslop_analyzer::{
+    AnalyzerConfig, AnalyzerConfigSnapshot, ExternalCapability, ScanContext,
+    scan_paths_with_context,
+};
 use deslop_core::{
-    FileReport, Finding, RevisionGuard, SafetyClass, Severity, Span, baseline_fingerprint,
-    revision_guard,
+    AnalysisProvenance, FileReport, Finding, Lang, RevisionGuard, SafetyClass, Severity, Span,
+    baseline_fingerprint, revision_guard,
 };
 use deslop_parse::{SourceFile, analysis_provenance_or_failed};
 use serde::{Deserialize, Serialize};
@@ -11,10 +16,55 @@ use serde::{Deserialize, Serialize};
 macro_rules! protocol_struct {
     ($vis:vis struct $name:ident { $($field:ident: $type:ty),+ $(,)? }) => {
         #[derive(Debug, Clone, Serialize, Deserialize)]
+        #[serde(deny_unknown_fields)]
         $vis struct $name {
             $(pub $field: $type),+
         }
     };
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProposalScopeKind {
+    File,
+    Directory,
+}
+
+protocol_struct! {
+pub struct ProposalScope {
+    path: PathBuf,
+    kind: ProposalScopeKind,
+}
+}
+
+protocol_struct! {
+pub struct ProposalSource {
+    path: PathBuf,
+    lang: Lang,
+    revision_guard: RevisionGuard,
+    analysis: Option<AnalysisProvenance>,
+}
+}
+
+protocol_struct! {
+pub struct ProposalContext {
+    schema: String,
+    analyzer_semantics: String,
+    context_id: String,
+    requested_scope: Vec<ProposalScope>,
+    analyzer: AnalyzerConfigSnapshot,
+    excluded_fingerprints: Vec<String>,
+    sources: Vec<ProposalSource>,
+    external_capabilities: Vec<ExternalCapability>,
+    workorder_set_digest: String,
+}
+}
+
+#[derive(Debug, Clone)]
+pub struct ProposalBatch {
+    pub reports: Vec<FileReport>,
+    pub context: ProposalContext,
+    pub work_orders: Vec<WorkOrder>,
 }
 
 protocol_struct! {
@@ -68,6 +118,7 @@ pub struct WorkOrder {
     region: Region,
     region_fingerprint: String,
     revision_guard: RevisionGuard,
+    proposal_context: ProposalContext,
     findings: Vec<WorkOrderFinding>,
     instruction: String,
     contract: Contract,
@@ -86,6 +137,7 @@ pub struct Patch {
     schema: String,
     workorder_id: String,
     revision_guard: RevisionGuard,
+    proposal_context: ProposalContext,
     replacement: String,
     by: String,
 }
@@ -96,13 +148,14 @@ pub struct CharacterizationTest {
     schema: String,
     workorder_id: String,
     revision_guard: RevisionGuard,
+    proposal_context: ProposalContext,
     test_path: PathBuf,
     test_text: String,
     by: String,
 }
 }
 
-pub fn work_orders_for_report(source: &SourceFile, report: &FileReport) -> Vec<WorkOrder> {
+fn work_order_drafts_for_report(source: &SourceFile, report: &FileReport) -> Vec<WorkOrderDraft> {
     if source.path != report.path
         || source.lang != report.lang
         || !report.analysis.permits_rewrites()
@@ -110,10 +163,10 @@ pub fn work_orders_for_report(source: &SourceFile, report: &FileReport) -> Vec<W
     {
         return Vec::new();
     }
-    work_orders_for_source(source, &report.findings)
+    work_order_drafts_for_source(source, &report.findings)
 }
 
-fn work_orders_for_source(source: &SourceFile, findings: &[Finding]) -> Vec<WorkOrder> {
+fn work_order_drafts_for_source(source: &SourceFile, findings: &[Finding]) -> Vec<WorkOrderDraft> {
     let mut grouped: BTreeMap<RewriteRegionKey, Vec<&Finding>> = BTreeMap::new();
     for finding in findings
         .iter()
@@ -135,6 +188,36 @@ fn work_orders_for_source(source: &SourceFile, findings: &[Finding]) -> Vec<Work
         .collect()
 }
 
+#[cfg(test)]
+fn work_orders_for_source(source: &SourceFile, findings: &[Finding]) -> Vec<WorkOrder> {
+    work_orders_from_test_drafts(work_order_drafts_for_source(source, findings))
+}
+
+#[cfg(test)]
+fn work_orders_for_report(source: &SourceFile, report: &FileReport) -> Vec<WorkOrder> {
+    work_orders_from_test_drafts(work_order_drafts_for_report(source, report))
+}
+
+#[cfg(test)]
+fn work_orders_from_test_drafts(drafts: Vec<WorkOrderDraft>) -> Vec<WorkOrder> {
+    let mut context = ProposalContext {
+        schema: "deslop.proposal-context/1".to_string(),
+        analyzer_semantics: "deslop-analyzer/1".to_string(),
+        context_id: String::new(),
+        requested_scope: Vec::new(),
+        analyzer: AnalyzerConfig::default().snapshot(),
+        excluded_fingerprints: Vec::new(),
+        sources: Vec::new(),
+        external_capabilities: Vec::new(),
+        workorder_set_digest: digest_json("deslop workorder set v1", &drafts).expect("digest"),
+    };
+    context.context_id = proposal_context_id(&context).expect("context id");
+    drafts
+        .into_iter()
+        .map(|draft| draft.into_work_order(&context))
+        .collect()
+}
+
 pub fn region_fingerprint(path: &Path, region: &Region) -> String {
     baseline_fingerprint(path, "region", region_span(region), &region.text)
 }
@@ -147,17 +230,34 @@ pub fn workorder_revision_guard(work_order: &WorkOrder) -> &RevisionGuard {
     &work_order.revision_guard
 }
 
-pub fn workorder_id_for_region(path: &Path, region: &Region) -> String {
-    format!("wo2_{}", region_fingerprint(path, region))
+pub fn workorder_id_for_context(
+    path: &Path,
+    region: &Region,
+    proposal_context: &ProposalContext,
+) -> String {
+    let payload = format!(
+        "{}\0{}",
+        proposal_context.context_id,
+        region_fingerprint(path, region)
+    );
+    format!(
+        "wo3_{}",
+        blake3::derive_key("deslop workorder identity v3", payload.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    )
 }
 
 pub fn validate_workorder_identity(work_order: &WorkOrder) -> Result<(), String> {
-    if work_order.schema != "deslop.workorder/2" {
+    if work_order.schema != "deslop.workorder/3" {
         return Err(format!(
-            "unsupported workorder schema `{}`; regenerate as deslop.workorder/2",
+            "unsupported workorder schema `{}`; regenerate as deslop.workorder/3",
             work_order.schema
         ));
     }
+    validate_proposal_context(&work_order.proposal_context)?;
+    validate_repo_path(&work_order.path, false)?;
     let fingerprint = region_fingerprint(&work_order.path, &work_order.region);
     if work_order.region_fingerprint != fingerprint {
         return Err(
@@ -169,7 +269,11 @@ pub fn validate_workorder_identity(work_order: &WorkOrder) -> Result<(), String>
     if work_order.revision_guard != guard {
         return Err("workorder revision_guard does not match its exact region bytes".to_string());
     }
-    let id = workorder_id_for_region(&work_order.path, &work_order.region);
+    let id = workorder_id_for_context(
+        &work_order.path,
+        &work_order.region,
+        &work_order.proposal_context,
+    );
     if work_order.id != id {
         return Err(format!(
             "workorder id `{}` does not match expected `{id}`",
@@ -177,6 +281,407 @@ pub fn validate_workorder_identity(work_order: &WorkOrder) -> Result<(), String>
         ));
     }
     Ok(())
+}
+
+pub fn validate_proposal_context(context: &ProposalContext) -> Result<(), String> {
+    if context.schema != "deslop.proposal-context/1" {
+        return Err(format!(
+            "unsupported proposal context schema `{}`",
+            context.schema
+        ));
+    }
+    let expected = proposal_context_id(context).map_err(|error| error.to_string())?;
+    if context.context_id != expected {
+        return Err("proposal context_id does not match its canonical payload".to_string());
+    }
+    for scope in &context.requested_scope {
+        validate_repo_path(&scope.path, true)?;
+    }
+    for source in &context.sources {
+        validate_repo_path(&source.path, false)?;
+    }
+    for capability in &context.external_capabilities {
+        validate_repo_path(&capability.path, false)?;
+    }
+    if let Some(project) = &context.analyzer.julia_project {
+        validate_repo_path(project, true)?;
+    }
+    Ok(())
+}
+
+fn validate_repo_path(path: &Path, allow_empty: bool) -> Result<(), String> {
+    if !allow_empty && path.as_os_str().is_empty() {
+        return Err("proposal paths must not be empty".to_string());
+    }
+    if path
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(format!(
+            "proposal path `{}` must be normalized and root-relative",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+pub fn propose_work_orders(
+    root: &Path,
+    requested_scope: &[PathBuf],
+    config: AnalyzerConfig,
+) -> Result<ProposalBatch> {
+    propose_work_orders_with_exclusions(root, requested_scope, config, &[])
+}
+
+pub fn propose_work_orders_with_exclusions(
+    root: &Path,
+    requested_scope: &[PathBuf],
+    mut config: AnalyzerConfig,
+    excluded_fingerprints: &[String],
+) -> Result<ProposalBatch> {
+    let root = root
+        .canonicalize()
+        .with_context(|| format!("failed to resolve proposal root {}", root.display()))?;
+    let scope = normalize_scope(&root, requested_scope)?;
+    let scan_paths = scope
+        .iter()
+        .map(|entry| root.join(&entry.path))
+        .collect::<Vec<_>>();
+    if let Some(project) = &config.julia_project {
+        let project = if project.is_absolute() {
+            project.clone()
+        } else {
+            root.join(project)
+        };
+        config.julia_project =
+            Some(project.canonicalize().with_context(|| {
+                format!("failed to resolve Julia project {}", project.display())
+            })?);
+    }
+    config.suppression = config.suppression.clone().with_match_root(root.clone());
+    let mut analyzer = config.snapshot();
+    normalize_analyzer_paths(&root, &mut analyzer)?;
+    let scan = scan_paths_with_context(&scan_paths, config)?;
+    proposal_batch_from_scan(&root, scope, analyzer, excluded_fingerprints.to_vec(), scan)
+}
+
+fn proposal_batch_from_scan(
+    root: &Path,
+    requested_scope: Vec<ProposalScope>,
+    analyzer: AnalyzerConfigSnapshot,
+    mut excluded_fingerprints: Vec<String>,
+    mut scan: ScanContext,
+) -> Result<ProposalBatch> {
+    excluded_fingerprints.sort();
+    excluded_fingerprints.dedup();
+    if !excluded_fingerprints.is_empty() {
+        let input_contents = &scan.input_contents;
+        for report in &mut scan.reports {
+            let relative = normalized_repo_path(root, &report.path)?;
+            let source = input_contents
+                .get(&report.path)
+                .map(|text| SourceFile::new_with_lang(relative, text.clone(), report.lang));
+            report.findings.retain(|finding| {
+                if excluded_fingerprints
+                    .binary_search(&finding.fingerprint)
+                    .is_ok()
+                {
+                    return false;
+                }
+                let Some(source) = &source else {
+                    return true;
+                };
+                let text = source.region_text(finding.span.start_line, finding.span.end_line);
+                let normalized =
+                    baseline_fingerprint(&source.path, &finding.rule, finding.span, &text);
+                excluded_fingerprints.binary_search(&normalized).is_err()
+            });
+        }
+    }
+    let mut drafts = Vec::new();
+    for report in &scan.reports {
+        let source = SourceFile::read(&report.path)?;
+        drafts.extend(work_order_drafts_for_report(&source, report));
+    }
+    for draft in &mut drafts {
+        draft.normalize_path(root)?;
+    }
+    drafts.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(a.region.start_byte.cmp(&b.region.start_byte))
+            .then(a.region_fingerprint.cmp(&b.region_fingerprint))
+    });
+    let workorder_set_digest = digest_json("deslop workorder set v1", &drafts)?;
+    let sources = proposal_sources(root, &scan)?;
+    let external_capabilities = normalize_external_capabilities(root, scan.external_capabilities)?;
+    let mut context = ProposalContext {
+        schema: "deslop.proposal-context/1".to_string(),
+        analyzer_semantics: "deslop-analyzer/1".to_string(),
+        context_id: String::new(),
+        requested_scope,
+        analyzer,
+        excluded_fingerprints,
+        sources,
+        external_capabilities,
+        workorder_set_digest,
+    };
+    context.context_id = proposal_context_id(&context)?;
+    let work_orders = drafts
+        .into_iter()
+        .map(|draft| draft.into_work_order(&context))
+        .collect();
+    Ok(ProposalBatch {
+        reports: scan.reports,
+        context,
+        work_orders,
+    })
+}
+
+pub fn reconstruct_proposal(root: &Path, context: &ProposalContext) -> Result<ProposalBatch> {
+    validate_proposal_context(context).map_err(anyhow::Error::msg)?;
+    if context.analyzer_semantics != "deslop-analyzer/1" {
+        bail!(
+            "unsupported analyzer semantics `{}`",
+            context.analyzer_semantics
+        );
+    }
+    let root = root
+        .canonicalize()
+        .with_context(|| format!("failed to resolve verification root {}", root.display()))?;
+    let mut analyzer_snapshot = context.analyzer.clone();
+    restore_analyzer_paths(&root, &mut analyzer_snapshot)?;
+    let mut config = analyzer_snapshot.to_config()?;
+    config.suppression = config.suppression.clone().with_match_root(root.clone());
+    let scope = context
+        .requested_scope
+        .iter()
+        .map(|entry| {
+            let path = root.join(&entry.path);
+            let kind_matches = match entry.kind {
+                ProposalScopeKind::File => path.is_file(),
+                ProposalScopeKind::Directory => path.is_dir(),
+            };
+            if !kind_matches {
+                bail!(
+                    "proposal context no longer matches requested scope kind at {}",
+                    entry.path.display()
+                );
+            }
+            Ok(path)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let scan = scan_paths_with_context(&scope, config)?;
+    let rebuilt = proposal_batch_from_scan(
+        &root,
+        context.requested_scope.clone(),
+        context.analyzer.clone(),
+        context.excluded_fingerprints.clone(),
+        scan,
+    )?;
+    if rebuilt.context.context_id != context.context_id {
+        bail!("proposal context no longer matches current scope, sources, analysis, or capability");
+    }
+    Ok(rebuilt)
+}
+
+pub fn runtime_scope_matches(
+    root: &Path,
+    paths: &[PathBuf],
+    context: &ProposalContext,
+) -> Result<bool> {
+    let root = root
+        .canonicalize()
+        .with_context(|| format!("failed to resolve verification root {}", root.display()))?;
+    let normalized = normalize_scope(&root, paths)?;
+    Ok(normalized.len() == context.requested_scope.len()
+        && normalized
+            .iter()
+            .zip(&context.requested_scope)
+            .all(|(left, right)| left.path == right.path && left.kind == right.kind))
+}
+
+fn normalize_scope(root: &Path, paths: &[PathBuf]) -> Result<Vec<ProposalScope>> {
+    let paths = if paths.is_empty() {
+        vec![root.to_path_buf()]
+    } else {
+        paths
+            .iter()
+            .map(|path| {
+                if path.is_absolute() {
+                    path.clone()
+                } else {
+                    root.join(path)
+                }
+            })
+            .collect()
+    };
+    let mut scope = Vec::new();
+    for path in paths {
+        let kind = if path.is_file() {
+            ProposalScopeKind::File
+        } else if path.is_dir() {
+            ProposalScopeKind::Directory
+        } else {
+            bail!("proposal scope does not exist: {}", path.display());
+        };
+        let canonical = path
+            .canonicalize()
+            .with_context(|| format!("failed to resolve proposal scope {}", path.display()))?;
+        let relative = canonical.strip_prefix(root).with_context(|| {
+            format!(
+                "proposal scope {} escapes root {}",
+                canonical.display(),
+                root.display()
+            )
+        })?;
+        scope.push(ProposalScope {
+            path: relative.to_path_buf(),
+            kind,
+        });
+    }
+    scope.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(scope_kind_order(a.kind).cmp(&scope_kind_order(b.kind)))
+    });
+    scope.dedup_by(|a, b| a.path == b.path && a.kind == b.kind);
+    let directories = scope
+        .iter()
+        .filter(|entry| entry.kind == ProposalScopeKind::Directory)
+        .map(|entry| entry.path.clone())
+        .collect::<Vec<_>>();
+    scope.retain(|entry| {
+        !directories
+            .iter()
+            .any(|directory| entry.path != *directory && entry.path.starts_with(directory))
+    });
+    Ok(scope)
+}
+
+fn scope_kind_order(kind: ProposalScopeKind) -> u8 {
+    match kind {
+        ProposalScopeKind::File => 0,
+        ProposalScopeKind::Directory => 1,
+    }
+}
+
+fn proposal_sources(root: &Path, scan: &ScanContext) -> Result<Vec<ProposalSource>> {
+    let analyses = scan
+        .reports
+        .iter()
+        .map(|report| {
+            let path = normalized_repo_path(root, &report.path)?;
+            Ok((path, (report.lang, report.analysis.clone())))
+        })
+        .collect::<Result<BTreeMap<_, _>>>()?;
+    let mut sources = Vec::new();
+    for (path, text) in &scan.input_contents {
+        let relative = normalized_repo_path(root, path)?;
+        let current = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to recheck proposal input {}", path.display()))?;
+        if current != *text {
+            bail!("proposal input changed during analysis: {}", path.display());
+        }
+        let (lang, analysis) = analyses
+            .get(&relative)
+            .cloned()
+            .map_or((Lang::Generic, None), |(lang, analysis)| {
+                (lang, Some(analysis))
+            });
+        let lines = text.lines().count().max(1);
+        sources.push(ProposalSource {
+            path: relative.clone(),
+            lang,
+            revision_guard: revision_guard(&relative, Span::new(1, lines, 0, text.len()), text),
+            analysis,
+        });
+    }
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(sources)
+}
+
+fn normalize_external_capabilities(
+    root: &Path,
+    capabilities: Vec<ExternalCapability>,
+) -> Result<Vec<ExternalCapability>> {
+    let mut normalized = capabilities
+        .into_iter()
+        .map(|mut capability| {
+            capability.path = normalized_repo_path(root, &capability.path)?;
+            capability.covered_rules.sort();
+            capability.covered_rules.dedup();
+            Ok(capability)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    normalized.sort_by(|a, b| a.path.cmp(&b.path).then(a.analyzer.cmp(&b.analyzer)));
+    Ok(normalized)
+}
+
+fn normalized_repo_path(root: &Path, path: &Path) -> Result<PathBuf> {
+    let canonical = path
+        .canonicalize()
+        .with_context(|| format!("failed to resolve proposal input {}", path.display()))?;
+    Ok(canonical
+        .strip_prefix(root)
+        .with_context(|| {
+            format!(
+                "proposal input {} escapes root {}",
+                canonical.display(),
+                root.display()
+            )
+        })?
+        .to_path_buf())
+}
+
+fn normalize_analyzer_paths(root: &Path, analyzer: &mut AnalyzerConfigSnapshot) -> Result<()> {
+    if let Some(path) = &analyzer.julia_project {
+        analyzer.julia_project = Some(normalized_repo_path(root, path)?);
+    }
+    canonicalize_analyzer(analyzer);
+    Ok(())
+}
+
+fn restore_analyzer_paths(root: &Path, analyzer: &mut AnalyzerConfigSnapshot) -> Result<()> {
+    if let Some(path) = &analyzer.julia_project {
+        let restored = root.join(path);
+        let canonical = restored
+            .canonicalize()
+            .with_context(|| format!("failed to resolve Julia project {}", restored.display()))?;
+        if !canonical.starts_with(root) {
+            bail!("Julia project escapes verification root");
+        }
+        analyzer.julia_project = Some(canonical);
+    }
+    Ok(())
+}
+
+fn canonicalize_analyzer(analyzer: &mut AnalyzerConfigSnapshot) {
+    analyzer.boundary.extra_sinks.sort();
+    analyzer.boundary.extra_sinks.dedup();
+    analyzer.boundary.ignore_keys.sort();
+    analyzer.boundary.ignore_keys.dedup();
+    analyzer.boundary.skip_artifacts.sort();
+    analyzer.boundary.skip_artifacts.dedup();
+}
+
+fn proposal_context_id(context: &ProposalContext) -> Result<String> {
+    let mut payload = context.clone();
+    payload.context_id.clear();
+    digest_json("deslop proposal context v1", &payload)
+        .map(|digest| digest.replacen("dg1_", "pc1_", 1))
+}
+
+fn digest_json<T: Serialize>(domain: &str, value: &T) -> Result<String> {
+    let bytes = serde_json::to_vec(value)?;
+    let digest = blake3::derive_key(domain, &bytes);
+    Ok(format!(
+        "dg1_{}",
+        digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    ))
 }
 
 fn region_span(region: &Region) -> Span {
@@ -269,15 +774,50 @@ fn safety_order(safety: SafetyClass) -> u8 {
     }
 }
 
-fn work_order_for_findings(key: RewriteRegionKey, findings: Vec<&Finding>) -> WorkOrder {
+#[derive(Debug, Clone, Serialize)]
+struct WorkOrderDraft {
+    kind: WorkOrderKind,
+    path: PathBuf,
+    region: Region,
+    region_fingerprint: String,
+    revision_guard: RevisionGuard,
+    findings: Vec<WorkOrderFinding>,
+    instruction: String,
+    contract: Contract,
+}
+
+impl WorkOrderDraft {
+    fn normalize_path(&mut self, root: &Path) -> Result<()> {
+        self.path = normalized_repo_path(root, &self.path)?;
+        self.region_fingerprint = region_fingerprint(&self.path, &self.region);
+        self.revision_guard = region_revision_guard(&self.path, &self.region);
+        Ok(())
+    }
+
+    fn into_work_order(self, context: &ProposalContext) -> WorkOrder {
+        let id = workorder_id_for_context(&self.path, &self.region, context);
+        WorkOrder {
+            schema: "deslop.workorder/3".to_string(),
+            kind: self.kind,
+            id,
+            path: self.path,
+            region: self.region,
+            region_fingerprint: self.region_fingerprint,
+            revision_guard: self.revision_guard,
+            proposal_context: context.clone(),
+            findings: self.findings,
+            instruction: self.instruction,
+            contract: self.contract,
+        }
+    }
+}
+
+fn work_order_for_findings(key: RewriteRegionKey, findings: Vec<&Finding>) -> WorkOrderDraft {
     let region = key.region();
-    let id = workorder_id_for_region(&key.path, &region);
     let region_fingerprint = region_fingerprint(&key.path, &region);
     let revision_guard = region_revision_guard(&key.path, &region);
-    WorkOrder {
-        schema: "deslop.workorder/2".to_string(),
+    WorkOrderDraft {
         kind: WorkOrderKind::RewriteRegion,
-        id,
         path: key.path,
         region,
         region_fingerprint,
@@ -300,13 +840,14 @@ fn work_order_finding(finding: &Finding) -> WorkOrderFinding {
 
 pub fn characterization_work_order_for(work_order: &WorkOrder) -> WorkOrder {
     WorkOrder {
-        schema: "deslop.workorder/2".to_string(),
+        schema: "deslop.workorder/3".to_string(),
         kind: WorkOrderKind::NeedsCharacterizationTest,
         id: work_order.id.to_owned(),
         path: work_order.path.to_path_buf(),
         region: work_order.region.clone(),
         region_fingerprint: work_order.region_fingerprint.to_owned(),
         revision_guard: work_order.revision_guard.clone(),
+        proposal_context: work_order.proposal_context.clone(),
         findings: vec![WorkOrderFinding {
             rule: "needs-characterization-test".to_string(),
             severity: Severity::Major,
@@ -314,7 +855,7 @@ pub fn characterization_work_order_for(work_order: &WorkOrder) -> WorkOrder {
             message: "region has a weak test oracle; generate a characterization test before removal".to_string(),
             precondition: None,
         }],
-        instruction: "Write a test that pins the current observable behavior of this exact region. Do not change production behavior. Return deslop.characterization-test/2 JSONL with test_path and test_text; the test must compile and pass against the current unmodified code.".to_string(),
+        instruction: "Write a test that pins the current observable behavior of this exact region. Do not change production behavior. Return deslop.characterization-test/3 JSONL with test_path and test_text; copy proposal_context exactly; the test must compile and pass against the current unmodified code.".to_string(),
         contract: Contract {
             must_parse: true,
             no_new_public_defs: false,
@@ -329,6 +870,7 @@ pub fn characterization_work_order_for(work_order: &WorkOrder) -> WorkOrder {
 mod tests {
     use super::*;
     use deslop_core::{DetectedBy, SafetyClass, Severity, Span};
+    use std::fs;
 
     fn finding(source: &SourceFile, line: usize, rule: &str, safety: SafetyClass) -> Finding {
         Finding {
@@ -369,12 +911,12 @@ mod tests {
         };
         let work_order = work_orders_for_source(&source, &[finding]).remove(0);
         let value = serde_json::to_value(&work_order).expect("json");
-        assert_eq!(value["schema"], "deslop.workorder/2");
+        assert_eq!(value["schema"], "deslop.workorder/3");
         assert_eq!(value["kind"], "rewrite-region");
         assert!(
             value["id"]
                 .as_str()
-                .is_some_and(|id| id.starts_with("wo2_"))
+                .is_some_and(|id| id.starts_with("wo3_"))
         );
         assert!(value.get("path").is_some());
         assert_eq!(value["region"]["start_byte"], 0);
@@ -392,7 +934,7 @@ mod tests {
     }
 
     #[test]
-    fn workorder_identity_survives_outer_whitespace_but_revision_guard_expires() {
+    fn region_identity_survives_outer_whitespace_but_context_bound_workorder_expires() {
         let original = SourceFile::new(PathBuf::from("sample.rs"), "value();\n".into());
         let changed = SourceFile::new(PathBuf::from("sample.rs"), " value();\n".into());
         let original_order = work_orders_for_source(
@@ -410,7 +952,7 @@ mod tests {
             original_order.region_fingerprint,
             changed_order.region_fingerprint
         );
-        assert_eq!(original_order.id, changed_order.id);
+        assert_ne!(original_order.id, changed_order.id);
         assert_ne!(original_order.revision_guard, changed_order.revision_guard);
     }
 
@@ -589,5 +1131,114 @@ mod tests {
             vec![(1, 6), (3, 5)]
         );
         assert_ne!(work_orders[0].id, work_orders[1].id);
+    }
+
+    #[test]
+    fn non_default_analyzer_context_reconstructs_without_default_rescan() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = temp.path().join("short.rs");
+        fs::write(
+            &source,
+            "fn short() {\n    let a = 1;\n    let b = 2;\n    let c = 3;\n    println!(\"{}\", a + b + c);\n}\n",
+        )
+        .expect("source");
+        let config = AnalyzerConfig {
+            long_method_nloc: 4,
+            ..AnalyzerConfig::default()
+        };
+
+        let batch = propose_work_orders(temp.path(), &[source], config).expect("proposal");
+        assert_eq!(batch.context.analyzer.long_method_nloc, 4);
+        assert!(batch.work_orders.iter().any(|work_order| {
+            work_order
+                .findings
+                .iter()
+                .any(|finding| finding.rule == "long-method")
+        }));
+
+        let rebuilt = reconstruct_proposal(temp.path(), &batch.context).expect("reconstruct");
+        assert_eq!(rebuilt.context.context_id, batch.context.context_id);
+        assert_eq!(
+            rebuilt.context.workorder_set_digest,
+            batch.context.workorder_set_digest
+        );
+
+        let finding = batch
+            .reports
+            .iter()
+            .flat_map(|report| &report.findings)
+            .find(|finding| finding.rule == "long-method")
+            .expect("long-method finding");
+        let relative_source = SourceFile::new_with_lang(
+            PathBuf::from("short.rs"),
+            fs::read_to_string(temp.path().join("short.rs")).expect("source text"),
+            Lang::Rust,
+        );
+        let normalized_fingerprint = baseline_fingerprint(
+            &relative_source.path,
+            &finding.rule,
+            finding.span,
+            &relative_source.region_text(finding.span.start_line, finding.span.end_line),
+        );
+        let filtered = propose_work_orders_with_exclusions(
+            temp.path(),
+            &[temp.path().join("short.rs")],
+            AnalyzerConfig {
+                long_method_nloc: 4,
+                ..AnalyzerConfig::default()
+            },
+            std::slice::from_ref(&normalized_fingerprint),
+        )
+        .expect("baseline-filtered proposal");
+        assert_eq!(
+            filtered.context.excluded_fingerprints,
+            [normalized_fingerprint]
+        );
+        assert!(!filtered.work_orders.iter().any(|work_order| {
+            work_order
+                .findings
+                .iter()
+                .any(|finding| finding.rule == "long-method")
+        }));
+    }
+
+    #[test]
+    fn peer_revision_and_context_tampering_fail_closed() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            temp.path().join("target.rs"),
+            "fn target() -> i32 { return 1; }\n",
+        )
+        .expect("target");
+        let peer = temp.path().join("peer.rs");
+        fs::write(&peer, "fn peer() -> i32 { 2 }\n").expect("peer");
+        let batch = propose_work_orders(
+            temp.path(),
+            &[temp.path().to_path_buf()],
+            AnalyzerConfig::default(),
+        )
+        .expect("proposal");
+
+        let mut tampered = batch.context.clone();
+        tampered.analyzer.long_method_nloc += 1;
+        assert!(validate_proposal_context(&tampered).is_err());
+
+        let mut escaping = batch.context.clone();
+        escaping.requested_scope[0].path = PathBuf::from("../outside");
+        escaping.context_id = proposal_context_id(&escaping).expect("recomputed digest");
+        assert!(
+            validate_proposal_context(&escaping)
+                .expect_err("root escape must fail")
+                .contains("root-relative")
+        );
+
+        fs::write(peer, "fn peer() -> i32 { 3 }\n").expect("mutate peer");
+        let error = reconstruct_proposal(temp.path(), &batch.context)
+            .expect_err("peer revision must expire context");
+        assert!(
+            error
+                .to_string()
+                .contains("proposal context no longer matches")
+        );
     }
 }

@@ -16,9 +16,9 @@ dependency.** The tool is fully useful with the LLM feature compiled out.
 
 The product is the **deterministic analyzer + its output contract**, not a bundled model:
 
-- **`propose`** emits work orders (`deslop.workorder/2`) with separate matching identity and exact-byte revision guard.
+- **`propose`** emits work orders (`deslop.workorder/3`) with canonical analyzer/scope/source context, separate matching identity, and exact-byte revision guard.
 - An LLM (Claude Code, Cursor, Codex, a CI bot, or the optional built-in consumer) rewrites regions.
-- **`verify` / `apply`** are the deterministic safety gate (`deslop.patch/2`): re-parse, run your
+- **`verify` / `apply`** are the deterministic safety gate (`deslop.patch/3`): reconstruct the persisted proposal, re-parse, run your
   `--check-cmd`, match the exact `revision_guard`, and only apply changes that clear the gate.
 
 ## Install
@@ -39,7 +39,7 @@ cargo install --path crates/deslop-cli --features mcp   # CLI + MCP server
 | `deslop propose <paths>` | Work orders for non-safe-auto findings |
 | `deslop fix` | The bundled LLM consumer: propose → rewrite → verify → apply |
 | `deslop fix --diff` | Preview deterministic safe-auto edits as a unified diff without writing |
-| `deslop verify` / `apply` | Verify / atomically apply `deslop.patch/2` patches |
+| `deslop verify` / `apply` | Verify / atomically apply self-contained `deslop.patch/3` patches |
 | `deslop characterize` / `verify-characterization` | Generate/accept behavior-pinning tests for risky regions |
 | `deslop baseline` / `scan --baseline` | Snapshot findings; gate only on regressions |
 | `deslop eval` | Run the labeled corpus; per-rule precision/recall |

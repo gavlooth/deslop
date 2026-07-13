@@ -8,13 +8,15 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use deslop_analyzer::scan_paths;
 use deslop_core::Lang;
 use deslop_mutate::{generate_mutants, supports_lang as supports_mutation_lang};
 use deslop_parse::{SourceFile, source_parses_without_errors};
+#[cfg(test)]
+use deslop_protocol::propose_work_orders;
 use deslop_protocol::{
-    CharacterizationTest, Patch, WorkOrder, characterization_work_order_for,
-    validate_workorder_identity, work_orders_for_report, workorder_revision_guard,
+    CharacterizationTest, Patch, ProposalContext, WorkOrder, characterization_work_order_for,
+    reconstruct_proposal, runtime_scope_matches, validate_proposal_context,
+    validate_workorder_identity, workorder_revision_guard,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -265,7 +267,7 @@ pub fn load_characterization_tests(path: &Path) -> Result<Vec<CharacterizationTe
 }
 
 pub fn parse_patches_jsonl(text: &str) -> Result<Vec<Patch>> {
-    let patches = parse_jsonl_records(text, "patch", "deslop.patch/2", |patch: &Patch| {
+    let patches = parse_jsonl_records(text, "patch", "deslop.patch/3", |patch: &Patch| {
         patch.schema.as_str()
     })?;
     ensure_unique_patch_ids(&patches)?;
@@ -276,7 +278,7 @@ pub fn parse_characterization_tests_jsonl(text: &str) -> Result<Vec<Characteriza
     parse_jsonl_records(
         text,
         "characterization test",
-        "deslop.characterization-test/2",
+        "deslop.characterization-test/3",
         |test: &CharacterizationTest| test.schema.as_str(),
     )
 }
@@ -329,7 +331,7 @@ pub fn characterization_work_orders_for_patches(
     options: &VerifyOptions,
 ) -> Result<Vec<WorkOrder>> {
     let report = verify_patches(patches, options)?;
-    let work_orders = current_work_orders_for_options(options)?;
+    let work_orders = current_work_orders_for_patches(patches, options)?;
     let mut out = Vec::new();
     for result in report
         .results
@@ -348,7 +350,7 @@ pub fn verify_characterization_tests(
     options: &VerifyOptions,
 ) -> Result<CharacterizationReport> {
     validate_characterization_test_schemas(tests)?;
-    let work_orders = current_work_orders_for_options(options)?;
+    let work_orders = current_work_orders_for_tests(tests, options)?;
     let mut results = Vec::new();
     for test in tests {
         results.push(verify_one_characterization_test(
@@ -367,7 +369,7 @@ pub fn verify_patches(patches: &[Patch], options: &VerifyOptions) -> Result<Veri
     validate_patch_schemas(patches)?;
     validate_characterization_test_schemas(&options.characterization_tests)?;
     ensure_unique_patch_ids(patches)?;
-    let mut run = verification_run(options)?;
+    let mut run = verification_run(patches, options)?;
     let mut results = Vec::new();
     for patch in patches {
         let result = verify_one_patch(
@@ -393,7 +395,7 @@ pub fn apply_patches(
     validate_patch_schemas(patches)?;
     validate_characterization_test_schemas(&options.characterization_tests)?;
     ensure_unique_patch_ids(patches)?;
-    let mut run = verification_run(options)?;
+    let mut run = verification_run(patches, options)?;
     let mut results = Vec::new();
     let mut prepared = Vec::new();
     for patch in patches {
@@ -445,9 +447,9 @@ fn ensure_unique_patch_ids(patches: &[Patch]) -> Result<()> {
 
 fn validate_patch_schemas(patches: &[Patch]) -> Result<()> {
     for (idx, patch) in patches.iter().enumerate() {
-        if patch.schema != "deslop.patch/2" {
+        if patch.schema != "deslop.patch/3" {
             bail!(
-                "patch record {} has unsupported schema `{}`; legacy patches use a normalized fingerprint and must be regenerated as deslop.patch/2",
+                "patch record {} has unsupported schema `{}`; regenerate it as deslop.patch/3 with proposal_context",
                 idx + 1,
                 patch.schema
             );
@@ -458,9 +460,9 @@ fn validate_patch_schemas(patches: &[Patch]) -> Result<()> {
 
 fn validate_characterization_test_schemas(tests: &[CharacterizationTest]) -> Result<()> {
     for (idx, test) in tests.iter().enumerate() {
-        if test.schema != "deslop.characterization-test/2" {
+        if test.schema != "deslop.characterization-test/3" {
             bail!(
-                "characterization test record {} has unsupported schema `{}`; regenerate it as deslop.characterization-test/2",
+                "characterization test record {} has unsupported schema `{}`; regenerate it as deslop.characterization-test/3 with proposal_context",
                 idx + 1,
                 test.schema
             );
@@ -469,9 +471,9 @@ fn validate_characterization_test_schemas(tests: &[CharacterizationTest]) -> Res
     Ok(())
 }
 
-fn verification_run(options: &VerifyOptions) -> Result<VerificationRun> {
+fn verification_run(patches: &[Patch], options: &VerifyOptions) -> Result<VerificationRun> {
     Ok(VerificationRun {
-        work_orders: current_work_orders_for_options(options)?,
+        work_orders: current_work_orders_for_patches(patches, options)?,
         coverage: CoverageRegistry::new(&options.coverage),
         mutation: MutationRegistry::new(&options.mutation),
     })
@@ -3085,35 +3087,52 @@ fn push_lcov_file(
     });
 }
 
-#[cfg(test)]
-fn current_work_orders(root: &Path) -> Result<BTreeMap<String, WorkOrder>> {
-    current_work_orders_for_paths(&[root.to_path_buf()])
+fn current_work_orders_for_patches(
+    patches: &[Patch],
+    options: &VerifyOptions,
+) -> Result<BTreeMap<String, WorkOrder>> {
+    current_work_orders_for_contexts(patches.iter().map(|patch| &patch.proposal_context), options)
 }
 
-fn current_work_orders_for_options(options: &VerifyOptions) -> Result<BTreeMap<String, WorkOrder>> {
-    let paths = options
-        .scope
-        .as_deref()
-        .map_or_else(|| vec![options.root.clone()], <[PathBuf]>::to_vec);
-    current_work_orders_for_paths(&paths)
+fn current_work_orders_for_tests(
+    tests: &[CharacterizationTest],
+    options: &VerifyOptions,
+) -> Result<BTreeMap<String, WorkOrder>> {
+    current_work_orders_for_contexts(tests.iter().map(|test| &test.proposal_context), options)
 }
 
-fn current_work_orders_for_paths(paths: &[PathBuf]) -> Result<BTreeMap<String, WorkOrder>> {
-    let reports = scan_paths(paths)?;
+fn current_work_orders_for_contexts<'a>(
+    contexts: impl IntoIterator<Item = &'a ProposalContext>,
+    options: &VerifyOptions,
+) -> Result<BTreeMap<String, WorkOrder>> {
+    let mut contexts = contexts.into_iter();
+    let Some(context) = contexts.next() else {
+        return Ok(BTreeMap::new());
+    };
+    validate_proposal_context(context).map_err(anyhow::Error::msg)?;
+    for other in contexts {
+        validate_proposal_context(other).map_err(anyhow::Error::msg)?;
+        if other.context_id != context.context_id {
+            bail!("all records in one verify/apply request must share one proposal_context");
+        }
+    }
+    if let Some(scope) = &options.scope
+        && !runtime_scope_matches(&options.root, scope, context)?
+    {
+        bail!("runtime scope does not match the scope persisted in proposal_context");
+    }
+    let batch = reconstruct_proposal(&options.root, context)?;
     let mut out = BTreeMap::new();
-    for report in reports {
-        let source = SourceFile::read(&report.path)?;
-        for work_order in work_orders_for_report(&source, &report) {
-            validate_workorder_identity(&work_order).map_err(anyhow::Error::msg)?;
-            let id = work_order.id.to_owned();
-            if let Some(existing) = out.insert(id.to_owned(), work_order) {
-                bail!(
-                    "generated duplicate workorder id `{id}` for {}:{}-{}",
-                    existing.path.display(),
-                    existing.region.start_line,
-                    existing.region.end_line
-                );
-            }
+    for work_order in batch.work_orders {
+        validate_workorder_identity(&work_order).map_err(anyhow::Error::msg)?;
+        let id = work_order.id.to_owned();
+        if let Some(existing) = out.insert(id.to_owned(), work_order) {
+            bail!(
+                "generated duplicate workorder id `{id}` for {}:{}-{}",
+                existing.path.display(),
+                existing.region.start_line,
+                existing.region.end_line
+            );
         }
     }
     Ok(out)
@@ -3604,18 +3623,26 @@ mod tests {
     }
 
     fn only_work_order(root: &Path) -> WorkOrder {
-        current_work_orders(root)
-            .expect("workorders")
-            .into_values()
-            .next()
-            .expect("workorder")
+        propose_work_orders(
+            root,
+            &[root.to_path_buf()],
+            deslop_analyzer::AnalyzerConfig::default(),
+        )
+        .expect("workorders")
+        .work_orders
+        .into_iter()
+        .next()
+        .expect("workorder")
     }
 
     fn all_work_orders(root: &Path) -> Vec<WorkOrder> {
-        current_work_orders(root)
-            .expect("workorders")
-            .into_values()
-            .collect()
+        propose_work_orders(
+            root,
+            &[root.to_path_buf()],
+            deslop_analyzer::AnalyzerConfig::default(),
+        )
+        .expect("workorders")
+        .work_orders
     }
 
     fn work_order_containing<'a>(work_orders: &'a [WorkOrder], text: &str) -> &'a WorkOrder {
@@ -3637,9 +3664,10 @@ mod tests {
 
     fn patch_for(work_order: &WorkOrder, replacement: &str) -> Patch {
         Patch {
-            schema: "deslop.patch/2".to_string(),
+            schema: "deslop.patch/3".to_string(),
             workorder_id: work_order.id.to_owned(),
             revision_guard: workorder_revision_guard(work_order).clone(),
+            proposal_context: work_order.proposal_context.clone(),
             replacement: replacement.to_string(),
             by: "test".to_string(),
         }
@@ -3651,9 +3679,10 @@ mod tests {
         test_text: &str,
     ) -> CharacterizationTest {
         CharacterizationTest {
-            schema: "deslop.characterization-test/2".to_string(),
+            schema: "deslop.characterization-test/3".to_string(),
             workorder_id: work_order.id.to_owned(),
             revision_guard: workorder_revision_guard(work_order).clone(),
+            proposal_context: work_order.proposal_context.clone(),
             test_path: PathBuf::from(test_path),
             test_text: test_text.to_string(),
             by: "test".to_string(),
@@ -3684,23 +3713,43 @@ mod tests {
     }
 
     fn work_order_from_fixture(root: &Path, text: &str) -> WorkOrder {
-        write_fixture(root, text);
-        only_work_order(root)
+        let path = write_fixture(root, text);
+        propose_work_orders(root, &[path], deslop_analyzer::AnalyzerConfig::default())
+            .expect("workorders")
+            .work_orders
+            .into_iter()
+            .next()
+            .expect("workorder")
     }
 
     fn rust_work_order_from_fixture(root: &Path, text: &str) -> WorkOrder {
-        write_rust_fixture(root, text);
-        only_work_order(root)
+        let path = write_rust_fixture(root, text);
+        propose_work_orders(root, &[path], deslop_analyzer::AnalyzerConfig::default())
+            .expect("workorders")
+            .work_orders
+            .into_iter()
+            .next()
+            .expect("workorder")
     }
 
     fn python_work_order_from_fixture(root: &Path, text: &str) -> WorkOrder {
-        write_python_fixture(root, text);
-        only_work_order(root)
+        let path = write_python_fixture(root, text);
+        propose_work_orders(root, &[path], deslop_analyzer::AnalyzerConfig::default())
+            .expect("workorders")
+            .work_orders
+            .into_iter()
+            .next()
+            .expect("workorder")
     }
 
     fn julia_work_order_from_fixture(root: &Path, text: &str) -> WorkOrder {
-        write_julia_fixture(root, text);
-        only_work_order(root)
+        let path = write_julia_fixture(root, text);
+        propose_work_orders(root, &[path], deslop_analyzer::AnalyzerConfig::default())
+            .expect("workorders")
+            .work_orders
+            .into_iter()
+            .next()
+            .expect("workorder")
     }
 
     fn verify_fixture(kind: FixtureKind, text: &str) -> VerifyFixture {
@@ -3828,14 +3877,26 @@ mod tests {
         };
         let region_fingerprint = region_fingerprint(&source.path, &region);
         let revision_guard = region_revision_guard(&source.path, &region);
+        let proposal_context = propose_work_orders(
+            source.path.parent().unwrap_or_else(|| Path::new(".")),
+            &[source
+                .path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf()],
+            deslop_analyzer::AnalyzerConfig::default(),
+        )
+        .expect("proposal context")
+        .context;
         WorkOrder {
-            schema: "deslop.workorder/2".to_string(),
+            schema: "deslop.workorder/3".to_string(),
             kind: WorkOrderKind::RewriteRegion,
             id: id.into(),
             path: source.path.to_path_buf(),
             region,
             region_fingerprint,
             revision_guard,
+            proposal_context,
             findings: Vec::new(),
             instruction: "test".to_string(),
             contract: deslop_protocol::Contract::default(),
@@ -4092,6 +4153,79 @@ mod tests {
     }
 
     #[test]
+    fn verifier_reconstructs_non_default_proposal_config_without_caller_overrides() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = temp.path().join("short.rs");
+        fs::write(
+            &source,
+            "fn short() -> i32 {\n    let a = 1;\n    let b = 2;\n    let c = 3;\n    a + b + c\n}\n",
+        )
+        .expect("source");
+        let config = deslop_analyzer::AnalyzerConfig {
+            long_method_nloc: 4,
+            ..deslop_analyzer::AnalyzerConfig::default()
+        };
+        let batch = propose_work_orders(temp.path(), &[source], config).expect("proposal");
+        let work_order = batch
+            .work_orders
+            .iter()
+            .find(|work_order| {
+                work_order
+                    .findings
+                    .iter()
+                    .any(|finding| finding.rule == "long-method")
+            })
+            .expect("non-default long-method workorder");
+        let patch = patch_for(work_order, &work_order.region.text);
+
+        let report = verify_patches(
+            &[patch],
+            &test_options(temp.path(), None, CoverageConfig::Disabled),
+        )
+        .expect("context-driven verify");
+        assert_eq!(report.passed_count(), 1);
+    }
+
+    #[test]
+    fn mixed_proposal_contexts_are_rejected_before_verification() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = write_rust_fixture(
+            temp.path(),
+            "fn sample() -> i32 {\n    let value = 4242;\n    value\n}\n",
+        );
+        let default = propose_work_orders(
+            temp.path(),
+            std::slice::from_ref(&source),
+            deslop_analyzer::AnalyzerConfig::default(),
+        )
+        .expect("default proposal");
+        let tuned = propose_work_orders(
+            temp.path(),
+            &[source],
+            deslop_analyzer::AnalyzerConfig {
+                min_meaningful_tokens: 1,
+                ..deslop_analyzer::AnalyzerConfig::default()
+            },
+        )
+        .expect("tuned proposal");
+        let patches = [
+            patch_for(&default.work_orders[0], &default.work_orders[0].region.text),
+            patch_for(&tuned.work_orders[0], &tuned.work_orders[0].region.text),
+        ];
+
+        let error = verify_patches(
+            &patches,
+            &test_options(temp.path(), None, CoverageConfig::Disabled),
+        )
+        .expect_err("mixed contexts must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("must share one proposal_context")
+        );
+    }
+
+    #[test]
     fn patch_deleting_try_catch_is_rejected() {
         let temp = tempfile::tempdir().expect("tempdir");
         write_fixture(
@@ -4128,7 +4262,7 @@ mod tests {
             let patch = patch_for(&fixture.work_order, "(empty? xs)\n");
             fs::write(fixture.temp.path().join("sample.clj"), changed).expect("mutate source");
             let current = only_work_order(fixture.temp.path());
-            assert_eq!(current.id, fixture.work_order.id, "{changed:?}");
+            assert_ne!(current.id, fixture.work_order.id, "{changed:?}");
             assert_eq!(
                 current.region_fingerprint, fixture.work_order.region_fingerprint,
                 "{changed:?}"
@@ -4138,11 +4272,20 @@ mod tests {
             let mut options =
                 test_options(fixture.temp.path(), Some("true"), CoverageConfig::Disabled);
             options.allow_non_removable = true;
-            let verified = verify_patches(std::slice::from_ref(&patch), &options).expect("verify");
-            assert_eq!(verified.results[0].verdict, VerificationVerdict::Rejected);
-            assert_eq!(verified.results[0].reasons, ["stale revision_guard"]);
-            let applied = apply_patches(&[patch], &options, false).expect("apply report");
-            assert!(applied.written.is_empty());
+            let verified = verify_patches(std::slice::from_ref(&patch), &options)
+                .expect_err("source revision must expire the proposal context");
+            assert!(
+                verified
+                    .to_string()
+                    .contains("proposal context no longer matches")
+            );
+            let applied = apply_patches(&[patch], &options, false)
+                .expect_err("stale proposal must not apply");
+            assert!(
+                applied
+                    .to_string()
+                    .contains("proposal context no longer matches")
+            );
             assert_eq!(
                 fs::read_to_string(fixture.temp.path().join("sample.clj")).unwrap(),
                 changed
@@ -4159,10 +4302,10 @@ mod tests {
 
         let verify_error = verify_patches(std::slice::from_ref(&patch), &options)
             .expect_err("legacy verify input must fail");
-        assert!(verify_error.to_string().contains("must be regenerated"));
+        assert!(verify_error.to_string().contains("regenerate"));
         let apply_error =
             apply_patches(&[patch], &options, false).expect_err("legacy apply input must fail");
-        assert!(apply_error.to_string().contains("must be regenerated"));
+        assert!(apply_error.to_string().contains("regenerate"));
 
         let mut test = characterization_test_for(
             &fixture.work_order,
@@ -4190,10 +4333,13 @@ mod tests {
         .expect("boundary mutation");
         let options = test_options(fixture.temp.path(), Some("true"), CoverageConfig::Disabled);
 
-        let report = verify_characterization_tests(&[test], &options).expect("report");
-
-        assert!(!report.results[0].accepted);
-        assert_eq!(report.results[0].reasons, ["stale revision_guard"]);
+        let error = verify_characterization_tests(&[test], &options)
+            .expect_err("source revision must expire the characterization context");
+        assert!(
+            error
+                .to_string()
+                .contains("proposal context no longer matches")
+        );
     }
 
     #[test]
@@ -4597,10 +4743,10 @@ mod tests {
             temp.path(),
             "fn missed() -> i32 {\n    return 1;\n}\nfn caught() -> i32 {\n    return 2;\n}\n",
         );
+        let outcomes = cargo_mutants_outcomes_fixture(temp.path(), &rust_file);
         let work_orders = all_work_orders(temp.path());
         let missed = work_order_containing(&work_orders, "missed");
         let caught = work_order_containing(&work_orders, "caught");
-        let outcomes = cargo_mutants_outcomes_fixture(temp.path(), &rust_file);
 
         let report = verify_patches(
             &[
@@ -5125,10 +5271,18 @@ mod tests {
         let source = temp.path().join("malformed.ts");
         let original = include_str!("../../../tests/fixtures/typescript/malformed.ts");
         fs::write(&source, original).expect("fixture");
+        let context = propose_work_orders(
+            temp.path(),
+            std::slice::from_ref(&source),
+            deslop_analyzer::AnalyzerConfig::default(),
+        )
+        .expect("proposal")
+        .context;
         let patch = Patch {
-            schema: "deslop.patch/2".to_string(),
+            schema: "deslop.patch/3".to_string(),
             workorder_id: "legacy-workorder".to_string(),
             revision_guard: "legacy-guard".into(),
+            proposal_context: context,
             replacement: "export function repaired(): number { return 1; }\n".to_string(),
             by: "test".to_string(),
         };

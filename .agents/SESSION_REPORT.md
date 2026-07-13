@@ -5602,3 +5602,91 @@ bytes. Recheck under M1.4's ProjectSnapshotId/NodeKey migration and on any diges
 change. Search handles: `M0.12 text.trim boundary whitespace stale revision_guard wo2 patch/2`.
 
 **Signature:** Codex (GPT-5), M0.12 integration owner, 2026-07-13.
+
+---
+
+## M0.13 checkpoint — persist proposal reconstruction context
+
+**Date/time:** 2026-07-13T16:30:39+02:00
+
+**Objective/target:** make verify, apply, characterization, and imported slim workorders reconstruct
+the exact originating proposal instead of rescanning an unrelated scope with
+`AnalyzerConfig::default()`. Keep M0.14's `NeverAuto` policy and M1's owned syntax snapshot out of
+scope.
+
+**Changes:**
+
+- Added canonical serializable effective analyzer settings, including all thresholds and language
+  overrides, declarative suppression, boundary configuration, Rust/Julia external selection, and
+  root-relative Julia project identity. Suppression now retains its canonical raw semantics and
+  applies globs relative to the proposal root even when the scanner reads absolute paths.
+- Added analyzer scan context with source text captured from the same read that produced findings,
+  non-skipped boundary artifacts captured from their analysis read, and per-target external analyzer
+  name/availability/covered-rule observations. Proposal emission rechecks captured bytes before
+  returning.
+- Added self-contained `deslop.proposal-context/1`: analyzer semantics version, canonical
+  root-relative deduplicated file/directory scope, effective analyzer settings, baseline exclusions,
+  all consulted source/config exact revisions plus language/provenance, external capability
+  observations, and a deterministic context-free work-order-set digest. Context and set identities
+  use domain-separated BLAKE3. Root escapes, noncanonical paths, scope-kind changes, tampering, and
+  mixed contexts fail closed.
+- Migrated to context-bound `wo3_` IDs and required WorkOrder/3, Patch/3, and
+  CharacterizationTest/3 records. MCP envelopes are workorders/3 and fix/3; slim reports are /4.
+  Legacy /1-/2 authority records are rejected with no alias or default-filled migration.
+- Replaced verifier default rescans with context reconstruction. Runtime scope is only an equality
+  assertion; it cannot override persisted scope/config. Reconstructed source membership, exact
+  bytes, parser provenance, external capability, work-order set, target region, and context-bound ID
+  must all match before normal verification. Loaded slim workorders perform the same reconstruction
+  before consent, credentials, LLM egress, check commands, or writes.
+- Wired the shared proposal path through CLI propose and `scan --format agent` (including persisted
+  baseline exclusions), MCP propose/fix/verify/apply/characterization, slim auto/imported flows, and
+  report rendering. Updated README, SPEC, active/duplicate MCP schemas, tests, and TODO; M0.14 is
+  **NEXT**.
+- Updated seven pre-existing test-only expressions for Rust 1.94 warnings-denied clippy
+  (`useless_vec`, owned path comparisons, and cloned one-element slices); no production behavior
+  changed in those cleanups.
+
+**Commands/checks run:** focused analyzer/protocol/report/verifier/slim/CLI/MCP tests; CLI proposal
+and revision-guard integrations; `cargo test --workspace`; `cargo test -p deslop-mcp --features
+slim-llm -- --test-threads=1`; `cargo build --workspace`; `cargo build -p deslop-slim
+--no-default-features`; `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets
+--all-features -- -D warnings`; and `git diff --check`.
+
+**Verification results:** PASS. Workspace: 274 passing tests plus one intentional ignored performance
+probe and all doc-tests. Feature-enabled MCP: 22 passing tests. Workspace build, no-default-features
+slim build, formatting, whitespace, and all-feature/all-target warnings-denied clippy pass. Numerical
+regressions prove non-default long-method configuration reconstructs without caller overrides;
+relative baseline fingerprints survive rooted absolute scanning; peer-source mutation, source
+boundary whitespace, context tampering, root escape, scope drift, mixed contexts, and legacy schemas
+reject; slim stale imports make zero model calls; apply makes zero writes on expired context.
+
+**Failure modes / invalidated assumptions:** persisting only target bytes and caller-supplied scope
+was invalidated because cross-file duplication and boundary findings depend on the complete requested
+input set. Persisting config alone was invalidated because clj-kondo/clippy/Julia availability can
+change the work-order set. Scanning canonical absolute paths initially invalidated suppression and
+baseline identity semantics; suppression is now explicitly proposal-root-relative and baseline
+exclusions match their canonical root-relative fingerprints. Treating source-revision drift as a
+per-patch structured rejection was invalidated: it expires the whole proposal context before lookup,
+so verify/apply/characterization return a terminal operational context mismatch. One feature-enabled
+MCP path initially paired an inferred root with unresolved relative paths; all inferred-root paths are
+now canonicalized together. Rust 1.94 added warnings in unrelated existing test expressions; the
+warnings-denied gate required the mechanical cleanups recorded above.
+
+**Current recommendation/checkpoint:** M0.13 is complete. Execute M0.14 next: choose and enforce one
+`NeverAuto` report/proposal policy across every producer and consumer, with an end-to-end regression,
+without weakening proposal-context reconstruction.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; targeted local Rust
+reads remained the fallback.
+
+**Dependencies/restart:** rebuild/reinstall CLI and MCP binaries. Outstanding workorder/2, patch/2,
+characterization-test/2, MCP workorders/2/fix/2, slim/3, and `wo2_` artifacts must be regenerated.
+Baseline/1 and finding fingerprints remain compatible. No new third-party package was introduced;
+the protocol reuses the existing workspace BLAKE3/serde/anyhow stack.
+
+**Negative-memory status:** the durable constraint is now implemented: no verifier default rescan,
+caller scope, normalized target identity, or target-only provenance can stand in for the originating
+proposal. Recheck only when M1 introduces ProjectSnapshotId/NodeKey ownership or M2 replaces the M0
+capability observation schema.
+
+**Signature:** Codex (GPT-5), M0.13 integration owner, 2026-07-13.

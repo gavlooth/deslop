@@ -92,6 +92,7 @@ impl fmt::Display for Lang {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Span {
     pub start_line: usize,
     pub end_line: usize,
@@ -154,6 +155,7 @@ pub enum AnalysisStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AnalysisDiagnostic {
     pub code: String,
     pub message: String,
@@ -161,6 +163,7 @@ pub struct AnalysisDiagnostic {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AnalysisProvenance {
     pub status: AnalysisStatus,
     pub diagnostics: Vec<AnalysisDiagnostic>,

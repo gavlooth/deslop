@@ -1,12 +1,11 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use std::collections::BTreeMap;
 
 use deslop_core::{
     AnalysisDiagnostic, AnalysisStatus, FileReport, Finding, SafetyClass, Severity,
     reports_analysis_status, reports_permit_rewrites,
 };
-use deslop_parse::SourceFile;
-use deslop_protocol::work_orders_for_report;
+use deslop_protocol::WorkOrder;
 use serde::Serialize;
 use serde_json::json;
 
@@ -133,17 +132,11 @@ pub fn render_sarif(reports: &[FileReport]) -> Result<String> {
     }))?)
 }
 
-pub fn render_agent(reports: &[FileReport]) -> Result<String> {
-    if !reports_permit_rewrites(reports) {
-        bail!("analysis is incomplete; refusing to emit rewrite work orders");
-    }
+pub fn render_agent(work_orders: &[WorkOrder]) -> Result<String> {
     let mut out = String::new();
-    for report in reports {
-        let source = SourceFile::read(&report.path)?;
-        for work_order in work_orders_for_report(&source, report) {
-            out.push_str(&serde_json::to_string(&work_order)?);
-            out.push('\n');
-        }
+    for work_order in work_orders {
+        out.push_str(&serde_json::to_string(&work_order)?);
+        out.push('\n');
     }
     Ok(out)
 }
@@ -293,7 +286,7 @@ mod tests {
             sarif["runs"][0]["results"][0]["properties"]["rewriteBlocked"],
             true
         );
-        assert!(render_agent(&reports).is_err());
+        assert_eq!(render_agent(&[]).expect("empty agent output"), "");
     }
 
     fn assert_json_eq(value: &serde_json::Value, path: &[&str], expected: &str) {

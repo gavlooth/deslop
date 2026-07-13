@@ -773,6 +773,26 @@ fn suppression_per_rule_ignore_path_is_scoped_to_that_rule() {
 }
 
 #[test]
+fn effective_analyzer_snapshot_round_trips_suppression_and_boundary() {
+    let mut builder = Suppression::builder();
+    builder
+        .disable_rule("magic-number")
+        .ignore_path("vendor/**")
+        .ignore_path_for_rule("long-method", "generated/**");
+    let mut config = config_with(builder.build().expect("suppression"));
+    config.long_method_nloc = 17;
+    config.typescript.long_method_nloc = Some(23);
+    config.boundary.extra_sinks = vec!["trace".to_string()];
+    let snapshot = config.snapshot();
+    let rebuilt = snapshot.to_config().expect("rebuild config");
+
+    assert_eq!(rebuilt.snapshot(), snapshot);
+    assert_eq!(snapshot.suppression.disabled_rules, ["magic-number"]);
+    assert_eq!(snapshot.suppression.ignore_paths, ["vendor/**"]);
+    assert_eq!(snapshot.suppression.rules["long-method"], ["generated/**"]);
+}
+
+#[test]
 fn suppression_rejects_unknown_rule_name() {
     let mut builder = Suppression::builder();
     builder.disable_rule("ignore-comments");

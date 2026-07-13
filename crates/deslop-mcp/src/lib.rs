@@ -1,19 +1,18 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::{
     AnalyzerConfig, AnalyzerLangConfig, RuleSuppression, Suppression, SuppressionBuilder,
     scan_paths_with_config,
 };
-use deslop_core::{AnalysisStatus, FileAnalysis, reports_analysis_status, reports_permit_rewrites};
+use deslop_core::{AnalysisStatus, FileAnalysis, reports_analysis_status};
 use deslop_graph::{GraphConfig, graph_paths};
 use deslop_metrics::{MetricsConfig, metrics_paths};
-use deslop_parse::SourceFile;
 use deslop_protocol::{
-    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, work_orders_for_report,
+    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, propose_work_orders,
     workorder_revision_guard,
 };
 use deslop_report::render_json;
@@ -136,7 +135,7 @@ fn scan_tool_spec() -> Value {
 fn propose_tool_spec() -> Value {
     tool(
         "propose",
-        "Return deslop.workorder/2 JSONL-compatible work orders with exact revision guards.",
+        "Return deslop.workorder/3 JSONL-compatible work orders with exact revision guards and self-contained proposal context.",
         object_schema(json!({
             "paths": paths_schema(),
             "config": config_schema("Optional deslop.toml path for [analyzer] propose settings."),
@@ -148,7 +147,7 @@ fn propose_tool_spec() -> Value {
 fn fix_tool_spec() -> Value {
     tool(
         "fix",
-        "Return deslop-slim rewrite prompts by default (mode=prompts). With deslop-mcp built using --features slim-llm, mode=auto runs deslop-slim server-side and returns deslop.slim/3.",
+        "Return deslop-slim rewrite prompts by default (mode=prompts). With deslop-mcp built using --features slim-llm, mode=auto runs deslop-slim server-side and returns deslop.slim/4.",
         object_schema(fix_tool_properties()),
     )
 }
@@ -159,7 +158,7 @@ fn fix_tool_properties() -> Value {
             "type": "string",
             "enum": ["prompts", "auto"],
             "default": "prompts",
-            "description": "prompts returns deslop.fix/2 for agent-as-consumer. auto requires deslop-mcp --features slim-llm and runs deslop-slim server-side."
+            "description": "prompts returns deslop.fix/3 for agent-as-consumer. auto requires deslop-mcp --features slim-llm and runs deslop-slim server-side."
         },
         "paths": paths_schema(),
         "root": { "type": "string", "description": "Project root for work-order rediscovery and verification; defaults to the server working directory." },
@@ -198,7 +197,7 @@ fn fix_tool_properties() -> Value {
 fn verify_tool_spec() -> Value {
     tool(
         "verify",
-        "Verify deslop.patch/2 patches without writing files.",
+        "Verify deslop.patch/3 patches using their persisted proposal context without writing files.",
         required_schema(&["patches"], patch_verification_properties()),
     )
 }
@@ -206,7 +205,7 @@ fn verify_tool_spec() -> Value {
 fn characterize_tool_spec() -> Value {
     tool(
         "characterize",
-        "Emit deslop.workorder/2 requests for weak-oracle regions.",
+        "Emit deslop.workorder/3 requests for weak-oracle regions.",
         required_schema(
             &["patches"],
             json!({
@@ -239,7 +238,7 @@ fn apply_tool_spec() -> Value {
     properties["no_backup"] = json!({ "type": "boolean", "default": false });
     tool(
         "apply",
-        "Verify and atomically apply deslop.patch/2 patches.",
+        "Verify and atomically apply deslop.patch/3 patches.",
         required_schema(&["patches"], properties),
     )
 }
@@ -401,20 +400,22 @@ fn paths_schema() -> Value {
 fn patches_schema() -> Value {
     json!({
         "type": "array",
-        "items": { "$ref": "#/$defs/deslop.patch/2" },
+        "items": { "$ref": "#/$defs/deslop.patch/3" },
         "$defs": {
-            "deslop.patch/2": {
+            "deslop.patch/3": {
                 "type": "object",
-                "required": ["schema", "workorder_id", "revision_guard", "replacement", "by"],
+                "required": ["schema", "workorder_id", "revision_guard", "proposal_context", "replacement", "by"],
                 "properties": {
-                    "schema": { "const": "deslop.patch/2" },
+                    "schema": { "const": "deslop.patch/3" },
                     "workorder_id": { "type": "string" },
                     "revision_guard": { "type": "string", "pattern": "^rg1_[0-9]+_[0-9a-f]{64}$" },
+                    "proposal_context": { "$ref": "#/$defs/deslop.proposal-context/1" },
                     "replacement": { "type": "string" },
                     "by": { "type": "string" }
                 },
                 "additionalProperties": false
-            }
+            },
+            "deslop.proposal-context/1": proposal_context_schema()
         }
     })
 }
@@ -433,23 +434,47 @@ fn coverage_schema() -> Value {
 fn characterization_tests_schema() -> Value {
     json!({
         "type": "array",
-        "items": { "$ref": "#/$defs/deslop.characterization-test/2" },
+        "items": { "$ref": "#/$defs/deslop.characterization-test/3" },
         "default": [],
         "$defs": {
-            "deslop.characterization-test/2": {
+            "deslop.characterization-test/3": {
                 "type": "object",
-                "required": ["schema", "workorder_id", "revision_guard", "test_path", "test_text", "by"],
+                "required": ["schema", "workorder_id", "revision_guard", "proposal_context", "test_path", "test_text", "by"],
                 "properties": {
-                    "schema": { "const": "deslop.characterization-test/2" },
+                    "schema": { "const": "deslop.characterization-test/3" },
                     "workorder_id": { "type": "string" },
                     "revision_guard": { "type": "string", "pattern": "^rg1_[0-9]+_[0-9a-f]{64}$" },
+                    "proposal_context": { "$ref": "#/$defs/deslop.proposal-context/1" },
                     "test_path": { "type": "string" },
                     "test_text": { "type": "string" },
                     "by": { "type": "string" }
                 },
                 "additionalProperties": false
-            }
+            },
+            "deslop.proposal-context/1": proposal_context_schema()
         }
+    })
+}
+
+fn proposal_context_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": [
+            "schema", "analyzer_semantics", "context_id", "requested_scope", "analyzer",
+            "excluded_fingerprints", "sources", "external_capabilities", "workorder_set_digest"
+        ],
+        "properties": {
+            "schema": { "const": "deslop.proposal-context/1" },
+            "analyzer_semantics": { "const": "deslop-analyzer/1" },
+            "context_id": { "type": "string", "pattern": "^pc1_[0-9a-f]{64}$" },
+            "requested_scope": { "type": "array" },
+            "analyzer": { "type": "object" },
+            "excluded_fingerprints": { "type": "array", "items": { "type": "string" } },
+            "sources": { "type": "array" },
+            "external_capabilities": { "type": "array" },
+            "workorder_set_digest": { "type": "string", "pattern": "^dg1_[0-9a-f]{64}$" }
+        },
+        "additionalProperties": false
     })
 }
 
@@ -497,7 +522,7 @@ fn scan_tool(args: &Value) -> Result<Value> {
 fn propose_tool(args: &Value) -> Result<Value> {
     let batch = proposed_work_orders(args)?;
     Ok(json!({
-        "schema": "deslop.workorders/2",
+        "schema": "deslop.workorders/3",
         "status": batch.status,
         "analyses": batch.analyses,
         "blocked_files": batch.blocked_files,
@@ -524,7 +549,7 @@ fn fix_mode(args: &Value) -> Result<&str> {
 fn fix_prompts_tool(args: &Value) -> Result<Value> {
     let batch = proposed_work_orders(args)?;
     let next = if batch.status == AnalysisStatus::Complete {
-        "Rewrite each region. Copy revision_guard verbatim into deslop.patch/2 patches { schema:\"deslop.patch/2\", workorder_id, revision_guard, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)."
+        "Rewrite each region. Copy revision_guard and proposal_context verbatim into deslop.patch/3 patches { schema:\"deslop.patch/3\", workorder_id, revision_guard, proposal_context, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)."
     } else {
         "Analysis is incomplete. Repair every blocked file and rescan; no rewrite is authorized."
     };
@@ -535,7 +560,7 @@ fn fix_prompts_tool(args: &Value) -> Result<Value> {
         .map(fix_prompt_entry)
         .collect::<Vec<_>>();
     Ok(json!({
-        "schema": "deslop.fix/2",
+        "schema": "deslop.fix/3",
         "status": batch.status,
         "analyses": batch.analyses,
         "blocked_files": batch.blocked_files,
@@ -552,9 +577,10 @@ fn fix_auto_tool(_args: &Value) -> Result<Value> {
 #[cfg(feature = "slim-llm")]
 fn fix_auto_tool(args: &Value) -> Result<Value> {
     let model = resolve_model(optional_string(args, "model"));
+    let paths = resolve_paths(args, paths_arg(args)?)?;
     let options = SlimOptions {
-        root: root_arg(args),
-        paths: paths_arg(args)?,
+        root: root_for_paths(args, &paths)?,
+        paths,
         workorders: None,
         apply: bool_arg(args, "apply"),
         characterize: bool_arg(args, "characterize"),
@@ -725,6 +751,7 @@ fn fix_prompt_entry(work_order: WorkOrder) -> Value {
         },
         "region_fingerprint": work_order.region_fingerprint,
         "revision_guard": work_order.revision_guard,
+        "proposal_context": work_order.proposal_context,
         "contract": work_order.contract,
         "findings": work_order.findings,
         "prompt": prompt.text,
@@ -739,7 +766,13 @@ struct ProposedWorkOrders {
 }
 
 fn proposed_work_orders(args: &Value) -> Result<ProposedWorkOrders> {
-    let reports = scan_reports(args)?;
+    let paths = resolve_paths(args, paths_arg(args)?)?;
+    let batch = propose_work_orders(
+        &root_for_paths(args, &paths)?,
+        &paths,
+        mcp_analyzer_config(args)?,
+    )?;
+    let reports = batch.reports;
     let status = reports_analysis_status(&reports);
     let analyses = reports
         .iter()
@@ -754,13 +787,11 @@ fn proposed_work_orders(args: &Value) -> Result<ProposedWorkOrders> {
         .filter(|file| !file.analysis.permits_rewrites())
         .cloned()
         .collect::<Vec<_>>();
-    let mut work_orders = Vec::new();
-    if reports_permit_rewrites(&reports) {
-        for report in reports {
-            let source = SourceFile::read(&report.path)?;
-            work_orders.extend(work_orders_for_report(&source, &report));
-        }
-    }
+    let work_orders = if blocked_files.is_empty() {
+        batch.work_orders
+    } else {
+        Vec::new()
+    };
     Ok(ProposedWorkOrders {
         status,
         analyses,
@@ -851,7 +882,7 @@ fn characterize_tool(args: &Value) -> Result<Value> {
         },
     )?;
     Ok(json!({
-        "schema": "deslop.workorders/2",
+        "schema": "deslop.workorders/3",
         "workorders": work_orders,
     }))
 }
@@ -861,11 +892,14 @@ fn verify_characterization_tool(args: &Value) -> Result<Value> {
     let Some(check_cmd) = optional_string(args, "check_cmd") else {
         bail!("check_cmd is required");
     };
+    let scope = optional_paths_arg(args, "scope")?
+        .map(|paths| resolve_paths(args, paths))
+        .transpose()?;
     let report = verify_characterization_tests(
         &tests,
         &VerifyOptions {
-            root: root_arg(args),
-            scope: optional_paths_arg(args, "scope")?,
+            root: root_for_paths(args, scope.as_deref().unwrap_or_default())?,
+            scope,
             check_cmd: Some(check_cmd),
             coverage: CoverageConfig::Disabled,
             mutation: MutationConfig::Disabled,
@@ -887,9 +921,12 @@ fn apply_tool(args: &Value) -> Result<Value> {
 }
 
 fn verify_options(args: &Value, allow_non_removable: bool) -> Result<VerifyOptions> {
+    let scope = optional_paths_arg(args, "scope")?
+        .map(|paths| resolve_paths(args, paths))
+        .transpose()?;
     Ok(VerifyOptions {
-        root: root_arg(args),
-        scope: optional_paths_arg(args, "scope")?,
+        root: root_for_paths(args, scope.as_deref().unwrap_or_default())?,
+        scope,
         check_cmd: optional_string(args, "check_cmd"),
         coverage: coverage_config(args)?,
         mutation: mutation_config(args),
@@ -902,6 +939,45 @@ fn root_arg(args: &Value) -> PathBuf {
     optional_string(args, "root")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn root_for_paths(args: &Value, paths: &[PathBuf]) -> Result<PathBuf> {
+    if args.get("root").is_some() || paths.is_empty() {
+        return Ok(root_arg(args));
+    }
+    let first = paths[0]
+        .canonicalize()
+        .with_context(|| format!("failed to resolve path {}", paths[0].display()))?;
+    let mut root = if first.is_file() {
+        first.parent().unwrap_or(Path::new("/")).to_path_buf()
+    } else {
+        first
+    };
+    for path in &paths[1..] {
+        let path = path
+            .canonicalize()
+            .with_context(|| format!("failed to resolve path {}", path.display()))?;
+        while !path.starts_with(&root) {
+            root = root
+                .parent()
+                .context("paths do not share a filesystem root")?
+                .to_path_buf();
+        }
+    }
+    Ok(root)
+}
+
+fn resolve_paths(args: &Value, paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+    if args.get("root").is_some() {
+        return Ok(paths);
+    }
+    paths
+        .into_iter()
+        .map(|path| {
+            path.canonicalize()
+                .with_context(|| format!("failed to resolve path {}", path.display()))
+        })
+        .collect()
 }
 
 fn coverage_config(args: &Value) -> Result<CoverageConfig> {
@@ -994,7 +1070,7 @@ fn patches_arg(args: &Value) -> Result<Vec<Patch>> {
         .cloned()
         .map(serde_json::from_value)
         .collect::<Result<Vec<_>, _>>()
-        .context("failed to parse deslop.patch/2 patch")
+        .context("failed to parse deslop.patch/3 patch")
 }
 
 fn characterization_tests_arg(args: &Value) -> Result<Vec<CharacterizationTest>> {
@@ -1012,7 +1088,7 @@ fn characterization_tests_arg(args: &Value) -> Result<Vec<CharacterizationTest>>
         .cloned()
         .map(serde_json::from_value)
         .collect::<Result<Vec<_>, _>>()
-        .context("failed to parse deslop.characterization-test/2 test")
+        .context("failed to parse deslop.characterization-test/3 test")
 }
 
 fn optional_string(args: &Value, key: &str) -> Option<String> {
@@ -1041,9 +1117,10 @@ pub fn patch_for_workorder(
     replacement: impl Into<String>,
 ) -> Patch {
     Patch {
-        schema: "deslop.patch/2".to_string(),
+        schema: "deslop.patch/3".to_string(),
         workorder_id: work_order.id.to_owned(),
         revision_guard: workorder_revision_guard(work_order).clone(),
+        proposal_context: work_order.proposal_context.clone(),
         replacement: replacement.into(),
         by: "deslop-mcp-test".to_string(),
     }
@@ -1169,7 +1246,7 @@ mod tests {
         .expect("partial analysis is a domain result");
         let content = structured_content(&response);
 
-        assert_eq!(content["schema"], "deslop.slim/3");
+        assert_eq!(content["schema"], "deslop.slim/4");
         assert_eq!(content["blocked_files"].as_array().unwrap().len(), 1);
         assert!(content["patches"].as_array().unwrap().is_empty());
         assert!(content["applied"].is_null());
@@ -1274,9 +1351,9 @@ mod tests {
                 .contains("lcov:<path>")
         );
         let patches = &verify["inputSchema"]["properties"]["patches"];
-        assert_eq!(patches["items"]["$ref"], "#/$defs/deslop.patch/2");
-        let patch = &patches["$defs"]["deslop.patch/2"];
-        assert_eq!(patch["properties"]["schema"]["const"], "deslop.patch/2");
+        assert_eq!(patches["items"]["$ref"], "#/$defs/deslop.patch/3");
+        let patch = &patches["$defs"]["deslop.patch/3"];
+        assert_eq!(patch["properties"]["schema"]["const"], "deslop.patch/3");
         assert!(
             patch["required"]
                 .as_array()
@@ -1603,7 +1680,7 @@ mod tests {
             json!({ "scope": [&fixture.path], "patches": [legacy] }),
         )
         .expect_err("legacy normalized guard must not be accepted");
-        assert!(error.to_string().contains("must be regenerated"));
+        assert!(error.to_string().contains("regenerate"));
 
         let boundary_stale = patch_for_workorder(&work_order, "(empty? xs)\n");
         fs::write(&fixture.path, " (= (count xs) 0)\n").expect("boundary whitespace mutation");
@@ -1611,9 +1688,12 @@ mod tests {
             "verify",
             json!({ "scope": [&fixture.path], "patches": [boundary_stale] }),
         )
-        .expect("verify boundary stale");
-        assert_eq!(first_tool_result(&rejected)["passed"], false);
-        assert_first_tool_reason_contains(&rejected, "stale revision_guard");
+        .expect_err("source revision must expire proposal context");
+        assert!(
+            rejected
+                .to_string()
+                .contains("proposal context no longer matches")
+        );
 
         let applied = call_tool(
             "apply",
@@ -1625,12 +1705,11 @@ mod tests {
                 "no_backup": true
             }),
         )
-        .expect("apply boundary stale report");
+        .expect_err("stale proposal must not apply");
         assert!(
-            structured_content(&applied)["written"]
-                .as_array()
-                .expect("written")
-                .is_empty()
+            applied
+                .to_string()
+                .contains("proposal context no longer matches")
         );
         assert_eq!(
             fs::read_to_string(&fixture.path).expect("source"),
@@ -1738,7 +1817,7 @@ mod tests {
         let content = structured_content(&fixed);
         let prompts = content["prompts"].as_array().expect("prompts");
 
-        assert_eq!(content["schema"], "deslop.fix/2");
+        assert_eq!(content["schema"], "deslop.fix/3");
         assert!(!prompts.is_empty());
         assert_eq!(prompts[0]["workorder_id"], work_order.id);
         assert_eq!(
@@ -1972,7 +2051,7 @@ mod tests {
         )
         .expect("fix auto apply");
         let content = structured_content(&response);
-        assert_eq!(content["schema"], "deslop.slim/3");
+        assert_eq!(content["schema"], "deslop.slim/4");
         assert_eq!(content["dry_run"], false);
         assert_eq!(content["verified"]["results"][0]["verdict"], "removable");
         assert_eq!(content["gating"]["applied"].as_array().unwrap().len(), 1);
@@ -2001,7 +2080,7 @@ mod tests {
         )
         .expect("fix auto rejected");
         let content = structured_content(&response);
-        assert_eq!(content["schema"], "deslop.slim/3");
+        assert_eq!(content["schema"], "deslop.slim/4");
         assert_eq!(content["verified"]["results"][0]["verdict"], "rejected");
         assert_eq!(content["gating"]["rejected"].as_array().unwrap().len(), 1);
         assert!(content["applied"]["written"].as_array().unwrap().is_empty());

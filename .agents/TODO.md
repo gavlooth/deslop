@@ -93,11 +93,17 @@ reports, benchmark records, and work orders.
   with no legacy write alias; exact line/byte regions; six boundary whitespace/newline mutations
   preserve matching identity but expire the guard; verifier, characterization, slim pre-egress,
   MCP, and CLI reject; apply writes zero and rechecks exact bytes immediately before replacement.
-- [ ] M0.13 Persist proposal analyzer config, capability, and source-revision context so verify/apply
-  reconstruct the same work-order set instead of silently rescanning with defaults.
-  **NEXT**
+- [x] M0.13 Persist proposal analyzer config, capability, and source-revision context so verify/apply
+  reconstruct the same work-order set instead of silently rescanning with defaults. Evidence:
+  canonical `deslop.proposal-context/1` with effective thresholds/suppression/boundary/external
+  settings, root-relative deduplicated scope, baseline exclusions, clean/finding/config source
+  revisions and provenance, external availability, and expected-set digest; context-bound `wo3_`
+  IDs plus workorder/3/patch/3/characterization-test/3, MCP workorders/3/fix/3, and slim/4; CLI,
+  MCP, slim, characterization, verify, and apply reconstruct without defaults and reject legacy,
+  tampered, mixed, peer-stale, capability-stale, scope-mismatched, or root-escaping contexts.
 - [ ] M0.14 Reconcile the `NeverAuto` contract: SPEC says report-only while `/1` currently proposes it;
   choose one policy, update every consumer, and add an end-to-end regression.
+  **NEXT**
 - [ ] M0.DoD Demonstrate zero duplicate work-order IDs, zero falsely resolved ambiguous fixture edges,
   correct grammar selection, and honest partial/capability labels on the M0 corpus.
 

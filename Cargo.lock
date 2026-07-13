@@ -300,6 +300,7 @@ dependencies = [
  "globset",
  "ignore",
  "regex",
+ "serde",
  "tempfile",
  "tree-sitter",
 ]
@@ -478,10 +479,14 @@ dependencies = [
 name = "deslop-protocol"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "blake3",
+ "deslop-analyzer",
  "deslop-core",
  "deslop-parse",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

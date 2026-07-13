@@ -3,12 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use deslop_analyzer::{AnalyzerConfig, scan_paths_with_config};
-use deslop_core::{FileAnalysis, reports_permit_rewrites};
-use deslop_parse::{SourceFile, analysis_provenance_or_failed};
+use deslop_analyzer::AnalyzerConfig;
+use deslop_core::FileAnalysis;
 use deslop_protocol::{
-    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, validate_workorder_identity,
-    work_orders_for_report, workorder_revision_guard,
+    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, propose_work_orders as propose_batch,
+    reconstruct_proposal, validate_workorder_identity, workorder_revision_guard,
 };
 use deslop_verify::{
     ApplyReport, CoverageConfig, MutationConfig, VerificationVerdict, VerifyOptions, VerifyReport,
@@ -368,7 +367,7 @@ pub fn run_slim_with_progress(
             rejected: 0,
         });
         return Ok(SlimReport {
-            schema: "deslop.slim/3".to_string(),
+            schema: "deslop.slim/4".to_string(),
             dry_run: !options.apply,
             model: options.model,
             blocked_files: loaded.blocked_files,
@@ -484,9 +483,10 @@ fn rewrite_patch(
     let prompt = build_prompt(work_order);
     let replacement = strip_code_fences(&client.rewrite(&prompt)?);
     Ok(Patch {
-        schema: "deslop.patch/2".to_string(),
+        schema: "deslop.patch/3".to_string(),
         workorder_id: work_order.id.to_owned(),
         revision_guard: workorder_revision_guard(work_order).clone(),
+        proposal_context: work_order.proposal_context.clone(),
         replacement,
         by: format!("deslop-slim/{}", options.model),
     })
@@ -610,7 +610,7 @@ fn finish_slim_report(
         options.apply,
     );
     SlimReport {
-        schema: "deslop.slim/3".to_string(),
+        schema: "deslop.slim/4".to_string(),
         dry_run: !options.apply,
         model: options.model,
         blocked_files,
@@ -701,7 +701,7 @@ fn verify_options_with_characterization(
 ) -> VerifyOptions {
     VerifyOptions {
         root: options.root.to_owned(),
-        scope: Some(options.paths.clone()),
+        scope: None,
         check_cmd: options.check_cmd.to_owned(),
         coverage: options.coverage.clone(),
         mutation: MutationConfig::Disabled,
@@ -787,9 +787,10 @@ fn characterization_test_for_work_order(
 ) -> Result<CharacterizationTest> {
     let prompt = build_characterization_prompt(work_order);
     Ok(CharacterizationTest {
-        schema: "deslop.characterization-test/2".to_string(),
+        schema: "deslop.characterization-test/3".to_string(),
         workorder_id: work_order.id.to_owned(),
         revision_guard: workorder_revision_guard(work_order).clone(),
+        proposal_context: work_order.proposal_context.clone(),
         test_path: characterization_test_path(work_order),
         test_text: strip_code_fences(&client.rewrite(&prompt)?),
         by: format!("deslop-slim/{}", options.model),
@@ -927,7 +928,7 @@ fn load_or_propose_work_orders(options: &SlimOptions) -> Result<LoadedWorkOrders
     if let Some(path) = &options.workorders {
         return preflight_loaded_work_orders(&options.root, load_workorders_jsonl(path)?);
     }
-    propose_work_orders_batch(&options.paths, options.analyzer.clone())
+    propose_work_orders_batch(&options.root, &options.paths, options.analyzer.clone())
 }
 
 /// Propose work orders using the default analyzer config (no suppression, default thresholds).
@@ -941,15 +942,44 @@ pub fn propose_work_orders_with_config(
     paths: &[PathBuf],
     config: AnalyzerConfig,
 ) -> Result<Vec<WorkOrder>> {
-    Ok(propose_work_orders_batch(paths, config)?.work_orders)
+    let root = proposal_root(paths)?;
+    Ok(propose_work_orders_batch(&root, paths, config)?.work_orders)
+}
+
+fn proposal_root(paths: &[PathBuf]) -> Result<PathBuf> {
+    let Some(first) = paths.first() else {
+        return Ok(std::env::current_dir()?);
+    };
+    let first = first
+        .canonicalize()
+        .with_context(|| format!("failed to resolve proposal path {}", first.display()))?;
+    let mut root = if first.is_file() {
+        first.parent().unwrap_or(Path::new("/")).to_path_buf()
+    } else {
+        first
+    };
+    for path in &paths[1..] {
+        let path = path
+            .canonicalize()
+            .with_context(|| format!("failed to resolve proposal path {}", path.display()))?;
+        while !path.starts_with(&root) {
+            root = root
+                .parent()
+                .context("proposal paths do not share a filesystem root")?
+                .to_path_buf();
+        }
+    }
+    Ok(root)
 }
 
 fn propose_work_orders_batch(
+    root: &Path,
     paths: &[PathBuf],
     config: AnalyzerConfig,
 ) -> Result<LoadedWorkOrders> {
-    let reports = scan_paths_with_config(paths, config)?;
-    let blocked_files = reports
+    let batch = propose_batch(root, paths, config)?;
+    let blocked_files = batch
+        .reports
         .iter()
         .filter(|report| !report.analysis.permits_rewrites())
         .map(|report| FileAnalysis {
@@ -958,15 +988,12 @@ fn propose_work_orders_batch(
             analysis: report.analysis.clone(),
         })
         .collect::<Vec<_>>();
-    let mut work_orders = Vec::new();
-    if reports_permit_rewrites(&reports) {
-        for report in reports {
-            let source = SourceFile::read(&report.path)?;
-            work_orders.extend(work_orders_for_report(&source, &report));
-        }
-    }
     Ok(LoadedWorkOrders {
-        work_orders,
+        work_orders: if blocked_files.is_empty() {
+            batch.work_orders
+        } else {
+            Vec::new()
+        },
         blocked_files,
     })
 }
@@ -975,35 +1002,45 @@ fn preflight_loaded_work_orders(
     root: &Path,
     work_orders: Vec<WorkOrder>,
 ) -> Result<LoadedWorkOrders> {
-    let mut analyses = BTreeMap::new();
+    let Some(first) = work_orders.first() else {
+        return Ok(LoadedWorkOrders {
+            work_orders,
+            blocked_files: Vec::new(),
+        });
+    };
+    let batch = reconstruct_proposal(root, &first.proposal_context)?;
+    let current = batch
+        .work_orders
+        .iter()
+        .map(|work_order| (work_order.id.as_str(), work_order))
+        .collect::<BTreeMap<_, _>>();
     for work_order in &work_orders {
         validate_workorder_identity(work_order).map_err(anyhow::Error::msg)?;
-        let path = checked_workorder_path(root, &work_order.path)?;
-        let source = SourceFile::read(&path)?;
-        let current_region = source
-            .text
-            .get(work_order.region.start_byte..work_order.region.end_byte);
-        if current_region != Some(work_order.region.text.as_str()) {
+        if work_order.proposal_context.context_id != first.proposal_context.context_id {
+            bail!("loaded workorders must share one proposal_context; regenerate the proposal");
+        }
+        let Some(regenerated) = current.get(work_order.id.as_str()) else {
             bail!(
-                "stale revision_guard for workorder `{}`; regenerate the proposal before LLM egress",
+                "loaded workorder `{}` is not in the reconstructed proposal",
+                work_order.id
+            );
+        };
+        if serde_json::to_value(work_order)? != serde_json::to_value(regenerated)? {
+            bail!(
+                "loaded workorder `{}` differs from the reconstructed proposal",
                 work_order.id
             );
         }
-        if analyses.contains_key(&path) {
-            continue;
-        }
-        analyses.insert(
-            path,
-            FileAnalysis {
-                path: work_order.path.clone(),
-                lang: source.lang,
-                analysis: analysis_provenance_or_failed(&source),
-            },
-        );
     }
-    let blocked_files = analyses
-        .into_values()
+    let blocked_files = batch
+        .reports
+        .iter()
         .filter(|file| !file.analysis.permits_rewrites())
+        .map(|report| FileAnalysis {
+            path: report.path.clone(),
+            lang: report.lang,
+            analysis: report.analysis.clone(),
+        })
         .collect::<Vec<_>>();
     Ok(LoadedWorkOrders {
         work_orders: if blocked_files.is_empty() {
@@ -1013,33 +1050,6 @@ fn preflight_loaded_work_orders(
         },
         blocked_files,
     })
-}
-
-fn checked_workorder_path(root: &Path, path: &Path) -> Result<PathBuf> {
-    if !path.is_absolute()
-        && path
-            .components()
-            .any(|component| matches!(component, std::path::Component::ParentDir))
-    {
-        bail!("workorder path must stay inside the configured root");
-    }
-    let canonical_root = fs::canonicalize(root)
-        .with_context(|| format!("failed to resolve configured root {}", root.display()))?;
-    let candidate = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        canonical_root.join(path)
-    };
-    let canonical_path = fs::canonicalize(&candidate)
-        .with_context(|| format!("failed to resolve workorder path {}", candidate.display()))?;
-    if !canonical_path.starts_with(&canonical_root) {
-        bail!(
-            "workorder path {} is outside configured root {}",
-            canonical_path.display(),
-            canonical_root.display()
-        );
-    }
-    Ok(canonical_path)
 }
 
 pub fn load_workorders_jsonl(path: &Path) -> Result<Vec<WorkOrder>> {
@@ -1062,9 +1072,9 @@ pub fn parse_workorders_jsonl(text: &str) -> Result<Vec<WorkOrder>> {
             .get("schema")
             .and_then(serde_json::Value::as_str)
             .unwrap_or("<missing>");
-        if schema != "deslop.workorder/2" {
+        if schema != "deslop.workorder/3" {
             bail!(
-                "line {} has unsupported schema `{schema}`; regenerate as deslop.workorder/2",
+                "line {} has unsupported schema `{schema}`; regenerate as deslop.workorder/3",
                 idx + 1
             );
         }
@@ -1126,9 +1136,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    use deslop_protocol::{
-        Contract, Region, WorkOrderFinding, region_fingerprint, region_revision_guard,
-    };
+    use deslop_protocol::WorkOrderFinding;
     use deslop_verify::VerificationVerdict;
     use tempfile::TempDir;
 
@@ -1331,39 +1339,22 @@ mod tests {
     }
 
     #[test]
-    fn prompt_contains_region_finding_and_contract() {
-        let path = PathBuf::from("sample.rs");
-        let text = "fn sample() {\n    return;\n}\n".to_string();
-        let region = Region {
-            start_line: 1,
-            end_line: 3,
-            start_byte: 0,
-            end_byte: text.len(),
-            text,
-        };
-        let work_order = WorkOrder {
-            schema: "deslop.workorder/2".to_string(),
-            kind: WorkOrderKind::RewriteRegion,
-            id: "wo_prompt".to_string(),
-            region_fingerprint: region_fingerprint(&path, &region),
-            revision_guard: region_revision_guard(&path, &region),
-            path,
-            region,
-            findings: vec![WorkOrderFinding {
-                rule: "needless-return".to_string(),
-                severity: deslop_core::Severity::Minor,
-                safety: deslop_core::SafetyClass::LlmOnly,
-                message: "unneeded return".to_string(),
-                precondition: Some("preserve early returns".to_string()),
-            }],
-            instruction: "Rewrite without changing behavior.".to_string(),
-            contract: Contract::default(),
-        };
+    fn prompt_contains_region_finding_and_contract() -> Result<()> {
+        let fixture = SlimTestFixture::identity()?;
+        let mut work_order = propose_work_orders(&[fixture.source])?.remove(0);
+        work_order.findings = vec![WorkOrderFinding {
+            rule: "needless-return".to_string(),
+            severity: deslop_core::Severity::Minor,
+            safety: deslop_core::SafetyClass::LlmOnly,
+            message: "unneeded return".to_string(),
+            precondition: Some("preserve early returns".to_string()),
+        }];
+        work_order.instruction = "Rewrite without changing behavior.".to_string();
 
         let prompt = build_prompt(&work_order);
 
         assert_eq!(prompt.kind, SlimPromptKind::Rewrite);
-        assert!(prompt.text.contains("fn sample()"));
+        assert!(prompt.text.contains("fn identity"));
         assert!(prompt.text.contains("unneeded return"));
         assert!(prompt.text.contains("must parse: true"));
         assert!(prompt.text.contains("no new public definitions: true"));
@@ -1375,7 +1366,8 @@ mod tests {
                 .text
                 .contains("pins the CURRENT observable behavior")
         );
-        assert!(characterization.text.contains("fn sample()"));
+        assert!(characterization.text.contains("fn identity"));
+        Ok(())
     }
 
     #[test]
@@ -1405,7 +1397,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("regenerate as deslop.workorder/2")
+                .contains("regenerate as deslop.workorder/3")
         );
         Ok(())
     }
@@ -1441,7 +1433,7 @@ mod tests {
             ),
         )?;
 
-        assert_eq!(report.schema, "deslop.slim/3");
+        assert_eq!(report.schema, "deslop.slim/4");
         assert_eq!(report.blocked_files.len(), 1);
         assert!(report.patches.is_empty());
         assert!(report.applied.is_none());
@@ -1452,7 +1444,7 @@ mod tests {
     #[test]
     fn stale_loaded_workorder_is_rejected_before_llm_egress() -> Result<()> {
         let fixture = SlimTestFixture::identity()?;
-        let work_order = propose_work_orders(&[fixture.source.clone()])?.remove(0);
+        let work_order = propose_work_orders(std::slice::from_ref(&fixture.source))?.remove(0);
         let workorders_path = fixture.root().join("workorders.jsonl");
         fs::write(
             &workorders_path,
@@ -1477,7 +1469,11 @@ mod tests {
 
         let error = run_slim(&client, options).expect_err("stale workorder must fail preflight");
 
-        assert!(error.to_string().contains("stale revision_guard"));
+        assert!(
+            error
+                .to_string()
+                .contains("proposal context no longer matches")
+        );
         assert!(client.prompts.borrow().is_empty());
         Ok(())
     }
@@ -1548,13 +1544,13 @@ mod tests {
             fixture.recorded_options(true, false, CoverageConfig::LcovFile(fixture.lcov())),
         )?;
 
-        assert_eq!(report.schema, "deslop.slim/3");
+        assert_eq!(report.schema, "deslop.slim/4");
         assert_eq!(report.patches.len(), 1);
-        assert_eq!(report.patches[0].schema, "deslop.patch/2");
+        assert_eq!(report.patches[0].schema, "deslop.patch/3");
         assert_eq!(report.patches[0].by, "deslop-slim/recorded");
         assert_single_result(&report, true, VerificationVerdict::Removable);
         assert_gating_counts(&report, 1, 0, 0);
-        assert_written_paths(&report, &[fixture.source.clone()]);
+        assert_written_paths(&report, std::slice::from_ref(&fixture.source));
         assert_fixture_source(&fixture, REWRITTEN_IDENTITY)?;
         Ok(())
     }
@@ -1660,7 +1656,7 @@ mod tests {
 
         assert_single_result(&report, true, VerificationVerdict::CoverageUnknown);
         assert_gating_counts(&report, 1, 0, 0);
-        assert_written_paths(&report, &[fixture.source.clone()]);
+        assert_written_paths(&report, std::slice::from_ref(&fixture.source));
         assert_fixture_source(&fixture, REWRITTEN_IDENTITY)?;
         Ok(())
     }
@@ -1712,7 +1708,7 @@ mod tests {
         assert!(characterization.upgrades[0].applied_after_characterization);
         assert_single_result(&report, true, VerificationVerdict::Removable);
         assert_gating_counts(&report, 1, 0, 0);
-        assert_written_paths(&report, &[fixture.source.clone()]);
+        assert_written_paths(&report, std::slice::from_ref(&fixture.source));
         assert_fixture_source(&fixture, REWRITTEN_IDENTITY)?;
         Ok(())
     }

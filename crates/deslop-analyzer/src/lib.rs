@@ -16,6 +16,7 @@ use deslop_lang::{Registry as LangRegistry, Rule};
 use deslop_parse::{SourceFile, analysis_provenance_or_failed, parse_source};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
+use serde::{Deserialize, Serialize};
 
 mod agnostic;
 mod boundary;
@@ -32,7 +33,8 @@ mod tokens;
 
 static EXTERNAL_NOTICE_EMITTED: AtomicBool = AtomicBool::new(false);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum JuliaExternal {
     Off,
     StaticLint,
@@ -60,7 +62,8 @@ pub struct AnalyzerConfig {
     pub boundary: BoundaryConfig,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AnalyzerLangConfig {
     pub long_method_nloc: Option<usize>,
 }
@@ -103,6 +106,7 @@ pub fn is_known_rule(rule: &str) -> bool {
 #[derive(Debug, Clone, Default)]
 pub struct Suppression {
     inner: Arc<SuppressionInner>,
+    match_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Default)]
@@ -113,6 +117,55 @@ struct SuppressionInner {
     global_ignore: Option<GlobSet>,
     /// Paths skipped for a specific rule only.
     per_rule_ignore: HashMap<String, GlobSet>,
+    canonical: SuppressionConfig,
+}
+
+/// Canonical, serializable suppression semantics used by proposal reconstruction.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SuppressionConfig {
+    pub disabled_rules: Vec<String>,
+    pub ignore_paths: Vec<String>,
+    pub rules: BTreeMap<String, Vec<String>>,
+}
+
+/// Canonical effective analyzer settings. This stores resolved behavior, not sparse CLI/MCP input.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnalyzerConfigSnapshot {
+    pub min_duplication_tokens: usize,
+    pub long_method_nloc: usize,
+    pub min_meaningful_tokens: usize,
+    pub rust: AnalyzerLangConfig,
+    pub clojure: AnalyzerLangConfig,
+    pub julia: AnalyzerLangConfig,
+    pub python: AnalyzerLangConfig,
+    pub javascript: AnalyzerLangConfig,
+    pub typescript: AnalyzerLangConfig,
+    pub generic: AnalyzerLangConfig,
+    pub rust_external: bool,
+    pub julia_external: JuliaExternal,
+    pub julia_project: Option<PathBuf>,
+    pub suppression: SuppressionConfig,
+    pub boundary: BoundaryConfig,
+}
+
+/// Proposal-time observation of one optional external analyzer on one source file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalCapability {
+    pub path: PathBuf,
+    pub analyzer: String,
+    pub available: bool,
+    pub covered_rules: Vec<String>,
+}
+
+/// Full scan result needed to reproduce proposal membership without hidden defaults.
+#[derive(Debug, Clone)]
+pub struct ScanContext {
+    pub reports: Vec<FileReport>,
+    pub input_contents: BTreeMap<PathBuf, String>,
+    pub external_capabilities: Vec<ExternalCapability>,
 }
 
 impl Suppression {
@@ -129,11 +182,20 @@ impl Suppression {
             && self.inner.per_rule_ignore.is_empty()
     }
 
+    pub fn config(&self) -> &SuppressionConfig {
+        &self.inner.canonical
+    }
+
+    pub fn with_match_root(mut self, root: PathBuf) -> Self {
+        self.match_root = Some(root);
+        self
+    }
+
     fn suppresses(&self, finding: &Finding) -> bool {
         if self.inner.disabled_rules.contains(&finding.rule) {
             return true;
         }
-        let candidate = match_path(&finding.path);
+        let candidate = match_path(&finding.path, self.match_root.as_deref());
         if let Some(set) = &self.inner.global_ignore
             && set.is_match(&candidate)
         {
@@ -158,8 +220,10 @@ impl Suppression {
 
 /// Normalize a finding path for glob matching by stripping a leading `./`, so that
 /// `crates/**` matches whether the scan root was `.` or an explicit directory.
-fn match_path(path: &Path) -> PathBuf {
-    path.strip_prefix("./").unwrap_or(path).to_path_buf()
+fn match_path(path: &Path, root: Option<&Path>) -> PathBuf {
+    root.and_then(|root| path.strip_prefix(root).ok())
+        .unwrap_or_else(|| path.strip_prefix("./").unwrap_or(path))
+        .to_path_buf()
 }
 
 /// Builder for [`Suppression`]. Accumulates raw inputs from one or more config sources,
@@ -262,12 +326,29 @@ impl SuppressionBuilder {
         }
         Ok(Suppression {
             inner: Arc::new(SuppressionInner {
+                canonical: SuppressionConfig {
+                    disabled_rules: sorted_strings(self.disabled_rules.iter()),
+                    ignore_paths: sorted_strings(self.global_globs.iter()),
+                    rules: self
+                        .per_rule_globs
+                        .iter()
+                        .map(|(rule, globs)| (rule.clone(), sorted_strings(globs.iter())))
+                        .collect(),
+                },
                 disabled_rules: self.disabled_rules,
                 global_ignore,
                 per_rule_ignore,
             }),
+            match_root: None,
         })
     }
+}
+
+fn sorted_strings<'a>(values: impl IntoIterator<Item = &'a String>) -> Vec<String> {
+    let mut values = values.into_iter().cloned().collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values
 }
 
 fn compile_globs(patterns: &[String]) -> Result<Option<GlobSet>> {
@@ -299,6 +380,62 @@ impl AnalyzerConfig {
             Lang::Generic => self.generic.long_method_nloc,
         };
         override_value.unwrap_or(self.long_method_nloc)
+    }
+
+    pub fn snapshot(&self) -> AnalyzerConfigSnapshot {
+        AnalyzerConfigSnapshot {
+            min_duplication_tokens: self.min_duplication_tokens,
+            long_method_nloc: self.long_method_nloc,
+            min_meaningful_tokens: self.min_meaningful_tokens,
+            rust: self.rust.clone(),
+            clojure: self.clojure.clone(),
+            julia: self.julia.clone(),
+            python: self.python.clone(),
+            javascript: self.javascript.clone(),
+            typescript: self.typescript.clone(),
+            generic: self.generic.clone(),
+            rust_external: self.rust_external,
+            julia_external: self.julia_external,
+            julia_project: self.julia_project.clone(),
+            suppression: self.suppression.config().clone(),
+            boundary: self.boundary.clone(),
+        }
+    }
+}
+
+impl AnalyzerConfigSnapshot {
+    pub fn to_config(&self) -> Result<AnalyzerConfig> {
+        let mut suppression = Suppression::builder();
+        suppression.add_section(
+            &self.suppression.disabled_rules,
+            &self.suppression.ignore_paths,
+            self.suppression.rules.iter().map(|(rule, globs)| {
+                (
+                    rule.as_str(),
+                    RuleSuppression {
+                        enabled: None,
+                        ignore_paths: globs,
+                    },
+                )
+            }),
+        );
+        Ok(AnalyzerConfig {
+            min_duplication_tokens: self.min_duplication_tokens,
+            long_method_nloc: self.long_method_nloc,
+            min_meaningful_tokens: self.min_meaningful_tokens,
+            rust: self.rust.clone(),
+            clojure: self.clojure.clone(),
+            julia: self.julia.clone(),
+            python: self.python.clone(),
+            javascript: self.javascript.clone(),
+            typescript: self.typescript.clone(),
+            generic: self.generic.clone(),
+            rust_external: self.rust_external,
+            julia_external: self.julia_external,
+            julia_project: self.julia_project.clone(),
+            suppression: suppression.build()?,
+            boundary: self.boundary.clone(),
+        })
     }
 }
 
@@ -463,6 +600,10 @@ pub fn scan_paths_with_config(
     paths: &[PathBuf],
     config: AnalyzerConfig,
 ) -> Result<Vec<FileReport>> {
+    Ok(scan_paths_with_context(paths, config)?.reports)
+}
+
+pub fn scan_paths_with_context(paths: &[PathBuf], config: AnalyzerConfig) -> Result<ScanContext> {
     let lang_registry = LangRegistry::default();
     let analyzer_registry = AnalyzerRegistry::default();
     let paths = if paths.is_empty() {
@@ -481,10 +622,23 @@ pub fn scan_paths_with_config(
         )?;
     }
     supported_paths = deduplicate_supported_paths(supported_paths);
-    let mut reports = scan_supported_paths_parallel(&supported_paths, &config)?;
+    let scanned = scan_supported_paths_parallel(&supported_paths, &config)?;
+    let mut reports = Vec::with_capacity(scanned.len());
+    let mut input_contents = BTreeMap::new();
+    let mut external_capabilities = Vec::new();
+    for scanned in scanned {
+        input_contents.insert(scanned.report.path.clone(), scanned.source_text);
+        reports.push(scanned.report);
+        external_capabilities.extend(scanned.external_capabilities);
+    }
     if reports_permit_rewrites(&reports) {
         add_cross_file_duplication(&mut reports, &config)?;
-        boundary::add_config_boundary(&mut reports, &supported_paths, &paths, &config)?;
+        input_contents.extend(boundary::add_config_boundary(
+            &mut reports,
+            &supported_paths,
+            &paths,
+            &config,
+        )?);
     }
     // Boundary findings are appended after the per-file pass, so suppression must run
     // over them here (the per-file pass already filtered its own findings).
@@ -494,7 +648,17 @@ pub fn scan_paths_with_config(
         }
     }
     reports.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(reports)
+    external_capabilities.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(a.analyzer.cmp(&b.analyzer))
+            .then(a.available.cmp(&b.available))
+    });
+    Ok(ScanContext {
+        reports,
+        input_contents,
+        external_capabilities,
+    })
 }
 
 fn deduplicate_supported_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
@@ -565,7 +729,7 @@ fn collect_supported_paths(
 fn scan_supported_paths_parallel(
     paths: &[PathBuf],
     config: &AnalyzerConfig,
-) -> Result<Vec<FileReport>> {
+) -> Result<Vec<ScannedFile>> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }
@@ -580,7 +744,7 @@ fn scan_supported_paths_parallel(
             handles.push(scope.spawn(move || {
                 chunk
                     .iter()
-                    .map(|path| scan_file_with_config(path, config.to_owned()))
+                    .map(|path| scan_file_with_context(path, config.to_owned()))
                     .collect::<Result<Vec<_>>>()
             }));
         }
@@ -592,8 +756,14 @@ fn scan_supported_paths_parallel(
         }
         Ok::<_, anyhow::Error>(())
     })?;
-    reports.sort_by(|a, b| a.path.cmp(&b.path));
+    reports.sort_by(|a, b| a.report.path.cmp(&b.report.path));
     Ok(reports)
+}
+
+struct ScannedFile {
+    report: FileReport,
+    source_text: String,
+    external_capabilities: Vec<ExternalCapability>,
 }
 
 fn add_cross_file_duplication(reports: &mut [FileReport], config: &AnalyzerConfig) -> Result<()> {
@@ -638,44 +808,95 @@ pub fn scan_file(path: &Path) -> Result<FileReport> {
 }
 
 pub fn scan_file_with_config(path: &Path, config: AnalyzerConfig) -> Result<FileReport> {
+    Ok(scan_file_with_context(path, config)?.report)
+}
+
+fn scan_file_with_context(path: &Path, config: AnalyzerConfig) -> Result<ScannedFile> {
     let lang_registry = LangRegistry::default();
     let analyzer_registry = AnalyzerRegistry::default();
     let Some(lang_pack) = lang_registry.supported_pack_for_path(path) else {
-        return Ok(empty_report(path, Lang::Generic));
+        return Ok(ScannedFile {
+            report: empty_report(path, Lang::Generic),
+            source_text: String::new(),
+            external_capabilities: Vec::new(),
+        });
     };
     let Some(pack) = analyzer_registry.pack_for_lang(lang_pack.lang()) else {
-        return Ok(empty_report(path, lang_pack.lang()));
+        return Ok(ScannedFile {
+            report: empty_report(path, lang_pack.lang()),
+            source_text: String::new(),
+            external_capabilities: Vec::new(),
+        });
     };
-    scan_file_with_pack(path, pack, config)
+    scan_file_with_pack_context(path, pack, config)
 }
 
+#[cfg(test)]
 fn scan_file_with_pack(
     path: &Path,
     pack: &'static dyn AnalysisPack,
     config: AnalyzerConfig,
 ) -> Result<FileReport> {
+    Ok(scan_file_with_pack_context(path, pack, config)?.report)
+}
+
+fn scan_file_with_pack_context(
+    path: &Path,
+    pack: &'static dyn AnalysisPack,
+    config: AnalyzerConfig,
+) -> Result<ScannedFile> {
     let text = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
     let source = SourceFile::new_with_lang(path.to_path_buf(), text, pack.lang());
+    let source_text = source.text.clone();
     let mut report = scan_source_with_pack(&source, pack, &config);
     if !report.analysis.permits_rewrites() {
-        return Ok(report);
+        return Ok(ScannedFile {
+            report,
+            source_text,
+            external_capabilities: Vec::new(),
+        });
     }
+    let mut external_capabilities = Vec::new();
     if let Some(external) = pack.external_analyzer(&config) {
+        let analyzer = external.name().to_string();
+        let covered_rules = external
+            .covered_rules()
+            .iter()
+            .map(|rule| (*rule).to_string())
+            .collect::<Vec<_>>();
         match external.analyze(path, &source)? {
             ExternalFindings::Available(external_findings) => {
+                external_capabilities.push(ExternalCapability {
+                    path: path.to_path_buf(),
+                    analyzer,
+                    available: true,
+                    covered_rules,
+                });
                 let covered = external.covered_rules();
                 report
                     .findings
                     .retain(|finding| !covered.contains(&finding.rule.as_str()));
                 report.findings.extend(external_findings);
             }
-            ExternalFindings::Unavailable { notice } => emit_external_notice_once(&notice),
+            ExternalFindings::Unavailable { notice } => {
+                external_capabilities.push(ExternalCapability {
+                    path: path.to_path_buf(),
+                    analyzer,
+                    available: false,
+                    covered_rules,
+                });
+                emit_external_notice_once(&notice);
+            }
         }
     }
     config.suppression.retain(&mut report.findings);
     sort_findings(&mut report.findings);
-    Ok(report)
+    Ok(ScannedFile {
+        report,
+        source_text,
+        external_capabilities,
+    })
 }
 
 #[cfg(test)]

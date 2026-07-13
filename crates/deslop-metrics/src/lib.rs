@@ -1904,7 +1904,7 @@ mod tests {
         });
         assert!(is_heuristic_outlier(relative_outlier, distribution));
 
-        let (flat, flat_normalized) = burden_normalization(&vec![0.20; 10]);
+        let (flat, flat_normalized) = burden_normalization(&[0.20; 10]);
         assert!(flat.flat);
         assert!(!flat.relative_outlier_eligible);
         assert!(

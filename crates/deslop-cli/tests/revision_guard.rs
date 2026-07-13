@@ -2,7 +2,7 @@ use std::fs;
 use std::process::{Command, Output};
 
 use deslop_protocol::WorkOrder;
-use serde_json::{Value, json};
+use serde_json::json;
 
 #[test]
 fn cli_rejects_boundary_stale_and_legacy_patches_without_writing() {
@@ -20,8 +20,8 @@ fn cli_rejects_boundary_stale_and_legacy_patches_without_writing() {
             .expect("workorder JSONL"),
     )
     .expect("workorder");
-    assert_eq!(work_order.schema, "deslop.workorder/2");
-    assert!(work_order.id.starts_with("wo2_"));
+    assert_eq!(work_order.schema, "deslop.workorder/3");
+    assert!(work_order.id.starts_with("wo3_"));
 
     let patch_path = temp.path().join("patch.jsonl");
     fs::write(
@@ -29,9 +29,10 @@ fn cli_rejects_boundary_stale_and_legacy_patches_without_writing() {
         format!(
             "{}\n",
             json!({
-                "schema": "deslop.patch/2",
+                "schema": "deslop.patch/3",
                 "workorder_id": work_order.id,
                 "revision_guard": work_order.revision_guard,
+                "proposal_context": work_order.proposal_context,
                 "replacement": "(empty? xs)\n",
                 "by": "cli-regression"
             })
@@ -46,12 +47,7 @@ fn cli_rejects_boundary_stale_and_legacy_patches_without_writing() {
         &["verify", "--patches", "patch.jsonl", "--check-cmd", "true"],
     );
     assert_eq!(verified.status.code(), Some(1), "{}", stderr(&verified));
-    let verify_report: Value = serde_json::from_slice(&verified.stdout).expect("verify report");
-    assert_eq!(verify_report["results"][0]["verdict"], "rejected");
-    assert_eq!(
-        verify_report["results"][0]["reasons"],
-        json!(["stale revision_guard"])
-    );
+    assert!(stderr(&verified).contains("proposal context no longer matches"));
 
     let applied = cli(
         temp.path(),
@@ -66,8 +62,7 @@ fn cli_rejects_boundary_stale_and_legacy_patches_without_writing() {
         ],
     );
     assert_eq!(applied.status.code(), Some(1), "{}", stderr(&applied));
-    let apply_report: Value = serde_json::from_slice(&applied.stdout).expect("apply report");
-    assert_eq!(apply_report["written"], json!([]));
+    assert!(stderr(&applied).contains("proposal context no longer matches"));
     assert_eq!(fs::read_to_string(&source).unwrap(), changed);
 
     let legacy_path = temp.path().join("legacy.jsonl");
@@ -87,7 +82,7 @@ fn cli_rejects_boundary_stale_and_legacy_patches_without_writing() {
     .expect("legacy patch");
     let legacy = cli(temp.path(), &["verify", "--patches", "legacy.jsonl"]);
     assert!(!legacy.status.success());
-    assert!(stderr(&legacy).contains("regenerate as `deslop.patch/2`"));
+    assert!(stderr(&legacy).contains("regenerate as `deslop.patch/3`"));
     assert_eq!(fs::read_to_string(source).unwrap(), changed);
 }
 

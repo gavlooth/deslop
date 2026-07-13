@@ -42,13 +42,15 @@ use anyhow::Result;
 use deslop_core::{DetectedBy, FileReport, Finding, Lang, SafetyClass, Severity};
 use deslop_parse::{SourceFile, parse_source};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use tree_sitter::Node;
 
 use crate::{AnalyzerConfig, finding};
 
 /// Tuning for the boundary pass. All fields have working defaults; everything here is
 /// surfaced through `[analyzer.boundary]` so behavior is config-governed, never silent.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BoundaryConfig {
     /// Master switch. `false` skips the pass entirely.
     pub enabled: bool,
@@ -182,10 +184,10 @@ pub(crate) fn add_config_boundary(
     source_paths: &[PathBuf],
     scan_roots: &[PathBuf],
     config: &AnalyzerConfig,
-) -> Result<()> {
+) -> Result<Vec<(PathBuf, String)>> {
     let boundary = &config.boundary;
     if !boundary.enabled {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let sinks = sink_matcher(boundary);
     let ignore = ignore_matcher(boundary);
@@ -196,6 +198,7 @@ pub(crate) fn add_config_boundary(
     // consumed outside this repo) contribute no `declared` evidence, so their keys can
     // never produce config-key-unread.
     let artifacts = collect_config_artifacts(scan_roots);
+    let mut consulted_artifacts = Vec::new();
     let mut artifact_sources: Vec<SourceFile> = Vec::new();
     for path in &artifacts {
         let skipped = path
@@ -208,6 +211,7 @@ pub(crate) fn add_config_boundary(
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
+        consulted_artifacts.push((path.clone(), text.clone()));
         let source = SourceFile::new_with_lang(path.clone(), text, Lang::Generic);
         for (line, key) in artifact_keys(&source) {
             let normalized = normalize_key(&key);
@@ -353,7 +357,7 @@ pub(crate) fn add_config_boundary(
             });
         }
     }
-    Ok(())
+    Ok(consulted_artifacts)
 }
 
 fn sink_matcher(boundary: &BoundaryConfig) -> impl Fn(&str) -> bool + '_ {

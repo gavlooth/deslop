@@ -22,6 +22,7 @@ use deslop_metrics::{
     MetricsConfig, metrics_paths, render_json as render_metrics_json,
     render_text as render_metrics_text,
 };
+use deslop_protocol::{propose_work_orders, propose_work_orders_with_exclusions};
 use deslop_report::{render_agent, render_json, render_sarif, render_text};
 use deslop_slim::{
     AnthropicClient, DEFAULT_MODEL, EgressDecision, EgressSummary, OpenAiClient, RecordedClient,
@@ -639,9 +640,25 @@ fn scan(args: ScanArgs, config: &DeslopConfig) -> Result<()> {
         args.julia_external,
         args.julia_project,
     )?;
-    let mut reports = scan_paths_with_config(&paths, analyzer)?;
-    if let Some(path) = resolve_scan_baseline(args.baseline, config) {
-        let baseline = Baseline::read(&path)?;
+    let baseline = resolve_scan_baseline(args.baseline, config)
+        .map(|path| Baseline::read(&path))
+        .transpose()?;
+    let (mut reports, agent_work_orders) = if matches!(args.format, Format::Agent) {
+        let excluded = baseline
+            .as_ref()
+            .map(|baseline| baseline.fingerprints.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        let batch = propose_work_orders_with_exclusions(
+            &proposal_root_for_paths(&paths)?,
+            &paths,
+            analyzer,
+            &excluded,
+        )?;
+        (batch.reports, Some(batch.work_orders))
+    } else {
+        (scan_paths_with_config(&paths, analyzer)?, None)
+    };
+    if let Some(baseline) = baseline {
         suppress_baseline(&mut reports, &baseline);
     }
 
@@ -655,7 +672,7 @@ fn scan(args: ScanArgs, config: &DeslopConfig) -> Result<()> {
         Format::Text => render_text(&reports),
         Format::Json => render_json(&reports)?,
         Format::Sarif => render_sarif(&reports)?,
-        Format::Agent => render_agent(&reports)?,
+        Format::Agent => render_agent(agent_work_orders.as_deref().unwrap_or_default())?,
     };
     print!("{rendered}");
 
@@ -890,12 +907,16 @@ fn propose(args: ProposeArgs, config: &DeslopConfig) -> Result<()> {
         args.julia_external,
         args.julia_project,
     )?;
-    let reports = scan_paths_with_config(&args.paths, analyzer)?;
-    if !reports_permit_rewrites(&reports) {
-        print_analysis_diagnostics(&reports);
+    let batch = propose_work_orders(
+        &proposal_root_for_paths(&args.paths)?,
+        &args.paths,
+        analyzer,
+    )?;
+    if !reports_permit_rewrites(&batch.reports) {
+        print_analysis_diagnostics(&batch.reports);
         std::process::exit(2);
     }
-    let rendered = render_agent(&reports)?;
+    let rendered = render_agent(&batch.work_orders)?;
     if let Some(output) = args.output {
         fs::write(&output, rendered)
             .with_context(|| format!("failed to write {}", output.display()))?;
@@ -1493,6 +1514,38 @@ fn paths_since(paths: Vec<PathBuf>, since: Option<String>) -> Result<Vec<PathBuf
     Ok(changed)
 }
 
+fn proposal_root_for_paths(paths: &[PathBuf]) -> Result<PathBuf> {
+    let cwd = std::env::current_dir()?.canonicalize()?;
+    if paths.is_empty() {
+        return Ok(cwd);
+    }
+    let canonical = paths
+        .iter()
+        .map(|path| {
+            path.canonicalize()
+                .with_context(|| format!("failed to resolve proposal path {}", path.display()))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if canonical.iter().all(|path| path.starts_with(&cwd)) {
+        return Ok(cwd);
+    }
+    let first = &canonical[0];
+    let mut root = if first.is_file() {
+        first.parent().unwrap_or(Path::new("/")).to_path_buf()
+    } else {
+        first.clone()
+    };
+    for path in &canonical[1..] {
+        while !path.starts_with(&root) {
+            root = root
+                .parent()
+                .context("proposal paths do not share a filesystem root")?
+                .to_path_buf();
+        }
+    }
+    Ok(root)
+}
+
 fn suppress_baseline(reports: &mut [FileReport], baseline: &Baseline) {
     for report in reports {
         report
@@ -1666,7 +1719,7 @@ mod tests {
         assert!(resolve_fix_allow_unverified(None, config));
         assert!(matches!(
             resolve_fix_coverage(None, config).expect("parse coverage"),
-            CoverageConfig::LcovFile(path) if path == PathBuf::from("coverage.lcov")
+            CoverageConfig::LcovFile(path) if path == Path::new("coverage.lcov")
         ));
     }
 
@@ -1852,7 +1905,7 @@ mod tests {
 
         assert!(matches!(
             resolve_fix_coverage(None, &config).expect("parse coverage"),
-            CoverageConfig::CoveragePyFile(path) if path == PathBuf::from("coverage.json")
+            CoverageConfig::CoveragePyFile(path) if path == Path::new("coverage.json")
         ));
         assert!(matches!(
             resolve_fix_coverage(Some("disabled".to_string()), &config).expect("parse coverage"),
@@ -1898,7 +1951,7 @@ mod tests {
     #[test]
     fn slim_progress_never_changes_stdout_report_rendering() {
         let report = serde_json::json!({
-            "schema": "deslop.slim/3",
+            "schema": "deslop.slim/4",
             "dry_run": true,
             "verified": { "results": [] }
         });
@@ -1935,19 +1988,19 @@ mod tests {
         ));
         assert!(matches!(
             parse_coverage_config("lcov:coverage.lcov").expect("parse"),
-            CoverageConfig::LcovFile(path) if path == PathBuf::from("coverage.lcov")
+            CoverageConfig::LcovFile(path) if path == Path::new("coverage.lcov")
         ));
         assert!(matches!(
             parse_coverage_config("cloverage:coverage.json").expect("parse"),
-            CoverageConfig::CloverageFile(path) if path == PathBuf::from("coverage.json")
+            CoverageConfig::CloverageFile(path) if path == Path::new("coverage.json")
         ));
         assert!(matches!(
             parse_coverage_config("julia-cov:coverage.cov").expect("parse"),
-            CoverageConfig::JuliaCovFile(path) if path == PathBuf::from("coverage.cov")
+            CoverageConfig::JuliaCovFile(path) if path == Path::new("coverage.cov")
         ));
         assert!(matches!(
             parse_coverage_config("coverage-py:coverage.json").expect("parse"),
-            CoverageConfig::CoveragePyFile(path) if path == PathBuf::from("coverage.json")
+            CoverageConfig::CoveragePyFile(path) if path == Path::new("coverage.json")
         ));
         assert!(parse_coverage_config("unknown").is_err());
     }
