@@ -7535,3 +7535,102 @@ constraints are ready for durable checkpoint memory; search handles: `M2.5 const
 identity exact`, `macro syntax not expansion`, `unknown rule absence`.
 
 **Signature:** Codex (GPT-5), M2.5 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2.6 active checkpoint — Rust production adapter and goldens
+
+**Date/time:** 2026-07-14T01:16:00+02:00
+
+**Objective/target:** make the production Rust adapter implement the frozen M2.1-M2.5 contracts and
+prove its exact supported boundary with valid and malformed golden fixtures.
+
+**Changes:** planning only. Audited the current Rust grammar descriptor, region/metric/tail hooks,
+analyzer fixtures, capability tiers, and newly frozen projection contracts. Selected a complete-S0
+target while retaining every S2-S4 capability as unknown.
+
+**Commands/checks run:** task-targeted Hindsight search; targeted reads of `RustPack`, capability tier
+catalog, Rust analyzer pack, existing Rust clean/sloppy fixtures, and M2 terminal constraints; fixture
+inventory with `rg`.
+
+**Results:** ACTIVE / UNVERIFIED. Existing Rust production policy remains default unknown for canonical
+roles, queries, lexical classification, construct/recovery, and dialect declarations. A first broad
+implementation hunk was fully removed after target-audit; `cargo check -p deslop-lang` passes and no
+production source change remains in the active diff.
+
+**Invalidated assumptions / negative memory:** a patch anchored only on the repeated
+`fn capability_manifest(&self)` signature selected `ClojurePack`, and a relocation hunk without an
+explicit implementation anchor then selected `JuliaPack`. Both were detected by searching for the
+Rust-specific assertion string, removed with `apply_patch`, and the exact parent behavior restored.
+Authority downgrade: no Rust policy implementation exists yet. Preferred alternative: every patch
+must explicitly anchor on `impl LangPack for RustPack`, use small unique method insertions, and compile
+after each method group. Search handles: `M2.6 repeated LangPack patch wrong implementation`, `RustPack
+unique hunk anchor`. Recheck whenever mechanically editing a method shared by all language packs.
+Existing graph/analyzer Rust support is not evidence of S2 name resolution, CFG, effects, macro
+expansion, or compiler authority. Generated query labels cannot substitute for exact marker evidence.
+
+**Current recommendation/next actions:** implement the Rust policy methods and two golden fixtures,
+then measure all projection vectors before pinning counts and running integration gates.
+
+**Blockers/dependencies/restart:** Serena Rust symbols remain unavailable; targeted local edits plus
+compiler/query/runtime oracles are the fallback. No functional blocker or dependency change applies.
+
+**Negative-memory status:** new provisional negative memory recorded locally; Hindsight consolidation
+required before resuming implementation.
+
+**Signature:** Codex (GPT-5), M2.6 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M2.6 terminal checkpoint — Rust production adapter and goldens
+
+**Date/time:** 2026-07-14T01:32:50+02:00
+
+**Objective/target:** complete the production Rust implementation of every frozen M2.1-M2.5 adapter
+contract and prove its exact authority boundary through valid and malformed golden fixtures.
+
+**Changes:** `RustPack` now provides canonical raw-kind roles, all six syntax query families, total
+lexical classification, file-incomplete recovery, opaque macro definitions/invocations and unsafe
+blocks, exact generated-marker facts, and exact Rust grammar dialect provenance. Canonical generated
+roles require `#[generated]` or `#[automatically_derived]`; the opaque/generated query family captures
+macros only and does not fabricate generated provenance. The capability manifest derives S1; every
+S2-S4 capability stays unknown. Added valid and malformed Rust fixtures and a production integration
+oracle running role, query, lexical, and construct projections from the same retained analysis. Fixed
+the M2.4 lexical sentinel collision: raw kind `*` with exact text classifies multiplication, while only
+raw kind `*` with no text is the terminal wildcard. The former Rust-unknown rejection test now uses
+Python, which remains unknown.
+
+**Commands/checks run:** focused `cargo test -p deslop-lang`; focused and complete `cargo test -p
+deslop-parse`; affected strict clippy, format, and whitespace checks; then `cargo test --workspace
+--all-features`; `cargo build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc
+--workspace --all-features --no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D
+warnings`; `cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. Valid golden: 161 raw nodes; 110 non-overlapping token owners with class counts
+comment 2, delimiter 36, identifier 22, keyword 11, literal 4, operator 13, other 8, punctuation 14;
+78 role assignments across 17 categories; query captures `[5,2,5,1,2,3]`; construct counts generated
+2, macro 3, unsupported 1. Unicode `π`, full line/block comments, exact arithmetic `*`, both generated
+markers, macro definition/invocations, and the unsafe region are pinned. Malformed golden: exactly one
+syntax-authority file-incomplete `ERROR` fact with text `=`. Each file invokes its parser once. All
+workspace gates pass; only the two repository-designated slow probes remain ignored.
+
+**Invalidated assumptions / negative memory:** (1) repeated LangPack signatures are unsafe patch
+anchors; explicit `impl LangPack for RustPack` context and small compile-checked groups are required.
+(2) raw kind `*` is a real Rust multiplication token, so treating every `*` raw-kind rule as the
+wildcard made truthful classification impossible. Correct contract: an exact-text `*` rule matches
+the literal raw kind; only `text: null` is wildcard. (3) completing canonical roles also completes S1,
+not merely S0, because the manifest already truthfully provides all S1 syntactic capabilities. Macro
+and generated labels still do not grant expansion, name resolution, CFG, effects, or compiler facts.
+
+**Current recommendation/next actions:** apply the same fixture-gated production upgrade to the
+JavaScript, TypeScript, and TSX dialect family in M2.7, retaining dialect-specific identities and no
+S2+ promotion.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, service restart, or live-state
+activation applies.
+
+**Negative-memory status:** repeated-hunk failure is recorded locally and in Hindsight; the literal-
+star sentinel correction is recorded locally and requires durable Hindsight consolidation. Search
+handles: `M2.6 Rust golden`, `lexical exact star wildcard`, `Rust S1 derived`.
+
+**Signature:** Codex (GPT-5), M2.6 integration owner, terminal checkpoint, 2026-07-14.

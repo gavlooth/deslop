@@ -1111,7 +1111,7 @@ impl LexicalRule {
     }
 
     fn matches(&self, raw_kind: &str, text: &str) -> bool {
-        (self.raw_kind == "*" || self.raw_kind == raw_kind)
+        ((self.raw_kind == "*" && self.text.is_none()) || self.raw_kind == raw_kind)
             && self.text.as_deref().is_none_or(|expected| expected == text)
     }
 }
@@ -1297,7 +1297,8 @@ impl LanguageLexicalPolicy {
                             "lexical rules have an empty or duplicate match key".to_string()
                         );
                     }
-                    if rule.raw_kind == "*" && index + 1 != self.rules.len() {
+                    if rule.raw_kind == "*" && rule.text.is_none() && index + 1 != self.rules.len()
+                    {
                         return Err("lexical wildcard rule must be terminal".to_string());
                     }
                     if rule.text.is_none()
@@ -2861,6 +2862,282 @@ impl LangPack for TypeScriptPack {
     }
 }
 
+fn rust_canonical_roles(node: Node<'_>, text: &str) -> CanonicalRoleSet {
+    let roles = match node.kind() {
+        "source_file" => vec![CanonicalRole::Project, CanonicalRole::Module],
+        "function_item" | "function_signature_item" => {
+            vec![CanonicalRole::Declaration, CanonicalRole::Callable]
+        }
+        "struct_item" | "enum_item" | "union_item" | "type_item" | "trait_item" | "impl_item" => {
+            vec![CanonicalRole::Declaration, CanonicalRole::Type]
+        }
+        "mod_item" => vec![CanonicalRole::Declaration, CanonicalRole::Module],
+        "const_item" | "static_item" => vec![CanonicalRole::Declaration],
+        "macro_definition" => vec![CanonicalRole::Declaration, CanonicalRole::OpaqueRegion],
+        "use_declaration" => vec![CanonicalRole::Declaration, CanonicalRole::Import],
+        "parameters" | "parameter" | "self_parameter" | "variadic_parameter" => {
+            vec![CanonicalRole::Parameter]
+        }
+        "block" => vec![CanonicalRole::Block],
+        "let_declaration" | "expression_statement" => vec![CanonicalRole::Statement],
+        "if_expression" => vec![CanonicalRole::Expression, CanonicalRole::Branch],
+        "match_expression" => vec![CanonicalRole::Expression, CanonicalRole::Match],
+        "match_arm" => vec![CanonicalRole::Case],
+        "loop_expression" | "while_expression" | "for_expression" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Loop]
+        }
+        "call_expression" => vec![CanonicalRole::Expression, CanonicalRole::Call],
+        "assignment_expression" | "compound_assignment_expr" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Write]
+        }
+        "identifier" | "field_identifier" | "type_identifier" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Read]
+        }
+        "integer_literal" | "float_literal" | "char_literal" | "string_literal"
+        | "raw_string_literal" | "boolean_literal" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Literal]
+        }
+        "line_comment" | "block_comment" => vec![CanonicalRole::Comment],
+        "ERROR" => vec![CanonicalRole::Error],
+        "macro_invocation" => vec![CanonicalRole::Expression, CanonicalRole::OpaqueRegion],
+        "attribute_item"
+            if matches!(
+                text.get(node.start_byte()..node.end_byte()),
+                Some("#[generated]" | "#[automatically_derived]")
+            ) =>
+        {
+            vec![CanonicalRole::Generated]
+        }
+        _ => Vec::new(),
+    };
+    CanonicalRoleSet::from_roles(roles)
+}
+
+fn rust_query_pack(adapter_schema: &str) -> LanguageQueryPack {
+    let capture = |name, roles: &[CanonicalRole]| {
+        QueryCaptureDeclaration::new(name, CanonicalRoleSet::from_roles(roles.iter().copied()))
+            .expect("the Rust query capture is valid")
+    };
+    LanguageQueryPack::new(
+        adapter_schema,
+        vec![
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Declarations,
+                CapabilityAuthority::Adapter,
+                "[(function_item) (struct_item) (enum_item) (union_item) (trait_item) (impl_item) (type_item) (const_item) (static_item) (mod_item) (macro_definition) (use_declaration)] @declaration",
+                vec![capture("declaration", &[CanonicalRole::Declaration])],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::References,
+                CapabilityAuthority::Adapter,
+                "(call_expression function: (_) @reference)",
+                vec![capture(
+                    "reference",
+                    &[CanonicalRole::Expression, CanonicalRole::Read],
+                )],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Scopes,
+                CapabilityAuthority::Adapter,
+                "(source_file) @scope.module\n(block) @scope.block",
+                vec![
+                    capture("scope.module", &[CanonicalRole::Module]),
+                    capture("scope.block", &[CanonicalRole::Block]),
+                ],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Control,
+                CapabilityAuthority::Adapter,
+                "[(if_expression) (match_expression)] @control.branch\n[(loop_expression) (while_expression) (for_expression)] @control.loop",
+                vec![
+                    capture(
+                        "control.branch",
+                        &[CanonicalRole::Expression, CanonicalRole::Branch],
+                    ),
+                    capture(
+                        "control.loop",
+                        &[CanonicalRole::Expression, CanonicalRole::Loop],
+                    ),
+                ],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Comments,
+                CapabilityAuthority::Adapter,
+                "[(line_comment) (block_comment)] @comment",
+                vec![capture("comment", &[CanonicalRole::Comment])],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::OpaqueGenerated,
+                CapabilityAuthority::Adapter,
+                "[(macro_invocation) (macro_definition)] @opaque",
+                vec![capture("opaque", &[CanonicalRole::OpaqueRegion])],
+            ),
+        ],
+    )
+    .expect("the Rust query pack is valid")
+}
+
+fn rust_lexical_policy(adapter_schema: &str) -> LanguageLexicalPolicy {
+    let token =
+        |raw_kind, class| LexicalRule::new(raw_kind, None, LexicalClassification::token(class));
+    let operator = |raw_kind: &'static str, text: Option<&str>, class: LexicalOperatorClass| {
+        LexicalRule::new(
+            raw_kind,
+            text.map(str::to_string),
+            LexicalClassification::operator(class),
+        )
+    };
+    let mut rules = vec![
+        operator("+", None, LexicalOperatorClass::Arithmetic),
+        operator("-", None, LexicalOperatorClass::Arithmetic),
+        operator("*", Some("*"), LexicalOperatorClass::Arithmetic),
+        operator("/", None, LexicalOperatorClass::Arithmetic),
+        operator("%", None, LexicalOperatorClass::Arithmetic),
+        operator("==", None, LexicalOperatorClass::Comparison),
+        operator("!=", None, LexicalOperatorClass::Comparison),
+        operator("<", None, LexicalOperatorClass::Comparison),
+        operator(">", None, LexicalOperatorClass::Comparison),
+        operator("<=", None, LexicalOperatorClass::Comparison),
+        operator(">=", None, LexicalOperatorClass::Comparison),
+        operator("&&", None, LexicalOperatorClass::Logical),
+        operator("||", None, LexicalOperatorClass::Logical),
+        operator("!", None, LexicalOperatorClass::Logical),
+        operator("=", None, LexicalOperatorClass::Assignment),
+        operator("+=", None, LexicalOperatorClass::Assignment),
+        operator("-=", None, LexicalOperatorClass::Assignment),
+        operator("*=", None, LexicalOperatorClass::Assignment),
+        operator("/=", None, LexicalOperatorClass::Assignment),
+        operator("%=", None, LexicalOperatorClass::Assignment),
+        operator("&", None, LexicalOperatorClass::Bitwise),
+        operator("|", None, LexicalOperatorClass::Bitwise),
+        operator("^", None, LexicalOperatorClass::Bitwise),
+        operator("<<", None, LexicalOperatorClass::Bitwise),
+        operator(">>", None, LexicalOperatorClass::Bitwise),
+        operator(".", None, LexicalOperatorClass::MemberAccess),
+        operator("::", None, LexicalOperatorClass::MemberAccess),
+        operator("..", None, LexicalOperatorClass::Range),
+        operator("..=", None, LexicalOperatorClass::Range),
+    ];
+    rules.extend(
+        [
+            "identifier",
+            "field_identifier",
+            "type_identifier",
+            "lifetime",
+        ]
+        .into_iter()
+        .map(|kind| token(kind, LexicalTokenClass::Identifier)),
+    );
+    rules.extend(
+        [
+            "integer_literal",
+            "float_literal",
+            "char_literal",
+            "string_literal",
+            "raw_string_literal",
+            "boolean_literal",
+            "true",
+            "false",
+        ]
+        .into_iter()
+        .map(|kind| token(kind, LexicalTokenClass::Literal)),
+    );
+    rules.extend(
+        [
+            "fn", "let", "mut", "pub", "struct", "enum", "union", "trait", "impl", "type", "const",
+            "static", "mod", "use", "as", "where", "if", "else", "match", "loop", "while", "for",
+            "in", "return", "break", "continue", "move", "async", "await", "unsafe", "extern",
+            "crate", "super", "self", "Self", "dyn", "ref",
+        ]
+        .into_iter()
+        .map(|kind| token(kind, LexicalTokenClass::Keyword)),
+    );
+    rules.extend(
+        ["(", ")", "[", "]", "{", "}"]
+            .into_iter()
+            .map(|kind| token(kind, LexicalTokenClass::Delimiter)),
+    );
+    rules.extend(
+        [";", ",", ":", "->", "=>", "?", "@", "#"]
+            .into_iter()
+            .map(|kind| token(kind, LexicalTokenClass::Punctuation)),
+    );
+    rules.extend([
+        token("line_comment", LexicalTokenClass::Comment),
+        token("block_comment", LexicalTokenClass::Comment),
+        token("ERROR", LexicalTokenClass::Error),
+        token("*", LexicalTokenClass::Other),
+    ]);
+    LanguageLexicalPolicy::provided(
+        adapter_schema,
+        CapabilityAuthority::Adapter,
+        IdentifierCasePolicy::Sensitive,
+        true,
+        vec!["//".to_string()],
+        vec![BlockCommentDelimiter::new("/*", "*/", true)],
+        rules,
+    )
+    .expect("the Rust lexical policy is valid")
+}
+
+fn rust_construct_policy(adapter_schema: &str) -> LanguageConstructPolicy {
+    LanguageConstructPolicy::new(
+        adapter_schema,
+        ParseRecoveryPolicy::provided(
+            CapabilityAuthority::Syntax,
+            ParseRecoveryHandling::FileIncomplete,
+        ),
+        vec![
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::UnsupportedConstruct,
+                CapabilityAuthority::Adapter,
+                vec![ConstructRule::new(
+                    "unsafe_block",
+                    None,
+                    ConstructHandling::Opaque,
+                )],
+            )
+            .expect("the Rust unsupported policy is valid"),
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::Macro,
+                CapabilityAuthority::Adapter,
+                vec![
+                    ConstructRule::new("macro_invocation", None, ConstructHandling::Opaque),
+                    ConstructRule::new("macro_definition", None, ConstructHandling::Opaque),
+                ],
+            )
+            .expect("the Rust macro policy is valid"),
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::GeneratedCode,
+                CapabilityAuthority::Adapter,
+                vec![
+                    ConstructRule::new(
+                        "attribute_item",
+                        Some("#[generated]".to_string()),
+                        ConstructHandling::SurfaceSyntax,
+                    ),
+                    ConstructRule::new(
+                        "attribute_item",
+                        Some("#[automatically_derived]".to_string()),
+                        ConstructHandling::SurfaceSyntax,
+                    ),
+                ],
+            )
+            .expect("the Rust generated policy is valid"),
+        ],
+        DialectPolicy::provided(
+            CapabilityAuthority::Syntax,
+            vec![DialectDeclaration::new(
+                "rust",
+                "tree-sitter-rust",
+                "0.24.2",
+            )],
+        )
+        .expect("the Rust dialect policy is valid"),
+    )
+    .expect("the Rust construct policy is valid")
+}
+
 impl LangPack for RustPack {
     fn name(&self) -> &'static str {
         "rust"
@@ -2868,6 +3145,27 @@ impl LangPack for RustPack {
 
     fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
         LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
+            .with_declaration(CapabilityDeclaration::provided(
+                AdapterCapability::CanonicalRoles,
+                CapabilityAuthority::Adapter,
+            ))
+            .expect("the Rust S0 capability declaration is valid")
+    }
+
+    fn canonical_roles(&self, node: Node<'_>, text: &str) -> CanonicalRoleSet {
+        rust_canonical_roles(node, text)
+    }
+
+    fn query_pack(&self) -> LanguageQueryPack {
+        rust_query_pack(self.adapter_schema())
+    }
+
+    fn lexical_policy(&self) -> LanguageLexicalPolicy {
+        rust_lexical_policy(self.adapter_schema())
+    }
+
+    fn construct_policy(&self) -> LanguageConstructPolicy {
+        rust_construct_policy(self.adapter_schema())
     }
 
     fn lang(&self) -> Lang {
@@ -3271,6 +3569,11 @@ mod tests {
                     LexicalClassification::operator(LexicalOperatorClass::Comparison),
                 ),
                 LexicalRule::new(
+                    "*",
+                    Some("*".to_string()),
+                    LexicalClassification::operator(LexicalOperatorClass::Arithmetic),
+                ),
+                LexicalRule::new(
                     "line_comment",
                     None,
                     LexicalClassification::token(LexicalTokenClass::Comment),
@@ -3286,6 +3589,10 @@ mod tests {
         assert_eq!(
             policy.classify("==", "==").unwrap().operator_class(),
             Some(LexicalOperatorClass::Comparison)
+        );
+        assert_eq!(
+            policy.classify("*", "*").unwrap().operator_class(),
+            Some(LexicalOperatorClass::Arithmetic)
         );
         assert_eq!(
             policy
@@ -3321,6 +3628,11 @@ mod tests {
                         "raw_kind": "==",
                         "text": "==",
                         "classification": {"token": "operator", "operator": "comparison"}
+                    },
+                    {
+                        "raw_kind": "*",
+                        "text": "*",
+                        "classification": {"token": "operator", "operator": "arithmetic"}
                     },
                     {
                         "raw_kind": "line_comment",
@@ -3711,35 +4023,40 @@ mod tests {
             manifest.validate().unwrap();
             assert_eq!(manifest.adapter_schema(), pack.adapter_schema());
             assert_eq!(manifest.capabilities().len(), 23);
-            assert_eq!(manifest.highest_complete_tier(), None);
+            assert_eq!(
+                manifest.highest_complete_tier(),
+                (pack.lang() == Lang::Rust).then_some(SemanticTier::S1)
+            );
             let queries = pack.query_pack();
             queries.validate().unwrap();
             assert_eq!(queries.adapter_schema(), pack.adapter_schema());
             assert_eq!(queries.queries().len(), 6);
+            let expected = if pack.lang() == Lang::Rust {
+                CapabilitySupport::Provided
+            } else {
+                CapabilitySupport::Unknown
+            };
             assert!(
                 queries
                     .queries()
                     .iter()
-                    .all(|query| query.support() == CapabilitySupport::Unknown)
+                    .all(|query| query.support() == expected)
             );
             let lexical = pack.lexical_policy();
             lexical.validate().unwrap();
             assert_eq!(lexical.adapter_schema(), pack.adapter_schema());
-            assert_eq!(lexical.support(), CapabilitySupport::Unknown);
-            assert!(lexical.rules().is_empty());
+            assert_eq!(lexical.support(), expected);
+            assert_eq!(lexical.rules().is_empty(), pack.lang() != Lang::Rust);
             let constructs = pack.construct_policy();
             constructs.validate().unwrap();
             assert_eq!(constructs.adapter_schema(), pack.adapter_schema());
-            assert_eq!(
-                constructs.parse_recovery().support(),
-                CapabilitySupport::Unknown
-            );
-            assert_eq!(constructs.dialects().support(), CapabilitySupport::Unknown);
+            assert_eq!(constructs.parse_recovery().support(), expected);
+            assert_eq!(constructs.dialects().support(), expected);
             assert!(
                 constructs
                     .constructs()
                     .iter()
-                    .all(|section| section.support() == CapabilitySupport::Unknown)
+                    .all(|section| section.support() == expected)
             );
         }
     }

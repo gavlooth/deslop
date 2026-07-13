@@ -295,7 +295,14 @@ reports, benchmark records, and work orders.
   attribute, opaque unsafe block, opaque macro invocation, and file-incomplete `ERROR`; unknown
   policy emits no construct claims. Policy-only identity, adapter-schema, legacy-wire, and all
   workspace gates pass. Production packs remain honest unknown pending M2.6-M2.10.
-- [ ] M2.6 Implement/repair the Rust adapter and golden fixtures.
+- [x] M2.6 Implement/repair the Rust adapter and golden fixtures.
+  Evidence: production `RustPack` now provides composable canonical roles, all six syntactic query
+  families, a total Unicode/comment/operator lexical policy, file-incomplete recovery, exact
+  macro/generated/unsafe policies, and `rust/tree-sitter-rust/0.24.2` dialect provenance. Its
+  manifest honestly derives S1 while S2-S4 remain unknown. Valid/malformed goldens lock 161 CST
+  nodes, 110 token owners, 78 role assignments across 17 roles, query captures `[5,2,5,1,2,3]`,
+  six construct regions, and one exact `ERROR` fact, with one parse per file. The literal `*` raw
+  token is now distinct from the terminal wildcard. All workspace gates pass.
 - [ ] M2.7 Implement/repair JavaScript, TypeScript, and TSX adapters and golden fixtures.
 - [ ] M2.8 Implement/repair Python adapter and golden fixtures.
 - [ ] M2.9 Implement/repair Clojure adapter and golden fixtures.

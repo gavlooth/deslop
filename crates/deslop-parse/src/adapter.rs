@@ -955,7 +955,7 @@ mod tests {
         LangPack, LanguageConstructPolicy, LanguageLexicalPolicy, LanguageQueryPack,
         LexicalClassification, LexicalOperatorClass, LexicalRule, LexicalTokenClass,
         ParseRecoveryHandling, ParseRecoveryPolicy, QueryCaptureDeclaration, QueryFamily,
-        QueryFamilyDeclaration, RUST_PACK, Registry,
+        QueryFamilyDeclaration, RUST_PACK, Registry, SemanticTier,
     };
 
     use crate::{ProjectSnapshotBuilder, RepositoryId};
@@ -1639,17 +1639,17 @@ mod tests {
             RepositoryId::explicit("canonical-role-unavailable-test").unwrap(),
         )
         .unwrap()
-        .with_overlay("unknown.rs", b"fn sample() {}\n".to_vec())
+        .with_overlay("unknown.py", b"def sample():\n    pass\n".to_vec())
         .unwrap()
         .build()
         .unwrap();
         let analysis = ProjectAnalysis::build(snapshot).unwrap();
         assert_eq!(
             analysis
-                .canonical_role_projection(Path::new("unknown.rs"))
+                .canonical_role_projection(Path::new("unknown.py"))
                 .unwrap_err(),
             CanonicalRoleProjectionError::CapabilityUnavailable {
-                path: PathBuf::from("unknown.rs"),
+                path: PathBuf::from("unknown.py"),
                 support: CapabilitySupport::Unknown,
             }
         );
@@ -1926,6 +1926,175 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("missing field `constructs`")
+        );
+    }
+
+    #[test]
+    fn rust_production_adapter_golden_matrix_is_owned_and_parse_once() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("rust-production-adapter-golden").unwrap(),
+        )
+        .unwrap()
+        .with_overlay(
+            "adapter_matrix.rs",
+            include_bytes!("../../../tests/fixtures/rust/adapter_matrix.rs").to_vec(),
+        )
+        .unwrap()
+        .with_overlay(
+            "malformed.rs",
+            include_bytes!("../../../tests/fixtures/rust/malformed.rs").to_vec(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let path = Path::new("adapter_matrix.rs");
+        let malformed_path = Path::new("malformed.rs");
+        let identity = analysis
+            .snapshot()
+            .entry(path)
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap();
+        assert_eq!(
+            identity.capabilities().highest_complete_tier(),
+            Some(SemanticTier::S1)
+        );
+
+        let roles = analysis.canonical_role_projection(path).unwrap();
+        let lexical = analysis.lexical_token_projection(path).unwrap();
+        let constructs = analysis.construct_policy_projection(path).unwrap();
+        let queries = analysis.compile_language_query_pack(path).unwrap();
+        for owner in [
+            roles.analysis(),
+            lexical.analysis(),
+            constructs.analysis(),
+            queries.analysis(),
+        ] {
+            assert!(Arc::ptr_eq(owner, &analysis));
+        }
+        assert_eq!(constructs.dialect().dialect(), "rust");
+        assert_eq!(constructs.dialect().grammar_id(), "tree-sitter-rust");
+        assert_eq!(constructs.dialect().grammar_version(), "0.24.2");
+
+        let mut role_counts = std::collections::BTreeMap::new();
+        for fact in roles.facts() {
+            for role in fact.roles().iter() {
+                *role_counts.entry(role.as_str()).or_insert(0_usize) += 1;
+            }
+        }
+        let mut lexical_counts = std::collections::BTreeMap::new();
+        for fact in lexical.facts() {
+            *lexical_counts
+                .entry(fact.classification().token_class().as_str())
+                .or_insert(0_usize) += 1;
+        }
+        let root_node = analysis.file_node_ids(path).unwrap().next().unwrap();
+        let query_counts = QueryFamily::ALL.map(|family| {
+            let compiled = queries.query(family).unwrap();
+            analysis
+                .syntax_query_matches(compiled.query(), root_node)
+                .unwrap()
+                .iter()
+                .map(|matched| matched.captures().len())
+                .sum::<usize>()
+        });
+        assert_eq!(roles.facts().len(), 161);
+        assert_eq!(
+            role_counts,
+            std::collections::BTreeMap::from([
+                ("block", 4),
+                ("branch", 1),
+                ("call", 2),
+                ("callable", 1),
+                ("comment", 2),
+                ("declaration", 5),
+                ("expression", 31),
+                ("generated", 2),
+                ("import", 1),
+                ("literal", 4),
+                ("module", 1),
+                ("opaque-region", 3),
+                ("parameter", 3),
+                ("project", 1),
+                ("read", 22),
+                ("statement", 1),
+                ("type", 2),
+            ])
+        );
+        assert_eq!(lexical.facts().len(), 110);
+        assert_eq!(
+            lexical_counts,
+            std::collections::BTreeMap::from([
+                ("comment", 2),
+                ("delimiter", 36),
+                ("identifier", 22),
+                ("keyword", 11),
+                ("literal", 4),
+                ("operator", 13),
+                ("other", 8),
+                ("punctuation", 14),
+            ])
+        );
+        assert_eq!(query_counts, [5, 2, 5, 1, 2, 3]);
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "π"
+                && fact.classification().token_class() == LexicalTokenClass::Identifier
+        }));
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "*"
+                && fact.classification().operator_class() == Some(LexicalOperatorClass::Arithmetic)
+        }));
+        for comment in ["// line comment", "/* block comment */"] {
+            assert!(lexical.facts().iter().any(|fact| {
+                fact.text() == comment
+                    && fact.classification().token_class() == LexicalTokenClass::Comment
+            }));
+        }
+
+        let mut construct_counts = std::collections::BTreeMap::new();
+        for fact in constructs.facts() {
+            *construct_counts
+                .entry(fact.kind().as_str())
+                .or_insert(0_usize) += 1;
+        }
+        assert_eq!(
+            construct_counts,
+            std::collections::BTreeMap::from([
+                ("generated-code", 2),
+                ("macro", 3),
+                ("unsupported-construct", 1),
+            ])
+        );
+        for marker in ["#[generated]", "#[automatically_derived]"] {
+            assert!(constructs.facts().iter().any(|fact| {
+                fact.kind() == ConstructPolicyFactKind::GeneratedCode && fact.text() == marker
+            }));
+        }
+        assert!(constructs.facts().iter().any(|fact| {
+            fact.kind() == ConstructPolicyFactKind::UnsupportedConstruct
+                && fact.text() == "unsafe { ptr::read(&π) }"
+                && fact.construct_handling() == Some(ConstructHandling::Opaque)
+        }));
+
+        let malformed_constructs = analysis
+            .construct_policy_projection(malformed_path)
+            .unwrap();
+        assert_eq!(
+            malformed_constructs
+                .facts()
+                .iter()
+                .map(|fact| (fact.kind().as_str(), fact.raw().raw_kind(), fact.text()))
+                .collect::<Vec<_>>(),
+            [("parse-error", "ERROR", "=")]
+        );
+        assert!(
+            analysis
+                .parse_counts()
+                .values()
+                .all(|count| count.parser_invocations == 1)
         );
     }
 

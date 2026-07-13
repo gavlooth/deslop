@@ -1496,6 +1496,56 @@ provided, mismatched claimed dialect fails typed, unknown policy emits no constr
 and each analysis parses once. All workspace gates pass. Next checkpoint: M2.6 Rust adapter and golden
 fixtures using the now-frozen M2.1-M2.5 contracts.
 
+#### Terminal M2.6 execution plan — Rust production adapter and goldens
+
+Resolved hypothesis: the existing Rust region/metrics hooks plus Tree-sitter Rust honestly provide
+complete S1 when the production pack supplies exact canonical roles, all six query families, lexical
+classification, recovery/construct policy, and a frozen valid/malformed golden matrix; S2+ semantics
+remain unknown. S1, rather than only S0, is derived because the pre-existing region, local-metrics,
+clone-normalization, and syntactic-recipe declarations are already provided and workspace-verified.
+
+CONVERGENCE: one valid Rust fixture must exercise declarations, references, nested scopes/control,
+both comment forms, Unicode identifiers, literals/operators, macros, generated markers, and unsafe
+opaque regions. One malformed fixture must lock exact recovery facts. Run every M2.2-M2.5 projection
+from one retained analysis, pin role/query/token/construct counts and exact dialect, and prove one parse
+per file. If the manifest derives exactly S0, no query/role/policy overclaims expansion, generated
+origin, binding, CFG, effects, or types, production registry truth is updated, and all workspace gates
+pass, M2.6 is done.
+
+Implemented approach: upgraded only `RustPack` in `deslop-lang`. Canonical roles remain composable raw-kind
+annotations; query captures remain syntactic; macro invocation/definition and unsafe blocks are opaque;
+generated facts require exact marker attributes; lexical rules use grammar-owned kinds/text with a
+terminal other fallback; dialect declaration exactly matches `rust/tree-sitter-rust/0.24.2`. Add
+`tests/fixtures/rust/adapter_matrix.rs` and `malformed.rs`, plus a production-pack integration oracle in
+`deslop-parse`.
+
+Validation result: focused policy/query compilation, measured golden counts, malformed recovery oracle,
+manifest S0 assertion, projection identity/ownership/no-reparse checks, affected strict checks, then
+all workspace gates pass. The final manifest assertion is S1, as derived by the total catalog.
+
+Negative-memory constraints: macro CST is not expanded semantics; generated query categories are not
+provenance, so production generated facts require exact adapter markers; canonical read/write roles do
+not resolve names; query control captures do not establish CFG; lexical operators do not establish
+precedence/effects; do not promote existing syntactic graph heuristics or Clippy availability into S2+
+or compiler authority.
+
+Agent assignment: `/root` owns Rust policy, fixtures, integration, and verification; no concurrent
+file edits are assigned.
+
+Current checkpoint (2026-07-14T01:16:00+02:00): existing Rust grammar, region, metrics, analyzer, and
+fixture surfaces audited; production M2.2-M2.5 policy implementation and goldens remain pending. One
+broad trait-method patch was invalidated because its repeated `capability_manifest` context selected
+the earlier Clojure implementation. Clojure and Julia were restored exactly and `cargo check -p
+deslop-lang` passes; future Rust edits must anchor on `impl LangPack for RustPack` and use smaller
+unique hunks before any fixture work.
+
+Terminal checkpoint (2026-07-14T01:32:50+02:00): M2.6 is complete. The valid golden locks 161 nodes,
+110 lexical token owners, 78 canonical-role assignments across 17 role categories, query captures
+`[5,2,5,1,2,3]`, and six generated/macro/unsafe construct facts. The malformed golden locks one
+file-incomplete `ERROR` fact for `=`. Both files parse once. The lexical schema was repaired so an
+exact `*` grammar token does not collide with the terminal wildcard. All workspace gates pass. Next:
+M2.7 JavaScript, TypeScript, and TSX production policies and goldens.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link
