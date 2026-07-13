@@ -1203,6 +1203,53 @@ snapshot/projection identity.
 Agent assignment: `/root` owns research, implementation, validation, and integration; no concurrent
 file edits are assigned.
 
+#### Completed M1.DoD execution plan — terminal owned-analysis proof
+
+Confirmed hypothesis: the migrated public workflows converge on `ProjectAnalysis`; one joined
+gold-matrix contract plus consumer-local ledger guards can prove the terminal M1 boundary without
+adding another parser counter or duplicating every consumer implementation in a test harness.
+
+CONVERGENCE: build the multi-language gold fixture matrix once, assert exact cold ownership and warm
+reuse ledgers, run analyzer/metrics/graph projections repeatedly on the same immutable analysis, and
+enumerate every exclusive byte/line owner. A ledger mismatch terminates in a workflow migration fix;
+a byte or line visit other than one terminates in a metrics ownership fix; any public Tree-sitter
+handle or serializable `NodeId` terminates in an API boundary fix. If all three pass, audit the named
+CLI/evaluator/protocol/MCP/LSP/slim routes for delegation to those proven owners, run the unchanged M0
+numeric gate, then close M1. Do not split this into per-language serial experiments.
+
+Completed approach: protocol proposal batches retain their exact analysis and ledger; the
+extend the existing metrics-private ownership oracle to the fixed multi-language matrix so every
+source byte and physical line is visited exactly once despite nested regions; add a parse public-
+surface guard for borrowed Tree-sitter handles and `NodeId` serialization; then combine those with
+the existing analyzer, graph, evaluator, LSP, MCP, and slim zero-legacy/delegation tests.
+
+Validation path: smallest parse/protocol/metrics tests first; strict affected-crate clippy; the M0
+definition-of-done numeric snapshot; then all-feature workspace test/build/rustdoc/clippy/format/diff.
+The checkpoint publishes exact file/node/byte/line/ledger/work-order counts and separates commands
+run from static delegation evidence.
+
+Terminal outcome: the joined five-language matrix locks 5 files, 1,651 bytes, 746 nodes, 700
+gap-free exclusive regions, 21 analyzer findings, 17 metric regions, a 45-node/49-edge graph, and 9
+work orders grouping 17 findings. Cold ownership is `5/5/5/0`; unchanged warm reuse is `5/5/0/5`
+with all 746 transitions retained. Every disk source is read once, analyzer/metrics/graph share one
+analysis and repeat byte-for-byte, proposal exposes its exact analysis, and the private metrics
+oracle assigns all 1,651 bytes and 67 nonblank lines exactly once across 17 semantic owners. Static
+and compile-fail guards keep borrowed Tree-sitter handles and serialized `NodeId`s out of the public
+surface. Named evaluator/MCP/LSP/slim consumers pass their delegation, ledger, egress, stale-state,
+and zero-legacy checks in the workspace suite.
+
+Next checkpoint: begin M2.1 by versioning the language-adapter capability schema for S0-S4 while
+preserving the now-locked M0 and M1 executable snapshots.
+
+Negative-memory constraints: acceptance authority is the per-analysis `Arc<ParseLedger>`, never the
+global/thread-local legacy counter; nested callable spans may overlap but exclusive metric ownership
+must not; public `NodeView` borrows an analysis but never a Tree-sitter node; verifier stale-state
+rereads are not scan/propose reparses; and delegated MCP/slim routes must not be mistaken for separate
+parser implementations.
+
+Agent assignment: `/root` owns the M1.DoD integration, implementation, and verification; no concurrent
+file edits are assigned.
+
 ### M2 — Language-adapter contract
 
 Implement capability manifests, grammar variants, query packs, canonical roles, operator/token policy,

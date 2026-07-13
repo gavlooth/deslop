@@ -7116,3 +7116,64 @@ per-execution query maps, allocating child/point views, per-node revision payloa
 all-descendant projections, timing assertions, or instrumentation-derived identity.
 
 **Signature:** Codex (GPT-5), M1.11 integration owner, terminal checkpoint, 2026-07-13.
+
+---
+
+## M1 definition-of-done terminal checkpoint — joined owned-analysis proof
+
+**Date/time:** 2026-07-14T00:08:24+02:00
+
+**Objective/target:** close M1 with one executable multi-language proof that scan/propose workflows
+own each file revision once, repeated projections share immutable analysis, warm reuse invokes no
+parser, metric byte/line ownership is exclusive despite nested spans, and no borrowed Tree-sitter or
+serializable process-local node identity crosses the public API.
+
+**Changes:** added the joined CLI integration contract over fixed Rust, Python, TSX, Clojure, and
+Julia fixtures. It runs the path scanner, analyzer, metrics, and graph twice over one retained
+analysis, checks exact projection identity/result stability, validates every public exclusive region
+as a gap-free byte partition, builds an unchanged successor, and executes proposal production.
+`ProposalBatch` now retains the exact `Arc<ProjectAnalysis>` used to produce its reports/work orders,
+making proposal ledger evidence inspectable without a global counter. Added a metrics-private gold
+oracle that enumerates every declared reset-owner range and physical nonblank line. Added a public-
+surface guard for borrowed Tree-sitter node/cursor signatures and a compile-fail `NodeId: Serialize`
+test. The CLI test gains only a direct dev dependency on the existing workspace parse crate.
+
+**Commands/checks run:** focused joined M1, metric ownership, proposal ownership, parse public-surface,
+and compile-fail doc tests; strict affected-crate clippy; the unchanged M0 definition-of-done test;
+`cargo test --workspace --all-features`; `cargo clippy --workspace --all-features --all-targets --
+-D warnings`; `cargo build --workspace --all-features --all-targets`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`;
+`cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. The joined oracle locks 5 files, 1,651 source bytes, 746 nodes, 700 gap-free
+exclusive syntax regions, 21 analyzer findings, 17 metric regions, a 45-node/49-edge graph, and 9
+work orders grouping 17 findings. Cold parse ownership totals are exact `requested/owners/invoked/
+reused = 5/5/5/0`; the unchanged successor is `5/5/0/5`, retains all 746 transitions, and preserves
+analysis identity. Each disk source is read once. Analyzer, metrics, and graph retain the identical
+analysis pointer and repeat deterministically. Proposal's independent cold analysis has the same
+exact five-file ownership invariant. The metric oracle assigns all 1,651 bytes and all 67 nonblank
+lines once across 17 semantic owners and 700 ranges. The legacy parser counter remains zero. The M0
+snapshot remains 28 work orders / 28 IDs / 28 targets / 62 grouped findings. All workspace gates pass.
+
+**Invalidated assumptions / negative memory:** overlapping callable spans are expected and cannot
+serve as evidence of metric double counting; acceptance must enumerate the reset-aware exclusive
+ranges and lines. A process/thread-global parser counter cannot prove request-local ownership;
+`ParseLedger` is authoritative. Protocol work orders alone did not expose their construction ledger;
+the non-serialized batch must retain the producing analysis. `NodeView` borrowing `ProjectAnalysis`
+is valid, while borrowing a Tree-sitter `Node`/cursor or serializing `NodeId` is not. MCP and slim are
+delegated proposal consumers, not independent parser implementations; verifier rereads are stale-
+state/write guards, not scan/propose reconstruction.
+
+**Current recommendation/next actions:** begin M2.1 with a versioned S0-S4 adapter/capability schema.
+Keep the M0 and M1 joined numerical tests as compatibility gates for every M2 change.
+
+**Blockers/dependencies/restart:** none. No external dependency, service restart, cache clear, or data
+migration is required. Rebuild Rust consumers; the workspace build already verifies the additive
+`ProposalBatch.analysis` field and test-only CLI dependency.
+
+**Negative-memory status:** recorded locally; Hindsight consolidation follows. Never replace local
+ledger proof with a global counter, infer exclusivity from nested spans, expose borrowed Tree-sitter
+handles, serialize `NodeId`, or split delegated proposal consumers into new parser paths.
+
+**Signature:** Codex (GPT-5), M1 definition-of-done integration owner, terminal checkpoint,
+2026-07-14.

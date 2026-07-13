@@ -17,6 +17,11 @@ pub const NODE_BASELINE_SCHEMA: &str = "deslop.node-baseline/1";
 /// Process-local identity for one node in one immutable `ProjectAnalysis`.
 ///
 /// `NodeId` deliberately has no Serde implementation. Use `NodeKey` for revision-bound storage.
+///
+/// ```compile_fail
+/// fn assert_serializable<T: serde::Serialize>() {}
+/// assert_serializable::<deslop_parse::NodeId>();
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeId {
     pub(crate) owner: u64,

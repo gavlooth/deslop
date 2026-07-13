@@ -366,6 +366,53 @@ mod tests {
         include_str!("../../../tests/fixtures/clojure/control_edges.clj");
 
     #[test]
+    fn public_surface_has_no_borrowed_tree_sitter_handle() {
+        for (name, source) in [
+            ("lib", include_str!("lib.rs")),
+            ("aggregation", include_str!("aggregation.rs")),
+            ("identity", include_str!("identity.rs")),
+            ("incremental", include_str!("incremental.rs")),
+            ("instrumentation", include_str!("instrumentation.rs")),
+            ("query", include_str!("query.rs")),
+            ("snapshot", include_str!("snapshot.rs")),
+        ] {
+            let mut public_header = String::new();
+            for line in source.lines() {
+                let trimmed = line.trim_start();
+                if public_header.is_empty() && !trimmed.starts_with("pub ") {
+                    continue;
+                }
+                public_header.push_str(trimmed);
+                public_header.push(' ');
+                if trimmed.contains('{') || trimmed.ends_with(';') {
+                    for forbidden in [
+                        "tree_sitter::Node",
+                        "tree_sitter::TreeCursor",
+                        "tree_sitter::QueryCursor",
+                        "Node<'",
+                        "TreeCursor<'",
+                        "QueryCursor<'",
+                    ] {
+                        assert!(
+                            !public_header.contains(forbidden),
+                            "{name} exposes borrowed Tree-sitter handle {forbidden}: {public_header}"
+                        );
+                    }
+                    public_header.clear();
+                }
+            }
+        }
+
+        let identity = include_str!("identity.rs");
+        let node_id = &identity[identity
+            .find("#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]\npub struct NodeId")
+            .unwrap()
+            ..identity.find("impl fmt::Debug for NodeId").unwrap()];
+        assert!(!node_id.contains("Serialize"));
+        assert!(!node_id.contains("Deserialize"));
+    }
+
+    #[test]
     fn extracts_clojure_top_level_list_region() {
         let source = SourceFile::new(
             PathBuf::from("sample.clj"),

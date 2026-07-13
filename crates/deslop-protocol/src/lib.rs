@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context as _, Result, bail};
 use deslop_analyzer::{
@@ -62,6 +63,7 @@ pub struct ProposalContext {
 
 #[derive(Debug, Clone)]
 pub struct ProposalBatch {
+    pub analysis: Arc<ProjectAnalysis>,
     pub reports: Vec<FileReport>,
     pub context: ProposalContext,
     pub work_orders: Vec<WorkOrder>,
@@ -418,6 +420,7 @@ fn proposal_batch_from_scan(
     mut excluded_fingerprints: Vec<String>,
     mut scan: ScanContext,
 ) -> Result<ProposalBatch> {
+    let analysis = Arc::clone(&scan.analysis);
     excluded_fingerprints.sort();
     excluded_fingerprints.dedup();
     if !excluded_fingerprints.is_empty() {
@@ -499,6 +502,7 @@ fn proposal_batch_from_scan(
         .map(|draft| draft.into_work_order(&context))
         .collect();
     Ok(ProposalBatch {
+        analysis,
         reports: scan.reports,
         context,
         work_orders,
@@ -1026,6 +1030,18 @@ mod tests {
             serde_json::to_value(&second.work_orders).unwrap()
         );
         assert_eq!(first.work_orders.len(), 1);
+        for batch in [&first, &second] {
+            assert!(batch.analysis.instrumentation().parse.invariant_holds());
+            assert_eq!(batch.analysis.parse_counts().len(), 1);
+            assert!(batch.analysis.parse_counts().values().all(|count| {
+                (
+                    count.requested,
+                    count.owners,
+                    count.parser_invocations,
+                    count.reused,
+                ) == (1, 1, 1, 0)
+            }));
+        }
         assert_eq!(deslop_parse::parse_source_invocations(), 0);
     }
 

@@ -1730,6 +1730,128 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    fn m1_gold_matrix_is_parse_once_and_metric_ownership_is_exclusive() {
+        let root = tempfile::tempdir().unwrap();
+        let sources = [
+            (
+                "gold/rust.rs",
+                include_bytes!("../../../tests/corpus/sloppy/rust_idioms.rs").as_slice(),
+            ),
+            (
+                "gold/python.py",
+                include_bytes!("../../../tests/corpus/sloppy/python_idioms.py").as_slice(),
+            ),
+            (
+                "gold/component.tsx",
+                include_bytes!("../../../tests/fixtures/typescript/component.tsx").as_slice(),
+            ),
+            (
+                "gold/clojure.clj",
+                include_bytes!("../../../tests/corpus/sloppy/clojure_idioms.clj").as_slice(),
+            ),
+            (
+                "gold/julia.jl",
+                include_bytes!("../../../tests/corpus/sloppy/julia_idioms.jl").as_slice(),
+            ),
+        ];
+        let mut builder = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("m1-gold-metric-ownership").unwrap(),
+        )
+        .unwrap();
+        for (path, source) in sources {
+            builder = builder.with_overlay(path, source.to_vec()).unwrap();
+        }
+        deslop_parse::reset_parse_source_invocations();
+        let analysis = ProjectAnalysis::build(builder.build().unwrap()).unwrap();
+        let cold = analysis.instrumentation();
+        assert!(cold.parse.invariant_holds());
+        assert_eq!(cold.parse.file_revisions, 5);
+        assert_eq!(
+            (
+                cold.parse.requested,
+                cold.parse.owners,
+                cold.parse.parser_invocations,
+                cold.parse.reused,
+            ),
+            (5, 5, 5, 0)
+        );
+
+        let first = metrics_analysis(analysis.clone(), MetricsConfig::default()).unwrap();
+        let second = metrics_analysis(analysis.clone(), MetricsConfig::default()).unwrap();
+        assert_eq!(first.id, second.id);
+        assert_eq!(render_json(&first).unwrap(), render_json(&second).unwrap());
+
+        let mut total_bytes = 0;
+        let mut total_nonblank_lines = 0;
+        let mut total_semantic_owners = 0;
+        let mut total_exclusive_ranges = 0;
+        for file in analysis.files() {
+            assert!(file.provenance().permits_rewrites());
+            let context = MetricFile::new(&analysis, file).unwrap();
+            let pack = analysis.language_adapter(&file.key().path).unwrap();
+            let regions = metric_regions_owned(pack, &context).unwrap();
+            let ownership = metric_ownership(pack, &context, &regions).unwrap();
+            assert_eq!(ownership.by_owner.len(), regions.len());
+
+            let mut visits = vec![0_u8; file.source().len()];
+            for ranges in std::iter::once(&ownership.file_ranges).chain(ownership.by_owner.values())
+            {
+                for (start, end) in &ranges.ranges {
+                    total_exclusive_ranges += 1;
+                    for visit in &mut visits[*start..*end] {
+                        *visit += 1;
+                    }
+                }
+            }
+            assert!(
+                visits.iter().all(|visits| *visits == 1),
+                "metric byte ownership is not exclusive for {}",
+                file.key().path.display()
+            );
+
+            let nonblank_lines = context
+                .text()
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .count();
+            let assigned_lines = ownership.file_nloc
+                + ownership.file_comment_lines
+                + ownership.nloc_by_owner.values().sum::<usize>()
+                + ownership.comment_lines_by_owner.values().sum::<usize>();
+            assert_eq!(assigned_lines, nonblank_lines);
+            total_bytes += file.source().len();
+            total_nonblank_lines += nonblank_lines;
+            total_semantic_owners += ownership.by_owner.len();
+        }
+        assert_eq!(total_bytes, 1_651);
+        assert_eq!(total_nonblank_lines, 67);
+        assert_eq!(total_semantic_owners, 17);
+        assert_eq!(total_exclusive_ranges, 700);
+        assert_eq!(first.functions.len(), 17);
+        assert_eq!(analysis.node_count(), 746);
+
+        assert_eq!(analysis.parse_counts(), second.analysis.parse_counts());
+        assert_eq!(deslop_parse::parse_source_invocations(), 0);
+        let warm = analysis.successor(Arc::clone(analysis.snapshot())).unwrap();
+        let warm_parse = warm.current().instrumentation().parse;
+        assert!(warm_parse.invariant_holds());
+        assert_eq!(
+            (
+                warm_parse.requested,
+                warm_parse.owners,
+                warm_parse.parser_invocations,
+                warm_parse.reused,
+            ),
+            (5, 5, 0, 5)
+        );
+        assert_eq!(
+            warm.instrumentation().retained_transitions,
+            analysis.node_count()
+        );
+    }
+
+    #[test]
     fn cyclomatic_counts_known_rust_branches() {
         let source = SourceFile::new(
             PathBuf::from("sample.rs"),

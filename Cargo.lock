@@ -319,6 +319,7 @@ dependencies = [
  "deslop-graph",
  "deslop-mcp",
  "deslop-metrics",
+ "deslop-parse",
  "deslop-protocol",
  "deslop-report",
  "deslop-slim",

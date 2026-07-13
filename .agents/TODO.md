@@ -236,8 +236,18 @@ reports, benchmark records, and work orders.
   redundant declared values. Five ignored probe runs report timing without gating correctness;
   all-feature workspace tests, build, warnings-denied rustdoc, strict clippy, format, and whitespace
   pass.
-- [ ] M1.DoD Prove one parse per file revision in all scan/propose paths and no borrowed-node lifetime or
+- [x] M1.DoD Prove one parse per file revision in all scan/propose paths and no borrowed-node lifetime or
   overlapping exclusive-metric errors on the gold fixture matrix.
+  Evidence: the joined Rust/Python/TSX/Clojure/Julia contract pins 5 files, 1,651 bytes, 746 nodes,
+  700 gap-free exclusive regions, 21 analyzer findings, 17 metric regions, a 45-node/49-edge graph,
+  and 9 work orders grouping 17 findings. Analyzer, metrics, and graph repeat deterministically over
+  the same `ProjectAnalysis`; cold ownership is exact `5/5/5/0`, the unchanged warm successor is
+  `5/5/0/5`, all 746 transitions are retained, each disk input is read once, and proposal batches
+  retain their exact analysis/ledger. The private metric oracle assigns all 1,651 bytes and 67
+  nonblank lines exactly once across 17 semantic owners despite nested regions. Public-surface and
+  compile-fail guards reject borrowed Tree-sitter node/cursor handles and `NodeId` serialization.
+  The unchanged M0 numerical gate, all-feature workspace tests, build, warnings-denied rustdoc,
+  strict clippy, format, and whitespace pass.
 
 ## M2 — Language-adapter contract
 
