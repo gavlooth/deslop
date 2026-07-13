@@ -156,15 +156,27 @@ reports, benchmark records, and work orders.
   Exhaustive tests lock 1,369 ordered node pairs, 254 reflexive/217 strict containment pairs, 1,953
   positive ranges, every byte in a 27-region partition, equal spans, root-external File ownership,
   missing/partial/empty/whitespace inputs, cross-file/foreign/out-of-range IDs, and all full gates.
-- [ ] M1.6 Implement exclusive local and declared inclusive aggregation APIs. **NEXT**
-- [ ] M1.7 Expose query/cursor-derived captures without reparsing source fragments.
+- [x] M1.6 Implement exclusive local and declared inclusive aggregation APIs.
+  Evidence: `deslop-parse` now initializes the File owner and every raw node exactly once, folds the
+  positive-width token/trivia partition exactly once in source order, and derives separately named
+  full-inclusive and normalized reset-aware declared projections bottom-up without revisiting bytes.
+  Explicit reset `NodeId`s are owner/file/range validated before callbacks, deduplicated in preorder,
+  and never inferred from raw kinds; fallible initialization/fold/merge callbacks retain exact
+  owner/range/edge/projection context. Tests lock 37 owner/region visits over 62 bytes, the exact
+  `2N-R=71` reset merge count, independent parent-chain oracles, conserved nested/equal-span/every-node
+  partitions, 49-byte mixed File/root ownership, cross-build `NodeKey` determinism, partial/missing/
+  empty/whitespace/unavailable syntax, invalid reset side-effect isolation, and unchanged parse
+  ledgers. Parse has 47 passing tests; workspace, feature, build, rustdoc, formatting, whitespace,
+  and strict all-target/all-feature clippy gates pass.
+- [ ] M1.7 Expose query/cursor-derived captures without reparsing source fragments. **NEXT**
 - [ ] M1.8 Add edit/changed-range invalidation and explicit re-anchor-or-expire behavior.
 - [ ] M1.9 Migrate analyzer and metrics consumers to the shared snapshot.
 - [ ] M1.10 Migrate graph, evaluator, LSP, MCP/protocol, and slim consumers.
 - [ ] M1.11 Instrument parse counts, ownership invariants, deterministic node order, latency, and memory.
   Measure and compact M1.4's repeated per-node `FileRevisionKey`/field-path storage, allocating
-  `NodeView::children`, linear range/key lookups, M1.5 index storage, and point-context allocation
-  before declaring the traversal API migration-ready.
+  `NodeView::children`, linear range/key lookups, M1.5 index storage, point-context allocation, and
+  M1.6's retained local/full/declared aggregate values and caller-defined clone/merge costs before
+  declaring the traversal API migration-ready.
 - [ ] M1.DoD Prove one parse per file revision in all scan/propose paths and no borrowed-node lifetime or
   overlapping exclusive-metric errors on the gold fixture matrix.
 

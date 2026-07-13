@@ -6253,3 +6253,101 @@ implicit in this raw index. Recheck for M1.6 aggregation, M1.7 captures, M1.9 co
 M1.11 memory/latency measurement.
 
 **Signature:** Codex (GPT-5), M1.5 integration owner, 2026-07-13.
+
+---
+
+## M1.6 checkpoint — exclusive local and declared inclusive aggregation
+
+**Date/time:** 2026-07-13T19:48:19+02:00
+
+**Objective/target:** make raw syntax evidence aggregation exact-once, revision-local, generic, and
+explicit about direct-owner, full-subtree, and semantic-boundary projections. Supply the complete
+owned primitive required by the later metrics/analyzer migration without guessing M2 roles or
+reparsing source regions.
+
+**Changes:** added `deslop-parse::aggregation` and public `InclusiveSyntaxPolicy`, owner/projection
+context, owner-checked result views, and typed callback/lookup errors. `ProjectAnalysis` now exposes
+infallible `fold_syntax_aggregates` and fallible `try_fold_syntax_aggregates`. Construction first
+validates and normalizes every reset `NodeId`, then initializes the File pseudo-owner and every raw
+node once in grammar preorder, including anonymous, extra, ERROR, missing, internal, and zero-width
+nodes. It folds every positive-width `ExclusiveSyntaxRegion` once in byte order into only its direct
+owner. One bottom-up pass always derives `full_inclusive`; a second pass derives
+`declared_inclusive` only when normalized resets exist. A reset cuts only its declared edge to the
+parent: its own declared value remains, nested reset values do not leak into it, and the full view is
+unchanged. File local retains root-external bytes, File full-inclusive remains the total source, and
+File declared-inclusive is the residual outside reset subtrees. Results carry the exact analysis and
+file revision, normalized policy, dense preorder node values, and explicit foreign/wrong-file lookup
+errors without Serde or write authority. Fallible callbacks preserve exact initialization owner,
+fold owner/range, or merge parent/child/projection context, allowing checked arithmetic instead of
+panic, wrap, or saturation. Added allocation-free `NodeView::child_count` and `is_leaf` accessors for
+future structural feature initialization. After the existing linear file-range lookup, the core
+algorithm is O(N + S + R) plus caller-defined clone/merge costs.
+
+**Commands/checks run:** startup Serena/Hindsight context and roadmap/ADR/audit inspection; three
+read-only agent tracks for core API/algebra, consumer migration requirements, and independent
+numerical contracts; repeated focused aggregation tests; full `cargo test -p deslop-parse --lib`;
+strict parse clippy; warnings-denied rustdoc; `cargo test --workspace`; `cargo test -p deslop-mcp
+--features slim-llm -- --test-threads=1`; `cargo build --workspace`; `cargo build -p deslop-slim
+--no-default-features`; `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+`cargo fmt --all -- --check`; `git diff --check`; `jj status`; and `jj diff --stat`.
+
+**Verification results:** PASS. `deslop-parse` has 47 passing tests. The 62-byte nested Rust fixture
+has 37 raw nodes and 37 exclusive regions: File initializes first, all 37 nodes initialize once, all
+37 region callbacks are contiguous, and every byte has visit count one. Full aggregation measures
+37 regions/62 bytes, 22 token regions/43 token bytes, and 15 trivia regions/19 trivia bytes. Resetting
+the function, closure, and arbitrary call deduplicates an unsorted input and performs exactly
+`2N-R = 71` merges; declared values are respectively 17/34, 16/20, and 3/7 regions/bytes, while the
+File/root residual is 1/1 and the four disjoint values reconstruct 37/62. Equal-span literal/token
+resets conserve 37/62 without counting the anonymous four-byte token twice. Resetting every node
+makes every declared value equal its local value; `ResetAt([])` is executable-equivalent to
+`AllDescendants`. An independent O(N*height + S*height) parent-chain oracle matches every local,
+full, declared, and reset flag. Rebuilt analyses produce identical ordered `(NodeKey, local, full,
+declared, reset)` vectors. The mixed 49-byte partition locks File local at 1 region/3 bytes, root full
+at 26/46, total at 27/49, and root-reset File residual at 1/3. Partial TypeScript remains queryable
+at 18/35 while its missing node initializes with zero regions; empty and whitespace inputs retain
+their zero-width roots; invalid UTF-8 and absent paths run zero callbacks. Foreign-analysis,
+same-analysis peer-file, and correct-owner out-of-range resets fail before callback one. Fallible
+initializer, fold, and checked-overflow merge failures retain their exact context. Parse ledgers do
+not change. Workspace has 327 passing tests plus one intentional ignored performance probe and all
+doc-tests; feature-enabled MCP has 23 passing tests. Both build modes, warnings-denied rustdoc,
+formatting, whitespace, and strict all-target/all-feature clippy pass.
+
+**Failure modes / invalidated assumptions:** a region-only fold was rejected because internal and
+zero-width nodes need once-per-owner structural seeds. A single reset-aware value was rejected
+because it obscures true full-subtree totals and forces refolding when consumers require both views.
+The public names were made `full_inclusive`/`file_full_inclusive` after review showed that an
+unqualified `inclusive` accessor could select the wrong projection. Source-ordered region callbacks
+do not make collapsed inclusive aggregates source ordered: parent-local regions can surround child
+subtrees, so merge is explicitly pure, associative, and commutative; ordered token/capture streams
+remain M1.7/M1.9 work. Infallible-only arithmetic was rejected because overflow/domain failures must
+return context instead of panic, wrap, or saturate. Raw-kind callable inference was rejected because
+Python decorated regions, Clojure forms, and other adapter semantics belong to M2. Summing arbitrary
+ancestor/descendant full values remains invalid because they overlap; disjoint File residual plus
+declared reset-root values is the conserved semantic partition.
+
+**Current recommendation/checkpoint:** M1.6 is complete. Implement M1.7 as owned, deterministic
+query/cursor-derived captures over the one private per-revision Tree. Captures must map back to
+existing `NodeId`s without fragment reparsing, preserve query/capture order and grammar provenance,
+and keep borrowed Tree-sitter handles inside construction/query callbacks.
+
+**Blockers:** none. Serena still indexes this Rust workspace as Python-only, so local Rust inspection
+remains the documented fallback. Existing analyzer/metrics consumers continue their legacy parsing
+until M1.9; the current Python behavioral fixture still demonstrates 364 source bytes versus 649
+summed overlapping region bytes and 12 physical versus 21 summed region NLOC, which is the migration
+regression M1.9 must collapse using declared reset boundaries rather than changing M1.6 semantics.
+
+**Dependencies/restart:** no new dependency, wire schema, service restart, cache clear, or migration
+is required. Rebuild Rust consumers for the additive API. M1.7 owns capture extraction, M2 owns
+canonical roles/query packs, M1.9 owns analyzer/metrics migration and line-ownership policy, and
+M1.11 owns measured latency/peak memory plus compaction of retained local/full/declared `T` values
+and the existing O(F) file-range lookup.
+
+**Negative-memory status:** retain that direct-region folding alone cannot seed structural node
+facts; reset-aware values cannot substitute for true full-inclusive values; source-ordered local
+callbacks do not authorize order-sensitive commutative roll-ups; reset policy must be explicit
+`NodeId` data rather than inferred raw kinds; and fallible checked aggregation must preserve context.
+Do not sum overlapping inclusive peers, attach root-external File bytes to the grammar root, promote
+partial parse authority, serialize process-local aggregates/IDs, or derive write authority. Recheck
+when M1.7 adds ordered captures, M1.9 declares adapter reset/line policies, or M1.11 measures storage.
+
+**Signature:** Codex (GPT-5), M1.6 integration owner, 2026-07-13.

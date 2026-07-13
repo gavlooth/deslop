@@ -14,6 +14,10 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tree_sitter::{Parser, Tree};
 
+use crate::aggregation::{
+    InclusiveSyntaxPolicy, SyntaxAggregateOwner, SyntaxAggregateParts, SyntaxAggregateProjection,
+    SyntaxAggregates, SyntaxAggregationError,
+};
 use crate::analysis_provenance_for_tree;
 use crate::arena::{
     ArenaNodeIndex, ArenaSegmentIndex, RAW_ARENA_SCHEMA, SyntaxArena, SyntaxSegmentKind,
@@ -1303,6 +1307,272 @@ impl ProjectAnalysis {
         })
     }
 
+    /// Infallible form of [`ProjectAnalysis::try_fold_syntax_aggregates`].
+    pub fn fold_syntax_aggregates<'analysis, T, InitLocal, FoldRegion, Merge>(
+        &'analysis self,
+        path: &Path,
+        policy: InclusiveSyntaxPolicy<'_>,
+        mut init_local: InitLocal,
+        mut fold_region: FoldRegion,
+        mut merge: Merge,
+    ) -> std::result::Result<
+        SyntaxAggregates<'analysis, T>,
+        SyntaxAggregationError<std::convert::Infallible>,
+    >
+    where
+        T: Clone,
+        InitLocal: FnMut(SyntaxOwner<'analysis>) -> T,
+        FoldRegion: FnMut(&mut T, ExclusiveSyntaxRegion<'analysis>),
+        Merge: FnMut(&mut T, &T),
+    {
+        self.try_fold_syntax_aggregates(
+            path,
+            policy,
+            |owner| Ok::<T, std::convert::Infallible>(init_local(owner)),
+            |value, region| {
+                fold_region(value, region);
+                Ok(())
+            },
+            |parent, child| {
+                merge(parent, child);
+                Ok(())
+            },
+        )
+    }
+
+    /// Initialize every raw owner once, fold every positive-width exclusive region exactly once,
+    /// and derive both full and explicitly declared inclusive values bottom-up.
+    ///
+    /// `init_local` visits the File pseudo-owner first and then every raw node in grammar preorder,
+    /// including internal, anonymous, extra, ERROR, missing, and zero-width nodes. `fold_region`
+    /// visits the exact source partition in byte order and mutates only each region's direct owner.
+    /// `merge` derives inclusive projections from collapsed owner values; it must be a pure,
+    /// associative, and commutative operation. It may be invoked for both the full and declared
+    /// projections, so inclusive values deliberately do not promise byte order.
+    ///
+    /// `full_inclusive()` always contains the full raw subtree. Under `ResetAt`,
+    /// `declared_inclusive()` excludes each reset child's projection while retaining that reset
+    /// node's own declared value. The File declared value is therefore the residual outside reset
+    /// subtrees; the File full-inclusive value remains the total source projection. The caller, not
+    /// this raw layer, selects semantic reset nodes.
+    ///
+    /// File/syntax availability and every normalized reset node are validated before callbacks run.
+    /// Callback failures retain exact owner/region/edge context and stop construction without
+    /// publishing a partial result.
+    ///
+    /// After the existing O(F) file-range lookup, core work is O(N + S + R) owner, segment, and
+    /// reset visits plus O(N) accumulator clones/merges; callback and `T` costs are caller-defined.
+    /// Results retain local and full-inclusive values plus a declared projection when resets exist.
+    pub fn try_fold_syntax_aggregates<'analysis, T, Error, InitLocal, FoldRegion, Merge>(
+        &'analysis self,
+        path: &Path,
+        policy: InclusiveSyntaxPolicy<'_>,
+        mut init_local: InitLocal,
+        mut fold_region: FoldRegion,
+        mut merge: Merge,
+    ) -> std::result::Result<SyntaxAggregates<'analysis, T>, SyntaxAggregationError<Error>>
+    where
+        T: Clone,
+        InitLocal: FnMut(SyntaxOwner<'analysis>) -> std::result::Result<T, Error>,
+        FoldRegion:
+            FnMut(&mut T, ExclusiveSyntaxRegion<'analysis>) -> std::result::Result<(), Error>,
+        Merge: FnMut(&mut T, &T) -> std::result::Result<(), Error>,
+    {
+        let (file, arena, file_start) =
+            self.exclusive_syntax_context(path)
+                .map_err(|error| match error {
+                    ExclusiveSyntaxLookupError::FileNotFound { path } => {
+                        SyntaxAggregationError::FileNotFound { path }
+                    }
+                    ExclusiveSyntaxLookupError::SyntaxUnavailable { path } => {
+                        SyntaxAggregationError::SyntaxUnavailable { path }
+                    }
+                    ExclusiveSyntaxLookupError::ByteOutOfRange { .. } => {
+                        unreachable!("whole-file syntax aggregation does not request a byte")
+                    }
+                })?;
+
+        let mut resets_parent = vec![false; arena.nodes().len()];
+        let file_end = file_start + arena.nodes().len() as u32;
+        for &id in policy.reset_nodes() {
+            if id.owner != self.owner {
+                return Err(SyntaxAggregationError::InvalidResetNode {
+                    node: id,
+                    error: NodeLookupError::WrongAnalysis,
+                });
+            }
+            if id.index as usize >= self.node_keys.len() {
+                return Err(SyntaxAggregationError::InvalidResetNode {
+                    node: id,
+                    error: NodeLookupError::OutOfRange {
+                        requested: id.index,
+                        node_count: self.node_keys.len() as u32,
+                    },
+                });
+            }
+            if id.index < file_start || id.index >= file_end {
+                return Err(SyntaxAggregationError::ResetNodeOutsideFile {
+                    node: id,
+                    path: path.to_path_buf(),
+                });
+            }
+            resets_parent[(id.index - file_start) as usize] = true;
+        }
+        let reset_nodes = resets_parent
+            .iter()
+            .enumerate()
+            .filter_map(|(offset, reset)| {
+                reset.then_some(NodeId {
+                    owner: self.owner,
+                    index: file_start + offset as u32,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let mut file_local = init_local(SyntaxOwner::File(&file.key)).map_err(|error| {
+            SyntaxAggregationError::InitializeOwner {
+                path: path.to_path_buf(),
+                owner: SyntaxAggregateOwner::File,
+                error,
+            }
+        })?;
+        let mut node_local = Vec::with_capacity(arena.nodes().len());
+        for (local, _) in arena.indexed_nodes() {
+            let node = self.node_view_from_local(file, arena, file_start, local);
+            let id = node.id();
+            node_local.push(init_local(SyntaxOwner::Node(node)).map_err(|error| {
+                SyntaxAggregationError::InitializeOwner {
+                    path: path.to_path_buf(),
+                    owner: SyntaxAggregateOwner::Node(id),
+                    error,
+                }
+            })?);
+        }
+        for (local, segment) in arena.indexed_segments() {
+            let region = ExclusiveSyntaxRegion {
+                file,
+                arena,
+                local,
+                owner: self.owner,
+                file_start,
+            };
+            let range = segment.byte_range();
+            match segment.owner() {
+                SyntaxSegmentOwner::File => {
+                    fold_region(&mut file_local, region).map_err(|error| {
+                        SyntaxAggregationError::FoldRegion {
+                            path: path.to_path_buf(),
+                            owner: SyntaxAggregateOwner::File,
+                            range,
+                            error,
+                        }
+                    })?;
+                }
+                SyntaxSegmentOwner::Node(owner) => {
+                    let id = NodeId {
+                        owner: self.owner,
+                        index: file_start + owner.as_usize() as u32,
+                    };
+                    fold_region(&mut node_local[owner.as_usize()], region).map_err(|error| {
+                        SyntaxAggregationError::FoldRegion {
+                            path: path.to_path_buf(),
+                            owner: SyntaxAggregateOwner::Node(id),
+                            range,
+                            error,
+                        }
+                    })?;
+                }
+            }
+        }
+
+        let (node_full_inclusive, node_declared_inclusive) = {
+            let no_resets = vec![false; arena.nodes().len()];
+            let mut roll_up = |resets: &[bool], projection| {
+                let mut values = node_local.clone();
+                for parent in (0..arena.nodes().len()).rev() {
+                    for child in arena.nodes()[parent].children() {
+                        let child = child.as_usize();
+                        if resets[child] {
+                            continue;
+                        }
+                        let (parents, children) = values.split_at_mut(child);
+                        merge(&mut parents[parent], &children[0]).map_err(|error| {
+                            SyntaxAggregationError::Merge {
+                                path: path.to_path_buf(),
+                                projection,
+                                parent: SyntaxAggregateOwner::Node(NodeId {
+                                    owner: self.owner,
+                                    index: file_start + parent as u32,
+                                }),
+                                child: SyntaxAggregateOwner::Node(NodeId {
+                                    owner: self.owner,
+                                    index: file_start + child as u32,
+                                }),
+                                error,
+                            }
+                        })?;
+                    }
+                }
+                Ok::<Vec<T>, SyntaxAggregationError<Error>>(values)
+            };
+            let inclusive = roll_up(&no_resets, SyntaxAggregateProjection::FullInclusive)?;
+            let declared = if reset_nodes.is_empty() {
+                inclusive.clone()
+            } else {
+                roll_up(&resets_parent, SyntaxAggregateProjection::DeclaredInclusive)?
+            };
+            (inclusive, declared)
+        };
+
+        let mut file_full_inclusive = file_local.clone();
+        let root = arena.root().as_usize();
+        let root_owner = SyntaxAggregateOwner::Node(NodeId {
+            owner: self.owner,
+            index: file_start + root as u32,
+        });
+        merge(&mut file_full_inclusive, &node_full_inclusive[root]).map_err(|error| {
+            SyntaxAggregationError::Merge {
+                path: path.to_path_buf(),
+                projection: SyntaxAggregateProjection::FullInclusive,
+                parent: SyntaxAggregateOwner::File,
+                child: root_owner,
+                error,
+            }
+        })?;
+        let file_declared_inclusive = if reset_nodes.is_empty() {
+            file_full_inclusive.clone()
+        } else {
+            let mut value = file_local.clone();
+            if !resets_parent[root] {
+                merge(&mut value, &node_declared_inclusive[root]).map_err(|error| {
+                    SyntaxAggregationError::Merge {
+                        path: path.to_path_buf(),
+                        projection: SyntaxAggregateProjection::DeclaredInclusive,
+                        parent: SyntaxAggregateOwner::File,
+                        child: root_owner,
+                        error,
+                    }
+                })?;
+            }
+            value
+        };
+
+        Ok(SyntaxAggregates::from_parts(SyntaxAggregateParts {
+            analysis_id: &self.id,
+            file_key: &file.key,
+            owner: self.owner,
+            file_start,
+            file_local,
+            file_full_inclusive,
+            file_declared_inclusive,
+            node_local: node_local.into_boxed_slice(),
+            node_full_inclusive: node_full_inclusive.into_boxed_slice(),
+            node_declared_inclusive: node_declared_inclusive.into_boxed_slice(),
+            resets_parent: resets_parent.into_boxed_slice(),
+            reset_nodes: reset_nodes.into_boxed_slice(),
+        }))
+    }
+
     /// Find the unique smallest exclusive token/trivia region owning `byte`.
     ///
     /// `byte` addresses an existing byte, so `source_len` is out of range. Zero-width recovery
@@ -1629,6 +1899,14 @@ impl NodeView<'_> {
                 index: start + child.as_usize() as u32,
             })
             .collect()
+    }
+
+    pub fn child_count(&self) -> usize {
+        self.raw().children().len()
+    }
+
+    pub fn is_leaf(&self) -> bool {
+        self.raw().is_leaf()
     }
 
     /// Iterate only the positive-width raw regions owned directly by this node.
@@ -2103,6 +2381,7 @@ fn path_bytes(path: &Path) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::aggregation::SyntaxAggregateLookupError;
     use crate::arena::{RAW_ARENA_SCHEMA, SyntaxSegmentKind, SyntaxSegmentOwner};
     use deslop_core::{AnalysisStatus, Span, revision_guard};
 
@@ -2128,6 +2407,157 @@ mod tests {
             id = parent;
         }
         depth
+    }
+
+    #[derive(Debug, Clone, Default, PartialEq, Eq)]
+    struct SyntaxTally {
+        file_owners: usize,
+        node_owners: usize,
+        missing_nodes: usize,
+        leaf_nodes: usize,
+        regions: usize,
+        bytes: usize,
+        token_regions: usize,
+        token_bytes: usize,
+        trivia_regions: usize,
+        trivia_bytes: usize,
+    }
+
+    impl SyntaxTally {
+        fn initialized(owner: SyntaxOwner<'_>) -> Self {
+            match owner {
+                SyntaxOwner::File(_) => Self {
+                    file_owners: 1,
+                    ..Self::default()
+                },
+                SyntaxOwner::Node(node) => Self {
+                    node_owners: 1,
+                    missing_nodes: usize::from(node.is_missing()),
+                    leaf_nodes: usize::from(node.is_leaf()),
+                    ..Self::default()
+                },
+            }
+        }
+
+        fn for_region(region: ExclusiveSyntaxRegion<'_>) -> Self {
+            let bytes = region.byte_range().len();
+            match region.kind() {
+                ExclusiveSyntaxKind::Token => Self {
+                    regions: 1,
+                    bytes,
+                    token_regions: 1,
+                    token_bytes: bytes,
+                    ..Self::default()
+                },
+                ExclusiveSyntaxKind::Trivia => Self {
+                    regions: 1,
+                    bytes,
+                    trivia_regions: 1,
+                    trivia_bytes: bytes,
+                    ..Self::default()
+                },
+            }
+        }
+
+        fn merge(&mut self, other: &Self) {
+            self.file_owners += other.file_owners;
+            self.node_owners += other.node_owners;
+            self.missing_nodes += other.missing_nodes;
+            self.leaf_nodes += other.leaf_nodes;
+            self.regions += other.regions;
+            self.bytes += other.bytes;
+            self.token_regions += other.token_regions;
+            self.token_bytes += other.token_bytes;
+            self.trivia_regions += other.trivia_regions;
+            self.trivia_bytes += other.trivia_bytes;
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct AggregateFailure(&'static str);
+
+    impl fmt::Display for AggregateFailure {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str(self.0)
+        }
+    }
+
+    impl std::error::Error for AggregateFailure {}
+
+    fn assert_syntax_aggregate_oracle(
+        analysis: &ProjectAnalysis,
+        path: &Path,
+        reset_nodes: &[NodeId],
+        actual: &SyntaxAggregates<'_, SyntaxTally>,
+    ) {
+        let ids = analysis.file_node_ids(path).unwrap().collect::<Vec<_>>();
+        let first = ids.first().unwrap().index;
+        let offset = |id: NodeId| (id.index - first) as usize;
+        let resets = reset_nodes.iter().copied().collect::<BTreeSet<_>>();
+
+        let mut file_local =
+            SyntaxTally::initialized(SyntaxOwner::File(analysis.file(path).unwrap().key()));
+        let mut node_local = ids
+            .iter()
+            .map(|id| SyntaxTally::initialized(SyntaxOwner::Node(analysis.node(*id).unwrap())))
+            .collect::<Vec<_>>();
+        for region in analysis.exclusive_syntax_regions(path).unwrap() {
+            let contribution = SyntaxTally::for_region(region);
+            match region.owner() {
+                ExclusiveSyntaxOwner::File(_) => file_local.merge(&contribution),
+                ExclusiveSyntaxOwner::Node(owner) => {
+                    node_local[offset(owner)].merge(&contribution);
+                }
+            }
+        }
+
+        let mut full = vec![SyntaxTally::default(); ids.len()];
+        let mut declared = vec![SyntaxTally::default(); ids.len()];
+        let mut file_full = file_local.clone();
+        let mut file_declared = file_local.clone();
+        for (id, local) in ids.iter().copied().zip(&node_local) {
+            let mut current = Some(id);
+            while let Some(node) = current {
+                full[offset(node)].merge(local);
+                current = analysis.node(node).unwrap().parent();
+            }
+            file_full.merge(local);
+
+            let mut current = Some(id);
+            let mut reached_file = true;
+            while let Some(node) = current {
+                declared[offset(node)].merge(local);
+                if resets.contains(&node) {
+                    reached_file = false;
+                    break;
+                }
+                current = analysis.node(node).unwrap().parent();
+            }
+            if reached_file {
+                file_declared.merge(local);
+            }
+        }
+
+        assert_eq!(actual.file_local(), &file_local);
+        assert_eq!(actual.file_full_inclusive(), &file_full);
+        assert_eq!(actual.file_declared_inclusive(), &file_declared);
+        assert_eq!(actual.len(), ids.len());
+        assert_eq!(actual.reset_nodes(), reset_nodes);
+        for (id, local) in ids.iter().copied().zip(node_local) {
+            let aggregate = actual.node(id).unwrap();
+            assert_eq!(aggregate.id(), id);
+            assert_eq!(aggregate.local(), &local);
+            assert_eq!(aggregate.full_inclusive(), &full[offset(id)]);
+            assert_eq!(aggregate.declared_inclusive(), &declared[offset(id)]);
+            assert_eq!(aggregate.resets_parent(), resets.contains(&id));
+        }
+        assert_eq!(
+            actual
+                .nodes()
+                .map(|aggregate| aggregate.id())
+                .collect::<Vec<_>>(),
+            ids
+        );
     }
 
     #[test]
@@ -3605,6 +4035,627 @@ mod tests {
                 .unwrap_err(),
             NodeLookupError::OutOfRange {
                 requested: u32::MAX,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn syntax_aggregation_initializes_every_owner_and_conserves_declared_partitions() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = b"fn outer() {\n    let closure = || { if true { value(); } };\n}\n";
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("nested.rs", source.to_vec())
+            .unwrap()
+            .with_overlay("peer.rs", b"fn peer() {}\n".to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let path = Path::new("nested.rs");
+        let ids = analysis.file_node_ids(path).unwrap().collect::<Vec<_>>();
+        assert_eq!(source.len(), 62);
+        assert_eq!(ids.len(), 37);
+
+        let mut initialized = Vec::new();
+        let mut ranges = Vec::new();
+        let mut byte_visits = vec![0_u8; source.len()];
+        let mut merge_calls = 0;
+        let all = analysis
+            .fold_syntax_aggregates(
+                path,
+                InclusiveSyntaxPolicy::AllDescendants,
+                |owner| {
+                    initialized.push(match owner {
+                        SyntaxOwner::File(_) => SyntaxAggregateOwner::File,
+                        SyntaxOwner::Node(node) => SyntaxAggregateOwner::Node(node.id()),
+                    });
+                    SyntaxTally::initialized(owner)
+                },
+                |value, region| {
+                    let range = region.byte_range();
+                    for byte in range.clone() {
+                        byte_visits[byte] += 1;
+                    }
+                    ranges.push(range);
+                    value.merge(&SyntaxTally::for_region(region));
+                },
+                |parent, child| {
+                    merge_calls += 1;
+                    parent.merge(child);
+                },
+            )
+            .unwrap();
+        assert_eq!(all.analysis_id(), analysis.id());
+        assert_eq!(all.file_key(), analysis.file(path).unwrap().key());
+        assert_eq!(initialized.len(), ids.len() + 1);
+        assert_eq!(initialized[0], SyntaxAggregateOwner::File);
+        assert_eq!(
+            &initialized[1..],
+            &ids.iter()
+                .copied()
+                .map(SyntaxAggregateOwner::Node)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(ranges.len(), 37);
+        assert!(ranges.windows(2).all(|pair| pair[0].end == pair[1].start));
+        assert_eq!(ranges.first().unwrap().start, 0);
+        assert_eq!(ranges.last().unwrap().end, source.len());
+        assert!(byte_visits.iter().all(|visits| *visits == 1));
+        assert_eq!(merge_calls, ids.len());
+        assert_eq!(all.reset_nodes(), []);
+        assert_eq!(all.policy(), InclusiveSyntaxPolicy::AllDescendants);
+        assert_eq!(all.file_local().regions, 0);
+        assert_eq!(all.file_local().bytes, 0);
+        assert_eq!(all.file_full_inclusive().regions, 37);
+        assert_eq!(all.file_full_inclusive().bytes, 62);
+        assert_eq!(all.file_full_inclusive().token_regions, 22);
+        assert_eq!(all.file_full_inclusive().token_bytes, 43);
+        assert_eq!(all.file_full_inclusive().trivia_regions, 15);
+        assert_eq!(all.file_full_inclusive().trivia_bytes, 19);
+        assert_eq!(all.file_full_inclusive().file_owners, 1);
+        assert_eq!(all.file_full_inclusive().node_owners, 37);
+        assert_eq!(all.file_declared_inclusive(), all.file_full_inclusive());
+        assert_syntax_aggregate_oracle(&analysis, path, &[], &all);
+        let empty_reset = analysis
+            .fold_syntax_aggregates(
+                path,
+                InclusiveSyntaxPolicy::ResetAt(&[]),
+                SyntaxTally::initialized,
+                |value, region| value.merge(&SyntaxTally::for_region(region)),
+                SyntaxTally::merge,
+            )
+            .unwrap();
+        assert_eq!(empty_reset.policy(), InclusiveSyntaxPolicy::AllDescendants);
+        assert_eq!(empty_reset.file_local(), all.file_local());
+        assert_eq!(empty_reset.file_full_inclusive(), all.file_full_inclusive());
+        assert_eq!(
+            empty_reset
+                .nodes()
+                .map(|node| (
+                    node.local().clone(),
+                    node.full_inclusive().clone(),
+                    node.declared_inclusive().clone(),
+                ))
+                .collect::<Vec<_>>(),
+            all.nodes()
+                .map(|node| (
+                    node.local().clone(),
+                    node.full_inclusive().clone(),
+                    node.declared_inclusive().clone(),
+                ))
+                .collect::<Vec<_>>()
+        );
+
+        let find = |kind: &str, text: Option<&str>| {
+            ids.iter()
+                .copied()
+                .map(|id| analysis.node(id).unwrap())
+                .find(|node| node.raw_kind() == kind && text.is_none_or(|text| node.text() == text))
+                .unwrap()
+                .id()
+        };
+        let function = find("function_item", None);
+        let closure = find("closure_expression", None);
+        let call = find("call_expression", None);
+        let reset_input = [call, closure, function, call];
+        let mut normalized = vec![function, closure, call];
+        normalized.sort_unstable();
+        let mut reset_merge_calls = 0;
+        let reset = analysis
+            .fold_syntax_aggregates(
+                path,
+                InclusiveSyntaxPolicy::ResetAt(&reset_input),
+                SyntaxTally::initialized,
+                |value, region| value.merge(&SyntaxTally::for_region(region)),
+                |parent, child| {
+                    reset_merge_calls += 1;
+                    parent.merge(child);
+                },
+            )
+            .unwrap();
+        assert_eq!(reset_merge_calls, 2 * ids.len() - normalized.len());
+        assert_eq!(reset.reset_nodes(), normalized);
+        assert_eq!(reset.policy(), InclusiveSyntaxPolicy::ResetAt(&normalized));
+        assert_eq!(reset.file_full_inclusive(), all.file_full_inclusive());
+        assert_eq!(reset.file_declared_inclusive().regions, 1);
+        assert_eq!(reset.file_declared_inclusive().bytes, 1);
+        assert_eq!(
+            reset.node(function).unwrap().declared_inclusive().regions,
+            17
+        );
+        assert_eq!(reset.node(function).unwrap().declared_inclusive().bytes, 34);
+        assert_eq!(
+            reset.node(closure).unwrap().declared_inclusive().regions,
+            16
+        );
+        assert_eq!(reset.node(closure).unwrap().declared_inclusive().bytes, 20);
+        assert_eq!(reset.node(call).unwrap().declared_inclusive().regions, 3);
+        assert_eq!(reset.node(call).unwrap().declared_inclusive().bytes, 7);
+        assert_syntax_aggregate_oracle(&analysis, path, &normalized, &reset);
+        let mut conserved = reset.file_declared_inclusive().clone();
+        for reset_node in &normalized {
+            conserved.merge(reset.node(*reset_node).unwrap().declared_inclusive());
+        }
+        assert_eq!(conserved, *reset.file_full_inclusive());
+
+        let literal = find("boolean_literal", None);
+        let token = find("true", Some("true"));
+        let mut equal_span_resets = vec![literal, token];
+        equal_span_resets.sort_unstable();
+        let equal_span = analysis
+            .fold_syntax_aggregates(
+                path,
+                InclusiveSyntaxPolicy::ResetAt(&[token, literal]),
+                SyntaxTally::initialized,
+                |value, region| value.merge(&SyntaxTally::for_region(region)),
+                SyntaxTally::merge,
+            )
+            .unwrap();
+        assert_eq!(equal_span.node(literal).unwrap().local().regions, 0);
+        assert_eq!(
+            equal_span.node(literal).unwrap().full_inclusive().regions,
+            1
+        );
+        assert_eq!(
+            equal_span
+                .node(literal)
+                .unwrap()
+                .declared_inclusive()
+                .regions,
+            0
+        );
+        assert_eq!(equal_span.node(token).unwrap().local().bytes, 4);
+        assert_eq!(equal_span.file_declared_inclusive().regions, 36);
+        assert_eq!(equal_span.file_declared_inclusive().bytes, 58);
+        assert_syntax_aggregate_oracle(&analysis, path, &equal_span_resets, &equal_span);
+        let mut equal_span_conserved = equal_span.file_declared_inclusive().clone();
+        for reset_node in &equal_span_resets {
+            equal_span_conserved.merge(equal_span.node(*reset_node).unwrap().declared_inclusive());
+        }
+        assert_eq!(equal_span_conserved, *equal_span.file_full_inclusive());
+
+        let every_node = analysis
+            .fold_syntax_aggregates(
+                path,
+                InclusiveSyntaxPolicy::ResetAt(&ids),
+                SyntaxTally::initialized,
+                |value, region| value.merge(&SyntaxTally::for_region(region)),
+                SyntaxTally::merge,
+            )
+            .unwrap();
+        let mut every_node_conserved = every_node.file_declared_inclusive().clone();
+        for id in &ids {
+            let aggregate = every_node.node(*id).unwrap();
+            assert_eq!(aggregate.declared_inclusive(), aggregate.local());
+            every_node_conserved.merge(aggregate.declared_inclusive());
+        }
+        assert_eq!(every_node_conserved, *every_node.file_full_inclusive());
+        assert_syntax_aggregate_oracle(&analysis, path, &ids, &every_node);
+
+        let peer = analysis
+            .file_node_ids(Path::new("peer.rs"))
+            .unwrap()
+            .next()
+            .unwrap();
+        assert!(matches!(
+            all.node(peer).unwrap_err(),
+            SyntaxAggregateLookupError::NodeOutsideFile { .. }
+        ));
+        assert!(matches!(
+            all.node(NodeId {
+                owner: analysis.owner,
+                index: u32::MAX,
+            })
+            .unwrap_err(),
+            SyntaxAggregateLookupError::NodeOutsideFile {
+                requested: u32::MAX,
+                ..
+            }
+        ));
+        let second_snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("nested.rs", source.to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let second = ProjectAnalysis::build(second_snapshot).unwrap();
+        assert_eq!(
+            all.node(second.file_node_ids(path).unwrap().next().unwrap())
+                .unwrap_err(),
+            SyntaxAggregateLookupError::WrongAnalysis
+        );
+        let second_all = second
+            .fold_syntax_aggregates(
+                path,
+                InclusiveSyntaxPolicy::AllDescendants,
+                SyntaxTally::initialized,
+                |value, region| value.merge(&SyntaxTally::for_region(region)),
+                SyntaxTally::merge,
+            )
+            .unwrap();
+        let keyed = |analysis: &ProjectAnalysis, aggregate: &SyntaxAggregates<'_, SyntaxTally>| {
+            aggregate
+                .nodes()
+                .map(|node| {
+                    (
+                        analysis.node_key(node.id()).unwrap().clone(),
+                        node.local().clone(),
+                        node.full_inclusive().clone(),
+                        node.declared_inclusive().clone(),
+                        node.resets_parent(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(keyed(&analysis, &all), keyed(&second, &second_all));
+        assert_eq!(all.file_local(), second_all.file_local());
+        assert_eq!(all.file_full_inclusive(), second_all.file_full_inclusive());
+    }
+
+    #[test]
+    fn syntax_aggregation_validates_resets_and_handles_partial_empty_and_unavailable_syntax() {
+        let temp = tempfile::tempdir().unwrap();
+        let partition_source = b"\n  fn value() -> &'static str { /* c */ \"h\xc3\xa9\" }\n\t";
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("target.rs", b"fn target() {}\n".to_vec())
+            .unwrap()
+            .with_overlay("peer.rs", b"fn peer() {}\n".to_vec())
+            .unwrap()
+            .with_overlay(
+                "missing.ts",
+                b"function f(a: string { return a; }\n".to_vec(),
+            )
+            .unwrap()
+            .with_overlay("empty.rs", Vec::new())
+            .unwrap()
+            .with_overlay("whitespace.rs", b"\t \r\n  \n".to_vec())
+            .unwrap()
+            .with_overlay("partition.rs", partition_source.to_vec())
+            .unwrap()
+            .with_overlay("broken.rs", vec![0xff, 0xfe])
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let before_counts = analysis.parse_counts();
+        let target = Path::new("target.rs");
+        let peer = analysis
+            .file_node_ids(Path::new("peer.rs"))
+            .unwrap()
+            .next()
+            .unwrap();
+        let foreign_snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("target.rs", b"fn target() {}\n".to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let foreign = ProjectAnalysis::build(foreign_snapshot).unwrap();
+        let foreign_node = foreign.file_node_ids(target).unwrap().next().unwrap();
+        let out_of_range = NodeId {
+            owner: analysis.owner,
+            index: u32::MAX,
+        };
+
+        for (reset, expected) in [
+            (
+                peer,
+                SyntaxAggregationError::ResetNodeOutsideFile {
+                    node: peer,
+                    path: target.to_path_buf(),
+                },
+            ),
+            (
+                foreign_node,
+                SyntaxAggregationError::InvalidResetNode {
+                    node: foreign_node,
+                    error: NodeLookupError::WrongAnalysis,
+                },
+            ),
+            (
+                out_of_range,
+                SyntaxAggregationError::InvalidResetNode {
+                    node: out_of_range,
+                    error: NodeLookupError::OutOfRange {
+                        requested: u32::MAX,
+                        node_count: analysis.node_count() as u32,
+                    },
+                },
+            ),
+        ] {
+            let callbacks = std::cell::Cell::new(0);
+            let error = analysis
+                .fold_syntax_aggregates(
+                    target,
+                    InclusiveSyntaxPolicy::ResetAt(&[reset]),
+                    |owner| {
+                        callbacks.set(callbacks.get() + 1);
+                        SyntaxTally::initialized(owner)
+                    },
+                    |value, region| {
+                        callbacks.set(callbacks.get() + 1);
+                        value.merge(&SyntaxTally::for_region(region));
+                    },
+                    |parent, child| {
+                        callbacks.set(callbacks.get() + 1);
+                        parent.merge(child);
+                    },
+                )
+                .unwrap_err();
+            assert_eq!(error, expected);
+            assert_eq!(callbacks.get(), 0);
+        }
+
+        for (path, expected) in [
+            (
+                Path::new("broken.rs"),
+                SyntaxAggregationError::SyntaxUnavailable {
+                    path: PathBuf::from("broken.rs"),
+                },
+            ),
+            (
+                Path::new("absent.rs"),
+                SyntaxAggregationError::FileNotFound {
+                    path: PathBuf::from("absent.rs"),
+                },
+            ),
+        ] {
+            let callbacks = std::cell::Cell::new(0);
+            let error = analysis
+                .fold_syntax_aggregates(
+                    path,
+                    InclusiveSyntaxPolicy::AllDescendants,
+                    |owner| {
+                        callbacks.set(callbacks.get() + 1);
+                        SyntaxTally::initialized(owner)
+                    },
+                    |value, region| {
+                        callbacks.set(callbacks.get() + 1);
+                        value.merge(&SyntaxTally::for_region(region));
+                    },
+                    |parent, child| {
+                        callbacks.set(callbacks.get() + 1);
+                        parent.merge(child);
+                    },
+                )
+                .unwrap_err();
+            assert_eq!(error, expected);
+            assert_eq!(callbacks.get(), 0);
+        }
+
+        let missing_path = Path::new("missing.ts");
+        let partial = analysis
+            .fold_syntax_aggregates(
+                missing_path,
+                InclusiveSyntaxPolicy::AllDescendants,
+                SyntaxTally::initialized,
+                |value, region| value.merge(&SyntaxTally::for_region(region)),
+                SyntaxTally::merge,
+            )
+            .unwrap();
+        assert_eq!(partial.file_full_inclusive().regions, 18);
+        assert_eq!(partial.file_full_inclusive().bytes, 35);
+        let missing = analysis
+            .file_node_ids(missing_path)
+            .unwrap()
+            .find(|id| analysis.node(*id).unwrap().is_missing())
+            .unwrap();
+        assert_eq!(partial.node(missing).unwrap().local().missing_nodes, 1);
+        assert_eq!(partial.node(missing).unwrap().local().regions, 0);
+        assert_eq!(partial.node(missing).unwrap().local().bytes, 0);
+        assert_syntax_aggregate_oracle(&analysis, missing_path, &[], &partial);
+
+        let empty_path = Path::new("empty.rs");
+        let mut empty_regions = 0;
+        let empty = analysis
+            .fold_syntax_aggregates(
+                empty_path,
+                InclusiveSyntaxPolicy::AllDescendants,
+                SyntaxTally::initialized,
+                |value, region| {
+                    empty_regions += 1;
+                    value.merge(&SyntaxTally::for_region(region));
+                },
+                SyntaxTally::merge,
+            )
+            .unwrap();
+        assert_eq!(empty_regions, 0);
+        assert_eq!(empty.len(), 1);
+        assert_eq!(empty.file_full_inclusive().regions, 0);
+        assert_eq!(empty.file_full_inclusive().bytes, 0);
+        assert_eq!(empty.file_full_inclusive().node_owners, 1);
+        assert_syntax_aggregate_oracle(&analysis, empty_path, &[], &empty);
+
+        let whitespace_path = Path::new("whitespace.rs");
+        let whitespace = analysis
+            .fold_syntax_aggregates(
+                whitespace_path,
+                InclusiveSyntaxPolicy::AllDescendants,
+                SyntaxTally::initialized,
+                |value, region| value.merge(&SyntaxTally::for_region(region)),
+                SyntaxTally::merge,
+            )
+            .unwrap();
+        assert_eq!(whitespace.len(), 1);
+        assert_eq!(whitespace.file_local().regions, 1);
+        assert_eq!(whitespace.file_local().bytes, 7);
+        assert_eq!(whitespace.nodes().next().unwrap().local().regions, 0);
+        assert_syntax_aggregate_oracle(&analysis, whitespace_path, &[], &whitespace);
+
+        let partition_path = Path::new("partition.rs");
+        let partition = analysis
+            .fold_syntax_aggregates(
+                partition_path,
+                InclusiveSyntaxPolicy::AllDescendants,
+                SyntaxTally::initialized,
+                |value, region| value.merge(&SyntaxTally::for_region(region)),
+                SyntaxTally::merge,
+            )
+            .unwrap();
+        let partition_root = analysis
+            .file_node_ids(partition_path)
+            .unwrap()
+            .next()
+            .unwrap();
+        assert_eq!(partition_source.len(), 49);
+        assert_eq!(partition.file_local().regions, 1);
+        assert_eq!(partition.file_local().bytes, 3);
+        assert_eq!(partition.file_full_inclusive().regions, 27);
+        assert_eq!(partition.file_full_inclusive().bytes, 49);
+        assert_eq!(
+            partition
+                .node(partition_root)
+                .unwrap()
+                .full_inclusive()
+                .regions,
+            26
+        );
+        assert_eq!(
+            partition
+                .node(partition_root)
+                .unwrap()
+                .full_inclusive()
+                .bytes,
+            46
+        );
+        assert_syntax_aggregate_oracle(&analysis, partition_path, &[], &partition);
+        let root_reset = analysis
+            .fold_syntax_aggregates(
+                partition_path,
+                InclusiveSyntaxPolicy::ResetAt(&[partition_root]),
+                SyntaxTally::initialized,
+                |value, region| value.merge(&SyntaxTally::for_region(region)),
+                SyntaxTally::merge,
+            )
+            .unwrap();
+        assert_eq!(root_reset.file_declared_inclusive().regions, 1);
+        assert_eq!(root_reset.file_declared_inclusive().bytes, 3);
+        assert_eq!(
+            root_reset
+                .node(partition_root)
+                .unwrap()
+                .declared_inclusive()
+                .regions,
+            26
+        );
+        assert_eq!(
+            root_reset
+                .node(partition_root)
+                .unwrap()
+                .declared_inclusive()
+                .bytes,
+            46
+        );
+        assert_syntax_aggregate_oracle(&analysis, partition_path, &[partition_root], &root_reset);
+        assert_eq!(analysis.parse_counts(), before_counts);
+    }
+
+    #[test]
+    fn syntax_aggregation_preserves_fallible_callback_context() {
+        let temp = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("fallible.rs", b"fn value() {}\n".to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let path = Path::new("fallible.rs");
+        let root = analysis.file_node_ids(path).unwrap().next().unwrap();
+
+        let mut initialized = 0;
+        let init_error = analysis
+            .try_fold_syntax_aggregates(
+                path,
+                InclusiveSyntaxPolicy::AllDescendants,
+                |owner| {
+                    initialized += 1;
+                    match owner {
+                        SyntaxOwner::File(_) => Ok(0_u8),
+                        SyntaxOwner::Node(_) => Err(AggregateFailure("init")),
+                    }
+                },
+                |_value, _region| Ok(()),
+                |_parent, _child| Ok(()),
+            )
+            .unwrap_err();
+        assert_eq!(initialized, 2);
+        assert!(matches!(
+            init_error,
+            SyntaxAggregationError::InitializeOwner {
+                owner: SyntaxAggregateOwner::Node(node),
+                error: AggregateFailure("init"),
+                ..
+            } if node == root
+        ));
+
+        let mut folds = 0;
+        let fold_error = analysis
+            .try_fold_syntax_aggregates(
+                path,
+                InclusiveSyntaxPolicy::AllDescendants,
+                |_owner| Ok::<u8, AggregateFailure>(0),
+                |_value, _region| {
+                    folds += 1;
+                    Err(AggregateFailure("fold"))
+                },
+                |_parent, _child| Ok(()),
+            )
+            .unwrap_err();
+        assert_eq!(folds, 1);
+        assert!(matches!(
+            fold_error,
+            SyntaxAggregationError::FoldRegion {
+                range,
+                error: AggregateFailure("fold"),
+                ..
+            } if range.start == 0 && range.end > 0
+        ));
+
+        let merge_error = analysis
+            .try_fold_syntax_aggregates(
+                path,
+                InclusiveSyntaxPolicy::AllDescendants,
+                |_owner| Ok::<u8, AggregateFailure>(250),
+                |_value, _region| Ok(()),
+                |parent, child| {
+                    *parent = parent
+                        .checked_add(*child)
+                        .ok_or(AggregateFailure("overflow"))?;
+                    Ok(())
+                },
+            )
+            .unwrap_err();
+        assert!(matches!(
+            merge_error,
+            SyntaxAggregationError::Merge {
+                projection: SyntaxAggregateProjection::FullInclusive,
+                parent: SyntaxAggregateOwner::Node(_),
+                child: SyntaxAggregateOwner::Node(_),
+                error: AggregateFailure("overflow"),
                 ..
             }
         ));
