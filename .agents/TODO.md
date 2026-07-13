@@ -117,9 +117,12 @@ reports, benchmark records, and work orders.
 
 ## M1 — One parse, one owned syntax snapshot
 
-- [ ] M1.1 Write an ADR for `ProjectAnalysis`, source revisions, ownership, invalidation, and consumers.
-  **NEXT**
+- [x] M1.1 Write an ADR for `ProjectAnalysis`, source revisions, ownership, invalidation, and consumers.
+  Evidence: `docs/adr/0001-project-analysis.md` fixes the immutable source/syntax ownership model,
+  identity and wire domains, centralized root/grammar selection, invalidation matrix, consumer
+  migration, partial-analysis authority, concurrency, consent, and executable M1 acceptance gates.
 - [ ] M1.2 Implement a revision/content-addressed source store and one parse owner per file revision.
+  **NEXT**
 - [ ] M1.3 Implement the owned node arena with raw kind, field, span, parent/children, named/error flags,
   token/trivia ownership, source slice, and grammar provenance.
 - [ ] M1.4 Define scan-local `NodeId`, serialized revision-bound `NodeKey`, cross-revision baseline

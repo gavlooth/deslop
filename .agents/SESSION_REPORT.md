@@ -5837,3 +5837,70 @@ does not alone prove grammar selection without AST sentinels and wrong-grammar c
 graph confidence states, grammar dispatch, corpus membership, or workorder grouping change.
 
 **Signature:** Codex (GPT-5), M0.DoD integration owner, 2026-07-13.
+
+---
+
+## M1.1 checkpoint — revision-bound ProjectAnalysis ADR
+
+**Date/time:** 2026-07-13T17:25:52+02:00
+
+**Objective/target:** make the M1 ownership boundary implementable before introducing the source
+store. Define `ProjectAnalysis`, exact source and grammar revisions, local/wire identity domains,
+invalidation, concurrency, partial-analysis authority, and every consumer migration without weakening
+the completed M0 contracts.
+
+**Changes:** added `docs/adr/0001-project-analysis.md` and completed M1.1 in `.agents/TODO.md`. The ADR
+places the immutable source/syntax substrate in `deslop-parse`; centralizes repository root,
+`RepositoryId`, scope, alias, and atomic `GrammarSelection` resolution; defines `SourceRevision`,
+`FileRevisionKey`, `ProjectSnapshotId`, `ProjectAnalysisId`, `ProjectionId`, owner-tagged non-Serde
+`NodeId`, revision-bound `NodeKey`/`RegionKey`, baseline identity, and exact `RevisionGuard`; assigns
+one private parse owner and per-build `ParseLedger` per supported file revision; preserves invalid
+UTF-8 and partial/error state without rewrite authority; separates raw-arena from semantic-projection
+invalidation; and specifies analyzer, metrics, graph, evaluator, protocol/verifier, CLI, MCP, slim,
+and LSP behavior. Wire migration is explicit rather than an in-place `/3` extension.
+
+**Commands/checks run:** targeted Hindsight active/negative-memory searches; Serena onboarding/tool
+check followed by local Rust reads because Serena indexes this workspace as Python-only; `rg`/`sed`
+audits across parse/analyzer/metrics/graph/protocol/verifier/LSP/CLI/slim/evaluator; three read-only
+agent audits for core ownership, integration consumers, and contract tests; `cargo test -p
+deslop-cli --test m0_definition_of_done -- --nocapture`; Markdown fence/heading checks; `git diff
+--check`; `jj status`; and `jj diff --stat`.
+
+**Verification results:** PASS for the documentation checkpoint and compatibility probe. The ADR has
+balanced code fences, a complete decision/consumer/invalidation/test contract, and no whitespace
+errors. The unchanged M0 executable snapshot passes with 30 workorders, 30 unique IDs, 30 unique
+targets, 65 grouped findings, 21 files/74 symbols/197 graph edges/123 syntactic edges/zero false
+resolution, one true ambiguous edge, three complete typed grammar fixtures, two quarantined partial
+fixtures, and one unavailable JET capability observation. No Rust behavior changed, so the full
+workspace/build/clippy gates were not rerun at this documentation-only checkpoint.
+
+**Failure modes / invalidated assumptions:** a naked dense `NodeId` was invalidated because it can
+silently address the same slot in a different analysis; the accepted ID carries a non-serialized
+owner tag. Process-wide parse instrumentation was invalidated because concurrent MCP requests/tests
+would contaminate counts; the ledger is owned per build. Putting canonical roles in `NodeKey/1` was
+invalidated because roles arrive in M2; `/1` uses raw grammar structure and any role-aware identity is
+an explicit `/2` bump. One-snapshot-per-LSP-document was invalidated by multiple dirty overlays; the
+authority unit is a workspace overlay generation while M1 preserves file-local diagnostics. Separate
+slim summary/run proposal passes were invalidated because consent could describe different bytes from
+provider egress; both now derive from one prepared pinned run. `jj diff --check` was attempted but
+this jj version has no such option, so the whitespace check used `git diff --check` for interoperability.
+
+**Current recommendation/checkpoint:** M1.1 is complete. Implement M1.2 in `deslop-parse` starting
+with revision/newtype and `GrammarSelection` tests, then the explicit source store, centralized
+snapshot builder/root resolution, immutable project snapshot, single parse owner, and per-build
+ledger. Do not migrate consumer behavior until this lower-layer contract is executable.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; targeted local Rust
+reads remain the fallback.
+
+**Dependencies/restart:** none. This is a documentation and planning checkpoint; no binary rebuild,
+service restart, schema migration, or new third-party dependency is required. M1.10 will require
+regenerating `/3` workorders/patches as the new strict schemas rather than accepting legacy defaults.
+
+**Negative-memory status:** record that dense indices need analysis ownership, parse ledgers must be
+per build rather than process-global, grammar selection must be stored once, canonical roles cannot
+silently enter `NodeKey/1`, LSP authority spans all dirty overlays, and consent/prompt egress must use
+one pinned prepared batch. Recheck only if the M1 identity, concurrency, LSP, or wire boundaries are
+explicitly revised.
+
+**Signature:** Codex (GPT-5), M1.1 integration owner, 2026-07-13.
