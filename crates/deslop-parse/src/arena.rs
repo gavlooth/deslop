@@ -3,6 +3,7 @@ use std::ops::Range;
 use anyhow::{Result, bail};
 use tree_sitter::{Node, Tree};
 
+use crate::containment::ContainmentIndex;
 use crate::snapshot::GrammarSelection;
 
 pub(crate) const RAW_ARENA_SCHEMA: &str = "deslop-raw-arena/1";
@@ -22,12 +23,20 @@ impl ArenaNodeIndex {
     pub fn as_usize(self) -> usize {
         self.0 as usize
     }
+
+    pub(crate) const fn from_u32(index: u32) -> Self {
+        Self(index)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct ArenaSegmentIndex(u32);
 
 impl ArenaSegmentIndex {
+    pub(crate) fn from_usize(index: usize) -> Self {
+        Self(u32::try_from(index).expect("syntax arena construction already bounded segments"))
+    }
+
     pub fn as_usize(self) -> usize {
         self.0 as usize
     }
@@ -230,6 +239,7 @@ pub(crate) struct SyntaxArena {
     source_len: usize,
     nodes: Box<[SyntaxNode]>,
     segments: Box<[SyntaxSegment]>,
+    containment: ContainmentIndex,
 }
 
 impl SyntaxArena {
@@ -336,12 +346,14 @@ impl SyntaxArena {
             .map(NodeBuilder::finish)
             .collect::<Vec<_>>()
             .into_boxed_slice();
+        let containment = ContainmentIndex::build(&nodes, &segments)?;
         Ok(Self {
             grammar,
             root: ArenaNodeIndex(0),
             source_len: source.len(),
             nodes,
             segments: segments.into_boxed_slice(),
+            containment,
         })
     }
 
@@ -391,6 +403,10 @@ impl SyntaxArena {
 
     pub fn segment(&self, index: ArenaSegmentIndex) -> Option<&SyntaxSegment> {
         self.segments.get(index.as_usize())
+    }
+
+    pub(crate) fn containment(&self) -> &ContainmentIndex {
+        &self.containment
     }
 
     pub fn node_source<'a>(&self, source: &'a [u8], index: ArenaNodeIndex) -> Option<&'a [u8]> {

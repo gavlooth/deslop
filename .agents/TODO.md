@@ -147,15 +147,24 @@ reports, benchmark records, and work orders.
   topology, wrong-owner precedence, key round-trips/expiry/collisions, ambiguous baselines, structural
   digest vectors, and portable path rejection. Existing `rg1_` reconstruction remains exact and all
   compatibility, workspace, feature, build, formatting, whitespace, and strict clippy gates pass.
-- [ ] M1.5 Build containment and smallest-exclusive-region indices. **NEXT**
-- [ ] M1.6 Implement exclusive local and declared inclusive aggregation APIs.
+- [x] M1.5 Build containment and smallest-exclusive-region indices.
+  Evidence: each owned arena now builds validated preorder subtree/depth and co-minimal zero-width
+  indices before publication. Public owner-checked APIs provide O(1) structural containment and
+  subtree iteration, zero-allocation whole-file/per-node exclusive token/trivia iteration, O(log S)
+  byte ownership, O(log S + height) strict positive-range ownership via endpoint LCA, explicit named
+  promotion, and unbiased point context with exact zero-width nodes plus separate before/after owners.
+  Exhaustive tests lock 1,369 ordered node pairs, 254 reflexive/217 strict containment pairs, 1,953
+  positive ranges, every byte in a 27-region partition, equal spans, root-external File ownership,
+  missing/partial/empty/whitespace inputs, cross-file/foreign/out-of-range IDs, and all full gates.
+- [ ] M1.6 Implement exclusive local and declared inclusive aggregation APIs. **NEXT**
 - [ ] M1.7 Expose query/cursor-derived captures without reparsing source fragments.
 - [ ] M1.8 Add edit/changed-range invalidation and explicit re-anchor-or-expire behavior.
 - [ ] M1.9 Migrate analyzer and metrics consumers to the shared snapshot.
 - [ ] M1.10 Migrate graph, evaluator, LSP, MCP/protocol, and slim consumers.
 - [ ] M1.11 Instrument parse counts, ownership invariants, deterministic node order, latency, and memory.
   Measure and compact M1.4's repeated per-node `FileRevisionKey`/field-path storage, allocating
-  `NodeView::children`, and linear range/key lookups before declaring the traversal API migration-ready.
+  `NodeView::children`, linear range/key lookups, M1.5 index storage, and point-context allocation
+  before declaring the traversal API migration-ready.
 - [ ] M1.DoD Prove one parse per file revision in all scan/propose paths and no borrowed-node lifetime or
   overlapping exclusive-metric errors on the gold fixture matrix.
 

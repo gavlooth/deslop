@@ -6160,3 +6160,96 @@ performance claims. Recheck when M1.5 adds indices, M1.8 adds invalidation, M1.1
 consumers, or M1.11 measures memory.
 
 **Signature:** Codex (GPT-5), M1.4 integration owner, 2026-07-13.
+
+---
+
+## M1.5 checkpoint — structural containment and exclusive syntax ownership
+
+**Date/time:** 2026-07-13T19:16:48+02:00
+
+**Objective/target:** make structural CST containment and the smallest exclusive raw byte owner
+explicit, immutable, revision-local, and efficient enough to replace downstream Tree-sitter
+`descendant_for_byte_range` calls later. Preserve anonymous, extra, ERROR, and missing nodes without
+introducing M2 semantic roles or M1.6 aggregation policy.
+
+**Changes:** added `deslop-parse::containment::ContainmentIndex` to every successfully built arena.
+Construction derives and validates preorder-exclusive subtree ends, node depths, direct-child
+subtree contiguity, the positive-width segment partition order, and co-minimal zero-width nodes in
+byte/grammar-preorder order before the immutable analysis is published. `ProjectAnalysis` now
+provides inclusive subtree and strict descendant iterators plus owner-checked structural
+`node_contains`; these use project-global `NodeId`s and preserve wrong-analysis/range errors.
+`ExclusiveSyntaxRegion` and exact-size whole-file/per-node iterators expose the M1.3 token/trivia
+partition without inclusive descendant roll-up. `smallest_exclusive_syntax_region` binary-searches
+the existing segment slice without a duplicate per-segment endpoint array. File-owned regions carry
+`&FileRevisionKey`, preventing detached File owners from comparing equal across paths/revisions.
+Strict positive byte-range lookup rejects reversed, empty, and out-of-bounds ranges, finds the start
+and end-byte owners in O(log S), and returns their structural LCA in O(height); any root-external
+endpoint returns exact File ownership rather than a lying grammar root. Equal-span parent/child
+wrappers therefore select the structurally deeper raw node. A separate named helper explicitly
+promotes that raw node to the nearest named ancestor. `SyntaxPointContext` treats insertion points
+separately: it returns every unrelated co-minimal exact zero-width node in grammar preorder and
+independent before/after byte owners, avoiding an undocumented first-match or left/right bias.
+
+**Commands/checks run:** targeted Hindsight active/negative-memory search; local ADR, plan, arena,
+consumer, and Tree-usage inspection (Serena remains Python-only for this Rust workspace); three
+read-only agent audits for core index semantics, downstream range-query requirements, and numerical
+contracts; repeated focused parse tests and strict parse clippy; `cargo test --workspace`; `cargo
+test -p deslop-mcp --features slim-llm -- --test-threads=1`; `cargo build --workspace`; `cargo build
+-p deslop-slim --no-default-features`; `cargo fmt --all -- --check`; `cargo clippy --workspace
+--all-targets --all-features -- -D warnings`; `git diff --check`; `jj status`; and `jj diff --stat`.
+
+**Verification results:** PASS. `deslop-parse` has 44 passing tests. The 62-byte nested Rust oracle
+has 37 nodes; all 1,369 ordered pairs match an independent parent-chain oracle, with exactly 254
+self-inclusive containment pairs and 217 strict ancestor pairs. Every subtree iterator matches the
+filtered preorder oracle. All 1,953 non-empty byte ranges match an independent deepest-containing-
+span oracle. Equal `36..56` statement/conditional spans select the child `if_expression`; equal
+`39..43` literal/token spans select anonymous `true`, while explicit named promotion returns
+`boolean_literal`. The 49-byte partition oracle has exactly 27 exclusive regions (14 token, 13
+trivia), reconstructs the source, and every byte matches both linear region search and an independent
+maximum-structural-depth owner/kind oracle. Boundaries lock File `0..3`, token `3..5`, parent trivia
+`5..6`, and root trivia `47..49`. Missing `)` remains a zero-width structural child at `20..20`, owns
+no region, and is returned separately from the function-owned `20..21` byte; empty and seven-byte
+whitespace files retain zero-width roots with zero/one exclusive regions. Foreign/correct-owner
+`u32::MAX`, cross-file containment, partial syntax, invalid UTF-8, absent paths, range/point bounds,
+and nested zero-width TypeScript recovery all fail or resolve as declared. Workspace: 324 passing
+tests plus one intentional ignored performance probe and all doc-tests. Feature-enabled MCP has 23
+passing tests. Both build modes, formatting, whitespace, and strict all-target/all-feature clippy
+pass; the unchanged M0 executable compatibility test passes within the workspace suite.
+
+**Failure modes / invalidated assumptions:** span containment was rejected as structural truth
+because equal-span parent/children would make containment symmetric; preorder subtree intervals are
+authoritative. Ancestor/subtree lookup alone was insufficient because parse, metrics, and analyzer
+consumers currently ask for smallest byte-range descendants; endpoint owner plus LCA supplies the
+owned replacement without migrating consumers early. Returning one zero-width first match was
+rejected because unrelated same-point nodes are structurally ambiguous and sibling boundaries have
+no unbiased side; point context returns all co-minimal exact nodes and both sides separately. Named
+nodes are not the raw default because anonymous punctuation can be the true smallest owner. File
+ownership without a file key was rejected because owners from different files could collapse under
+Eq/Hash. Root-external trivia remains File-owned and never expands the grammar root. A duplicated
+`usize` endpoint array was removed because the validated segment slice already supports logarithmic
+lookup. The borrowed M1.3 28-region expectation was also invalidated for the actual 49-byte fixture:
+the measured truth is 27 regions, 14 token/13 trivia, with trailing newline inside the Rust root.
+
+**Current recommendation/checkpoint:** M1.5 is complete. Implement M1.6 by consuming each direct
+exclusive region once and deriving explicitly declared inclusive aggregates bottom-up over subtree
+intervals. Keep nested-callable reset and metric-region selection as caller/adapter policy; do not
+infer them from raw kind strings before M2.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace. Existing consumers
+continue using borrowed Tree-sitter traversal until M1.9/M1.10; this milestone supplies the complete
+owned raw boundary but intentionally does not migrate or reinterpret their semantic regions.
+
+**Dependencies/restart:** rebuild Rust consumers to pick up the additive parse API. No service
+restart, external schema migration, wire change, or dependency change is required. M1.6 owns
+aggregation, M1.7 query captures, M1.8 immutable invalidation, M2 canonical roles, and M1.9/M1.10
+consumer migration/RegionKey semantics.
+
+**Negative-memory status:** retain that structural containment is topology, never span inference;
+preorder ancestry alone does not satisfy downstream byte-range lookup; positive ranges use exclusive
+endpoint owners plus LCA; empty ranges require explicit point context; root-external bytes remain
+File-owned; and unrelated same-point zero-width minima must not become hidden first-wins. Do not make
+named promotion, semantic region resets, inclusive aggregation, fuzzy identity, or write authority
+implicit in this raw index. Recheck for M1.6 aggregation, M1.7 captures, M1.9 consumer migration, and
+M1.11 memory/latency measurement.
+
+**Signature:** Codex (GPT-5), M1.5 integration owner, 2026-07-13.

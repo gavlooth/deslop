@@ -12,6 +12,7 @@ pub use deslop_lang::RegionSpan;
 // M1.3 owns the raw arena internally; M1.4 adds owner-validated public node views.
 #[allow(dead_code)]
 mod arena;
+mod containment;
 mod identity;
 mod snapshot;
 
@@ -22,10 +23,12 @@ pub use identity::{
 };
 
 pub use snapshot::{
-    FileParseCount, FileRevisionKey, GrammarSelection, NodeIds, NodeView, ParseLedger, ParsedFile,
+    ExclusiveSyntaxKind, ExclusiveSyntaxLookupError, ExclusiveSyntaxOwner, ExclusiveSyntaxRegion,
+    ExclusiveSyntaxRegions, FileParseCount, FileRevisionKey, GrammarSelection,
+    NodeExclusiveSyntaxRegions, NodeIds, NodeRangeLookupError, NodeView, ParseLedger, ParsedFile,
     ProjectAnalysis, ProjectAnalysisId, ProjectSnapshot, ProjectSnapshotBuilder, ProjectSnapshotId,
     RepositoryId, ScopeEntry, ScopeEntryKind, ScopeSpec, SnapshotEntry, SnapshotEntryKind,
-    SourceRevision, SourceStore, StoredSource,
+    SourceRevision, SourceStore, StoredSource, SyntaxOwner, SyntaxPointContext,
 };
 
 thread_local! {

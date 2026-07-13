@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::hash::Hash;
+use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -13,9 +15,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tree_sitter::{Parser, Tree};
 
 use crate::analysis_provenance_for_tree;
-#[cfg(test)]
-use crate::arena::ArenaSegmentIndex;
-use crate::arena::{ArenaNodeIndex, RAW_ARENA_SCHEMA, SyntaxArena};
+use crate::arena::{
+    ArenaNodeIndex, ArenaSegmentIndex, RAW_ARENA_SCHEMA, SyntaxArena, SyntaxSegmentKind,
+    SyntaxSegmentOwner,
+};
 use crate::identity::{
     NodeBaselineFingerprint, NodeId, NodeKey, NodeKeyLookupError, NodeLookupError,
     baseline_fingerprint, build_node_keys,
@@ -810,6 +813,272 @@ pub struct NodeView<'analysis> {
     id: NodeId,
 }
 
+/// The raw byte class of one smallest exclusive syntax region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ExclusiveSyntaxKind {
+    Token,
+    Trivia,
+}
+
+/// The unique raw owner of one positive-width exclusive syntax region.
+///
+/// File ownership carries the exact file revision so owners cannot alias across project files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ExclusiveSyntaxOwner<'analysis> {
+    File(&'analysis FileRevisionKey),
+    Node(NodeId),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExclusiveSyntaxLookupError {
+    FileNotFound { path: PathBuf },
+    SyntaxUnavailable { path: PathBuf },
+    ByteOutOfRange { requested: usize, source_len: usize },
+}
+
+impl fmt::Display for ExclusiveSyntaxLookupError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FileNotFound { path } => {
+                write!(formatter, "analysis has no source file {}", path.display())
+            }
+            Self::SyntaxUnavailable { path } => {
+                write!(
+                    formatter,
+                    "source file {} has no syntax arena",
+                    path.display()
+                )
+            }
+            Self::ByteOutOfRange {
+                requested,
+                source_len,
+            } => write!(
+                formatter,
+                "byte {requested} is outside source byte range 0..{source_len}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ExclusiveSyntaxLookupError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NodeRangeLookupError {
+    FileNotFound {
+        path: PathBuf,
+    },
+    SyntaxUnavailable {
+        path: PathBuf,
+    },
+    ReversedRange {
+        start: usize,
+        end: usize,
+    },
+    EmptyRangeRequiresPointLookup {
+        byte: usize,
+    },
+    RangeOutOfBounds {
+        start: usize,
+        end: usize,
+        source_len: usize,
+    },
+    PointOutOfBounds {
+        byte: usize,
+        source_len: usize,
+    },
+}
+
+impl fmt::Display for NodeRangeLookupError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FileNotFound { path } => {
+                write!(formatter, "analysis has no source file {}", path.display())
+            }
+            Self::SyntaxUnavailable { path } => {
+                write!(
+                    formatter,
+                    "source file {} has no syntax arena",
+                    path.display()
+                )
+            }
+            Self::ReversedRange { start, end } => {
+                write!(formatter, "syntax byte range {start}..{end} is reversed")
+            }
+            Self::EmptyRangeRequiresPointLookup { byte } => write!(
+                formatter,
+                "syntax byte range {byte}..{byte} is empty; use syntax_point_context"
+            ),
+            Self::RangeOutOfBounds {
+                start,
+                end,
+                source_len,
+            } => write!(
+                formatter,
+                "syntax byte range {start}..{end} is outside source range 0..{source_len}"
+            ),
+            Self::PointOutOfBounds { byte, source_len } => write!(
+                formatter,
+                "syntax point {byte} is outside source point range 0..={source_len}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for NodeRangeLookupError {}
+
+/// A revision-local raw syntax owner. `File` denotes bytes outside the grammar root.
+#[derive(Debug, Clone, Copy)]
+pub enum SyntaxOwner<'analysis> {
+    File(&'analysis FileRevisionKey),
+    Node(NodeView<'analysis>),
+}
+
+/// Unbiased context at a byte boundary or insertion point.
+///
+/// Exact zero-width nodes are the co-minimal structural nodes in grammar preorder. `before` and
+/// `after` remain separate so callers cannot accidentally hide a sibling-boundary choice.
+#[derive(Debug, Clone)]
+pub struct SyntaxPointContext<'analysis> {
+    exact_zero_width: Vec<NodeView<'analysis>>,
+    before: Option<SyntaxOwner<'analysis>>,
+    after: Option<SyntaxOwner<'analysis>>,
+}
+
+impl<'analysis> SyntaxPointContext<'analysis> {
+    pub fn exact_zero_width(&self) -> &[NodeView<'analysis>] {
+        &self.exact_zero_width
+    }
+
+    pub fn before(&self) -> Option<SyntaxOwner<'analysis>> {
+        self.before
+    }
+
+    pub fn after(&self) -> Option<SyntaxOwner<'analysis>> {
+        self.after
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ExclusiveSyntaxRegion<'analysis> {
+    file: &'analysis ParsedFile,
+    arena: &'analysis SyntaxArena,
+    local: ArenaSegmentIndex,
+    owner: u64,
+    file_start: u32,
+}
+
+impl<'analysis> ExclusiveSyntaxRegion<'analysis> {
+    fn raw(&self) -> &crate::arena::SyntaxSegment {
+        self.arena
+            .segment(self.local)
+            .expect("exclusive syntax region belongs to its arena")
+    }
+
+    pub fn file_key(&self) -> &FileRevisionKey {
+        &self.file.key
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.file.key.path
+    }
+
+    pub fn kind(&self) -> ExclusiveSyntaxKind {
+        match self.raw().kind() {
+            SyntaxSegmentKind::Token => ExclusiveSyntaxKind::Token,
+            SyntaxSegmentKind::Trivia => ExclusiveSyntaxKind::Trivia,
+        }
+    }
+
+    pub fn owner(&self) -> ExclusiveSyntaxOwner<'analysis> {
+        match self.raw().owner() {
+            SyntaxSegmentOwner::File => ExclusiveSyntaxOwner::File(&self.file.key),
+            SyntaxSegmentOwner::Node(local) => ExclusiveSyntaxOwner::Node(NodeId {
+                owner: self.owner,
+                index: self.file_start + local.as_usize() as u32,
+            }),
+        }
+    }
+
+    pub fn byte_range(&self) -> Range<usize> {
+        self.raw().byte_range()
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        self.file
+            .source()
+            .get(self.byte_range())
+            .expect("exclusive syntax region belongs to its exact source")
+    }
+
+    pub fn text(&self) -> &str {
+        std::str::from_utf8(self.bytes())
+            .expect("a syntax arena exists only for valid UTF-8 source")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExclusiveSyntaxRegions<'analysis> {
+    file: &'analysis ParsedFile,
+    arena: &'analysis SyntaxArena,
+    owner: u64,
+    file_start: u32,
+    next: usize,
+}
+
+impl<'analysis> Iterator for ExclusiveSyntaxRegions<'analysis> {
+    type Item = ExclusiveSyntaxRegion<'analysis>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let local = ArenaSegmentIndex::from_usize(self.next);
+        self.arena.segment(local)?;
+        self.next += 1;
+        Some(ExclusiveSyntaxRegion {
+            file: self.file,
+            arena: self.arena,
+            local,
+            owner: self.owner,
+            file_start: self.file_start,
+        })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.arena.segments().len() - self.next;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for ExclusiveSyntaxRegions<'_> {}
+
+#[derive(Debug, Clone)]
+pub struct NodeExclusiveSyntaxRegions<'analysis> {
+    file: &'analysis ParsedFile,
+    arena: &'analysis SyntaxArena,
+    owner: u64,
+    file_start: u32,
+    remaining: std::slice::Iter<'analysis, ArenaSegmentIndex>,
+}
+
+impl<'analysis> Iterator for NodeExclusiveSyntaxRegions<'analysis> {
+    type Item = ExclusiveSyntaxRegion<'analysis>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let local = *self.remaining.next()?;
+        Some(ExclusiveSyntaxRegion {
+            file: self.file,
+            arena: self.arena,
+            local,
+            owner: self.owner,
+            file_start: self.file_start,
+        })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.remaining.size_hint()
+    }
+}
+
+impl ExactSizeIterator for NodeExclusiveSyntaxRegions<'_> {}
+
 impl ProjectAnalysis {
     pub fn build(snapshot: Arc<ProjectSnapshot>) -> Result<Arc<Self>> {
         Self::build_with_ledger(snapshot, Arc::new(ParseLedger::default()))
@@ -979,6 +1248,288 @@ impl ProjectAnalysis {
         })
         .map_err(|_| NodeKeyLookupError::NotFound)
     }
+
+    /// Return the deterministic preorder subtree rooted at `id`, including `id` itself.
+    pub fn subtree_node_ids(&self, id: NodeId) -> Result<NodeIds, NodeLookupError> {
+        let node = self.node(id)?;
+        let end = node
+            .arena
+            .containment()
+            .subtree_end(node.local)
+            .expect("node view belongs to the containment index");
+        Ok(NodeIds {
+            owner: self.owner,
+            next: id.index,
+            end: node.file_start() + end.as_usize() as u32,
+        })
+    }
+
+    /// Return strict descendants of `id` in deterministic preorder.
+    pub fn descendant_node_ids(&self, id: NodeId) -> Result<NodeIds, NodeLookupError> {
+        let mut subtree = self.subtree_node_ids(id)?;
+        subtree.next += 1;
+        Ok(subtree)
+    }
+
+    /// Test structural CST containment. A node contains itself; different files never contain.
+    pub fn node_contains(
+        &self,
+        ancestor: NodeId,
+        descendant: NodeId,
+    ) -> Result<bool, NodeLookupError> {
+        let ancestor = self.node(ancestor)?;
+        let descendant = self.node(descendant)?;
+        if ancestor.path() != descendant.path() {
+            return Ok(false);
+        }
+        Ok(ancestor
+            .arena
+            .containment()
+            .contains(ancestor.local, descendant.local))
+    }
+
+    /// Iterate the positive-width token/trivia regions that partition one exact source revision.
+    pub fn exclusive_syntax_regions(
+        &self,
+        path: &Path,
+    ) -> Result<ExclusiveSyntaxRegions<'_>, ExclusiveSyntaxLookupError> {
+        let (file, arena, file_start) = self.exclusive_syntax_context(path)?;
+        Ok(ExclusiveSyntaxRegions {
+            file,
+            arena,
+            owner: self.owner,
+            file_start,
+            next: 0,
+        })
+    }
+
+    /// Find the unique smallest exclusive token/trivia region owning `byte`.
+    ///
+    /// `byte` addresses an existing byte, so `source_len` is out of range. Zero-width recovery
+    /// nodes are available through structural containment but own no exclusive byte region.
+    pub fn smallest_exclusive_syntax_region(
+        &self,
+        path: &Path,
+        byte: usize,
+    ) -> Result<ExclusiveSyntaxRegion<'_>, ExclusiveSyntaxLookupError> {
+        let (file, arena, file_start) = self.exclusive_syntax_context(path)?;
+        if byte >= file.source().len() {
+            return Err(ExclusiveSyntaxLookupError::ByteOutOfRange {
+                requested: byte,
+                source_len: file.source().len(),
+            });
+        }
+        let local = arena
+            .containment()
+            .exclusive_region_at(arena.segments(), byte)
+            .expect("non-empty validated source partition owns every byte");
+        Ok(ExclusiveSyntaxRegion {
+            file,
+            arena,
+            local,
+            owner: self.owner,
+            file_start,
+        })
+    }
+
+    /// Resolve a strict positive byte range to its smallest raw CST owner.
+    ///
+    /// Equal-span wrappers are disambiguated structurally. A range touching bytes outside the
+    /// grammar root returns the exact file revision rather than a syntax node with a lying span.
+    pub fn smallest_containing_syntax(
+        &self,
+        path: &Path,
+        range: Range<usize>,
+    ) -> Result<SyntaxOwner<'_>, NodeRangeLookupError> {
+        let (file, arena, file_start) = self.node_range_context(path)?;
+        if range.start > range.end {
+            return Err(NodeRangeLookupError::ReversedRange {
+                start: range.start,
+                end: range.end,
+            });
+        }
+        if range.end > file.source().len() {
+            return Err(NodeRangeLookupError::RangeOutOfBounds {
+                start: range.start,
+                end: range.end,
+                source_len: file.source().len(),
+            });
+        }
+        if range.start == range.end {
+            return Err(NodeRangeLookupError::EmptyRangeRequiresPointLookup { byte: range.start });
+        }
+        Ok(
+            match arena.containment().smallest_containing_node(
+                arena.nodes(),
+                arena.segments(),
+                range.start,
+                range.end,
+            ) {
+                Some(local) => {
+                    SyntaxOwner::Node(self.node_view_from_local(file, arena, file_start, local))
+                }
+                None => SyntaxOwner::File(&file.key),
+            },
+        )
+    }
+
+    /// Resolve a strict positive byte range and explicitly promote a raw owner to its nearest named
+    /// ancestor. File ownership is preserved.
+    pub fn smallest_containing_named_syntax(
+        &self,
+        path: &Path,
+        range: Range<usize>,
+    ) -> Result<SyntaxOwner<'_>, NodeRangeLookupError> {
+        let owner = self.smallest_containing_syntax(path, range)?;
+        Ok(self.promote_named_owner(owner))
+    }
+
+    /// Return unbiased raw ownership context at a byte boundary or insertion point.
+    ///
+    /// Exact zero-width nodes contain no bytes. Co-minimal unrelated nodes are all returned in
+    /// grammar preorder; byte owners before and after the point remain separate.
+    pub fn syntax_point_context(
+        &self,
+        path: &Path,
+        point: usize,
+    ) -> Result<SyntaxPointContext<'_>, NodeRangeLookupError> {
+        let (file, arena, file_start) = self.node_range_context(path)?;
+        let source_len = file.source().len();
+        if point > source_len {
+            return Err(NodeRangeLookupError::PointOutOfBounds {
+                byte: point,
+                source_len,
+            });
+        }
+        let exact_zero_width = arena
+            .containment()
+            .zero_width_nodes_at(point)
+            .iter()
+            .map(|(_, index)| {
+                self.node_view_from_local(file, arena, file_start, ArenaNodeIndex::from_u32(*index))
+            })
+            .collect();
+        let before =
+            (point > 0).then(|| self.syntax_owner_at_byte(file, arena, file_start, point - 1));
+        let after =
+            (point < source_len).then(|| self.syntax_owner_at_byte(file, arena, file_start, point));
+        Ok(SyntaxPointContext {
+            exact_zero_width,
+            before,
+            after,
+        })
+    }
+
+    fn syntax_owner_at_byte<'analysis>(
+        &'analysis self,
+        file: &'analysis ParsedFile,
+        arena: &'analysis SyntaxArena,
+        file_start: u32,
+        byte: usize,
+    ) -> SyntaxOwner<'analysis> {
+        let region = arena
+            .containment()
+            .exclusive_region_at(arena.segments(), byte)
+            .expect("validated source partition owns every existing byte");
+        match arena
+            .segment(region)
+            .expect("containment region belongs to arena")
+            .owner()
+        {
+            SyntaxSegmentOwner::File => SyntaxOwner::File(&file.key),
+            SyntaxSegmentOwner::Node(local) => {
+                SyntaxOwner::Node(self.node_view_from_local(file, arena, file_start, local))
+            }
+        }
+    }
+
+    fn node_view_from_local<'analysis>(
+        &'analysis self,
+        file: &'analysis ParsedFile,
+        arena: &'analysis SyntaxArena,
+        file_start: u32,
+        local: ArenaNodeIndex,
+    ) -> NodeView<'analysis> {
+        NodeView {
+            analysis: self,
+            file,
+            arena,
+            local,
+            id: NodeId {
+                owner: self.owner,
+                index: file_start + local.as_usize() as u32,
+            },
+        }
+    }
+
+    fn promote_named_owner<'analysis>(
+        &'analysis self,
+        mut owner: SyntaxOwner<'analysis>,
+    ) -> SyntaxOwner<'analysis> {
+        while let SyntaxOwner::Node(node) = owner {
+            if node.is_named() {
+                return owner;
+            }
+            owner = match node.parent() {
+                Some(parent) => SyntaxOwner::Node(
+                    self.node(parent)
+                        .expect("node parent belongs to the same project analysis"),
+                ),
+                None => return owner,
+            };
+        }
+        owner
+    }
+
+    fn node_range_context(
+        &self,
+        path: &Path,
+    ) -> Result<(&ParsedFile, &SyntaxArena, u32), NodeRangeLookupError> {
+        let file = self
+            .files
+            .get(path)
+            .ok_or_else(|| NodeRangeLookupError::FileNotFound {
+                path: path.to_path_buf(),
+            })?;
+        let arena = file
+            .arena
+            .as_ref()
+            .ok_or_else(|| NodeRangeLookupError::SyntaxUnavailable {
+                path: path.to_path_buf(),
+            })?;
+        let file_start = self
+            .node_ranges
+            .iter()
+            .find(|range| range.path == path)
+            .expect("analysis file has a node range")
+            .start;
+        Ok((file, arena, file_start))
+    }
+
+    fn exclusive_syntax_context(
+        &self,
+        path: &Path,
+    ) -> Result<(&ParsedFile, &SyntaxArena, u32), ExclusiveSyntaxLookupError> {
+        let file =
+            self.files
+                .get(path)
+                .ok_or_else(|| ExclusiveSyntaxLookupError::FileNotFound {
+                    path: path.to_path_buf(),
+                })?;
+        let arena =
+            file.arena
+                .as_ref()
+                .ok_or_else(|| ExclusiveSyntaxLookupError::SyntaxUnavailable {
+                    path: path.to_path_buf(),
+                })?;
+        let file_start = self
+            .node_ranges
+            .iter()
+            .find(|range| range.path == path)
+            .expect("analysis file has a node range")
+            .start;
+        Ok((file, arena, file_start))
+    }
 }
 
 impl NodeView<'_> {
@@ -1078,6 +1629,19 @@ impl NodeView<'_> {
                 index: start + child.as_usize() as u32,
             })
             .collect()
+    }
+
+    /// Iterate only the positive-width raw regions owned directly by this node.
+    ///
+    /// Descendant ownership is intentionally excluded; M1.6 declares inclusive aggregation.
+    pub fn exclusive_syntax_regions(&self) -> NodeExclusiveSyntaxRegions<'_> {
+        NodeExclusiveSyntaxRegions {
+            file: self.file,
+            arena: self.arena,
+            owner: self.id.owner,
+            file_start: self.file_start(),
+            remaining: self.raw().owned_segment_indices().iter(),
+        }
     }
 
     pub fn bytes(&self) -> &[u8] {
@@ -1555,6 +2119,15 @@ mod tests {
             .map(|id| analysis.node(id).unwrap())
             .find(|node| node.raw_kind() == kind)
             .unwrap()
+    }
+
+    fn node_depth(analysis: &ProjectAnalysis, mut id: NodeId) -> usize {
+        let mut depth = 0;
+        while let Some(parent) = analysis.node(id).unwrap().parent() {
+            depth += 1;
+            id = parent;
+        }
+        depth
     }
 
     #[test]
@@ -2793,6 +3366,623 @@ mod tests {
                 .unwrap()
                 .index,
             10
+        );
+    }
+
+    #[test]
+    fn containment_indices_match_parent_oracle_and_disambiguate_equal_spans() {
+        let temp = tempfile::tempdir().unwrap();
+        let nested = b"fn outer() {\n    let closure = || { if true { value(); } };\n}\n";
+        let build = || {
+            let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+                .unwrap()
+                .with_overlay("nested.rs", nested.to_vec())
+                .unwrap()
+                .with_overlay("peer.rs", b"fn peer() {}\n".to_vec())
+                .unwrap()
+                .build()
+                .unwrap();
+            ProjectAnalysis::build(snapshot).unwrap()
+        };
+        let first = build();
+        let second = build();
+        let nested_ids = first
+            .file_node_ids(Path::new("nested.rs"))
+            .unwrap()
+            .collect::<Vec<_>>();
+        assert_eq!(nested.len(), 62);
+        assert_eq!(nested_ids.len(), 37);
+        assert_eq!(nested_ids.first().unwrap().index, 0);
+        assert_eq!(nested_ids.last().unwrap().index, 36);
+
+        let parent_oracle = |ancestor: NodeId, mut descendant: NodeId| loop {
+            if ancestor == descendant {
+                break true;
+            }
+            let Some(parent) = first.node(descendant).unwrap().parent() else {
+                break false;
+            };
+            descendant = parent;
+        };
+        let mut containment_pairs = 0;
+        for ancestor in &nested_ids {
+            let expected = nested_ids
+                .iter()
+                .copied()
+                .filter(|descendant| parent_oracle(*ancestor, *descendant))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                first
+                    .subtree_node_ids(*ancestor)
+                    .unwrap()
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            assert_eq!(
+                first
+                    .descendant_node_ids(*ancestor)
+                    .unwrap()
+                    .collect::<Vec<_>>(),
+                expected[1..]
+            );
+            for descendant in &nested_ids {
+                let indexed = first.node_contains(*ancestor, *descendant).unwrap();
+                assert_eq!(indexed, parent_oracle(*ancestor, *descendant));
+                containment_pairs += usize::from(indexed);
+            }
+        }
+        assert_eq!(containment_pairs, 254);
+        assert_eq!(containment_pairs - nested_ids.len(), 217);
+
+        let find = |kind: &str, range: Range<usize>| {
+            nested_ids
+                .iter()
+                .copied()
+                .map(|id| first.node(id).unwrap())
+                .find(|node| node.raw_kind() == kind && node.span().byte_range() == range)
+                .unwrap()
+        };
+        let statement = find("expression_statement", 36..56);
+        let conditional = find("if_expression", 36..56);
+        assert!(
+            first
+                .node_contains(statement.id(), conditional.id())
+                .unwrap()
+        );
+        assert!(
+            !first
+                .node_contains(conditional.id(), statement.id())
+                .unwrap()
+        );
+
+        let literal = find("boolean_literal", 39..43);
+        let token = find("true", 39..43);
+        assert!(first.node_contains(literal.id(), token.id()).unwrap());
+        assert!(!first.node_contains(token.id(), literal.id()).unwrap());
+        for byte in 39..43 {
+            let region = first
+                .smallest_exclusive_syntax_region(Path::new("nested.rs"), byte)
+                .unwrap();
+            assert_eq!(region.byte_range(), 39..43);
+            assert_eq!(region.owner(), ExclusiveSyntaxOwner::Node(token.id()));
+            assert_eq!(region.kind(), ExclusiveSyntaxKind::Token);
+            assert_eq!(region.text(), "true");
+        }
+        let SyntaxOwner::Node(range_owner) = first
+            .smallest_containing_syntax(Path::new("nested.rs"), 36..56)
+            .unwrap()
+        else {
+            panic!("equal-span conditional range must have a raw syntax owner");
+        };
+        assert_eq!(range_owner.id(), conditional.id());
+        let SyntaxOwner::Node(range_owner) = first
+            .smallest_containing_syntax(Path::new("nested.rs"), 39..43)
+            .unwrap()
+        else {
+            panic!("boolean token range must have a raw syntax owner");
+        };
+        assert_eq!(range_owner.id(), token.id());
+        let SyntaxOwner::Node(named_owner) = first
+            .smallest_containing_named_syntax(Path::new("nested.rs"), 39..43)
+            .unwrap()
+        else {
+            panic!("boolean token range must promote to named syntax");
+        };
+        assert_eq!(named_owner.id(), literal.id());
+
+        let value = nested_ids
+            .iter()
+            .copied()
+            .map(|id| first.node(id).unwrap())
+            .find(|node| node.raw_kind() == "identifier" && node.text() == "value")
+            .unwrap();
+        let mut ancestors = Vec::new();
+        let mut parent = value.parent();
+        while let Some(id) = parent {
+            let node = first.node(id).unwrap();
+            ancestors.push(node.raw_kind().to_string());
+            parent = node.parent();
+        }
+        assert_eq!(
+            ancestors,
+            [
+                "call_expression",
+                "expression_statement",
+                "block",
+                "if_expression",
+                "expression_statement",
+                "block",
+                "closure_expression",
+                "let_declaration",
+                "block",
+                "function_item",
+                "source_file",
+            ]
+        );
+
+        let nested_nodes = nested_ids
+            .iter()
+            .copied()
+            .map(|id| first.node(id).unwrap())
+            .collect::<Vec<_>>();
+        let mut checked_ranges = 0;
+        for start in 0..nested.len() {
+            for end in start + 1..=nested.len() {
+                let expected = nested_nodes
+                    .iter()
+                    .copied()
+                    .filter(|node| {
+                        node.span().start_byte() <= start && end <= node.span().end_byte()
+                    })
+                    .max_by_key(|node| node_depth(&first, node.id()))
+                    .unwrap();
+                let SyntaxOwner::Node(indexed) = first
+                    .smallest_containing_syntax(Path::new("nested.rs"), start..end)
+                    .unwrap()
+                else {
+                    panic!("nested fixture range {start}..{end} must be syntax owned");
+                };
+                assert_eq!(indexed.id(), expected.id(), "range {start}..{end}");
+                checked_ranges += 1;
+            }
+        }
+        assert_eq!(checked_ranges, 1_953);
+
+        let peer_root = first
+            .file_node_ids(Path::new("peer.rs"))
+            .unwrap()
+            .next()
+            .unwrap();
+        assert!(!first.node_contains(nested_ids[0], peer_root).unwrap());
+        assert_eq!(
+            first
+                .subtree_node_ids(second.node_ids().next().unwrap())
+                .unwrap_err(),
+            NodeLookupError::WrongAnalysis
+        );
+        assert_eq!(
+            first
+                .node_contains(nested_ids[0], second.node_ids().next().unwrap())
+                .unwrap_err(),
+            NodeLookupError::WrongAnalysis
+        );
+        assert_eq!(
+            first
+                .node_contains(second.node_ids().next().unwrap(), nested_ids[0])
+                .unwrap_err(),
+            NodeLookupError::WrongAnalysis
+        );
+        let out_of_range = NodeId {
+            owner: first.owner,
+            index: u32::MAX,
+        };
+        assert!(matches!(
+            first.subtree_node_ids(out_of_range).unwrap_err(),
+            NodeLookupError::OutOfRange {
+                requested: u32::MAX,
+                ..
+            }
+        ));
+        assert!(matches!(
+            first.descendant_node_ids(out_of_range).unwrap_err(),
+            NodeLookupError::OutOfRange {
+                requested: u32::MAX,
+                ..
+            }
+        ));
+        assert!(matches!(
+            first
+                .node_contains(out_of_range, nested_ids[0])
+                .unwrap_err(),
+            NodeLookupError::OutOfRange {
+                requested: u32::MAX,
+                ..
+            }
+        ));
+        assert!(matches!(
+            first
+                .node_contains(nested_ids[0], out_of_range)
+                .unwrap_err(),
+            NodeLookupError::OutOfRange {
+                requested: u32::MAX,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn exclusive_syntax_index_is_total_strict_and_partial_safe() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = b"\n  fn value() -> &'static str { /* c */ \"h\xc3\xa9\" }\n\t";
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("partition.rs", source.to_vec())
+            .unwrap()
+            .with_overlay(
+                "missing.ts",
+                b"function f(a: string { return a; }\n".to_vec(),
+            )
+            .unwrap()
+            .with_overlay("broken.rs", vec![0xff, 0xfe])
+            .unwrap()
+            .with_overlay("empty.rs", Vec::new())
+            .unwrap()
+            .with_overlay("whitespace.rs", b"\t \r\n  \n".to_vec())
+            .unwrap()
+            .with_overlay("point.ts", b"if (value) ".to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+
+        let regions = analysis
+            .exclusive_syntax_regions(Path::new("partition.rs"))
+            .unwrap()
+            .collect::<Vec<_>>();
+        assert_eq!(source.len(), 49);
+        assert_eq!(regions.len(), 27);
+        assert_eq!(
+            regions
+                .iter()
+                .filter(|region| region.kind() == ExclusiveSyntaxKind::Token)
+                .count(),
+            14
+        );
+        assert_eq!(
+            regions
+                .iter()
+                .filter(|region| region.kind() == ExclusiveSyntaxKind::Trivia)
+                .count(),
+            13
+        );
+        assert!(matches!(
+            regions.first().unwrap().owner(),
+            ExclusiveSyntaxOwner::File(key) if key.path == Path::new("partition.rs")
+        ));
+        let ExclusiveSyntaxOwner::Node(last_owner) = regions.last().unwrap().owner() else {
+            panic!("trailing newline must remain inside the Rust source root");
+        };
+        assert_eq!(analysis.node(last_owner).unwrap().raw_kind(), "source_file");
+        let mut reconstructed = Vec::new();
+        let mut cursor = 0;
+        for region in &regions {
+            assert_eq!(region.path(), Path::new("partition.rs"));
+            assert_eq!(region.byte_range().start, cursor);
+            assert!(region.byte_range().end > cursor);
+            reconstructed.extend_from_slice(region.bytes());
+            cursor = region.byte_range().end;
+        }
+        assert_eq!(cursor, source.len());
+        assert_eq!(reconstructed, source);
+        for byte in 0..source.len() {
+            let indexed = analysis
+                .smallest_exclusive_syntax_region(Path::new("partition.rs"), byte)
+                .unwrap();
+            let linear = regions
+                .iter()
+                .find(|region| region.byte_range().contains(&byte))
+                .unwrap();
+            assert_eq!(indexed.byte_range(), linear.byte_range());
+            assert_eq!(indexed.kind(), linear.kind());
+            assert_eq!(indexed.owner(), linear.owner());
+            assert_eq!(indexed.bytes(), linear.bytes());
+            if let ExclusiveSyntaxOwner::Node(owner) = indexed.owner() {
+                let owner = analysis.node(owner).unwrap();
+                assert_eq!(owner.path(), Path::new("partition.rs"));
+                assert!(
+                    owner
+                        .exclusive_syntax_regions()
+                        .any(|owned| owned.byte_range() == indexed.byte_range())
+                );
+            }
+        }
+        let partition_nodes = analysis
+            .file_node_ids(Path::new("partition.rs"))
+            .unwrap()
+            .map(|id| analysis.node(id).unwrap())
+            .collect::<Vec<_>>();
+        for byte in 0..source.len() {
+            let indexed = analysis
+                .smallest_exclusive_syntax_region(Path::new("partition.rs"), byte)
+                .unwrap();
+            let expected = partition_nodes
+                .iter()
+                .copied()
+                .filter(|node| node.span().start_byte() <= byte && byte < node.span().end_byte())
+                .max_by_key(|node| node_depth(&analysis, node.id()));
+            match (expected, indexed.owner()) {
+                (None, ExclusiveSyntaxOwner::File(key)) => {
+                    assert_eq!(key.path, Path::new("partition.rs"));
+                    assert_eq!(indexed.kind(), ExclusiveSyntaxKind::Trivia);
+                }
+                (Some(expected), ExclusiveSyntaxOwner::Node(owner)) => {
+                    assert_eq!(owner, expected.id(), "byte {byte}");
+                    let mut within_non_error_extra = false;
+                    let mut current = Some(expected);
+                    while let Some(node) = current {
+                        within_non_error_extra |= node.is_extra() && !node.is_error();
+                        current = node.parent().map(|parent| analysis.node(parent).unwrap());
+                    }
+                    let expected_kind = if expected.children().is_empty() && !within_non_error_extra
+                    {
+                        ExclusiveSyntaxKind::Token
+                    } else {
+                        ExclusiveSyntaxKind::Trivia
+                    };
+                    assert_eq!(indexed.kind(), expected_kind, "byte {byte}");
+                }
+                pair => panic!("exclusive owner mismatch at byte {byte}: {pair:?}"),
+            }
+        }
+        let SyntaxOwner::File(key) = analysis
+            .smallest_containing_syntax(Path::new("partition.rs"), 0..1)
+            .unwrap()
+        else {
+            panic!("root-external prefix must remain file owned");
+        };
+        assert_eq!(key.path, Path::new("partition.rs"));
+        let SyntaxOwner::Node(fn_token) = analysis
+            .smallest_containing_syntax(Path::new("partition.rs"), 3..5)
+            .unwrap()
+        else {
+            panic!("fn token must have a raw syntax owner");
+        };
+        assert_eq!(fn_token.raw_kind(), "fn");
+        assert_eq!(
+            analysis
+                .smallest_exclusive_syntax_region(Path::new("partition.rs"), 2)
+                .unwrap()
+                .byte_range(),
+            0..3
+        );
+        assert_eq!(
+            analysis
+                .smallest_exclusive_syntax_region(Path::new("partition.rs"), 3)
+                .unwrap()
+                .byte_range(),
+            3..5
+        );
+        assert_eq!(
+            analysis
+                .smallest_exclusive_syntax_region(Path::new("partition.rs"), 5)
+                .unwrap()
+                .byte_range(),
+            5..6
+        );
+        for byte in [47, 48] {
+            assert_eq!(
+                analysis
+                    .smallest_exclusive_syntax_region(Path::new("partition.rs"), byte)
+                    .unwrap()
+                    .byte_range(),
+                47..49
+            );
+        }
+        assert_eq!(
+            analysis
+                .smallest_exclusive_syntax_region(Path::new("partition.rs"), source.len())
+                .unwrap_err(),
+            ExclusiveSyntaxLookupError::ByteOutOfRange {
+                requested: source.len(),
+                source_len: source.len(),
+            }
+        );
+        assert_eq!(
+            analysis
+                .smallest_exclusive_syntax_region(Path::new("partition.rs"), usize::MAX)
+                .unwrap_err(),
+            ExclusiveSyntaxLookupError::ByteOutOfRange {
+                requested: usize::MAX,
+                source_len: source.len(),
+            }
+        );
+
+        let missing = analysis
+            .file_node_ids(Path::new("missing.ts"))
+            .unwrap()
+            .map(|id| analysis.node(id).unwrap())
+            .find(|node| node.is_missing())
+            .unwrap();
+        assert_eq!(missing.span().byte_range(), 20..20);
+        assert_eq!(
+            analysis
+                .subtree_node_ids(missing.id())
+                .unwrap()
+                .collect::<Vec<_>>(),
+            [missing.id()]
+        );
+        assert!(
+            analysis
+                .node_contains(missing.parent().unwrap(), missing.id())
+                .unwrap()
+        );
+        assert!(
+            analysis
+                .exclusive_syntax_regions(Path::new("missing.ts"))
+                .unwrap()
+                .all(|region| region.owner() != ExclusiveSyntaxOwner::Node(missing.id()))
+        );
+        assert_ne!(
+            analysis
+                .smallest_exclusive_syntax_region(Path::new("missing.ts"), 20)
+                .unwrap()
+                .owner(),
+            ExclusiveSyntaxOwner::Node(missing.id())
+        );
+        let point = analysis
+            .syntax_point_context(Path::new("missing.ts"), 20)
+            .unwrap();
+        assert_eq!(point.exact_zero_width().len(), 1);
+        assert_eq!(point.exact_zero_width()[0].id(), missing.id());
+        let SyntaxOwner::Node(after) = point.after().unwrap() else {
+            panic!("byte after the missing token must remain syntax owned");
+        };
+        assert_eq!(after.raw_kind(), "function_declaration");
+        assert_eq!(
+            analysis
+                .smallest_exclusive_syntax_region(Path::new("missing.ts"), 20)
+                .unwrap()
+                .byte_range(),
+            20..21
+        );
+
+        assert_eq!(
+            analysis
+                .smallest_containing_syntax(Path::new("partition.rs"), 5..5)
+                .unwrap_err(),
+            NodeRangeLookupError::EmptyRangeRequiresPointLookup { byte: 5 }
+        );
+        assert_eq!(
+            analysis
+                .smallest_containing_syntax(Path::new("partition.rs"), Range { start: 6, end: 5 },)
+                .unwrap_err(),
+            NodeRangeLookupError::ReversedRange { start: 6, end: 5 }
+        );
+        assert_eq!(
+            analysis
+                .smallest_containing_syntax(
+                    Path::new("partition.rs"),
+                    Range {
+                        start: source.len() + 1,
+                        end: source.len() + 1,
+                    },
+                )
+                .unwrap_err(),
+            NodeRangeLookupError::RangeOutOfBounds {
+                start: source.len() + 1,
+                end: source.len() + 1,
+                source_len: source.len(),
+            }
+        );
+        assert_eq!(
+            analysis
+                .smallest_containing_syntax(
+                    Path::new("partition.rs"),
+                    Range {
+                        start: usize::MAX,
+                        end: usize::MAX,
+                    },
+                )
+                .unwrap_err(),
+            NodeRangeLookupError::RangeOutOfBounds {
+                start: usize::MAX,
+                end: usize::MAX,
+                source_len: source.len(),
+            }
+        );
+        assert_eq!(
+            analysis
+                .smallest_containing_syntax(Path::new("partition.rs"), 48..50)
+                .unwrap_err(),
+            NodeRangeLookupError::RangeOutOfBounds {
+                start: 48,
+                end: 50,
+                source_len: source.len(),
+            }
+        );
+        assert_eq!(
+            analysis
+                .syntax_point_context(Path::new("partition.rs"), usize::MAX)
+                .unwrap_err(),
+            NodeRangeLookupError::PointOutOfBounds {
+                byte: usize::MAX,
+                source_len: source.len(),
+            }
+        );
+
+        assert!(
+            analysis
+                .exclusive_syntax_regions(Path::new("empty.rs"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
+        assert_eq!(
+            analysis
+                .smallest_exclusive_syntax_region(Path::new("empty.rs"), 0)
+                .unwrap_err(),
+            ExclusiveSyntaxLookupError::ByteOutOfRange {
+                requested: 0,
+                source_len: 0,
+            }
+        );
+        let empty_point = analysis
+            .syntax_point_context(Path::new("empty.rs"), 0)
+            .unwrap();
+        assert_eq!(empty_point.exact_zero_width().len(), 1);
+        assert_eq!(empty_point.exact_zero_width()[0].raw_kind(), "source_file");
+        assert!(empty_point.before().is_none());
+        assert!(empty_point.after().is_none());
+
+        let whitespace_point = analysis
+            .syntax_point_context(Path::new("whitespace.rs"), 7)
+            .unwrap();
+        assert_eq!(whitespace_point.exact_zero_width().len(), 1);
+        assert_eq!(
+            whitespace_point.exact_zero_width()[0].span().byte_range(),
+            7..7
+        );
+        assert!(matches!(
+            whitespace_point.before(),
+            Some(SyntaxOwner::File(key)) if key.path == Path::new("whitespace.rs")
+        ));
+        assert!(whitespace_point.after().is_none());
+        let whitespace_regions = analysis
+            .exclusive_syntax_regions(Path::new("whitespace.rs"))
+            .unwrap()
+            .collect::<Vec<_>>();
+        assert_eq!(whitespace_regions.len(), 1);
+        assert_eq!(whitespace_regions[0].byte_range(), 0..7);
+        assert!(matches!(
+            whitespace_regions[0].owner(),
+            ExclusiveSyntaxOwner::File(key) if key.path == Path::new("whitespace.rs")
+        ));
+        let shared_point = analysis
+            .syntax_point_context(Path::new("point.ts"), 10)
+            .unwrap();
+        assert_eq!(shared_point.exact_zero_width().len(), 1);
+        assert_eq!(shared_point.exact_zero_width()[0].raw_kind(), ";");
+        assert!(shared_point.exact_zero_width()[0].is_missing());
+        let Some(SyntaxOwner::Node(after)) = shared_point.after() else {
+            panic!("trailing TypeScript space must remain program-owned trivia");
+        };
+        assert_eq!(after.raw_kind(), "program");
+        assert_ne!(after.id(), shared_point.exact_zero_width()[0].id());
+        assert_eq!(
+            analysis
+                .exclusive_syntax_regions(Path::new("broken.rs"))
+                .unwrap_err(),
+            ExclusiveSyntaxLookupError::SyntaxUnavailable {
+                path: PathBuf::from("broken.rs"),
+            }
+        );
+        assert_eq!(
+            analysis
+                .exclusive_syntax_regions(Path::new("absent.rs"))
+                .unwrap_err(),
+            ExclusiveSyntaxLookupError::FileNotFound {
+                path: PathBuf::from("absent.rs"),
+            }
         );
     }
 
