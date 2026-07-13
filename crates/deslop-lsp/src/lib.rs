@@ -2,16 +2,18 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::{
-    AnalyzerConfig, AnalyzerLangConfig, RuleSuppression, Suppression, scan_source_with_config,
+    AnalyzerConfig, AnalyzerLangConfig, RuleSuppression, Suppression,
+    scan_analysis_with_presentation,
 };
 use deslop_core::{
     AnalysisDiagnostic, AnalysisProvenance, FileReport, Finding, SafetyClass, Severity,
 };
 use deslop_fix::apply_findings_to_text;
-use deslop_parse::SourceFile;
+use deslop_parse::{ProjectAnalysis, ProjectSnapshotPlanner, SnapshotPresentationMap};
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
@@ -34,6 +36,9 @@ struct DocumentState {
     text: String,
     findings: Vec<Finding>,
     analysis: AnalysisProvenance,
+    project_analysis: Arc<ProjectAnalysis>,
+    presentation: SnapshotPresentationMap,
+    logical_path: PathBuf,
     path: PathBuf,
     version: Option<i32>,
 }
@@ -99,19 +104,23 @@ struct LspAnalyzerLangConfig {
 }
 
 impl LspState {
-    fn open(&mut self, uri: Uri, path: PathBuf, text: String, version: Option<i32>) {
+    fn open(&mut self, uri: Uri, path: PathBuf, text: String, version: Option<i32>) -> Result<()> {
         self.refresh_config_for_path(&path).ok();
-        let report = analyze_text_with_config(&path, &text, &self.analyzer_config);
+        let analyzed = analyze_document(&path, &text, &self.analyzer_config, None)?;
         self.documents.insert(
             uri,
             DocumentState {
                 text,
                 path,
-                findings: report.findings,
-                analysis: report.analysis,
+                findings: analyzed.report.findings,
+                analysis: analyzed.report.analysis,
+                project_analysis: analyzed.analysis,
+                presentation: analyzed.presentation,
+                logical_path: analyzed.logical_path,
                 version,
             },
         );
+        Ok(())
     }
 
     fn change(
@@ -131,26 +140,60 @@ impl LspState {
             .get(&uri)
             .map(|document| document.path.to_owned())
             .ok_or_else(|| anyhow::anyhow!("document not open: {:?}", uri))?;
-        self.open(uri, path, text, version);
+        self.refresh_config_for_path(&path).ok();
+        let previous = Arc::clone(&self.documents[&uri].project_analysis);
+        let previous_logical = self.documents[&uri].logical_path.clone();
+        let analyzed = analyze_document(&path, &text, &self.analyzer_config, Some(&previous))?;
+        if analyzed.logical_path != previous_logical {
+            bail!("LSP document logical path changed across an incremental revision");
+        }
+        self.documents.insert(
+            uri,
+            DocumentState {
+                text,
+                path,
+                findings: analyzed.report.findings,
+                analysis: analyzed.report.analysis,
+                project_analysis: analyzed.analysis,
+                presentation: analyzed.presentation,
+                logical_path: analyzed.logical_path,
+                version,
+            },
+        );
         Ok(())
     }
 
-    fn save(&mut self, uri: &Uri, text: Option<String>) {
+    fn save(&mut self, uri: &Uri, text: Option<String>) -> Result<()> {
         if let Some(text) = text {
-            let path = uri_to_path(uri);
-            self.open(uri.clone(), path, text, None);
-        } else if let Some((path, document_text)) = self
-            .documents
-            .get(uri)
-            .map(|document| (document.path.to_owned(), document.text.to_owned()))
+            let changes = vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text,
+            }];
+            self.change(uri.clone(), changes, None)?;
+        } else if let Some((path, analysis, presentation)) =
+            self.documents.get(uri).map(|document| {
+                (
+                    document.path.to_owned(),
+                    Arc::clone(&document.project_analysis),
+                    document.presentation.clone(),
+                )
+            })
         {
             self.refresh_config_for_path(&path).ok();
+            let config = document_analyzer_config(&self.analyzer_config);
+            let projection = scan_analysis_with_presentation(analysis, &presentation, config)?;
             if let Some(document) = self.documents.get_mut(uri) {
-                let report = analyze_text_with_config(&path, &document_text, &self.analyzer_config);
+                let report = projection
+                    .reports
+                    .into_iter()
+                    .find(|report| report.path == path)
+                    .ok_or_else(|| anyhow::anyhow!("analyzer returned no LSP report"))?;
                 document.findings = report.findings;
                 document.analysis = report.analysis;
             }
         }
+        Ok(())
     }
 
     fn close(&mut self, uri: &Uri) {
@@ -306,7 +349,7 @@ fn handle_did_open(
         path,
         params.text_document.text,
         Some(params.text_document.version),
-    );
+    )?;
     publish_document_diagnostics(connection, &uri, state)
 }
 
@@ -335,7 +378,7 @@ fn handle_did_save(
     {
         state.refresh_config_for_path(&uri_to_path(&uri))?;
     }
-    state.save(&uri, params.text);
+    state.save(&uri, params.text)?;
     publish_document_diagnostics(connection, &uri, state)
 }
 
@@ -375,9 +418,73 @@ fn publish_diagnostics(
     Ok(())
 }
 
+struct AnalyzedDocument {
+    analysis: Arc<ProjectAnalysis>,
+    presentation: SnapshotPresentationMap,
+    logical_path: PathBuf,
+    report: FileReport,
+}
+
+fn analyze_document(
+    path: &Path,
+    text: &str,
+    config: &AnalyzerConfig,
+    previous: Option<&Arc<ProjectAnalysis>>,
+) -> Result<AnalyzedDocument> {
+    let built = ProjectSnapshotPlanner::build_single_source_overlay(
+        std::env::current_dir().context("resolve LSP invocation base")?,
+        path,
+        text.as_bytes().to_vec(),
+    )?;
+    let logical_path = built
+        .snapshot
+        .entries()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("LSP overlay snapshot is empty"))?
+        .path()
+        .to_path_buf();
+    let analysis = match previous {
+        Some(previous) => previous.successor(built.snapshot)?.into_current(),
+        None => ProjectAnalysis::build(built.snapshot)?,
+    };
+    let projection = scan_analysis_with_presentation(
+        Arc::clone(&analysis),
+        &built.presentation,
+        document_analyzer_config(config),
+    )?;
+    let report = projection
+        .reports
+        .into_iter()
+        .find(|report| report.path == path)
+        .ok_or_else(|| anyhow::anyhow!("analyzer returned no LSP report for {}", path.display()))?;
+    Ok(AnalyzedDocument {
+        analysis,
+        presentation: built.presentation,
+        logical_path,
+        report,
+    })
+}
+
+fn document_analyzer_config(config: &AnalyzerConfig) -> AnalyzerConfig {
+    let mut config = config.clone();
+    config.boundary.enabled = false;
+    config
+}
+
+#[cfg(test)]
 fn analyze_text_with_config(path: &Path, text: &str, config: &AnalyzerConfig) -> FileReport {
-    let source = SourceFile::new(path.to_path_buf(), text.to_string());
-    scan_source_with_config(&source, config.to_owned())
+    analyze_document(path, text, config, None)
+        .map(|analyzed| analyzed.report)
+        .unwrap_or_else(|error| FileReport {
+            path: path.to_path_buf(),
+            lang: deslop_core::Lang::Generic,
+            analysis: AnalysisProvenance::failed(vec![AnalysisDiagnostic {
+                code: "lsp-analysis-failed".to_string(),
+                message: error.to_string(),
+                span: None,
+            }]),
+            findings: Vec::new(),
+        })
 }
 
 fn root_from_workspace_folders(folders: Option<&[lsp_types::WorkspaceFolder]>) -> Option<PathBuf> {
@@ -745,6 +852,7 @@ mod tests {
     use super::*;
     use deslop_analyzer::scan_source;
     use deslop_core::{DetectedBy, Span};
+    use deslop_parse::SourceFile;
     use serde_json::json;
     use std::str::FromStr;
     use std::thread;
@@ -960,6 +1068,86 @@ mod tests {
 
         assert_eq!(changed, "é𝄞Zbc\n");
         Ok(())
+    }
+
+    #[test]
+    fn document_lifecycle_owns_one_incremental_parse_per_revision() -> Result<()> {
+        let uri = uri();
+        let path = PathBuf::from("/sample.clj");
+        let mut state = LspState::default();
+        deslop_parse::reset_parse_source_invocations();
+
+        state.open(uri.clone(), path, "(not (= a b))\n".to_string(), Some(1))?;
+        let first = Arc::clone(&state.documents[&uri].project_analysis);
+        let first_id = first.id().clone();
+        assert_eq!(first.parse_counts().len(), 1);
+        assert!(first.parse_counts().values().all(|count| {
+            (
+                count.requested,
+                count.owners,
+                count.parser_invocations,
+                count.reused,
+            ) == (1, 1, 1, 0)
+        }));
+
+        state.change(
+            uri.clone(),
+            vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "(not (= a c))\n".to_string(),
+            }],
+            Some(2),
+        )?;
+        let second = Arc::clone(&state.documents[&uri].project_analysis);
+        assert_ne!(second.id(), &first_id);
+        assert_eq!(second.parse_counts().len(), 1);
+        assert!(second.parse_counts().values().all(|count| {
+            (
+                count.requested,
+                count.owners,
+                count.parser_invocations,
+                count.reused,
+            ) == (1, 1, 1, 0)
+        }));
+        assert_eq!(first.parse_counts().len(), 1);
+
+        let second_id = second.id().clone();
+        let second_counts = second.parse_counts();
+        state.save(&uri, None)?;
+        let saved = &state.documents[&uri].project_analysis;
+        assert_eq!(saved.id(), &second_id);
+        assert_eq!(saved.parse_counts(), second_counts);
+        assert_eq!(deslop_parse::parse_source_invocations(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn document_analysis_path_has_no_legacy_parse_or_reselection() {
+        let source = include_str!("lib.rs");
+        let start = source
+            .find("impl LspState {")
+            .expect("state implementation");
+        let end = source[start..]
+            .find("#[cfg(test)]\nfn analyze_text_with_config")
+            .map(|offset| start + offset)
+            .expect("test-only compatibility helper");
+        let ownership_path = &source[start..end];
+
+        for forbidden in [
+            "scan_source",
+            "parse_source",
+            "SourceFile::read",
+            "read_to_string",
+            "pack_for_path",
+            "supported_pack_for_path",
+            "pack_for_lang",
+        ] {
+            assert!(
+                !ownership_path.contains(forbidden),
+                "LSP document analysis reintroduced forbidden operation {forbidden}"
+            );
+        }
     }
 
     fn first_replacement_text(action: &CodeAction) -> String {

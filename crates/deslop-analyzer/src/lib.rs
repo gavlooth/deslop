@@ -753,6 +753,23 @@ pub fn scan_analysis(
     scan_owned_analysis(analysis, None, None, config)
 }
 
+/// Run source-only analyzer rules with an already-pinned presentation map.
+///
+/// This is the owned entry point for in-memory clients such as the LSP. Project-boundary analysis
+/// remains unavailable without a prepared input manifest.
+pub fn scan_analysis_with_presentation(
+    analysis: Arc<ProjectAnalysis>,
+    presentation: &SnapshotPresentationMap,
+    config: AnalyzerConfig,
+) -> Result<AnalyzerProjection> {
+    if config.boundary.enabled {
+        bail!(
+            "owned source-only analysis cannot prove config-boundary coverage; disable boundary analysis or use a prepared analyzer input manifest"
+        );
+    }
+    scan_owned_analysis(analysis, Some(presentation), None, config)
+}
+
 /// Run analyzer rules over a project analysis whose project-level inputs were pinned by the
 /// snapshot planner. Enabled boundary analysis requires complete discovery coverage.
 pub fn scan_prepared_analysis(

@@ -203,7 +203,17 @@ reports, benchmark records, and work orders.
   sources and invalid UTF-8 withhold project-negative claims. Unpinned live external analyzers are
   capability-reported unavailable. Workspace tests, strict all-target/all-feature clippy, build,
   rustdoc, formatting, and whitespace gates pass.
-- [ ] M1.10 Migrate graph, evaluator, LSP, MCP/protocol, and slim consumers.
+- [x] M1.10 Migrate graph, evaluator, LSP, MCP/protocol, and slim consumers.
+  Evidence: graph, analyzer/protocol, evaluator, and LSP now consume retained
+  `Arc<ProjectAnalysis>` values plus pinned presentation/source maps. Graph traversal is entirely
+  `NodeId`/`NodeView` based; proposal grouping uses owned containment and adapter facts; evaluator
+  batches its corpus into one snapshot; and LSP open/change/save retains immutable analyses, builds
+  incremental successors, and reuses the current revision on save. MCP and slim delegate through
+  those migrated path/proposal APIs, with remaining reads limited to explicit config, JSONL,
+  provider, apply, or stale-state I/O. Static guards reject production parse/read/reselection,
+  repeated consumers preserve cold `1/1/1/0` ledgers, and LSP revisions record zero legacy parser
+  calls. All-feature workspace tests, strict all-target clippy, build, warnings-denied rustdoc,
+  formatting, and whitespace gates pass.
 - [ ] M1.11 Instrument parse counts, ownership invariants, deterministic node order, latency, and memory.
   Measure and compact M1.4's repeated per-node `FileRevisionKey`/field-path storage, allocating
   `NodeView::children`, linear range/key lookups, M1.5 index storage, point-context allocation, and

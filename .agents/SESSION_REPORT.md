@@ -6947,3 +6947,64 @@ workspace gates.
 post-scan proposal reads, provenance reparsing, or one-snapshot-per-eval-case loops.
 
 **Signature:** Codex (GPT-5), M1.10 integration owner, protocol/evaluator checkpoint, 2026-07-13.
+
+---
+
+## M1.10 terminal checkpoint — downstream snapshot consumers complete
+
+**Date/time:** 2026-07-13T23:18:00+02:00
+
+**Objective/target:** finish downstream shared-analysis migration by making LSP document state own
+immutable analyses and successors, then prove every named consumer avoids production rereads,
+reparses, and adapter reselection without changing graph, proposal, evaluator, MCP, slim, or LSP
+contracts.
+
+**Changes:** added analyzer's presentation-aware owned entry point for in-memory clients. LSP
+`DocumentState` now retains `Arc<ProjectAnalysis>`, `SnapshotPresentationMap`, and its logical path.
+Open constructs one source-overlay analysis; change constructs a successor from the retained
+predecessor; save with replacement text uses the same successor route; and save without text reruns
+the analyzer projection over the retained revision. The document-only policy explicitly disables
+config-boundary claims because no complete project artifact manifest exists. Handler failures now
+propagate instead of publishing results from a failed replacement analysis. Added lifecycle and
+production static-guard tests.
+
+The terminal consumer audit confirms graph uses its owned projection, protocol groups from retained
+analysis and pinned bytes, evaluator batches its manifest, and MCP/slim delegate to the migrated
+planner/proposal surfaces. Remaining MCP/slim reads are explicit config, JSONL, provider response,
+apply, or stale-state recheck I/O rather than analysis input reconstruction.
+
+**Commands/checks run:** `cargo test -p deslop-lsp`; strict LSP/analyzer clippy; analyzer tests;
+cross-consumer `rg` audit; `cargo test --workspace --all-features`;
+`cargo build --workspace --all-targets --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --all-features`;
+`cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+`cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. LSP passes 10/10, including UTF-16 edits, malformed-source quarantine, TSX grammar
+selection, JSON-RPC diagnostics/actions, the production ownership guard, and the new revision
+lifecycle oracle. Both cold and changed revisions have exact `1/1/1/0` ledgers; the predecessor
+remains immutable; save without text preserves analysis identity and counts; and the legacy parser
+counter stays zero. The all-feature workspace suite passes with one deliberately ignored slow probe.
+Build, warnings-denied rustdoc, strict all-target/all-feature clippy, formatting, and whitespace pass.
+The existing exact M0 graph/proposal numerical contracts pass inside the workspace suite.
+
+**Invalidated assumptions / negative memory:** the old single-source analyzer adapter silently
+disabled boundary analysis; direct owned callers must express that document-only policy explicitly.
+Reopening a document from scratch on every change produces correct findings but discards incremental
+ownership and predecessor evidence. Save without content is a policy refresh over pinned bytes, not
+authority to reread or reparse the file. Production guards plus owned ledgers remain necessary because
+test-only compatibility helpers intentionally still exercise legacy APIs.
+
+**Current recommendation/next actions:** execute M1.11 with one instrumented cold/repeated/incremental
+matrix. Add missing retained-memory and lookup-allocation counters at the `ProjectAnalysis` boundary,
+lock structural invariants in ordinary tests, and keep noisy latency measurement in an explicit probe.
+Use measured decomposition to decide compaction rather than starting serial micro-optimizations.
+
+**Blockers/dependencies/restart:** none. No new dependency, service restart, cache clear, or data
+migration is required. Rebuild LSP/analyzer consumers; the workspace build already verified this.
+
+**Negative-memory status:** recorded locally; Hindsight consolidation follows. Never restore
+per-change fresh LSP analysis, document-level boundary authority, save-time source rereads, or
+consumer-specific parsing/pack selection.
+
+**Signature:** Codex (GPT-5), M1.10 integration owner, terminal checkpoint, 2026-07-13.

@@ -1129,6 +1129,16 @@ is LSP document-state ownership and incremental successor analysis; MCP and slim
 the migrated protocol/analyzer surfaces, while their remaining reads are explicit config, JSONL,
 apply, or stale-state recheck I/O rather than analysis inputs.
 
+LSP/terminal checkpoint update (2026-07-13): DONE. `DocumentState` retains its immutable
+`ProjectAnalysis`, presentation map, and logical path. Open builds one overlay analysis; change builds
+an immutable successor from the previous revision; save with text follows the successor path, while
+save without text reruns policy projection over the retained analysis without parsing. The LSP's
+single-document policy explicitly disables project-boundary claims because an open buffer has no
+complete boundary manifest. A lifecycle oracle proves distinct revision identities, exact cold
+`1/1/1/0` ledgers, predecessor immutability, save-time ledger stability, and zero legacy parser calls.
+The cross-consumer audit and all-feature workspace test/build/rustdoc/clippy/format/whitespace gates
+pass. M1.10 is complete.
+
 Negative-memory constraints: do not expose Tree-sitter nodes from `deslop-parse`; reuse M1.9 source
 compatibility calls once per downstream rule; reread files after a projection exists; select adapters
 from display paths; let proposal grouping reparse merely to find enclosing regions; or call live
@@ -1136,6 +1146,45 @@ external tools without a prepared revision-isolated plan.
 
 Agent assignment: `/root` remains integration, implementation, and verification owner for this
 checkpoint; prior M1.9 audit agents are complete and no files are concurrently edited.
+
+#### Active M1.11 execution plan — instrumentation and measured compaction
+
+Active hypothesis: one revision-owned measurement surface can expose parse ownership, deterministic
+node order, cold/repeated/incremental latency, and retained memory without adding consumer-specific
+instrumentation or perturbing projection identities. The first measured profile should decide which
+listed M1 allocations are material enough to compact; unmeasured micro-optimization is out of scope.
+
+CONVERGENCE: instrument once over a fixed multi-language cold/repeated/incremental matrix, then use
+the captured counters and size/timing decomposition to reach a terminal decision for every listed
+cost center. Structural invariant failure means fix ownership/order before measuring performance;
+a dominant measured allocation or lookup means compact that representation and rerun the same
+matrix; no material regression or hotspot means retain the simpler representation and record the
+number. Do not branch into serial canary experiments or use wall time alone as correctness evidence.
+
+Current approach: inventory existing parse ledgers, arenas, query indices, aggregation storage, and
+incremental transition data; add a stable instrumentation report at the `ProjectAnalysis` boundary;
+lock exact structural counters and deterministic node-order digests in normal tests; place latency
+and retained-memory measurements in an explicit ignored probe with numerical output and tolerant
+regression policy. Measure the TODO's field-path/revision-key repetition, allocating children/range
+lookups, query preorder maps and retained strings, aggregation values, and successor transition
+assembly before choosing compaction work.
+
+Validation path: first prove one owner/one parser invocation per revision, dense deterministic node
+order, identical repeated projections, and predecessor immutability. Then run the instrumented probe
+on cold, repeated, and one-file incremental revisions, report exact node/file/byte/count and timing
+values, and apply only optimizations justified by that decomposition. Finish with parse-focused tests
+and strict clippy, then workspace-wide gates before checking M1.11.
+
+Next checkpoint: an instrumentation inventory identifies the existing authoritative counters and the
+smallest missing API, with a fixed fixture and exact structural oracle ready before any optimization.
+
+Negative-memory constraints: do not replace ledger evidence with global counters; expose parser or
+borrowed-node internals; make timing a deterministic unit-test assertion; estimate retained memory
+from source length alone; optimize an unmeasured representation; or allow instrumentation to enter
+snapshot/projection identity.
+
+Agent assignment: `/root` owns research, implementation, validation, and integration; no concurrent
+file edits are assigned.
 
 ### M2 — Language-adapter contract
 
