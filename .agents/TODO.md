@@ -168,15 +168,28 @@ reports, benchmark records, and work orders.
   empty/whitespace/unavailable syntax, invalid reset side-effect isolation, and unchanged parse
   ledgers. Parse has 47 passing tests; workspace, feature, build, rustdoc, formatting, whitespace,
   and strict all-target/all-feature clippy gates pass.
-- [ ] M1.7 Expose query/cursor-derived captures without reparsing source fragments. **NEXT**
-- [ ] M1.8 Add edit/changed-range invalidation and explicit re-anchor-or-expire behavior.
+- [x] M1.7 Expose query/cursor-derived captures without reparsing source fragments.
+  Evidence: exact-grammar `SyntaxQuery` values retain source, identity, capture names, quantifiers,
+  pattern ranges/flags, properties, and general predicates. Grouped owned matches preserve engine
+  match/capture order; a separate documented flat stream preserves source order. Every capture maps
+  the retained private Tree's unique node identity to an existing owner-checked `NodeId` after full
+  preorder Tree/arena parity validation, with no borrowed handle, fragment parse, path reread, or
+  parse-ledger change. Built-in text predicates run against pinned bytes; unevaluated property/general
+  predicates and match-limit partials fail closed. Tests lock all 37 named/anonymous/equal-span nodes,
+  exact grouped/flat orders and duplicates, fields, NodeKey stability after a ten-node global shift,
+  missing/ERROR nodes, JS/JSX dialect mismatch, all reachable compile-error kinds/coordinates,
+  query-source ownership/u32 bounds, and owned Send/Sync/'static results. Parse has 56 passing tests;
+  workspace, feature, build, rustdoc, formatting, whitespace, and strict all-target/all-feature clippy
+  gates pass.
+- [ ] M1.8 Add edit/changed-range invalidation and explicit re-anchor-or-expire behavior. **NEXT**
 - [ ] M1.9 Migrate analyzer and metrics consumers to the shared snapshot.
 - [ ] M1.10 Migrate graph, evaluator, LSP, MCP/protocol, and slim consumers.
 - [ ] M1.11 Instrument parse counts, ownership invariants, deterministic node order, latency, and memory.
   Measure and compact M1.4's repeated per-node `FileRevisionKey`/field-path storage, allocating
   `NodeView::children`, linear range/key lookups, M1.5 index storage, point-context allocation, and
-  M1.6's retained local/full/declared aggregate values and caller-defined clone/merge costs before
-  declaring the traversal API migration-ready.
+  M1.6's retained local/full/declared aggregate values and caller-defined clone/merge costs, plus
+  M1.7's retained query source/metadata/result strings and per-execution Tree preorder/`Node::id`
+  map, before declaring the traversal API migration-ready.
 - [ ] M1.DoD Prove one parse per file revision in all scan/propose paths and no borrowed-node lifetime or
   overlapping exclusive-metric errors on the gold fixture matrix.
 

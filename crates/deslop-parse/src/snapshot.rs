@@ -141,7 +141,7 @@ impl GrammarSelection {
         }
     }
 
-    fn identity_bytes(&self) -> Vec<u8> {
+    pub(crate) fn identity_bytes(&self) -> Vec<u8> {
         format!(
             "{:?}\0{}\0{}\0{}\0{}\0{}",
             self.lang,
@@ -695,6 +695,7 @@ impl ParseLedger {
 pub struct ParsedFile {
     key: FileRevisionKey,
     source: Arc<StoredSource>,
+    language: tree_sitter::Language,
     text: Option<Arc<str>>,
     tree: Option<Tree>,
     arena: Option<SyntaxArena>,
@@ -729,6 +730,14 @@ impl ParsedFile {
 
     pub fn has_arena(&self) -> bool {
         self.arena.is_some()
+    }
+
+    pub(crate) fn query_language(&self) -> &tree_sitter::Language {
+        &self.language
+    }
+
+    pub(crate) fn query_tree(&self) -> Option<&Tree> {
+        self.tree.as_ref()
     }
 
     #[cfg(test)]
@@ -1802,7 +1811,7 @@ impl ProjectAnalysis {
     }
 }
 
-impl NodeView<'_> {
+impl<'analysis> NodeView<'analysis> {
     fn raw(&self) -> &crate::arena::SyntaxNode {
         self.arena
             .node(self.local)
@@ -1816,6 +1825,16 @@ impl NodeView<'_> {
             .find(|range| range.path == self.file.key.path)
             .expect("node view file has a global range")
             .start
+    }
+
+    pub(crate) fn query_parts(
+        &self,
+    ) -> (
+        &'analysis ParsedFile,
+        &'analysis SyntaxArena,
+        ArenaNodeIndex,
+    ) {
+        (self.file, self.arena, self.local)
     }
 
     pub fn id(&self) -> NodeId {
@@ -1948,12 +1967,19 @@ fn parse_owned_file(
     ledger.record_requested(&key);
     ledger.record_owner(&key);
     let line_starts = byte_line_starts(entry.bytes());
+    let language = entry.grammar_language().cloned().ok_or_else(|| {
+        anyhow::anyhow!(
+            "source {} has no stored parser language",
+            entry.path.display()
+        )
+    })?;
     let text = match std::str::from_utf8(entry.bytes()) {
         Ok(text) => Arc::<str>::from(text),
         Err(error) => {
             return Ok(ParsedFile {
                 key,
                 source: entry.source.clone(),
+                language,
                 text: None,
                 tree: None,
                 arena: None,
@@ -1966,12 +1992,6 @@ fn parse_owned_file(
             });
         }
     };
-    let language = entry.grammar_language().cloned().ok_or_else(|| {
-        anyhow::anyhow!(
-            "source {} has no stored parser language",
-            entry.path.display()
-        )
-    })?;
     let mut parser = Parser::new();
     parser
         .set_language(&language)
@@ -1996,6 +2016,7 @@ fn parse_owned_file(
     Ok(ParsedFile {
         key,
         source: entry.source.clone(),
+        language,
         text: Some(text),
         tree,
         arena,

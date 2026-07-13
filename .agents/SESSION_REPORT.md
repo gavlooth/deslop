@@ -6351,3 +6351,101 @@ partial parse authority, serialize process-local aggregates/IDs, or derive write
 when M1.7 adds ordered captures, M1.9 declares adapter reset/line policies, or M1.11 measures storage.
 
 **Signature:** Codex (GPT-5), M1.6 integration owner, 2026-07-13.
+
+---
+
+## M1.7 checkpoint — owned grammar-query matches and captures
+
+**Date/time:** 2026-07-13T20:13:49+02:00
+
+**Objective/target:** execute raw Tree-sitter queries against the one private Tree retained for each
+exact source revision, return only owned results bound to existing `NodeId`s, preserve both grouped
+match semantics and deterministic source-order dispatch, and prevent fragment reparsing or borrowed
+Tree-sitter handles from crossing the public API.
+
+**Changes:** added `deslop-parse::query` with exact `GrammarSelection`-bound `SyntaxQueryId` and
+cloneable `SyntaxQuery`. A compiled query retains its exact source so public per-pattern byte ranges
+remain self-describing, plus owned capture names, capture quantifiers, rooted/non-local flags,
+`#set!` properties, `#is?`/`#is-not?` property predicates, and general predicate arguments. Query
+source length is rejected above `u32::MAX` before Tree-sitter can narrow it. `ProjectAnalysis` now
+compiles queries from a stored parser language and exposes grouped `syntax_query_matches`, preserving
+Tree-sitter match discovery and capture association/order, plus intentionally association-free
+`syntax_query_captures` in Tree-sitter source order. Both return owned names, pattern/capture indices,
+and analysis-local `NodeId`s; no Tree-sitter node, cursor, match, or capture type is public or Serde.
+Execution validates the `NodeId` owner, exact full grammar identity including dialect, private Tree
+availability, and complete visible-node preorder parity between the retained Tree and arena. It then
+maps each private unique `Node::id()` to the aligned existing arena slot; span/kind lookup is never
+used. Fresh cursors evaluate built-in text predicates against pinned snapshot bytes. Non-filtering
+`#set!` metadata is allowed, while unevaluated property/general predicates fail closed until M2
+provides an evaluator. Cursor output is published only after complete exhaustion; match-limit
+overflow returns a typed error and discards every partial result. Partial recovery trees remain
+mechanically queryable with unchanged provenance/authority. `ParsedFile` now retains the exact
+resolved language even for invalid UTF-8 so query compilation remains a grammar operation; executing
+such a reusable query against a valid same-grammar revision works without parsing the invalid file.
+After existing O(F) node/file lookup, each execution currently builds and validates an O(N) borrowed
+preorder plus O(N) `Node::id` map before query work; M1.11 owns measurement/caching/compaction.
+
+**Commands/checks run:** startup Serena/Hindsight context; roadmap, ADR, audit, pinned Tree-sitter
+0.25.10 source, arena, identity, and consumer inspection; three read-only agent tracks for core API,
+consumer requirements, and independent numerical contracts; repeated focused query tests; `cargo
+test -p deslop-parse`; parse and workspace strict clippy; `cargo test --workspace`; `cargo test -p
+deslop-mcp --features slim-llm -- --test-threads=1`; `cargo build --workspace --all-targets
+--all-features`; `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+warnings-denied workspace rustdoc; `cargo fmt --all -- --check`; `git diff --check`; `jj status`; and
+`jj diff --stat`.
+
+**Verification results:** PASS. `deslop-parse` has 56 passing tests. The exact 62-byte nested Rust
+oracle has 37 nodes and wildcard capture parity over all 37 existing NodeIds: 18 named, 19 anonymous,
+all unique, including distinct equal-span pairs. A three-pattern query locks capture-table order,
+pattern ranges `0..94`, `94..196`, and `196..220`, all 21 pattern/capture quantifiers, five grouped
+matches in engine discovery order, and nine flat captures in source order; the orders deliberately
+differ and duplicate identifier NodeIds remain present. Field-constrained captures lock the let,
+pattern, and value nodes/fields. Rebuilding with a lexically prior ten-node file shifts global
+NodeIds by ten while ordered capture `NodeKey`s remain identical. A match limit of one provably
+exceeds the cursor for a six-result query, and both public shapes return only
+`MatchLimitExceeded`. Missing TypeScript `)` captures as anonymous NodeId 12 at `20..20`; malformed
+TS and TSX ERROR captures retain NodeIds 24/1 and spans `62..63`/`0..96`. Text predicates filter
+pinned identifiers, `#set!` executes, and unsupported property/general predicates return no results.
+Queries with zero captures retain matches but produce an empty flat stream; empty queries return
+empty complete vectors. All reachable compile-error kinds retain exact row/column/offset/message,
+JS and JSX sharing an artifact still fail exact-dialect reuse, foreign/out-of-range NodeIds are typed,
+and query/source/results remain owned Send/Sync/'static. Query compilation and repeated execution
+leave both the full parse ledger and legacy parse-source counter unchanged. Workspace has 332 passing
+tests plus one intentional ignored performance probe; feature-enabled MCP has 23 passing tests. All
+build, strict clippy, rustdoc, formatting, and whitespace gates pass.
+
+**Failure modes / invalidated assumptions:** span/kind capture lookup was rejected because equal-span
+parent/child and zero-width recovery nodes are ambiguous. A flat-only API was rejected because it
+cannot retain multi-capture match association; grouped and source streams have distinct documented
+contracts. Grouped matches cannot be byte-sorted because Tree-sitter match discovery is not global
+source order. Metadata-only handling of `#is?` and custom directives was rejected because Tree-sitter
+does not evaluate them and silent execution would overmatch. Returning cursor output before checking
+the finite match limit was rejected because it canonizes partial evidence. Grammar artifact identity
+alone was rejected because JS/JSX can share one artifact while dialect identity differs. Orphaned
+pattern source ranges were rejected by retaining query source. Hashing full query bytes after
+Tree-sitter silently narrowed an oversized length was prevented by an explicit preflight bound.
+
+**Current recommendation/checkpoint:** M1.7 is complete. Implement M1.8 as immutable successor
+analysis construction with explicit changed-range evidence and deterministic re-anchor-or-expire
+behavior. Reuse Tree-sitter old-tree parsing only when exact prior/new file revisions and grammar
+identity authorize it; never mutate a published analysis or treat approximate span proximity as
+identity.
+
+**Blockers:** none. Serena still indexes this Rust workspace as Python-only, so local Rust inspection
+remains the documented fallback. Existing analyzer/metrics/graph consumers continue legacy parsing
+until M1.9/M1.10; M1.7 supplies their raw query substrate but intentionally does not create semantic
+roles, query packs, property/general directive evaluators, projection identities, or write authority.
+
+**Dependencies/restart:** rebuild Rust consumers for the additive API. No new dependency, wire
+schema, service restart, cache clear, or migration is required. M1.8 owns immutable changed-range
+construction and NodeKey re-anchor/expiry; M2 owns semantic query packs and predicate/directive
+evaluation; M1.9/M1.10 own consumer migration; M1.11 owns query map/result allocation measurement.
+
+**Negative-memory status:** stored in Hindsight. Never map captures by span/kind, flatten away match
+association, sort grouped matches by byte, silently ignore property/general predicates, return
+finite-limit partials, reuse queries across non-identical full grammar selections, orphan pattern
+ranges from their source, allow Tree-sitter length narrowing, persist private Tree-sitter IDs, expose
+borrowed handles, serialize NodeId/query handles, reparse/reread source, infer M2 roles, or promote
+partial-tree authority. Recheck these constraints during M1.8, M1.9, M2, and M1.11.
+
+**Signature:** Codex (GPT-5), M1.7 integration owner, 2026-07-13.

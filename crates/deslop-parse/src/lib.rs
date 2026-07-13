@@ -15,6 +15,7 @@ mod aggregation;
 mod arena;
 mod containment;
 mod identity;
+mod query;
 mod snapshot;
 
 pub use aggregation::{
@@ -25,6 +26,12 @@ pub use arena::{SourcePoint, SyntaxSpan};
 pub use identity::{
     NODE_BASELINE_SCHEMA, NODE_KEY_SCHEMA, NodeAnchor, NodeBaselineFingerprint, NodeId, NodeKey,
     NodeKeyLookupError, NodeLookupError,
+};
+pub use query::{
+    OwnedSyntaxCapture, OwnedSyntaxMatch, SyntaxCaptureQuantifier, SyntaxQuery,
+    SyntaxQueryCompileErrorKind, SyntaxQueryError, SyntaxQueryId, SyntaxQueryPattern,
+    SyntaxQueryPredicate, SyntaxQueryPredicateArgument, SyntaxQueryProperty,
+    SyntaxQueryPropertyPredicate,
 };
 
 pub use snapshot::{
