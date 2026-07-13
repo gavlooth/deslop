@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Component, Path};
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use blake3::Hasher;
@@ -167,15 +168,14 @@ impl NodeAnchor {
 ///
 /// This is stable for storage but intentionally expires with any `FileRevisionKey` change. It is
 /// correlation identity only and can never replace an exact `RevisionGuard`.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeKey {
     schema: String,
     arena_schema: String,
-    file: FileRevisionKey,
+    file: Arc<FileRevisionKey>,
     raw_grammar_kind: String,
     raw_grammar_kind_id: u16,
-    field_path: Vec<Option<String>>,
+    field_path: Arc<[Option<String>]>,
     anchor: NodeAnchor,
     collision_ordinal: u32,
 }
@@ -215,6 +215,83 @@ impl NodeKey {
 
     pub fn is_supported(&self) -> bool {
         self.schema == NODE_KEY_SCHEMA && self.arena_schema == RAW_ARENA_SCHEMA
+    }
+
+    pub(crate) fn instrumentation(&self) -> (usize, usize, usize, usize) {
+        let file_payload = self.file.known_payload_bytes();
+        let field_path_bytes = self.field_path.len() * std::mem::size_of::<Option<String>>()
+            + self
+                .field_path
+                .iter()
+                .flatten()
+                .map(String::len)
+                .sum::<usize>();
+        let heap_payload = self.schema.len()
+            + self.arena_schema.len()
+            + self.raw_grammar_kind.len()
+            + self.anchor.structural_digest.len();
+        (
+            heap_payload,
+            file_payload,
+            field_path_bytes,
+            self.field_path.len(),
+        )
+    }
+
+    pub(crate) fn field_path_allocation_id(&self) -> usize {
+        Arc::as_ptr(&self.field_path) as *const () as usize
+    }
+
+    pub(crate) fn lookup_digest(&self) -> [u8; 16] {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"deslop node-key lookup index v1\0");
+        self.update_order_digest(&mut hasher);
+        let mut digest = [0; 16];
+        digest.copy_from_slice(&hasher.finalize().as_bytes()[..16]);
+        digest
+    }
+
+    pub(crate) fn update_order_digest(&self, hasher: &mut blake3::Hasher) {
+        fn part(hasher: &mut blake3::Hasher, bytes: &[u8]) {
+            hasher.update(&(bytes.len() as u64).to_le_bytes());
+            hasher.update(bytes);
+        }
+        part(hasher, self.schema.as_bytes());
+        part(hasher, self.arena_schema.as_bytes());
+        part(hasher, self.file.repository.as_str().as_bytes());
+        part(
+            hasher,
+            self.file
+                .path
+                .to_str()
+                .expect("snapshot paths are validated Unicode")
+                .as_bytes(),
+        );
+        part(hasher, self.file.source.as_str().as_bytes());
+        part(hasher, &self.file.grammar.identity_bytes());
+        part(hasher, self.raw_grammar_kind.as_bytes());
+        part(hasher, &self.raw_grammar_kind_id.to_le_bytes());
+        for field in self.field_path.iter() {
+            match field {
+                Some(field) => {
+                    part(hasher, &[1]);
+                    part(hasher, field.as_bytes());
+                }
+                None => part(hasher, &[0]),
+            }
+        }
+        part(hasher, self.anchor.structural_digest.as_bytes());
+        for coordinate in [
+            self.anchor.start_byte,
+            self.anchor.end_byte,
+            self.anchor.start_row,
+            self.anchor.start_column,
+            self.anchor.end_row,
+            self.anchor.end_column,
+        ] {
+            part(hasher, &coordinate.to_le_bytes());
+        }
+        part(hasher, &self.collision_ordinal.to_le_bytes());
     }
 
     fn validate(&self) -> Result<(), String> {
@@ -258,6 +335,38 @@ struct NodeKeyWire {
     collision_ordinal: u32,
 }
 
+#[derive(Serialize)]
+#[serde(deny_unknown_fields)]
+struct NodeKeyWireRef<'a> {
+    schema: &'a str,
+    arena_schema: &'a str,
+    file: &'a FileRevisionKey,
+    raw_grammar_kind: &'a str,
+    raw_grammar_kind_id: u16,
+    field_path: &'a [Option<String>],
+    anchor: &'a NodeAnchor,
+    collision_ordinal: u32,
+}
+
+impl Serialize for NodeKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        NodeKeyWireRef {
+            schema: &self.schema,
+            arena_schema: &self.arena_schema,
+            file: &self.file,
+            raw_grammar_kind: &self.raw_grammar_kind,
+            raw_grammar_kind_id: self.raw_grammar_kind_id,
+            field_path: &self.field_path,
+            anchor: &self.anchor,
+            collision_ordinal: self.collision_ordinal,
+        }
+        .serialize(serializer)
+    }
+}
+
 impl<'de> Deserialize<'de> for NodeKey {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -267,10 +376,10 @@ impl<'de> Deserialize<'de> for NodeKey {
         let key = Self {
             schema: wire.schema,
             arena_schema: wire.arena_schema,
-            file: wire.file,
+            file: Arc::new(wire.file),
             raw_grammar_kind: wire.raw_grammar_kind,
             raw_grammar_kind_id: wire.raw_grammar_kind_id,
-            field_path: wire.field_path,
+            field_path: Arc::from(wire.field_path),
             anchor: wire.anchor,
             collision_ordinal: wire.collision_ordinal,
         };
@@ -322,7 +431,9 @@ pub(crate) fn build_node_keys(
     file: &FileRevisionKey,
     arena: &SyntaxArena,
 ) -> anyhow::Result<Box<[NodeKey]>> {
+    let file = Arc::new(file.clone());
     let mut collisions = BTreeMap::<NodeKeyCollisionBase, u32>::new();
+    let mut field_paths = BTreeMap::<Vec<Option<String>>, Arc<[Option<String>]>>::new();
     let structural_digests = structural_digests(arena);
     let mut keys = Vec::with_capacity(arena.nodes().len());
     for (index, node) in arena.indexed_nodes() {
@@ -336,13 +447,17 @@ pub(crate) fn build_node_keys(
             ),
         };
         let collision_ordinal = next_collision_ordinal(&mut collisions, &base)?;
+        let field_path = field_paths
+            .entry(base.field_path.clone())
+            .or_insert_with(|| Arc::from(base.field_path.clone()))
+            .clone();
         keys.push(NodeKey {
             schema: NODE_KEY_SCHEMA.to_string(),
             arena_schema: RAW_ARENA_SCHEMA.to_string(),
-            file: file.clone(),
+            file: Arc::clone(&file),
             raw_grammar_kind: base.raw_grammar_kind,
             raw_grammar_kind_id: base.raw_grammar_kind_id,
-            field_path: base.field_path,
+            field_path,
             anchor: base.anchor,
             collision_ordinal,
         });
@@ -399,7 +514,7 @@ pub(crate) fn baseline_fingerprint(key: &NodeKey, exact_text: &str) -> NodeBasel
     hash_part(&mut hasher, key.file.repository.as_str().as_bytes());
     hash_part(&mut hasher, &normalized_path_bytes(&key.file.path));
     hash_part(&mut hasher, key.raw_grammar_kind.as_bytes());
-    for field in &key.field_path {
+    for field in key.field_path.iter() {
         match field {
             Some(field) => {
                 hash_part(&mut hasher, &[1]);

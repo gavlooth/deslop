@@ -10,6 +10,7 @@ use tree_sitter::{InputEdit, Parser, Point};
 use crate::analysis_provenance_for_tree;
 use crate::arena::{SourcePoint, SyntaxArena, SyntaxSpan, tree_nodes_preorder};
 use crate::identity::{NodeId, NodeKey, NodeKeyLookupError};
+use crate::instrumentation::ProjectAnalysisUpdateInstrumentation;
 use crate::snapshot::{
     FileRevisionKey, ParseLedger, ParsedFile, ProjectAnalysis, ProjectSnapshot, RepositoryId,
     SnapshotEntry, SnapshotEntryKind, byte_line_starts, parse_owned_file,
@@ -271,6 +272,90 @@ impl ProjectAnalysisUpdate {
 
     pub fn changes(&self) -> &[FileAnalysisChange] {
         &self.changes
+    }
+
+    /// Measure deterministic successor work and retained transition storage.
+    pub fn instrumentation(&self) -> ProjectAnalysisUpdateInstrumentation {
+        let mut measured = ProjectAnalysisUpdateInstrumentation {
+            files: self.changes.len(),
+            previous_nodes: self.previous.node_count(),
+            current_nodes: self.current.node_count(),
+            successor_assembly_nodes: self.current.node_count(),
+            transition_entries: self.transitions.len(),
+            transition_bytes_lower_bound: self.transitions.len()
+                * std::mem::size_of::<NodeTransition>(),
+            ..ProjectAnalysisUpdateInstrumentation::default()
+        };
+        for change in &self.changes {
+            measured.source_edits += change.source_edits.len();
+            measured.syntax_changed_ranges += change.syntax_changed_ranges.len();
+            let current_nodes = self
+                .current
+                .file_node_ids(&change.path)
+                .map_or(0, |nodes| nodes.len());
+            match change.kind {
+                FileAnalysisChangeKind::Reused => measured.reused_files += 1,
+                FileAnalysisChangeKind::Incremental => {
+                    measured.incremental_files += 1;
+                    measured.incrementally_rebuilt_nodes += current_nodes;
+                }
+                FileAnalysisChangeKind::Rebuilt => {
+                    measured.rebuilt_files += 1;
+                    measured.fully_rebuilt_nodes += current_nodes;
+                }
+                FileAnalysisChangeKind::Added => {
+                    measured.added_files += 1;
+                    measured.fully_rebuilt_nodes += current_nodes;
+                }
+                FileAnalysisChangeKind::Removed => measured.removed_files += 1,
+            }
+            match change.source_edit_evidence {
+                Some(SourceEditEvidence::ExactScript) => {
+                    let mut working_bytes = self
+                        .previous
+                        .file(&change.path)
+                        .map_or(0, |file| file.source().len());
+                    for edit in &change.source_edits {
+                        measured.sequential_edit_validation_bytes_upper_bound = measured
+                            .sequential_edit_validation_bytes_upper_bound
+                            .saturating_add(working_bytes);
+                        working_bytes = working_bytes
+                            .saturating_sub(edit.old_range.len())
+                            .saturating_add(edit.new_range.len());
+                    }
+                    measured.sequential_edit_validation_bytes_upper_bound = measured
+                        .sequential_edit_validation_bytes_upper_bound
+                        .saturating_add(
+                            self.current
+                                .file(&change.path)
+                                .map_or(0, |file| file.source().len()),
+                        );
+                }
+                Some(SourceEditEvidence::DerivedDiff) => {
+                    measured.derived_diff_bytes_upper_bound = measured
+                        .derived_diff_bytes_upper_bound
+                        .saturating_add(
+                            self.previous
+                                .file(&change.path)
+                                .map_or(0, |file| file.source().len()),
+                        )
+                        .saturating_add(
+                            self.current
+                                .file(&change.path)
+                                .map_or(0, |file| file.source().len()),
+                        );
+                }
+                None => {}
+            }
+        }
+        for transition in &self.transitions {
+            match transition {
+                NodeTransition::Retained(_) => measured.retained_transitions += 1,
+                NodeTransition::Reanchored(_) => measured.reanchored_transitions += 1,
+                NodeTransition::Expired(_) => measured.expired_transitions += 1,
+            }
+        }
+        measured
     }
 
     /// Re-anchor one key from this update's exact previous analysis, or expire it explicitly.
@@ -723,6 +808,10 @@ fn parse_incremental_file(
         entry.bytes(),
         key.grammar.clone(),
     )?);
+    let query_node_index = arena
+        .as_ref()
+        .map(|arena| crate::query::build_query_node_index(&tree, arena))
+        .transpose()?;
     Ok((
         ParsedFile {
             key,
@@ -731,6 +820,7 @@ fn parse_incremental_file(
             text: Some(text),
             tree: Some(tree),
             arena,
+            query_node_index,
             provenance,
             line_starts: byte_line_starts(entry.bytes()),
         },
@@ -1173,6 +1263,31 @@ mod tests {
             .successor_with_edits(current_snapshot, &edit_history)
             .unwrap();
         let current = update.current();
+        assert_eq!(
+            update.instrumentation(),
+            ProjectAnalysisUpdateInstrumentation {
+                files: 4,
+                reused_files: 1,
+                incremental_files: 1,
+                rebuilt_files: 0,
+                added_files: 1,
+                removed_files: 1,
+                source_edits: 1,
+                syntax_changed_ranges: 0,
+                sequential_edit_validation_bytes_upper_bound: 134,
+                derived_diff_bytes_upper_bound: 0,
+                previous_nodes: 76,
+                current_nodes: 76,
+                incrementally_rebuilt_nodes: 49,
+                fully_rebuilt_nodes: 10,
+                successor_assembly_nodes: 76,
+                transition_entries: 76,
+                retained_transitions: 17,
+                reanchored_transitions: 36,
+                expired_transitions: 23,
+                transition_bytes_lower_bound: 1_824,
+            }
+        );
 
         assert_eq!(previous.id(), &previous_id);
         assert_eq!(all_node_keys(&previous), previous_keys);
@@ -1359,6 +1474,10 @@ mod tests {
             derived.changes()[0].source_edit_evidence(),
             Some(SourceEditEvidence::DerivedDiff)
         );
+        assert_eq!(
+            derived.instrumentation().derived_diff_bytes_upper_bound,
+            old.len() + appended.len()
+        );
         assert!(previous_keys.iter().all(|key| {
             derived.reanchor(key).unwrap()
                 == NodeReanchor::Expired {
@@ -1380,6 +1499,12 @@ mod tests {
                 &append_script,
             )
             .unwrap();
+        assert_eq!(
+            exact_append
+                .instrumentation()
+                .sequential_edit_validation_bytes_upper_bound,
+            old.len() + appended.len()
+        );
         let append_ranges = previous_keys
             .iter()
             .filter_map(|key| match exact_append.reanchor(key).unwrap() {

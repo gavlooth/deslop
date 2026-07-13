@@ -675,7 +675,7 @@ fn contains_pure_path_mapping_match_analysis(file: &AnalyzerFile<'_>, node: Node
     if view.raw_kind() == "match_expression" && is_pure_path_mapping_match_analysis(file, node) {
         return true;
     }
-    view.children().into_iter().any(|child| {
+    view.children().any(|child| {
         file.analysis.node(child).is_ok_and(|view| view.is_named())
             && contains_pure_path_mapping_match_analysis(file, child)
     })
@@ -690,7 +690,6 @@ fn is_pure_path_mapping_match_analysis(file: &AnalyzerFile<'_>, node: NodeId) ->
     };
     let arms = body_view
         .children()
-        .into_iter()
         .filter(|child| {
             file.analysis
                 .node(*child)
@@ -725,7 +724,6 @@ fn is_path_like_pattern_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> bool 
             }
             let named = view
                 .children()
-                .into_iter()
                 .filter(|child| file.analysis.node(*child).is_ok_and(|view| view.is_named()))
                 .collect::<Vec<_>>();
             named.len() == 1 && is_path_like_pattern_analysis(file, named[0])

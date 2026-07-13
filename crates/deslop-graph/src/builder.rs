@@ -105,7 +105,7 @@ impl<'analysis> OwnedNode<'analysis> {
     }
 
     pub(crate) fn child_by_field_name(self, field: &str) -> Option<Self> {
-        self.view().children().into_iter().find_map(|id| {
+        self.view().children().find_map(|id| {
             self.analysis
                 .node(id)
                 .is_ok_and(|child| child.field() == Some(field))
@@ -128,7 +128,7 @@ impl<'analysis> OwnedNode<'analysis> {
         self,
         _cursor: &mut OwnedCursor,
     ) -> impl Iterator<Item = Self> + 'analysis {
-        self.view().children().into_iter().filter_map(move |id| {
+        self.view().children().filter_map(move |id| {
             self.analysis
                 .node(id)
                 .is_ok_and(|child| child.is_named())

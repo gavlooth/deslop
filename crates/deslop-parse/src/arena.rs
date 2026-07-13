@@ -272,6 +272,17 @@ pub(crate) struct SyntaxArena {
     containment: ContainmentIndex,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ArenaInstrumentation {
+    pub nodes: usize,
+    pub segments: usize,
+    pub child_edges: usize,
+    pub owned_segment_references: usize,
+    pub zero_width_nodes: usize,
+    pub arena_bytes_lower_bound: usize,
+    pub containment_index_bytes: usize,
+}
+
 impl SyntaxArena {
     pub(crate) fn from_tree(tree: &Tree, source: &[u8], grammar: GrammarSelection) -> Result<Self> {
         let root = tree.root_node();
@@ -450,6 +461,40 @@ impl SyntaxArena {
         index: ArenaSegmentIndex,
     ) -> Option<&'a [u8]> {
         source.get(self.segment(index)?.byte_range())
+    }
+
+    pub(crate) fn instrumentation(&self) -> ArenaInstrumentation {
+        let child_edges = self.nodes.iter().map(|node| node.children.len()).sum();
+        let owned_segment_references = self
+            .nodes
+            .iter()
+            .map(|node| node.owned_segments.len())
+            .sum();
+        let node_payload = self
+            .nodes
+            .iter()
+            .map(|node| {
+                node.raw_kind.len()
+                    + node.raw_grammar_kind.len()
+                    + node.field.as_ref().map_or(0, |field| field.len())
+                    + node.children.len() * std::mem::size_of::<ArenaNodeIndex>()
+                    + node.owned_segments.len() * std::mem::size_of::<ArenaSegmentIndex>()
+            })
+            .sum::<usize>();
+        let (containment_index_bytes, zero_width_nodes) = self.containment.instrumentation();
+        let arena_bytes_lower_bound = self.nodes.len() * std::mem::size_of::<SyntaxNode>()
+            + node_payload
+            + self.segments.len() * std::mem::size_of::<SyntaxSegment>()
+            + containment_index_bytes;
+        ArenaInstrumentation {
+            nodes: self.nodes.len(),
+            segments: self.segments.len(),
+            child_edges,
+            owned_segment_references,
+            zero_width_nodes,
+            arena_bytes_lower_bound,
+            containment_index_bytes,
+        }
     }
 }
 

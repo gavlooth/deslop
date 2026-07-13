@@ -27,6 +27,10 @@ use crate::identity::{
     NodeBaselineFingerprint, NodeId, NodeKey, NodeKeyLookupError, NodeLookupError,
     baseline_fingerprint, build_node_keys,
 };
+use crate::instrumentation::{
+    AnalysisMemoryInstrumentation, AnalysisStructureInstrumentation, ParseOwnershipInstrumentation,
+    ProjectAnalysisInstrumentation,
+};
 
 const SOURCE_REVISION_DOMAIN: &str = "deslop source revision v1";
 const SNAPSHOT_ID_DOMAIN: &str = "deslop project snapshot v1";
@@ -202,6 +206,14 @@ impl GrammarSelection {
     pub fn parser_build(&self) -> &str {
         &self.parser_build
     }
+
+    fn known_payload_bytes(&self) -> usize {
+        self.dialect.len()
+            + self.selector.len()
+            + self.grammar_id.len()
+            + self.grammar_version.len()
+            + self.parser_build.len()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -291,6 +303,19 @@ pub struct FileRevisionKey {
     pub path: PathBuf,
     pub source: SourceRevision,
     pub grammar: GrammarSelection,
+}
+
+impl FileRevisionKey {
+    pub(crate) fn known_payload_bytes(&self) -> usize {
+        self.repository.0.len()
+            + self
+                .path
+                .to_str()
+                .expect("snapshot paths are validated Unicode")
+                .len()
+            + self.source.0.len()
+            + self.grammar.known_payload_bytes()
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -874,6 +899,7 @@ pub struct ParsedFile {
     pub(crate) text: Option<Arc<str>>,
     pub(crate) tree: Option<Tree>,
     pub(crate) arena: Option<SyntaxArena>,
+    pub(crate) query_node_index: Option<Box<[(usize, u32)]>>,
     pub(crate) provenance: AnalysisProvenance,
     pub(crate) line_starts: Vec<usize>,
 }
@@ -913,6 +939,10 @@ impl ParsedFile {
 
     pub(crate) fn query_tree(&self) -> Option<&Tree> {
         self.tree.as_ref()
+    }
+
+    pub(crate) fn query_node_index(&self) -> Option<&[(usize, u32)]> {
+        self.query_node_index.as_deref()
     }
 
     #[cfg(test)]
@@ -963,6 +993,7 @@ pub struct ProjectAnalysis {
     owner: u64,
     node_ranges: Box<[NodeFileRange]>,
     node_keys: Box<[NodeKey]>,
+    node_key_index: Box<[NodeKeyIndexEntry]>,
 }
 
 #[derive(Debug)]
@@ -972,12 +1003,80 @@ struct NodeFileRange {
     end: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct NodeKeyIndexEntry {
+    digest: [u8; 16],
+    index: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct NodeIds {
     owner: u64,
     next: u32,
     end: u32,
 }
+
+#[derive(Debug, Clone)]
+pub struct NodeChildren<'analysis> {
+    owner: u64,
+    file_start: u32,
+    remaining: std::slice::Iter<'analysis, ArenaNodeIndex>,
+}
+
+impl NodeChildren<'_> {
+    pub fn first(&self) -> Option<NodeId> {
+        self.remaining.as_slice().first().map(|child| NodeId {
+            owner: self.owner,
+            index: self.file_start + child.as_usize() as u32,
+        })
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.remaining.as_slice().is_empty()
+    }
+
+    pub fn contains(&self, id: &NodeId) -> bool {
+        id.owner == self.owner
+            && self
+                .remaining
+                .as_slice()
+                .iter()
+                .any(|child| id.index == self.file_start + child.as_usize() as u32)
+    }
+
+    pub fn iter(&self) -> Self {
+        self.clone()
+    }
+}
+
+impl Iterator for NodeChildren<'_> {
+    type Item = NodeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let child = *self.remaining.next()?;
+        Some(NodeId {
+            owner: self.owner,
+            index: self.file_start + child.as_usize() as u32,
+        })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.remaining.size_hint()
+    }
+}
+
+impl DoubleEndedIterator for NodeChildren<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let child = *self.remaining.next_back()?;
+        Some(NodeId {
+            owner: self.owner,
+            index: self.file_start + child.as_usize() as u32,
+        })
+    }
+}
+
+impl ExactSizeIterator for NodeChildren<'_> {}
+impl std::iter::FusedIterator for NodeChildren<'_> {}
 
 impl Iterator for NodeIds {
     type Item = NodeId;
@@ -1137,14 +1236,14 @@ pub enum SyntaxOwner<'analysis> {
 /// `after` remain separate so callers cannot accidentally hide a sibling-boundary choice.
 #[derive(Debug, Clone)]
 pub struct SyntaxPointContext<'analysis> {
-    exact_zero_width: Vec<NodeView<'analysis>>,
+    exact_zero_width: ExactZeroWidthNodes<'analysis>,
     before: Option<SyntaxOwner<'analysis>>,
     after: Option<SyntaxOwner<'analysis>>,
 }
 
 impl<'analysis> SyntaxPointContext<'analysis> {
-    pub fn exact_zero_width(&self) -> &[NodeView<'analysis>] {
-        &self.exact_zero_width
+    pub fn exact_zero_width(&self) -> ExactZeroWidthNodes<'analysis> {
+        self.exact_zero_width.clone()
     }
 
     pub fn before(&self) -> Option<SyntaxOwner<'analysis>> {
@@ -1154,7 +1253,70 @@ impl<'analysis> SyntaxPointContext<'analysis> {
     pub fn after(&self) -> Option<SyntaxOwner<'analysis>> {
         self.after
     }
+
+    /// Measure the allocation-free zero-width result view.
+    pub fn instrumentation(&self) -> crate::SyntaxPointContextInstrumentation {
+        crate::SyntaxPointContextInstrumentation {
+            exact_zero_width_nodes: self.exact_zero_width.len(),
+            exact_zero_width_bytes: 0,
+            known_bytes_lower_bound: std::mem::size_of::<Self>(),
+        }
+    }
 }
+
+/// Allocation-free co-minimal zero-width node views in grammar preorder.
+#[derive(Debug, Clone)]
+pub struct ExactZeroWidthNodes<'analysis> {
+    analysis: &'analysis ProjectAnalysis,
+    file: &'analysis ParsedFile,
+    arena: &'analysis SyntaxArena,
+    file_start: u32,
+    entries: &'analysis [(usize, u32)],
+}
+
+impl<'analysis> ExactZeroWidthNodes<'analysis> {
+    fn view(&self, local: u32) -> NodeView<'analysis> {
+        self.analysis.node_view_from_local(
+            self.file,
+            self.arena,
+            self.file_start,
+            ArenaNodeIndex::from_u32(local),
+        )
+    }
+
+    pub fn first(&self) -> Option<NodeView<'analysis>> {
+        self.entries.first().map(|(_, local)| self.view(*local))
+    }
+
+    pub fn get(&self, index: usize) -> Option<NodeView<'analysis>> {
+        self.entries.get(index).map(|(_, local)| self.view(*local))
+    }
+}
+
+impl<'analysis> Iterator for ExactZeroWidthNodes<'analysis> {
+    type Item = NodeView<'analysis>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (first, rest) = self.entries.split_first()?;
+        self.entries = rest;
+        Some(self.view(first.1))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.entries.len(), Some(self.entries.len()))
+    }
+}
+
+impl DoubleEndedIterator for ExactZeroWidthNodes<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let (last, rest) = self.entries.split_last()?;
+        self.entries = rest;
+        Some(self.view(last.1))
+    }
+}
+
+impl ExactSizeIterator for ExactZeroWidthNodes<'_> {}
+impl std::iter::FusedIterator for ExactZeroWidthNodes<'_> {}
 
 #[derive(Debug, Clone, Copy)]
 pub struct ExclusiveSyntaxRegion<'analysis> {
@@ -1336,6 +1498,15 @@ impl ProjectAnalysis {
                 end,
             });
         }
+        let mut node_key_index = node_keys
+            .iter()
+            .enumerate()
+            .map(|(index, key)| NodeKeyIndexEntry {
+                digest: key.lookup_digest(),
+                index: index as u32,
+            })
+            .collect::<Vec<_>>();
+        node_key_index.sort_unstable();
         Ok(Arc::new(Self {
             id,
             snapshot,
@@ -1344,6 +1515,7 @@ impl ProjectAnalysis {
             owner,
             node_ranges: node_ranges.into_boxed_slice(),
             node_keys: node_keys.into_boxed_slice(),
+            node_key_index: node_key_index.into_boxed_slice(),
         }))
     }
 
@@ -1405,6 +1577,135 @@ impl ProjectAnalysis {
         self.ledger.counts()
     }
 
+    /// Measure deterministic ownership, structure, and visible retained-storage lower bounds.
+    ///
+    /// Instrumentation is derived after construction and is never part of snapshot, analysis, or
+    /// projection identity.
+    pub fn instrumentation(&self) -> ProjectAnalysisInstrumentation {
+        let counts = self.ledger.counts();
+        let mut parse = ParseOwnershipInstrumentation {
+            file_revisions: counts.len(),
+            ..ParseOwnershipInstrumentation::default()
+        };
+        for (key, count) in &counts {
+            parse.requested += count.requested;
+            parse.owners += count.owners;
+            parse.parser_invocations += count.parser_invocations;
+            parse.reused += count.reused;
+            if self.file(&key.path).is_some_and(|file| !file.has_tree()) {
+                parse.syntax_unavailable += 1;
+            }
+            if count.requested != 1
+                || count.owners != 1
+                || count.parser_invocations > 1
+                || count.reused > 1
+                || count.parser_invocations + count.reused > 1
+            {
+                parse.invariant_violations += 1;
+            }
+        }
+
+        let mut structure = AnalysisStructureInstrumentation {
+            files: self.files.len(),
+            ..AnalysisStructureInstrumentation::default()
+        };
+        let mut memory = AnalysisMemoryInstrumentation::default();
+        let store = self
+            .snapshot
+            .store
+            .contents
+            .read()
+            .unwrap_or_else(|poison| poison.into_inner());
+        memory.source_store_revisions = store.len();
+        memory.source_store_bytes = store.values().map(|source| source.bytes.len()).sum();
+        drop(store);
+
+        for file in self.files.values() {
+            structure.source_bytes += file.source().len();
+            structure.utf8_text_bytes += file.text().map_or(0, str::len);
+            structure.line_start_entries += file.line_starts.len();
+            memory.parsed_utf8_text_bytes += file.text().map_or(0, str::len);
+            memory.line_index_bytes += file.line_starts.len() * std::mem::size_of::<usize>();
+            memory.query_node_index_bytes += file
+                .query_node_index
+                .as_ref()
+                .map_or(0, |index| index.len() * std::mem::size_of::<(usize, u32)>());
+            memory.opaque_tree_count += usize::from(file.tree.is_some());
+            if let Some(arena) = &file.arena {
+                let stats = arena.instrumentation();
+                structure.nodes += stats.nodes;
+                structure.syntax_segments += stats.segments;
+                structure.child_edges += stats.child_edges;
+                structure.owned_segment_references += stats.owned_segment_references;
+                structure.zero_width_nodes += stats.zero_width_nodes;
+                memory.arena_bytes_lower_bound += stats.arena_bytes_lower_bound;
+                memory.containment_index_bytes += stats.containment_index_bytes;
+            }
+        }
+
+        memory.node_range_bytes_lower_bound = self.node_ranges.len()
+            * std::mem::size_of::<NodeFileRange>()
+            + self
+                .node_ranges
+                .iter()
+                .map(|range| {
+                    range
+                        .path
+                        .to_str()
+                        .expect("snapshot paths are validated Unicode")
+                        .len()
+                })
+                .sum::<usize>();
+        memory.node_key_lookup_index_bytes =
+            self.node_key_index.len() * std::mem::size_of::<NodeKeyIndexEntry>();
+        let mut order_hasher = domain_hasher("deslop node order instrumentation v1");
+        let mut node_key_heap = 0;
+        let mut previous_node_key_file: Option<&FileRevisionKey> = None;
+        let mut seen_field_paths = BTreeSet::new();
+        for key in &self.node_keys {
+            let (heap, file_payload, field_bytes, field_entries) = key.instrumentation();
+            node_key_heap += heap;
+            if previous_node_key_file != Some(key.file()) {
+                memory.node_key_file_revision_payload_bytes += file_payload;
+                node_key_heap += std::mem::size_of::<FileRevisionKey>() + file_payload;
+                previous_node_key_file = Some(key.file());
+            }
+            if seen_field_paths.insert(key.field_path_allocation_id()) {
+                memory.node_key_field_path_bytes += field_bytes;
+                node_key_heap += field_bytes;
+            }
+            structure.node_key_field_path_entries += field_entries;
+            structure.max_node_key_field_path_depth =
+                structure.max_node_key_field_path_depth.max(field_entries);
+            key.update_order_digest(&mut order_hasher);
+        }
+        memory.node_key_bytes_lower_bound =
+            self.node_keys.len() * std::mem::size_of::<NodeKey>() + node_key_heap;
+        memory.parse_ledger_bytes_lower_bound = counts.len()
+            * (std::mem::size_of::<FileRevisionKey>() + std::mem::size_of::<FileParseCount>())
+            + counts
+                .keys()
+                .map(FileRevisionKey::known_payload_bytes)
+                .sum::<usize>();
+        memory.known_bytes_lower_bound = memory.source_store_bytes
+            + memory.parsed_utf8_text_bytes
+            + memory.arena_bytes_lower_bound
+            + memory.line_index_bytes
+            + memory.query_node_index_bytes
+            + memory.node_range_bytes_lower_bound
+            + memory.node_key_lookup_index_bytes
+            + memory.node_key_bytes_lower_bound
+            + memory.parse_ledger_bytes_lower_bound;
+
+        debug_assert_eq!(structure.nodes, self.node_keys.len());
+        ProjectAnalysisInstrumentation {
+            parse,
+            structure,
+            memory,
+            node_order_digest: format!("pao1_{}", order_hasher.finalize().to_hex()),
+        }
+    }
+
     pub fn node_count(&self) -> usize {
         self.node_keys.len()
     }
@@ -1418,7 +1719,11 @@ impl ProjectAnalysis {
     }
 
     pub fn file_node_ids(&self, path: &Path) -> Option<NodeIds> {
-        let range = self.node_ranges.iter().find(|range| range.path == path)?;
+        let range = self
+            .node_ranges
+            .binary_search_by(|range| range.path.as_path().cmp(path))
+            .ok()
+            .map(|index| &self.node_ranges[index])?;
         Some(NodeIds {
             owner: self.owner,
             next: range.start,
@@ -1436,10 +1741,11 @@ impl ProjectAnalysis {
                 node_count: self.node_keys.len() as u32,
             });
         }
-        let range = self
+        let range = self.node_ranges[..self
             .node_ranges
-            .iter()
-            .find(|range| range.start <= id.index && id.index < range.end)
+            .partition_point(|range| range.start <= id.index)]
+            .last()
+            .filter(|range| id.index < range.end)
             .expect("every global node index belongs to one file range");
         let file = self
             .files
@@ -1476,16 +1782,17 @@ impl ProjectAnalysis {
         if &file.key != key.file() {
             return Err(NodeKeyLookupError::FileRevisionExpired);
         }
-        let range = self
-            .node_ranges
+        let digest = key.lookup_digest();
+        let start = self
+            .node_key_index
+            .partition_point(|entry| entry.digest < digest);
+        let index = self.node_key_index[start..]
             .iter()
-            .find(|range| range.path == key.file().path)
-            .expect("analysis file has a node range");
-        let offset = self.node_keys[range.start as usize..range.end as usize]
-            .iter()
-            .position(|candidate| candidate == key)
+            .take_while(|entry| entry.digest == digest)
+            .find_map(|entry| {
+                (self.node_keys[entry.index as usize] == *key).then_some(entry.index as usize)
+            })
             .ok_or(NodeKeyLookupError::NotFound)?;
-        let index = range.start as usize + offset;
         self.node(NodeId {
             owner: self.owner,
             index: index as u32,
@@ -1600,7 +1907,7 @@ impl ProjectAnalysis {
     /// Callback failures retain exact owner/region/edge context and stop construction without
     /// publishing a partial result.
     ///
-    /// After the existing O(F) file-range lookup, core work is O(N + S + R) owner, segment, and
+    /// After the O(log F) file-range lookup, core work is O(N + S + R) owner, segment, and
     /// reset visits plus O(N) accumulator clones/merges; callback and `T` costs are caller-defined.
     /// Results retain local and full-inclusive values plus a declared projection when resets exist.
     pub fn try_fold_syntax_aggregates<'analysis, T, Error, InitLocal, FoldRegion, Merge>(
@@ -1632,7 +1939,8 @@ impl ProjectAnalysis {
                     }
                 })?;
 
-        let mut resets_parent = vec![false; arena.nodes().len()];
+        let mut resets_parent =
+            (!policy.reset_nodes().is_empty()).then(|| vec![false; arena.nodes().len()]);
         let file_end = file_start + arena.nodes().len() as u32;
         for &id in policy.reset_nodes() {
             if id.owner != self.owner {
@@ -1656,19 +1964,28 @@ impl ProjectAnalysis {
                     path: path.to_path_buf(),
                 });
             }
-            resets_parent[(id.index - file_start) as usize] = true;
+            resets_parent
+                .as_mut()
+                .expect("a declared reset allocates reset flags")
+                [(id.index - file_start) as usize] = true;
         }
-        let reset_nodes = resets_parent
-            .iter()
-            .enumerate()
-            .filter_map(|(offset, reset)| {
-                reset.then_some(NodeId {
-                    owner: self.owner,
-                    index: file_start + offset as u32,
+        let reset_nodes = resets_parent.as_deref().map_or_else(Vec::new, |resets| {
+            resets
+                .iter()
+                .enumerate()
+                .filter_map(|(offset, reset)| {
+                    reset.then_some(NodeId {
+                        owner: self.owner,
+                        index: file_start + offset as u32,
+                    })
                 })
-            })
-            .collect::<Vec<_>>();
+                .collect::<Vec<_>>()
+        });
 
+        let initialize_calls = arena.nodes().len() + 1;
+        let fold_region_calls = arena.segments().len();
+        let mut merge_calls = 0;
+        let mut value_clone_calls = 0;
         let mut file_local = init_local(SyntaxOwner::File(&file.key)).map_err(|error| {
             SyntaxAggregationError::InitializeOwner {
                 path: path.to_path_buf(),
@@ -1726,16 +2043,17 @@ impl ProjectAnalysis {
         }
 
         let (node_full_inclusive, node_declared_inclusive) = {
-            let no_resets = vec![false; arena.nodes().len()];
-            let mut roll_up = |resets: &[bool], projection| {
+            let mut roll_up = |resets: Option<&[bool]>, projection| {
+                value_clone_calls += node_local.len();
                 let mut values = node_local.clone();
                 for parent in (0..arena.nodes().len()).rev() {
                     for child in arena.nodes()[parent].children() {
                         let child = child.as_usize();
-                        if resets[child] {
+                        if resets.is_some_and(|resets| resets[child]) {
                             continue;
                         }
                         let (parents, children) = values.split_at_mut(child);
+                        merge_calls += 1;
                         merge(&mut parents[parent], &children[0]).map_err(|error| {
                             SyntaxAggregationError::Merge {
                                 path: path.to_path_buf(),
@@ -1755,21 +2073,22 @@ impl ProjectAnalysis {
                 }
                 Ok::<Vec<T>, SyntaxAggregationError<Error>>(values)
             };
-            let inclusive = roll_up(&no_resets, SyntaxAggregateProjection::FullInclusive)?;
-            let declared = if reset_nodes.is_empty() {
-                inclusive.clone()
-            } else {
-                roll_up(&resets_parent, SyntaxAggregateProjection::DeclaredInclusive)?
-            };
+            let inclusive = roll_up(None, SyntaxAggregateProjection::FullInclusive)?;
+            let declared = resets_parent
+                .as_deref()
+                .map(|resets| roll_up(Some(resets), SyntaxAggregateProjection::DeclaredInclusive))
+                .transpose()?;
             (inclusive, declared)
         };
 
+        value_clone_calls += 1;
         let mut file_full_inclusive = file_local.clone();
         let root = arena.root().as_usize();
         let root_owner = SyntaxAggregateOwner::Node(NodeId {
             owner: self.owner,
             index: file_start + root as u32,
         });
+        merge_calls += 1;
         merge(&mut file_full_inclusive, &node_full_inclusive[root]).map_err(|error| {
             SyntaxAggregationError::Merge {
                 path: path.to_path_buf(),
@@ -1779,24 +2098,32 @@ impl ProjectAnalysis {
                 error,
             }
         })?;
-        let file_declared_inclusive = if reset_nodes.is_empty() {
-            file_full_inclusive.clone()
-        } else {
+        let file_declared_inclusive = if let Some(resets_parent) = resets_parent.as_deref() {
+            value_clone_calls += 1;
             let mut value = file_local.clone();
             if !resets_parent[root] {
-                merge(&mut value, &node_declared_inclusive[root]).map_err(|error| {
-                    SyntaxAggregationError::Merge {
-                        path: path.to_path_buf(),
-                        projection: SyntaxAggregateProjection::DeclaredInclusive,
-                        parent: SyntaxAggregateOwner::File,
-                        child: root_owner,
-                        error,
-                    }
+                merge_calls += 1;
+                merge(
+                    &mut value,
+                    &node_declared_inclusive
+                        .as_ref()
+                        .expect("reset flags own a declared projection")[root],
+                )
+                .map_err(|error| SyntaxAggregationError::Merge {
+                    path: path.to_path_buf(),
+                    projection: SyntaxAggregateProjection::DeclaredInclusive,
+                    parent: SyntaxAggregateOwner::File,
+                    child: root_owner,
+                    error,
                 })?;
             }
-            value
+            Some(value)
+        } else {
+            None
         };
 
+        let reset_node_count = reset_nodes.len();
+        let declared_values = usize::from(reset_node_count > 0) * (arena.nodes().len() + 1);
         Ok(SyntaxAggregates::from_parts(SyntaxAggregateParts {
             analysis_id: &self.id,
             file_key: &file.key,
@@ -1807,9 +2134,20 @@ impl ProjectAnalysis {
             file_declared_inclusive,
             node_local: node_local.into_boxed_slice(),
             node_full_inclusive: node_full_inclusive.into_boxed_slice(),
-            node_declared_inclusive: node_declared_inclusive.into_boxed_slice(),
-            resets_parent: resets_parent.into_boxed_slice(),
+            node_declared_inclusive: node_declared_inclusive.map(Vec::into_boxed_slice),
+            resets_parent: resets_parent.map(Vec::into_boxed_slice),
             reset_nodes: reset_nodes.into_boxed_slice(),
+            instrumentation: crate::aggregation::SyntaxAggregationInstrumentation {
+                nodes: arena.nodes().len(),
+                reset_nodes: reset_node_count,
+                initialize_calls,
+                fold_region_calls,
+                merge_calls,
+                value_clone_calls,
+                retained_local_values: arena.nodes().len() + 1,
+                retained_full_inclusive_values: arena.nodes().len() + 1,
+                retained_declared_inclusive_values: declared_values,
+            },
         }))
     }
 
@@ -1911,14 +2249,13 @@ impl ProjectAnalysis {
                 source_len,
             });
         }
-        let exact_zero_width = arena
-            .containment()
-            .zero_width_nodes_at(point)
-            .iter()
-            .map(|(_, index)| {
-                self.node_view_from_local(file, arena, file_start, ArenaNodeIndex::from_u32(*index))
-            })
-            .collect();
+        let exact_zero_width = ExactZeroWidthNodes {
+            analysis: self,
+            file,
+            arena,
+            file_start,
+            entries: arena.containment().zero_width_nodes_at(point),
+        };
         let before =
             (point > 0).then(|| self.syntax_owner_at_byte(file, arena, file_start, point - 1));
         let after =
@@ -2139,16 +2476,12 @@ impl<'analysis> NodeView<'analysis> {
         })
     }
 
-    pub fn children(&self) -> Vec<NodeId> {
-        let start = self.file_start();
-        self.raw()
-            .children()
-            .iter()
-            .map(|child| NodeId {
-                owner: self.id.owner,
-                index: start + child.as_usize() as u32,
-            })
-            .collect()
+    pub fn children(&self) -> NodeChildren<'analysis> {
+        NodeChildren {
+            owner: self.id.owner,
+            file_start: self.file_start(),
+            remaining: self.raw().children().iter(),
+        }
     }
 
     pub fn child_count(&self) -> usize {
@@ -2222,6 +2555,7 @@ pub(crate) fn parse_owned_file(
                 text: None,
                 tree: None,
                 arena: None,
+                query_node_index: None,
                 provenance: AnalysisProvenance::failed(vec![AnalysisDiagnostic {
                     code: "invalid-utf8".to_string(),
                     message: format!("source is not valid UTF-8: {error}"),
@@ -2245,6 +2579,8 @@ pub(crate) fn parse_owned_file(
     let provenance = analysis_provenance_for_tree(&tree);
     let arena = SyntaxArena::from_tree(&tree, entry.bytes(), key.grammar.clone())
         .with_context(|| format!("failed to own syntax arena for {}", entry.path.display()))?;
+    let query_node_index = crate::query::build_query_node_index(&tree, &arena)
+        .with_context(|| format!("failed to index query nodes for {}", entry.path.display()))?;
     Ok(ParsedFile {
         key,
         source: entry.source.clone(),
@@ -2252,6 +2588,7 @@ pub(crate) fn parse_owned_file(
         text: Some(text),
         tree: Some(tree),
         arena: Some(arena),
+        query_node_index: Some(query_node_index),
         provenance,
         line_starts,
     })
@@ -4035,10 +4372,7 @@ mod tests {
                         node.raw_kind().to_string(),
                         node.key().clone(),
                         node.parent().map(|parent| parent.index),
-                        node.children()
-                            .into_iter()
-                            .map(|child| child.index)
-                            .collect::<Vec<_>>(),
+                        node.children().map(|child| child.index).collect::<Vec<_>>(),
                     )
                 })
                 .collect::<Vec<_>>()
@@ -4442,6 +4776,25 @@ mod tests {
         assert_eq!(merge_calls, ids.len());
         assert_eq!(all.reset_nodes(), []);
         assert_eq!(all.policy(), InclusiveSyntaxPolicy::AllDescendants);
+        assert_eq!(
+            all.instrumentation(),
+            crate::aggregation::SyntaxAggregationInstrumentation {
+                nodes: 37,
+                reset_nodes: 0,
+                initialize_calls: 38,
+                fold_region_calls: 37,
+                merge_calls: 37,
+                value_clone_calls: 38,
+                retained_local_values: 38,
+                retained_full_inclusive_values: 38,
+                retained_declared_inclusive_values: 0,
+            }
+        );
+        assert_eq!(
+            all.instrumentation()
+                .retained_value_bytes_lower_bound::<SyntaxTally>(),
+            76 * std::mem::size_of::<SyntaxTally>()
+        );
         assert_eq!(all.file_local().regions, 0);
         assert_eq!(all.file_local().bytes, 0);
         assert_eq!(all.file_full_inclusive().regions, 37);
@@ -4514,6 +4867,20 @@ mod tests {
         assert_eq!(reset_merge_calls, 2 * ids.len() - normalized.len());
         assert_eq!(reset.reset_nodes(), normalized);
         assert_eq!(reset.policy(), InclusiveSyntaxPolicy::ResetAt(&normalized));
+        assert_eq!(
+            reset.instrumentation(),
+            crate::aggregation::SyntaxAggregationInstrumentation {
+                nodes: 37,
+                reset_nodes: 3,
+                initialize_calls: 38,
+                fold_region_calls: 37,
+                merge_calls: 71,
+                value_clone_calls: 76,
+                retained_local_values: 38,
+                retained_full_inclusive_values: 38,
+                retained_declared_inclusive_values: 38,
+            }
+        );
         assert_eq!(reset.file_full_inclusive(), all.file_full_inclusive());
         assert_eq!(reset.file_declared_inclusive().regions, 1);
         assert_eq!(reset.file_declared_inclusive().bytes, 1);
@@ -5220,7 +5587,14 @@ mod tests {
             .syntax_point_context(Path::new("missing.ts"), 20)
             .unwrap();
         assert_eq!(point.exact_zero_width().len(), 1);
-        assert_eq!(point.exact_zero_width()[0].id(), missing.id());
+        assert_eq!(point.exact_zero_width().first().unwrap().id(), missing.id());
+        let point_measured = point.instrumentation();
+        assert_eq!(point_measured.exact_zero_width_nodes, 1);
+        assert_eq!(point_measured.exact_zero_width_bytes, 0);
+        assert_eq!(
+            point_measured.known_bytes_lower_bound,
+            std::mem::size_of::<SyntaxPointContext<'_>>()
+        );
         let SyntaxOwner::Node(after) = point.after().unwrap() else {
             panic!("byte after the missing token must remain syntax owned");
         };
@@ -5317,7 +5691,10 @@ mod tests {
             .syntax_point_context(Path::new("empty.rs"), 0)
             .unwrap();
         assert_eq!(empty_point.exact_zero_width().len(), 1);
-        assert_eq!(empty_point.exact_zero_width()[0].raw_kind(), "source_file");
+        assert_eq!(
+            empty_point.exact_zero_width().first().unwrap().raw_kind(),
+            "source_file"
+        );
         assert!(empty_point.before().is_none());
         assert!(empty_point.after().is_none());
 
@@ -5326,7 +5703,12 @@ mod tests {
             .unwrap();
         assert_eq!(whitespace_point.exact_zero_width().len(), 1);
         assert_eq!(
-            whitespace_point.exact_zero_width()[0].span().byte_range(),
+            whitespace_point
+                .exact_zero_width()
+                .first()
+                .unwrap()
+                .span()
+                .byte_range(),
             7..7
         );
         assert!(matches!(
@@ -5348,13 +5730,25 @@ mod tests {
             .syntax_point_context(Path::new("point.ts"), 10)
             .unwrap();
         assert_eq!(shared_point.exact_zero_width().len(), 1);
-        assert_eq!(shared_point.exact_zero_width()[0].raw_kind(), ";");
-        assert!(shared_point.exact_zero_width()[0].is_missing());
+        assert_eq!(
+            shared_point.exact_zero_width().first().unwrap().raw_kind(),
+            ";"
+        );
+        assert!(
+            shared_point
+                .exact_zero_width()
+                .first()
+                .unwrap()
+                .is_missing()
+        );
         let Some(SyntaxOwner::Node(after)) = shared_point.after() else {
             panic!("trailing TypeScript space must remain program-owned trivia");
         };
         assert_eq!(after.raw_kind(), "program");
-        assert_ne!(after.id(), shared_point.exact_zero_width()[0].id());
+        assert_ne!(
+            after.id(),
+            shared_point.exact_zero_width().first().unwrap().id()
+        );
         assert_eq!(
             analysis
                 .exclusive_syntax_regions(Path::new("broken.rs"))
@@ -5665,6 +6059,204 @@ mod tests {
             .build()
             .unwrap_err();
         assert!(error.to_string().contains("outside repository root"));
+    }
+
+    fn instrumentation_snapshot(root: &Path, reverse: bool) -> Arc<ProjectSnapshot> {
+        instrumentation_snapshot_with(
+            root,
+            reverse,
+            None,
+            b"fn alpha(value: i32) -> i32 { if value > 0 { value } else { 0 } }\n",
+        )
+    }
+
+    fn instrumentation_snapshot_with(
+        root: &Path,
+        reverse: bool,
+        store: Option<Arc<SourceStore>>,
+        alpha: &[u8],
+    ) -> Arc<ProjectSnapshot> {
+        let sources = [
+            ("alpha.rs", alpha),
+            (
+                "beta.py",
+                b"def beta(value):\n    return value if value else 0\n".as_slice(),
+            ),
+            (
+                "view.tsx",
+                b"export const View = ({value}: {value: string}) => <span>{value}</span>;\n"
+                    .as_slice(),
+            ),
+        ];
+        let mut builder = ProjectSnapshotBuilder::new(root, repository()).unwrap();
+        if let Some(store) = store {
+            builder = builder.with_store(store);
+        }
+        if reverse {
+            for (path, source) in sources.into_iter().rev() {
+                builder = builder.with_overlay(path, source.to_vec()).unwrap();
+            }
+        } else {
+            for (path, source) in sources {
+                builder = builder.with_overlay(path, source.to_vec()).unwrap();
+            }
+        }
+        builder.build().unwrap()
+    }
+
+    #[test]
+    fn instrumentation_is_deterministic_and_exposes_owned_storage_costs() {
+        let root = tempfile::tempdir().unwrap();
+        let first = ProjectAnalysis::build(instrumentation_snapshot(root.path(), false)).unwrap();
+        let reordered =
+            ProjectAnalysis::build(instrumentation_snapshot(root.path(), true)).unwrap();
+        let measured = first.instrumentation();
+
+        assert_eq!(measured, reordered.instrumentation());
+        assert!(measured.parse.invariant_holds());
+        assert_eq!(
+            (
+                measured.parse.file_revisions,
+                measured.parse.requested,
+                measured.parse.owners,
+                measured.parse.parser_invocations,
+                measured.parse.reused,
+                measured.parse.syntax_unavailable,
+            ),
+            (3, 3, 3, 3, 0, 0)
+        );
+        assert_eq!(measured.structure.files, 3);
+        assert_eq!(measured.structure.nodes, first.node_count());
+        assert_eq!(
+            measured.structure.child_edges,
+            measured.structure.nodes - measured.structure.files
+        );
+        assert!(measured.structure.syntax_segments > measured.structure.files);
+        assert!(measured.structure.node_key_field_path_entries > measured.structure.nodes);
+        assert!(measured.memory.known_bytes_lower_bound > measured.structure.source_bytes);
+        assert!(
+            measured.memory.node_key_bytes_lower_bound > measured.memory.arena_bytes_lower_bound
+        );
+        assert_eq!(measured.memory.opaque_tree_count, 3);
+        assert_eq!(
+            measured.node_order_digest,
+            "pao1_437c1bdc53a43224fde0a0c23fcebbca531996848a87585944f60fe5759c55ed"
+        );
+    }
+
+    #[test]
+    #[ignore = "wall-time and retained-memory probe; run explicitly at M1 instrumentation checkpoints"]
+    fn project_analysis_latency_and_memory_probe() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(SourceStore::default());
+        let started = std::time::Instant::now();
+        let analysis = ProjectAnalysis::build(instrumentation_snapshot_with(
+            root.path(),
+            false,
+            Some(Arc::clone(&store)),
+            b"fn alpha(value: i32) -> i32 { if value > 0 { value } else { 0 } }\n",
+        ))
+        .unwrap();
+        let cold = started.elapsed();
+        let started = std::time::Instant::now();
+        let measured = analysis.instrumentation();
+        let instrumentation = started.elapsed();
+
+        let query = analysis
+            .compile_syntax_query(Path::new("alpha.rs"), "(identifier) @identifier")
+            .unwrap();
+        let started = std::time::Instant::now();
+        let mut child_edges = 0;
+        let mut key_lookups = 0;
+        for id in analysis.node_ids() {
+            let node = analysis.node(id).unwrap();
+            child_edges += node.children().len();
+            analysis.node_by_key(node.key()).unwrap();
+            key_lookups += 1;
+        }
+        let query_root = analysis
+            .file_node_ids(Path::new("alpha.rs"))
+            .unwrap()
+            .next()
+            .unwrap();
+        let captures = analysis.syntax_query_captures(&query, query_root).unwrap();
+        let point_context = analysis
+            .syntax_point_context(Path::new("alpha.rs"), 0)
+            .unwrap();
+        let point_measured = point_context.instrumentation();
+        let repeated = started.elapsed();
+        let query_measured = query.instrumentation();
+        let results_measured = query.results_instrumentation(&captures);
+
+        let changed = instrumentation_snapshot_with(
+            root.path(),
+            false,
+            Some(store),
+            b"fn alpha(value: i32) -> i32 { if value > 1 { value } else { 0 } }\n",
+        );
+        let replacement_at = analysis
+            .file(Path::new("alpha.rs"))
+            .unwrap()
+            .source()
+            .windows(3)
+            .position(|window| window == b"> 0")
+            .unwrap()
+            + 2;
+        let edits = [crate::FileSourceEdits::new(
+            "alpha.rs",
+            vec![crate::SourceReplacement::new(
+                replacement_at..replacement_at + 1,
+                "1",
+            )],
+        )];
+        let started = std::time::Instant::now();
+        let update = analysis.successor_with_edits(changed, &edits).unwrap();
+        let incremental = started.elapsed();
+        let update_measured = update.instrumentation();
+
+        eprintln!(
+            "m1.11 cold_us={} instrumentation_us={} repeated_us={} incremental_us={} files={} source_bytes={} nodes={} segments={} child_edges={}/{} key_lookups={} point_zero={}/{} query_source={} query_metadata={} query_captures={} query_result_bytes={} node_key_bytes={} node_key_file_payload={} node_key_field_path={} node_key_lookup_index={} query_node_index={} containment_index={} arena_bytes={} known_bytes={} update_files={}/{}/{}/{}/{} update_nodes={}/{}/{} transitions={}/{}/{} transition_bytes={} edit_validation_bytes={} opaque_trees={} order={}",
+            cold.as_micros(),
+            instrumentation.as_micros(),
+            repeated.as_micros(),
+            incremental.as_micros(),
+            measured.structure.files,
+            measured.structure.source_bytes,
+            measured.structure.nodes,
+            measured.structure.syntax_segments,
+            child_edges,
+            measured.structure.child_edges,
+            key_lookups,
+            point_measured.exact_zero_width_nodes,
+            point_measured.exact_zero_width_bytes,
+            query_measured.source_bytes,
+            query_measured.known_bytes_lower_bound,
+            results_measured.captures,
+            results_measured.known_bytes_lower_bound,
+            measured.memory.node_key_bytes_lower_bound,
+            measured.memory.node_key_file_revision_payload_bytes,
+            measured.memory.node_key_field_path_bytes,
+            measured.memory.node_key_lookup_index_bytes,
+            measured.memory.query_node_index_bytes,
+            measured.memory.containment_index_bytes,
+            measured.memory.arena_bytes_lower_bound,
+            measured.memory.known_bytes_lower_bound,
+            update_measured.reused_files,
+            update_measured.incremental_files,
+            update_measured.rebuilt_files,
+            update_measured.added_files,
+            update_measured.removed_files,
+            update_measured.previous_nodes,
+            update_measured.current_nodes,
+            update_measured.incrementally_rebuilt_nodes,
+            update_measured.retained_transitions,
+            update_measured.reanchored_transitions,
+            update_measured.expired_transitions,
+            update_measured.transition_bytes_lower_bound,
+            update_measured.sequential_edit_validation_bytes_upper_bound,
+            measured.memory.opaque_tree_count,
+            measured.node_order_digest,
+        );
     }
 
     #[cfg(unix)]

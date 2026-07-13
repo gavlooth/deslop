@@ -1153,9 +1153,9 @@ external tools without a prepared revision-isolated plan.
 Agent assignment: `/root` remains integration, implementation, and verification owner for this
 checkpoint; prior M1.9 audit agents are complete and no files are concurrently edited.
 
-#### Active M1.11 execution plan — instrumentation and measured compaction
+#### Completed M1.11 execution plan — instrumentation and measured compaction
 
-Active hypothesis: one revision-owned measurement surface can expose parse ownership, deterministic
+Confirmed hypothesis: one revision-owned measurement surface exposes parse ownership, deterministic
 node order, cold/repeated/incremental latency, and retained memory without adding consumer-specific
 instrumentation or perturbing projection identities. The first measured profile should decide which
 listed M1 allocations are material enough to compact; unmeasured micro-optimization is out of scope.
@@ -1167,7 +1167,7 @@ a dominant measured allocation or lookup means compact that representation and r
 matrix; no material regression or hotspot means retain the simpler representation and record the
 number. Do not branch into serial canary experiments or use wall time alone as correctness evidence.
 
-Current approach: inventory existing parse ledgers, arenas, query indices, aggregation storage, and
+Completed approach: inventoried existing parse ledgers, arenas, query indices, aggregation storage, and
 incremental transition data; add a stable instrumentation report at the `ProjectAnalysis` boundary;
 lock exact structural counters and deterministic node-order digests in normal tests; place latency
 and retained-memory measurements in an explicit ignored probe with numerical output and tolerant
@@ -1181,8 +1181,19 @@ on cold, repeated, and one-file incremental revisions, report exact node/file/by
 values, and apply only optimizations justified by that decomposition. Finish with parse-focused tests
 and strict clippy, then workspace-wide gates before checking M1.11.
 
-Next checkpoint: an instrumentation inventory identifies the existing authoritative counters and the
-smallest missing API, with a fixed fixture and exact structural oracle ready before any optimization.
+Terminal outcome: the fixed matrix retains 3 files, 188 source bytes, 94 nodes, 91 child edges, and
+one pinned node-order digest. Shared per-file revision keys and interned field paths reduce node-key
+storage from 75,873 to 36,195 bytes. After adding compact 1,880-byte key and 1,504-byte query indices,
+the visible retained lower bound is 61,900 bytes versus the 98,234-byte baseline, a 36,334-byte
+(37.0%) reduction. `NodeView::children` and exact zero-width point results are allocation-free;
+range/key lookup is logarithmic; query capture names share query-owned payloads; all-descendant
+aggregation no longer retains a redundant declared projection; and update reports expose exact edit,
+rebuild, successor assembly, and transition counts. Five ignored runs keep cold/repeated/incremental
+wall time observational rather than authoritative.
+
+Next checkpoint: execute M1.DoD on the gold fixture matrix, proving all scan/propose paths preserve
+one parse owner per file revision, no borrowed-node lifetime leaks, and non-overlapping exclusive
+metric ownership before beginning M2.
 
 Negative-memory constraints: do not replace ledger evidence with global counters; expose parser or
 borrowed-node internals; make timing a deterministic unit-test assertion; estimate retained memory

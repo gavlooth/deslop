@@ -182,6 +182,30 @@ pub struct SyntaxNodeAggregate<'aggregate, T> {
     resets_parent: bool,
 }
 
+/// Exact callback and retained-value counts for one aggregate construction.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SyntaxAggregationInstrumentation {
+    pub nodes: usize,
+    pub reset_nodes: usize,
+    pub initialize_calls: usize,
+    pub fold_region_calls: usize,
+    pub merge_calls: usize,
+    pub value_clone_calls: usize,
+    pub retained_local_values: usize,
+    pub retained_full_inclusive_values: usize,
+    pub retained_declared_inclusive_values: usize,
+}
+
+impl SyntaxAggregationInstrumentation {
+    /// Sized retained value records; caller-owned heap reachable through `T` remains opaque.
+    pub fn retained_value_bytes_lower_bound<T>(self) -> usize {
+        (self.retained_local_values
+            + self.retained_full_inclusive_values
+            + self.retained_declared_inclusive_values)
+            * std::mem::size_of::<T>()
+    }
+}
+
 impl<'aggregate, T> SyntaxNodeAggregate<'aggregate, T> {
     pub fn id(&self) -> NodeId {
         self.id
@@ -225,12 +249,13 @@ pub struct SyntaxAggregates<'analysis, T> {
     file_start: u32,
     file_local: T,
     file_full_inclusive: T,
-    file_declared_inclusive: T,
+    file_declared_inclusive: Option<T>,
     node_local: Box<[T]>,
     node_full_inclusive: Box<[T]>,
-    node_declared_inclusive: Box<[T]>,
-    resets_parent: Box<[bool]>,
+    node_declared_inclusive: Option<Box<[T]>>,
+    resets_parent: Option<Box<[bool]>>,
     reset_nodes: Box<[NodeId]>,
+    instrumentation: SyntaxAggregationInstrumentation,
 }
 
 pub(crate) struct SyntaxAggregateParts<'analysis, T> {
@@ -240,19 +265,30 @@ pub(crate) struct SyntaxAggregateParts<'analysis, T> {
     pub(crate) file_start: u32,
     pub(crate) file_local: T,
     pub(crate) file_full_inclusive: T,
-    pub(crate) file_declared_inclusive: T,
+    pub(crate) file_declared_inclusive: Option<T>,
     pub(crate) node_local: Box<[T]>,
     pub(crate) node_full_inclusive: Box<[T]>,
-    pub(crate) node_declared_inclusive: Box<[T]>,
-    pub(crate) resets_parent: Box<[bool]>,
+    pub(crate) node_declared_inclusive: Option<Box<[T]>>,
+    pub(crate) resets_parent: Option<Box<[bool]>>,
     pub(crate) reset_nodes: Box<[NodeId]>,
+    pub(crate) instrumentation: SyntaxAggregationInstrumentation,
 }
 
 impl<'analysis, T> SyntaxAggregates<'analysis, T> {
     pub(crate) fn from_parts(parts: SyntaxAggregateParts<'analysis, T>) -> Self {
         debug_assert_eq!(parts.node_local.len(), parts.node_full_inclusive.len());
-        debug_assert_eq!(parts.node_local.len(), parts.node_declared_inclusive.len());
-        debug_assert_eq!(parts.node_local.len(), parts.resets_parent.len());
+        debug_assert!(
+            parts
+                .node_declared_inclusive
+                .as_ref()
+                .is_none_or(|values| parts.node_local.len() == values.len())
+        );
+        debug_assert!(
+            parts
+                .resets_parent
+                .as_ref()
+                .is_none_or(|values| parts.node_local.len() == values.len())
+        );
         Self {
             analysis_id: parts.analysis_id,
             file_key: parts.file_key,
@@ -266,6 +302,7 @@ impl<'analysis, T> SyntaxAggregates<'analysis, T> {
             node_declared_inclusive: parts.node_declared_inclusive,
             resets_parent: parts.resets_parent,
             reset_nodes: parts.reset_nodes,
+            instrumentation: parts.instrumentation,
         }
     }
 
@@ -294,7 +331,9 @@ impl<'analysis, T> SyntaxAggregates<'analysis, T> {
     /// File value under the explicitly supplied reset policy; reset subtrees remain separately
     /// available from their node `declared_inclusive()` values.
     pub fn file_declared_inclusive(&self) -> &T {
-        &self.file_declared_inclusive
+        self.file_declared_inclusive
+            .as_ref()
+            .unwrap_or(&self.file_full_inclusive)
     }
 
     /// Normalized, deduplicated reset nodes in analysis-global node order.
@@ -317,6 +356,10 @@ impl<'analysis, T> SyntaxAggregates<'analysis, T> {
 
     pub fn is_empty(&self) -> bool {
         self.node_local.is_empty()
+    }
+
+    pub fn instrumentation(&self) -> SyntaxAggregationInstrumentation {
+        self.instrumentation
     }
 
     pub fn node(
@@ -352,8 +395,14 @@ impl<'analysis, T> SyntaxAggregates<'analysis, T> {
             },
             local: &self.node_local[offset],
             full_inclusive: &self.node_full_inclusive[offset],
-            declared_inclusive: &self.node_declared_inclusive[offset],
-            resets_parent: self.resets_parent[offset],
+            declared_inclusive: self
+                .node_declared_inclusive
+                .as_ref()
+                .map_or(&self.node_full_inclusive[offset], |values| &values[offset]),
+            resets_parent: self
+                .resets_parent
+                .as_ref()
+                .is_some_and(|resets| resets[offset]),
         }
     }
 }

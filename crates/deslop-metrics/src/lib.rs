@@ -1692,7 +1692,7 @@ fn region_name_owned(node: NodeId, source: &MetricFile<'_>) -> String {
     if let Some(name) = children.iter().find_map(|child| {
         let child = source
             .analysis
-            .node(*child)
+            .node(child)
             .expect("child is analysis-owned");
         (child.field() == Some("name")).then_some(child)
     }) {

@@ -432,16 +432,11 @@ impl<'analysis> AnalyzerFile<'analysis> {
     }
 
     pub fn child_by_field(&self, node: NodeId, field: &str) -> Option<NodeId> {
-        self.analysis
-            .node(node)
-            .ok()?
-            .children()
-            .into_iter()
-            .find(|child| {
-                self.analysis
-                    .node(*child)
-                    .is_ok_and(|view| view.field() == Some(field))
-            })
+        self.analysis.node(node).ok()?.children().find(|child| {
+            self.analysis
+                .node(*child)
+                .is_ok_and(|view| view.field() == Some(field))
+        })
     }
 }
 

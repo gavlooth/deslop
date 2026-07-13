@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -11,6 +11,7 @@ use tree_sitter::{
 
 use crate::arena::{ArenaNodeIndex, SyntaxArena, tree_nodes_preorder};
 use crate::identity::{NodeId, NodeLookupError};
+use crate::instrumentation::{SyntaxQueryInstrumentation, SyntaxQueryResultsInstrumentation};
 use crate::snapshot::{GrammarSelection, ProjectAnalysis};
 
 const SYNTAX_QUERY_DOMAIN: &str = "deslop syntax query v1";
@@ -32,7 +33,7 @@ pub struct SyntaxQuery {
     id: SyntaxQueryId,
     grammar: GrammarSelection,
     source: Arc<str>,
-    capture_names: Box<[Box<str>]>,
+    capture_names: Box<[Arc<str>]>,
     patterns: Box<[SyntaxQueryPattern]>,
     raw: Arc<Query>,
 }
@@ -70,6 +71,85 @@ impl SyntaxQuery {
     pub fn patterns(&self) -> &[SyntaxQueryPattern] {
         &self.patterns
     }
+
+    /// Measure retained query source and owned metadata, excluding the opaque compiled query.
+    pub fn instrumentation(&self) -> SyntaxQueryInstrumentation {
+        let mut measured = SyntaxQueryInstrumentation {
+            source_bytes: self.source.len(),
+            capture_names: self.capture_names.len(),
+            capture_name_bytes: self.capture_names.iter().map(|name| name.len()).sum(),
+            patterns: self.patterns.len(),
+            ..SyntaxQueryInstrumentation::default()
+        };
+        let mut allocated_bytes = self.id.0.len()
+            + self.source.len()
+            + self.capture_names.len() * std::mem::size_of::<Arc<str>>()
+            + measured.capture_name_bytes
+            + self.patterns.len() * std::mem::size_of::<SyntaxQueryPattern>();
+        for pattern in &self.patterns {
+            measured.capture_quantifiers += pattern.capture_quantifiers.len();
+            measured.property_settings += pattern.property_settings.len();
+            measured.property_predicates += pattern.property_predicates.len();
+            measured.general_predicates += pattern.general_predicates.len();
+            allocated_bytes +=
+                pattern.capture_quantifiers.len() * std::mem::size_of::<SyntaxCaptureQuantifier>();
+            allocated_bytes +=
+                pattern.property_settings.len() * std::mem::size_of::<SyntaxQueryProperty>();
+            allocated_bytes += pattern.property_predicates.len()
+                * std::mem::size_of::<SyntaxQueryPropertyPredicate>();
+            allocated_bytes +=
+                pattern.general_predicates.len() * std::mem::size_of::<SyntaxQueryPredicate>();
+            for property in &pattern.property_settings {
+                measured.metadata_string_bytes += property_string_bytes(property);
+            }
+            for predicate in &pattern.property_predicates {
+                measured.metadata_string_bytes += property_string_bytes(&predicate.property);
+            }
+            for predicate in &pattern.general_predicates {
+                measured.metadata_string_bytes += predicate.operator.len();
+                measured.predicate_arguments += predicate.arguments.len();
+                allocated_bytes +=
+                    predicate.arguments.len() * std::mem::size_of::<SyntaxQueryPredicateArgument>();
+                for argument in &predicate.arguments {
+                    if let SyntaxQueryPredicateArgument::String(value) = argument {
+                        measured.metadata_string_bytes += value.len();
+                    }
+                }
+            }
+        }
+        measured.known_bytes_lower_bound =
+            std::mem::size_of::<SyntaxQuery>() + allocated_bytes + measured.metadata_string_bytes;
+        measured
+    }
+
+    /// Measure owned capture records, counting each shared capture-name payload once.
+    pub fn results_instrumentation<'capture>(
+        &self,
+        captures: impl IntoIterator<Item = &'capture OwnedSyntaxCapture>,
+    ) -> SyntaxQueryResultsInstrumentation {
+        let mut measured = SyntaxQueryResultsInstrumentation::default();
+        let mut names = BTreeSet::new();
+        for capture in captures {
+            measured.captures += 1;
+            let allocation = (
+                capture.capture_name.as_ptr() as usize,
+                capture.capture_name.len(),
+            );
+            if names.insert(allocation) {
+                measured.unique_capture_name_allocations += 1;
+                measured.unique_capture_name_bytes += capture.capture_name.len();
+            }
+        }
+        measured.capture_records_bytes =
+            measured.captures * std::mem::size_of::<OwnedSyntaxCapture>();
+        measured.known_bytes_lower_bound =
+            measured.capture_records_bytes + measured.unique_capture_name_bytes;
+        measured
+    }
+}
+
+fn property_string_bytes(property: &SyntaxQueryProperty) -> usize {
+    property.key.len() + property.value.as_ref().map_or(0, |value| value.len())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -209,7 +289,7 @@ pub struct OwnedSyntaxCapture {
     node: NodeId,
     pattern_index: usize,
     capture_index: u32,
-    capture_name: Box<str>,
+    capture_name: Arc<str>,
 }
 
 impl OwnedSyntaxCapture {
@@ -412,7 +492,7 @@ impl ProjectAnalysis {
         let capture_names = raw
             .capture_names()
             .iter()
-            .map(|name| Box::<str>::from(*name))
+            .map(|name| Arc::<str>::from(*name))
             .collect::<Vec<_>>()
             .into_boxed_slice();
         let patterns = (0..raw.pattern_count())
@@ -459,7 +539,7 @@ impl ProjectAnalysis {
                     .map(|capture| {
                         own_capture(
                             query,
-                            &context.node_map,
+                            context.node_index,
                             context.owner,
                             context.file_start,
                             query_match.pattern_index,
@@ -513,7 +593,7 @@ impl ProjectAnalysis {
                 let capture = query_match.captures[*capture_offset];
                 owned.push(own_capture(
                     query,
-                    &context.node_map,
+                    context.node_index,
                     context.owner,
                     context.file_start,
                     query_match.pattern_index,
@@ -535,7 +615,7 @@ struct QueryContext<'tree, 'source, 'path> {
     root: Node<'tree>,
     source: &'source [u8],
     path: &'path Path,
-    node_map: HashMap<usize, ArenaNodeIndex>,
+    node_index: &'tree [(usize, u32)],
     owner: u64,
     file_start: u32,
 }
@@ -554,21 +634,24 @@ fn query_context<'analysis>(
             target: Box::new(view.grammar().clone()),
         });
     }
-    let (file, arena, local) = view.query_parts();
+    let (file, _arena, local) = view.query_parts();
     let path = file.key().path.as_path();
     let tree = file
         .query_tree()
         .ok_or_else(|| SyntaxQueryError::SyntaxUnavailable {
             path: path.to_path_buf(),
         })?;
-    let (tree_nodes, node_map) = map_tree_nodes(tree, arena, path)?;
-    let root =
-        *tree_nodes
-            .get(local.as_usize())
-            .ok_or_else(|| SyntaxQueryError::TreeArenaMismatch {
+    let node_index =
+        file.query_node_index()
+            .ok_or_else(|| SyntaxQueryError::SyntaxUnavailable {
                 path: path.to_path_buf(),
-                detail: format!("query root local index {} is absent", local.as_usize()),
             })?;
+    let root = tree_node_at_preorder(tree, local.as_usize()).ok_or_else(|| {
+        SyntaxQueryError::TreeArenaMismatch {
+            path: path.to_path_buf(),
+            detail: format!("query root local index {} is absent", local.as_usize()),
+        }
+    })?;
     let local_u32 = u32::try_from(local.as_usize()).expect("arena node indices are u32");
     let file_start =
         within
@@ -582,29 +665,24 @@ fn query_context<'analysis>(
         root,
         source: file.source(),
         path,
-        node_map,
+        node_index,
         owner: within.owner,
         file_start,
     })
 }
 
-fn map_tree_nodes<'tree>(
-    tree: &'tree Tree,
+pub(crate) fn build_query_node_index(
+    tree: &Tree,
     arena: &SyntaxArena,
-    path: &Path,
-) -> Result<(Vec<Node<'tree>>, HashMap<usize, ArenaNodeIndex>), SyntaxQueryError> {
+) -> anyhow::Result<Box<[(usize, u32)]>> {
     let nodes = tree_nodes_preorder(tree);
-    if nodes.len() != arena.nodes().len() {
-        return Err(SyntaxQueryError::TreeArenaMismatch {
-            path: path.to_path_buf(),
-            detail: format!(
-                "tree has {} visible nodes but arena has {}",
-                nodes.len(),
-                arena.nodes().len()
-            ),
-        });
-    }
-    let mut node_map = HashMap::with_capacity(nodes.len());
+    anyhow::ensure!(
+        nodes.len() == arena.nodes().len(),
+        "Tree-sitter preorder has {} nodes but the owned arena has {}",
+        nodes.len(),
+        arena.nodes().len()
+    );
+    let mut node_index = Vec::with_capacity(nodes.len());
     for (offset, (node, raw)) in nodes.iter().zip(arena.nodes()).enumerate() {
         let span = raw.span();
         if node.kind() != raw.raw_kind()
@@ -619,40 +697,62 @@ fn map_tree_nodes<'tree>(
             || node.is_missing() != raw.is_missing()
             || node.has_error() != raw.has_error()
         {
-            return Err(SyntaxQueryError::TreeArenaMismatch {
-                path: path.to_path_buf(),
-                detail: format!("preorder node {offset} does not match its arena slot"),
-            });
+            anyhow::bail!("preorder node {offset} does not match its freshly built arena slot");
         }
-        let local = ArenaNodeIndex::from_usize(offset).expect("validated arena indices fit u32");
-        if node_map.insert(node.id(), local).is_some() {
-            return Err(SyntaxQueryError::TreeArenaMismatch {
-                path: path.to_path_buf(),
-                detail: format!("Tree-sitter node id at preorder slot {offset} is not unique"),
-            });
-        }
+        node_index.push((
+            node.id(),
+            u32::try_from(offset)
+                .map_err(|_| anyhow::anyhow!("query node index exceeds {} nodes", u32::MAX))?,
+        ));
     }
-    Ok((nodes, node_map))
+    node_index.sort_unstable();
+    anyhow::ensure!(
+        node_index.windows(2).all(|pair| pair[0].0 != pair[1].0),
+        "Tree-sitter query node identities are not unique"
+    );
+    Ok(node_index.into_boxed_slice())
+}
+
+fn tree_node_at_preorder(tree: &Tree, target: usize) -> Option<Node<'_>> {
+    let mut cursor = tree.walk();
+    let mut index = 0;
+    loop {
+        if index == target {
+            return Some(cursor.node());
+        }
+        if cursor.goto_first_child() {
+            index += 1;
+            continue;
+        }
+        while !cursor.goto_next_sibling() {
+            if !cursor.goto_parent() {
+                return None;
+            }
+        }
+        index += 1;
+    }
 }
 
 fn own_capture(
     query: &SyntaxQuery,
-    node_map: &HashMap<usize, ArenaNodeIndex>,
+    node_index: &[(usize, u32)],
     owner: u64,
     file_start: u32,
     pattern_index: usize,
     capture: tree_sitter::QueryCapture<'_>,
     path: &Path,
 ) -> Result<OwnedSyntaxCapture, SyntaxQueryError> {
-    let local = node_map.get(&capture.node.id()).copied().ok_or_else(|| {
-        SyntaxQueryError::TreeArenaMismatch {
+    let local = node_index
+        .binary_search_by_key(&capture.node.id(), |(id, _)| *id)
+        .ok()
+        .map(|offset| ArenaNodeIndex::from_u32(node_index[offset].1))
+        .ok_or_else(|| SyntaxQueryError::TreeArenaMismatch {
             path: path.to_path_buf(),
             detail: format!(
                 "captured Tree-sitter node {} has no owned arena slot",
                 capture.node.id()
             ),
-        }
-    })?;
+        })?;
     let index = file_start
         .checked_add(u32::try_from(local.as_usize()).expect("arena node indices are u32"))
         .ok_or_else(|| SyntaxQueryError::TreeArenaMismatch {
@@ -786,6 +886,8 @@ fn hash_query_part(hasher: &mut blake3::Hasher, bytes: &[u8]) {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::snapshot::{ProjectSnapshotBuilder, RepositoryId};
 
@@ -1222,6 +1324,27 @@ mod tests {
 
         let captures = analysis.syntax_query_captures(&query, root).unwrap();
         assert_eq!(captures.len(), 6);
+        assert!(captures.iter().all(|capture| Arc::ptr_eq(
+            &capture.capture_name,
+            &query.capture_names[capture.capture_index as usize]
+        )));
+        let query_measured = query.instrumentation();
+        assert_eq!(query_measured.source_bytes, query_source.len());
+        assert_eq!(query_measured.capture_names, 3);
+        assert_eq!(query_measured.capture_name_bytes, 16);
+        assert_eq!(query_measured.patterns, 1);
+        assert_eq!(query_measured.capture_quantifiers, 3);
+        assert_eq!(query_measured.property_settings, 0);
+        assert_eq!(query_measured.property_predicates, 0);
+        assert_eq!(query_measured.general_predicates, 0);
+        let results_measured = query.results_instrumentation(&captures);
+        assert_eq!(results_measured.captures, 6);
+        assert_eq!(results_measured.unique_capture_name_allocations, 3);
+        assert_eq!(results_measured.unique_capture_name_bytes, 16);
+        assert_eq!(
+            results_measured.known_bytes_lower_bound,
+            results_measured.capture_records_bytes + 16
+        );
         let starts = captures
             .iter()
             .map(|capture| analysis.node(capture.node()).unwrap().span().start_byte())

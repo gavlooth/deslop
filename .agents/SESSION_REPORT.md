@@ -7055,3 +7055,64 @@ Never restore one snapshot per dirty document or publish only one buffer after a
 changes.
 
 **Signature:** Codex (GPT-5), M1.10 integration owner, workspace correction, 2026-07-13.
+
+---
+
+## M1.11 terminal checkpoint — ownership instrumentation and measured compaction
+
+**Date/time:** 2026-07-13T23:55:49+02:00
+
+**Objective/target:** instrument parse ownership, deterministic traversal, latency, visible retained
+memory, query/aggregation costs, and incremental update work on one convergent cold/repeated/
+incremental matrix; compact only measured costs and declare the owned traversal surface migration-ready.
+
+**Changes:** added identity-neutral `ProjectAnalysis` parse/structure/memory reports with a pinned node
+order digest and deterministic lower-bound byte accounting. Added query source/metadata/result,
+aggregation callback/value, allocation-free point-context, and successor edit/rebuild/transition
+reports. `NodeKey` now shares one `Arc<FileRevisionKey>` per file and interns exact field paths while
+preserving its wire schema. Compact digest/index entries replace linear key lookup; file range and node
+range lookup are binary/partition searches. `NodeView::children` and exact zero-width point results are
+allocation-free exact-size iterators. Query execution reuses a validated retained Tree-sitter-id index
+instead of rebuilding a preorder vector and hash map, and capture results share query-owned names.
+All-descendant aggregation aliases its full projection instead of retaining a duplicate declared
+projection. Query-index construction failures propagate as typed build errors rather than panics.
+
+**Commands/checks run:** focused parse/query/incremental tests and strict parse clippy throughout;
+the ignored M1.11 probe once before compaction, after each representation change, and five times at
+the terminal checkpoint; `cargo test --workspace --all-features`;
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`;
+`cargo build --workspace --all-features --all-targets`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`;
+`cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. The ordinary deterministic oracle locks 3 files, 188 source bytes, 94 nodes, 91
+child edges, exact parse ownership, and digest
+`pao1_437c1bdc53a43224fde0a0c23fcebbca531996848a87585944f60fe5759c55ed`.
+Node-key storage falls from 75,873 to 36,195 bytes: shared file payload is 552 bytes and interned field
+paths are 7,986 bytes. The final visible retained lower bound is 61,900 bytes versus 98,234 before
+compaction, 36,334 bytes (37.0%) lower while including new 1,880-byte key and 1,504-byte query indices.
+The query probe retains 415 visible metadata bytes and 202 bytes for four capture results. The exact
+one-file update visits 94 predecessor/94 successor nodes, rebuilds 33 edited-file nodes, retains 61,
+reanchors 16, expires 17, stores 2,256 transition bytes, and bounds sequential validation at 132
+bytes. Five terminal timing samples span cold 3,848–7,065 us, repeated 1,944–3,789 us, and incremental
+3,070–6,146 us; these noisy values are reported but never asserted. All workspace gates pass.
+
+**Invalidated assumptions / negative memory:** right-sizing the point-result vector was not meaningful
+compaction; borrowing the retained containment slice removes the allocation. Rebuilding a Tree-sitter
+preorder vector/hash map for every query was unnecessary, but retaining borrowed nodes would violate
+the owned boundary; a process-local numeric-id index plus cursor traversal preserves it. Source length
+alone is not a memory measure, wall time is not correctness evidence, instrumentation must not enter
+identity, and 128-bit key digests require exact-key collision checks before lookup succeeds.
+
+**Current recommendation/next actions:** run M1.DoD over the gold scan/propose matrix and lock the
+parse-ledger, borrowed-node, and exclusive-region non-overlap contracts. Begin M2 only after that
+terminal M1 proof passes.
+
+**Blockers/dependencies/restart:** none. No dependency, service restart, cache clear, or migration is
+required. Rebuild Rust consumers; workspace build already verifies the iterator API migration.
+
+**Negative-memory status:** recorded locally; Hindsight consolidation follows. Never restore
+per-execution query maps, allocating child/point views, per-node revision payloads, redundant
+all-descendant projections, timing assertions, or instrumentation-derived identity.
+
+**Signature:** Codex (GPT-5), M1.11 integration owner, terminal checkpoint, 2026-07-13.

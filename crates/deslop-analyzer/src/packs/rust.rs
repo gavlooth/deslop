@@ -118,7 +118,7 @@ fn closure_forwards_single_arg_analysis(file: &AnalyzerFile<'_>, closure: NodeId
 
 fn closure_single_parameter_analysis(file: &AnalyzerFile<'_>, closure: NodeId) -> Option<String> {
     let closure = file.analysis.node(closure).ok()?;
-    let parameters = closure.children().into_iter().find(|child| {
+    let parameters = closure.children().find(|child| {
         file.analysis
             .node(*child)
             .is_ok_and(|view| view.raw_kind() == "closure_parameters")
@@ -126,7 +126,6 @@ fn closure_single_parameter_analysis(file: &AnalyzerFile<'_>, closure: NodeId) -
     let parameters = file.analysis.node(parameters).ok()?;
     let identifiers = parameters
         .children()
-        .into_iter()
         .filter(|child| {
             file.analysis
                 .node(*child)
@@ -143,16 +142,11 @@ fn closure_single_parameter_analysis(file: &AnalyzerFile<'_>, closure: NodeId) -
 }
 
 fn closure_body_analysis(file: &AnalyzerFile<'_>, closure: NodeId) -> Option<NodeId> {
-    file.analysis
-        .node(closure)
-        .ok()?
-        .children()
-        .into_iter()
-        .rfind(|child| {
-            file.analysis
-                .node(*child)
-                .is_ok_and(|view| view.is_named() && view.raw_kind() != "closure_parameters")
-        })
+    file.analysis.node(closure).ok()?.children().rfind(|child| {
+        file.analysis
+            .node(*child)
+            .is_ok_and(|view| view.is_named() && view.raw_kind() != "closure_parameters")
+    })
 }
 
 fn call_has_identifier_function_analysis(file: &AnalyzerFile<'_>, call: NodeId) -> bool {
@@ -161,7 +155,6 @@ fn call_has_identifier_function_analysis(file: &AnalyzerFile<'_>, call: NodeId) 
         .ok()
         .and_then(|view| {
             view.children()
-                .into_iter()
                 .find(|child| file.analysis.node(*child).is_ok_and(|view| view.is_named()))
         })
         .is_some_and(|child| {
@@ -173,7 +166,7 @@ fn call_has_identifier_function_analysis(file: &AnalyzerFile<'_>, call: NodeId) 
 
 fn call_single_argument_text_analysis(file: &AnalyzerFile<'_>, call: NodeId) -> Option<String> {
     let call = file.analysis.node(call).ok()?;
-    let arguments = call.children().into_iter().find(|child| {
+    let arguments = call.children().find(|child| {
         file.analysis
             .node(*child)
             .is_ok_and(|view| view.raw_kind() == "arguments")
@@ -181,7 +174,6 @@ fn call_single_argument_text_analysis(file: &AnalyzerFile<'_>, call: NodeId) -> 
     let arguments = file.analysis.node(arguments).ok()?;
     let named = arguments
         .children()
-        .into_iter()
         .filter(|child| file.analysis.node(*child).is_ok_and(|view| view.is_named()))
         .collect::<Vec<_>>();
     (named.len() == 1).then(|| {

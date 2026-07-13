@@ -162,6 +162,13 @@ impl ContainmentIndex {
         &self.minimal_zero_width_nodes[start..end]
     }
 
+    pub(crate) fn instrumentation(&self) -> (usize, usize) {
+        let bytes = self.subtree_ends.len() * std::mem::size_of::<u32>()
+            + self.depths.len() * std::mem::size_of::<u32>()
+            + self.minimal_zero_width_nodes.len() * std::mem::size_of::<(usize, u32)>();
+        (bytes, self.minimal_zero_width_nodes.len())
+    }
+
     fn lowest_common_ancestor(
         &self,
         nodes: &[SyntaxNode],

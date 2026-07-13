@@ -17,6 +17,7 @@ mod arena;
 mod containment;
 mod identity;
 mod incremental;
+mod instrumentation;
 mod planner;
 mod query;
 mod snapshot;
@@ -24,7 +25,8 @@ mod snapshot;
 pub use adapter::{SyntaxAdapterFacts, SyntaxAdapterFactsError};
 pub use aggregation::{
     InclusiveSyntaxPolicy, SyntaxAggregateLookupError, SyntaxAggregateOwner,
-    SyntaxAggregateProjection, SyntaxAggregates, SyntaxAggregationError, SyntaxNodeAggregate,
+    SyntaxAggregateProjection, SyntaxAggregates, SyntaxAggregationError,
+    SyntaxAggregationInstrumentation, SyntaxNodeAggregate,
 };
 pub use arena::{SourcePoint, SyntaxSpan};
 pub use identity::{
@@ -35,6 +37,12 @@ pub use incremental::{
     FileAnalysisChange, FileAnalysisChangeKind, FileRebuildReason, FileSourceEdits,
     NodeExpiryReason, NodeReanchor, NodeReanchorEvidence, ProjectAnalysisUpdate,
     ProjectAnalysisUpdateError, SourceEdit, SourceEditEvidence, SourceReplacement,
+};
+pub use instrumentation::{
+    AnalysisMemoryInstrumentation, AnalysisStructureInstrumentation, ParseOwnershipInstrumentation,
+    ProjectAnalysisInstrumentation, ProjectAnalysisUpdateInstrumentation,
+    SyntaxPointContextInstrumentation, SyntaxQueryInstrumentation,
+    SyntaxQueryResultsInstrumentation,
 };
 pub use planner::{
     ProjectSnapshotPlanner, ProjectSnapshotRequest, RepositorySpec, RootSpec, SnapshotBuild,
@@ -48,13 +56,13 @@ pub use query::{
 };
 
 pub use snapshot::{
-    DiscoveryPolicy, ExclusiveSyntaxKind, ExclusiveSyntaxLookupError, ExclusiveSyntaxOwner,
-    ExclusiveSyntaxRegion, ExclusiveSyntaxRegions, FileParseCount, FileRevisionKey,
-    GrammarSelection, LanguageAdapterIdentity, NodeExclusiveSyntaxRegions, NodeIds,
-    NodeRangeLookupError, NodeView, ParseLedger, ParsedFile, ProjectAnalysis, ProjectAnalysisId,
-    ProjectSnapshot, ProjectSnapshotBuilder, ProjectSnapshotId, ProjectionId, RepositoryId,
-    ScopeEntry, ScopeEntryKind, ScopeSpec, SnapshotEntry, SnapshotEntryKind, SourceRevision,
-    SourceStore, StoredSource, SyntaxOwner, SyntaxPointContext,
+    DiscoveryPolicy, ExactZeroWidthNodes, ExclusiveSyntaxKind, ExclusiveSyntaxLookupError,
+    ExclusiveSyntaxOwner, ExclusiveSyntaxRegion, ExclusiveSyntaxRegions, FileParseCount,
+    FileRevisionKey, GrammarSelection, LanguageAdapterIdentity, NodeChildren,
+    NodeExclusiveSyntaxRegions, NodeIds, NodeRangeLookupError, NodeView, ParseLedger, ParsedFile,
+    ProjectAnalysis, ProjectAnalysisId, ProjectSnapshot, ProjectSnapshotBuilder, ProjectSnapshotId,
+    ProjectionId, RepositoryId, ScopeEntry, ScopeEntryKind, ScopeSpec, SnapshotEntry,
+    SnapshotEntryKind, SourceRevision, SourceStore, StoredSource, SyntaxOwner, SyntaxPointContext,
 };
 
 thread_local! {

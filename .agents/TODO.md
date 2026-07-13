@@ -215,7 +215,7 @@ reports, benchmark records, and work orders.
   repeated consumers preserve cold `1/1/1/0` ledgers, and LSP revisions record zero legacy parser
   calls. All-feature workspace tests, strict all-target clippy, build, warnings-denied rustdoc,
   formatting, and whitespace gates pass.
-- [ ] M1.11 Instrument parse counts, ownership invariants, deterministic node order, latency, and memory.
+- [x] M1.11 Instrument parse counts, ownership invariants, deterministic node order, latency, and memory.
   Measure and compact M1.4's repeated per-node `FileRevisionKey`/field-path storage, allocating
   `NodeView::children`, linear range/key lookups, M1.5 index storage, point-context allocation, and
   M1.6's retained local/full/declared aggregate values and caller-defined clone/merge costs, plus
@@ -223,6 +223,19 @@ reports, benchmark records, and work orders.
   map, and M1.8's O(K*B) sequential edit validation, rebuilt edited-file arena/keys, O(N) transition
   map, and O(total project nodes) successor assembly, before declaring the traversal API
   migration-ready.
+  Evidence: identity-neutral analysis/query/aggregation/point/update reports lock parse ownership,
+  node order, visible retained bytes, callback/value counts, exact/derived edit work, rebuilt nodes,
+  and transitions. On the fixed Rust/Python/TSX matrix, exact structure remains 3 files, 188 bytes,
+  94 nodes, 91 edges, and digest
+  `pao1_437c1bdc53a43224fde0a0c23fcebbca531996848a87585944f60fe5759c55ed`.
+  Shared revision/field-path payloads reduce node-key storage from 75,873 to 36,195 bytes; the final
+  visible lower bound is 61,900 versus the 98,234-byte baseline (36,334 bytes / 37.0% lower) after
+  adding compact key/query indices. Children and point contexts are allocation-free iterators,
+  file/range/key lookup is logarithmic, capture names share query-owned `Arc<str>` payloads, query
+  execution reuses a 1,504-byte retained node index, and all-descendant aggregation avoids 38
+  redundant declared values. Five ignored probe runs report timing without gating correctness;
+  all-feature workspace tests, build, warnings-denied rustdoc, strict clippy, format, and whitespace
+  pass.
 - [ ] M1.DoD Prove one parse per file revision in all scan/propose paths and no borrowed-node lifetime or
   overlapping exclusive-metric errors on the gold fixture matrix.
 

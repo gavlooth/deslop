@@ -807,7 +807,7 @@ fn enclosing_call_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> Option<(Str
 /// Callee name of a call node: the text of its first identifier-ish child (covers
 /// `foo(...)`, `obj.foo(...)`, `Module.foo(...)` — the last path segment wins).
 fn callee_name_analysis(file: &AnalyzerFile<'_>, call: NodeId) -> Option<String> {
-    let target = node_view(file, call).children().first().copied()?;
+    let target = node_view(file, call).children().first()?;
     let target_view = node_view(file, target);
     let raw = target_view.text();
     let head = raw.lines().next().unwrap_or(raw);
@@ -836,7 +836,7 @@ fn binding_target_analysis(file: &AnalyzerFile<'_>, call: NodeId) -> Option<Stri
             || kind.contains("binding")
             || kind.contains("short_var")
         {
-            let lhs = parent_view.children().first().copied()?;
+            let lhs = parent_view.children().first()?;
             let lhs_view = node_view(file, lhs);
             let name = lhs_view.text().trim();
             let simple =
@@ -873,7 +873,7 @@ fn classify_identifier_use_analysis(
         if (kind.contains("assignment")
             || kind.contains("variable_declarat")
             || kind.contains("let"))
-            && parent_view.children().first().copied() == Some(node)
+            && parent_view.children().first() == Some(node)
         {
             return UseClass::Parse; // definitions carry no consumption evidence
         }
@@ -952,11 +952,11 @@ fn literal_reassignment_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> Optio
     if !(kind.contains("assignment") || kind.contains("variable_declarat")) {
         return None;
     }
-    let children = parent_view.children();
-    if children.first().copied() != Some(node) {
+    let mut children = parent_view.children();
+    if children.first() != Some(node) {
         return None;
     }
-    let rhs = children.last().copied()?;
+    let rhs = children.next_back()?;
     if rhs == node {
         return None;
     }
@@ -995,7 +995,6 @@ fn rhs_is_literal_only_analysis(file: &AnalyzerFile<'_>, node: NodeId, self_iden
         return true;
     }
     view.children()
-        .into_iter()
         .all(|child| rhs_is_literal_only_analysis(file, child, self_ident))
 }
 
