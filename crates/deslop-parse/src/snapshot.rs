@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::{Context, Result, bail};
 use deslop_core::{AnalysisDiagnostic, AnalysisProvenance, Lang};
-use deslop_lang::{LangPack, LanguageAdapterCapabilityManifest, Registry};
+use deslop_lang::{LangPack, LanguageAdapterCapabilityManifest, LanguageQueryPack, Registry};
 use ignore::WalkBuilder;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -222,6 +222,7 @@ pub struct LanguageAdapterIdentity {
     name: String,
     schema: String,
     capabilities: LanguageAdapterCapabilityManifest,
+    queries: LanguageQueryPack,
 }
 
 impl LanguageAdapterIdentity {
@@ -237,24 +238,58 @@ impl LanguageAdapterIdentity {
         &self.capabilities
     }
 
+    pub fn queries(&self) -> &LanguageQueryPack {
+        &self.queries
+    }
+
     fn identity_bytes(&self) -> Vec<u8> {
-        let mut bytes = format!(
-            "{}\0{}\0{}\0{}\0",
-            self.name,
-            self.schema,
-            self.capabilities.schema(),
-            self.capabilities.adapter_schema()
-        )
-        .into_bytes();
+        fn push_part(bytes: &mut Vec<u8>, part: &[u8]) {
+            bytes.extend_from_slice(&(part.len() as u64).to_le_bytes());
+            bytes.extend_from_slice(part);
+        }
+
+        let mut bytes = Vec::new();
+        for part in [
+            self.name.as_bytes(),
+            self.schema.as_bytes(),
+            self.capabilities.schema().as_bytes(),
+            self.capabilities.adapter_schema().as_bytes(),
+        ] {
+            push_part(&mut bytes, part);
+        }
         for declaration in self.capabilities.capabilities() {
-            bytes.extend_from_slice(declaration.capability().as_str().as_bytes());
-            bytes.push(0);
-            bytes.extend_from_slice(declaration.support().as_str().as_bytes());
-            bytes.push(0);
-            if let Some(authority) = declaration.authority() {
-                bytes.extend_from_slice(authority.as_str().as_bytes());
+            push_part(&mut bytes, declaration.capability().as_str().as_bytes());
+            push_part(&mut bytes, declaration.support().as_str().as_bytes());
+            push_part(
+                &mut bytes,
+                declaration
+                    .authority()
+                    .map_or(b"", |authority| authority.as_str().as_bytes()),
+            );
+        }
+        push_part(&mut bytes, self.queries.schema().as_bytes());
+        push_part(&mut bytes, self.queries.adapter_schema().as_bytes());
+        for declaration in self.queries.queries() {
+            push_part(&mut bytes, declaration.family().as_str().as_bytes());
+            push_part(&mut bytes, declaration.support().as_str().as_bytes());
+            push_part(
+                &mut bytes,
+                declaration
+                    .authority()
+                    .map_or(b"", |authority| authority.as_str().as_bytes()),
+            );
+            push_part(&mut bytes, declaration.source().map_or(b"", str::as_bytes));
+            push_part(
+                &mut bytes,
+                &(declaration.captures().len() as u64).to_le_bytes(),
+            );
+            for capture in declaration.captures() {
+                push_part(&mut bytes, capture.name().as_bytes());
+                push_part(&mut bytes, &(capture.roles().len() as u64).to_le_bytes());
+                for role in capture.roles().iter() {
+                    push_part(&mut bytes, role.as_str().as_bytes());
+                }
             }
-            bytes.push(0);
         }
         bytes
     }
@@ -310,6 +345,21 @@ fn resolve_grammar(
             adapter.adapter_schema()
         );
     }
+    let queries = adapter.query_pack();
+    queries.validate().map_err(|error| {
+        anyhow::anyhow!(
+            "invalid query pack for language adapter {}: {error}",
+            adapter.name()
+        )
+    })?;
+    if queries.adapter_schema() != adapter.adapter_schema() {
+        bail!(
+            "language adapter {} query pack targets {} but adapter schema is {}",
+            adapter.name(),
+            queries.adapter_schema(),
+            adapter.adapter_schema()
+        );
+    }
     Ok((
         GrammarSelection::from_descriptor(descriptor),
         language,
@@ -319,6 +369,7 @@ fn resolve_grammar(
                 name: adapter.name().to_string(),
                 schema: adapter.adapter_schema().to_string(),
                 capabilities,
+                queries,
             },
         },
     ))

@@ -7287,3 +7287,59 @@ grammar evidence, authorize an empty set under unavailable capability, mutate ra
 or treat syntactic role/query captures as semantic resolution or control-flow proof.
 
 **Signature:** Codex (GPT-5), M2.2 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2.3 terminal checkpoint — total versioned query packs
+
+**Date/time:** 2026-07-14T00:46:45+02:00
+
+**Objective/target:** define exact adapter query packs for declarations, references, scopes, control,
+comments, and opaque/generated code while preserving unavailable families and preventing syntactic
+captures from masquerading as higher-tier semantic proof.
+
+**Changes:** added `deslop.language-query-pack/1` with six ordered families, total declarations,
+provided/unsupported/unknown support, authority, exact Tree-sitter source, unique canonical capture
+names, and per-capture canonical role sets. `LangPack` now returns a query pack, defaulting all six to
+unknown. Snapshot construction validates and stores the exact pack in `LanguageAdapterIdentity`,
+rejects adapter-schema mismatch, and length-frames every semantic identity component including
+variable capture/role lists. Added `deslop.language-query-projection/1`, which retains its exact
+analysis, exposes the total stored pack, compiles provided entries only against the retained grammar,
+and requires declared capture order to equal Tree-sitter's compiled catalog. Public schema,
+declaration, compiled-family, projection, and error types are re-exported.
+
+**Commands/checks run:** focused query-pack wire/malformed tests; custom adapter compile, execution,
+identity, mismatch, and capture-drift tests; all existing owned query tests; affected strict clippy;
+`cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`;
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`;
+`cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. The custom Rust-grammar pack provides all six families and executes exact capture
+counts `[1,1,2,1,1,2]` for declarations/references/scopes/control/comments/opaque-generated, eight
+owned captures total. Every compiled capture catalog exactly matches its declaration. Execution does
+not change the ledger and the sole file remains one parser invocation. Query-only stored policy
+changes preserve raw `ProjectAnalysisId` and change `LanguageQueryProjection` identity. Missing,
+reordered, payload-incomplete, duplicate-capture, adapter-schema-mismatched, and compiled-capture-
+drift inputs fail closed. All seven production registry packs publish total six-entry unknown packs.
+All workspace gates pass.
+
+**Invalidated assumptions / negative memory:** capture-family names do not confer name resolution,
+scope correctness, CFG edges, or generated-code provenance. Unavailable families must remain visible
+rather than become empty successful results. Pack name/schema and capability manifest alone are not
+enough derived identity once exact queries vary. NUL concatenation is insufficient for variable
+capture/role lists; identity components are length-framed.
+
+**Current recommendation/next actions:** implement M2.4 as an exact token/operator classification and
+language lexical-policy contract over owned token regions. Treat the current per-pack Halstead token
+arrays as partial seed evidence only, not as a complete classification.
+
+**Blockers/dependencies/restart:** none. No external dependency, service restart, cache clear, or data
+migration is required. Rust `LangPack` implementers gain a default query-pack method; serialized
+adapter identity now strictly requires `queries`. Workspace build verifies internal consumers.
+
+**Negative-memory status:** recorded locally; Hindsight consolidation follows. Never suppress
+unavailable query families, compile against a reselected grammar, omit exact query packs from derived
+identity, infer semantic absence from no capture, or promote syntax captures to S2/S3 authority.
+
+**Signature:** Codex (GPT-5), M2.3 integration owner, terminal checkpoint, 2026-07-14.

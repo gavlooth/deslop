@@ -4,11 +4,16 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use deslop_lang::{
+    CapabilitySupport, LANGUAGE_QUERY_PACK_SCHEMA, LanguageQueryPack, QueryFamily,
+    QueryFamilyDeclaration,
+};
 use tree_sitter::{
     CaptureQuantifier, Node, Query, QueryCursor, QueryErrorKind, QueryPredicateArg, QueryProperty,
     StreamingIterator, Tree,
 };
 
+use crate::ProjectionId;
 use crate::arena::{ArenaNodeIndex, SyntaxArena, tree_nodes_preorder};
 use crate::identity::{NodeId, NodeLookupError};
 use crate::instrumentation::{SyntaxQueryInstrumentation, SyntaxQueryResultsInstrumentation};
@@ -16,6 +21,110 @@ use crate::snapshot::{GrammarSelection, ProjectAnalysis};
 
 const SYNTAX_QUERY_DOMAIN: &str = "deslop syntax query v1";
 const QUERY_MATCH_LIMIT: u32 = 65_536;
+pub const LANGUAGE_QUERY_PROJECTION_SCHEMA: &str = "deslop.language-query-projection/1";
+
+#[derive(Debug, Clone)]
+pub struct CompiledQueryFamily {
+    declaration: QueryFamilyDeclaration,
+    query: SyntaxQuery,
+}
+
+impl CompiledQueryFamily {
+    pub fn declaration(&self) -> &QueryFamilyDeclaration {
+        &self.declaration
+    }
+
+    pub fn query(&self) -> &SyntaxQuery {
+        &self.query
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LanguageQueryProjection {
+    id: ProjectionId,
+    analysis: Arc<ProjectAnalysis>,
+    path: PathBuf,
+    pack: LanguageQueryPack,
+    compiled: Box<[CompiledQueryFamily]>,
+}
+
+impl LanguageQueryProjection {
+    pub fn schema(&self) -> &'static str {
+        LANGUAGE_QUERY_PROJECTION_SCHEMA
+    }
+
+    pub fn id(&self) -> &ProjectionId {
+        &self.id
+    }
+
+    pub fn analysis(&self) -> &Arc<ProjectAnalysis> {
+        &self.analysis
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn pack(&self) -> &LanguageQueryPack {
+        &self.pack
+    }
+
+    pub fn compiled(&self) -> &[CompiledQueryFamily] {
+        &self.compiled
+    }
+
+    pub fn query(&self, family: QueryFamily) -> Option<&CompiledQueryFamily> {
+        self.compiled
+            .iter()
+            .find(|compiled| compiled.declaration.family() == family)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LanguageQueryProjectionError {
+    FileNotFound(PathBuf),
+    Query(SyntaxQueryError),
+    CaptureContractMismatch {
+        family: QueryFamily,
+        declared: Vec<String>,
+        compiled: Vec<String>,
+    },
+    Identity(String),
+}
+
+impl fmt::Display for LanguageQueryProjectionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FileNotFound(path) => {
+                write!(formatter, "analysis has no source file {}", path.display())
+            }
+            Self::Query(error) => error.fmt(formatter),
+            Self::CaptureContractMismatch {
+                family,
+                declared,
+                compiled,
+            } => write!(
+                formatter,
+                "{:?} query declares captures {declared:?} but compiles {compiled:?}",
+                family
+            ),
+            Self::Identity(detail) => {
+                write!(
+                    formatter,
+                    "language query projection identity failed: {detail}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for LanguageQueryProjectionError {}
+
+impl From<SyntaxQueryError> for LanguageQueryProjectionError {
+    fn from(error: SyntaxQueryError) -> Self {
+        Self::Query(error)
+    }
+}
 
 /// Exact grammar-bound identity for compiled raw syntax query text.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -469,6 +578,75 @@ impl std::error::Error for SyntaxQueryError {
 }
 
 impl ProjectAnalysis {
+    /// Compile every provided family from the exact query pack stored with this snapshot adapter.
+    ///
+    /// Unknown and unsupported families remain visible through [`LanguageQueryProjection::pack`]
+    /// and are not compiled into empty pseudo-results. Declared capture names must match the exact
+    /// Tree-sitter query capture catalog in order.
+    pub fn compile_language_query_pack(
+        self: &Arc<Self>,
+        path: &Path,
+    ) -> Result<LanguageQueryProjection, LanguageQueryProjectionError> {
+        if self.file(path).is_none() {
+            return Err(LanguageQueryProjectionError::FileNotFound(
+                path.to_path_buf(),
+            ));
+        }
+        let pack = self
+            .snapshot()
+            .entry(path)
+            .and_then(|entry| entry.language_adapter_identity())
+            .expect("an analyzed source file has a stored adapter identity")
+            .queries()
+            .clone();
+        let mut compiled = Vec::new();
+        for declaration in pack.queries() {
+            if declaration.support() != CapabilitySupport::Provided {
+                continue;
+            }
+            let query = self.compile_syntax_query(
+                path,
+                declaration
+                    .source()
+                    .expect("a validated provided query has source"),
+            )?;
+            let declared = declaration
+                .captures()
+                .iter()
+                .map(|capture| capture.name().to_string())
+                .collect::<Vec<_>>();
+            let actual = query
+                .capture_names()
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            if declared != actual {
+                return Err(LanguageQueryProjectionError::CaptureContractMismatch {
+                    family: declaration.family(),
+                    declared,
+                    compiled: actual,
+                });
+            }
+            compiled.push(CompiledQueryFamily {
+                declaration: declaration.clone(),
+                query,
+            });
+        }
+        let id = self
+            .derive_projection_id(
+                LANGUAGE_QUERY_PROJECTION_SCHEMA,
+                LANGUAGE_QUERY_PACK_SCHEMA.as_bytes(),
+                b"adapter-query-pack",
+            )
+            .map_err(|error| LanguageQueryProjectionError::Identity(error.to_string()))?;
+        Ok(LanguageQueryProjection {
+            id,
+            analysis: Arc::clone(self),
+            path: path.to_path_buf(),
+            pack,
+            compiled: compiled.into_boxed_slice(),
+        })
+    }
+
     /// Compile a raw Tree-sitter query against the exact grammar retained for `path`.
     pub fn compile_syntax_query(
         &self,

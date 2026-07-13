@@ -10,7 +10,8 @@ use tree_sitter::{Parser, Tree};
 pub use deslop_lang::{
     AdapterCapability, CANONICAL_ROLE_SCHEMA, CanonicalRole, CanonicalRoleSet, CapabilityAuthority,
     CapabilityDeclaration, CapabilitySupport, LANGUAGE_ADAPTER_CAPABILITY_SCHEMA,
-    LanguageAdapterCapabilityManifest, RegionSpan, SemanticTier,
+    LANGUAGE_QUERY_PACK_SCHEMA, LanguageAdapterCapabilityManifest, LanguageQueryPack,
+    QueryCaptureDeclaration, QueryFamily, QueryFamilyDeclaration, RegionSpan, SemanticTier,
 };
 
 // M1.3 owns the raw arena internally; M1.4 adds owner-validated public node views.
@@ -56,8 +57,9 @@ pub use planner::{
     SnapshotPresentationMap,
 };
 pub use query::{
-    OwnedSyntaxCapture, OwnedSyntaxMatch, SyntaxCaptureQuantifier, SyntaxQuery,
-    SyntaxQueryCompileErrorKind, SyntaxQueryError, SyntaxQueryId, SyntaxQueryPattern,
+    CompiledQueryFamily, LANGUAGE_QUERY_PROJECTION_SCHEMA, LanguageQueryProjection,
+    LanguageQueryProjectionError, OwnedSyntaxCapture, OwnedSyntaxMatch, SyntaxCaptureQuantifier,
+    SyntaxQuery, SyntaxQueryCompileErrorKind, SyntaxQueryError, SyntaxQueryId, SyntaxQueryPattern,
     SyntaxQueryPredicate, SyntaxQueryPredicateArgument, SyntaxQueryProperty,
     SyntaxQueryPropertyPredicate,
 };

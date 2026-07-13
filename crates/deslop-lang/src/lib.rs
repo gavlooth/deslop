@@ -8,6 +8,7 @@ use tree_sitter::Node;
 
 pub const LANGUAGE_ADAPTER_CAPABILITY_SCHEMA: &str = "deslop.language-adapter-capabilities/1";
 pub const CANONICAL_ROLE_SCHEMA: &str = "deslop.canonical-roles/1";
+pub const LANGUAGE_QUERY_PACK_SCHEMA: &str = "deslop.language-query-pack/1";
 
 /// Portable syntactic categories projected by language adapters.
 ///
@@ -618,6 +619,304 @@ impl LanguageAdapterCapabilityManifest {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum QueryFamily {
+    Declarations,
+    References,
+    Scopes,
+    Control,
+    Comments,
+    OpaqueGenerated,
+}
+
+impl QueryFamily {
+    pub const ALL: [Self; 6] = [
+        Self::Declarations,
+        Self::References,
+        Self::Scopes,
+        Self::Control,
+        Self::Comments,
+        Self::OpaqueGenerated,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Declarations => "declarations",
+            Self::References => "references",
+            Self::Scopes => "scopes",
+            Self::Control => "control",
+            Self::Comments => "comments",
+            Self::OpaqueGenerated => "opaque-generated",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QueryCaptureDeclaration {
+    name: String,
+    roles: CanonicalRoleSet,
+}
+
+impl QueryCaptureDeclaration {
+    pub fn new(name: impl Into<String>, roles: CanonicalRoleSet) -> Result<Self, String> {
+        let declaration = Self {
+            name: name.into(),
+            roles,
+        };
+        declaration.validate()?;
+        Ok(declaration)
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn roles(&self) -> CanonicalRoleSet {
+        self.roles
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.name.is_empty()
+            || !self.name.bytes().all(|byte| {
+                byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || matches!(byte, b'_' | b'-' | b'.')
+            })
+            || !self.name.as_bytes()[0].is_ascii_lowercase()
+        {
+            return Err(format!(
+                "query capture name {:?} is not canonical lowercase syntax",
+                self.name
+            ));
+        }
+        if self.roles.is_empty() {
+            return Err(format!("query capture {} has no canonical role", self.name));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QueryFamilyDeclaration {
+    family: QueryFamily,
+    support: CapabilitySupport,
+    authority: Option<CapabilityAuthority>,
+    source: Option<String>,
+    captures: Vec<QueryCaptureDeclaration>,
+}
+
+impl QueryFamilyDeclaration {
+    pub fn provided(
+        family: QueryFamily,
+        authority: CapabilityAuthority,
+        source: impl Into<String>,
+        captures: Vec<QueryCaptureDeclaration>,
+    ) -> Self {
+        Self {
+            family,
+            support: CapabilitySupport::Provided,
+            authority: Some(authority),
+            source: Some(source.into()),
+            captures,
+        }
+    }
+
+    pub const fn unsupported(family: QueryFamily) -> Self {
+        Self {
+            family,
+            support: CapabilitySupport::Unsupported,
+            authority: None,
+            source: None,
+            captures: Vec::new(),
+        }
+    }
+
+    pub const fn unknown(family: QueryFamily) -> Self {
+        Self {
+            family,
+            support: CapabilitySupport::Unknown,
+            authority: None,
+            source: None,
+            captures: Vec::new(),
+        }
+    }
+
+    pub fn family(&self) -> QueryFamily {
+        self.family
+    }
+
+    pub fn support(&self) -> CapabilitySupport {
+        self.support
+    }
+
+    pub fn authority(&self) -> Option<CapabilityAuthority> {
+        self.authority
+    }
+
+    pub fn source(&self) -> Option<&str> {
+        self.source.as_deref()
+    }
+
+    pub fn captures(&self) -> &[QueryCaptureDeclaration] {
+        &self.captures
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LanguageQueryPack {
+    schema: String,
+    adapter_schema: String,
+    queries: Vec<QueryFamilyDeclaration>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LanguageQueryPackWire {
+    schema: String,
+    adapter_schema: String,
+    queries: Vec<QueryFamilyDeclaration>,
+}
+
+impl<'de> Deserialize<'de> for LanguageQueryPack {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = LanguageQueryPackWire::deserialize(deserializer)?;
+        let pack = Self {
+            schema: wire.schema,
+            adapter_schema: wire.adapter_schema,
+            queries: wire.queries,
+        };
+        pack.validate().map_err(D::Error::custom)?;
+        Ok(pack)
+    }
+}
+
+impl LanguageQueryPack {
+    pub fn new(
+        adapter_schema: impl Into<String>,
+        queries: Vec<QueryFamilyDeclaration>,
+    ) -> Result<Self, String> {
+        let pack = Self {
+            schema: LANGUAGE_QUERY_PACK_SCHEMA.to_string(),
+            adapter_schema: adapter_schema.into(),
+            queries,
+        };
+        pack.validate()?;
+        Ok(pack)
+    }
+
+    pub fn unknown(adapter_schema: impl Into<String>) -> Self {
+        Self::new(
+            adapter_schema,
+            QueryFamily::ALL
+                .into_iter()
+                .map(QueryFamilyDeclaration::unknown)
+                .collect(),
+        )
+        .expect("the total unknown query pack is valid")
+    }
+
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    pub fn adapter_schema(&self) -> &str {
+        &self.adapter_schema
+    }
+
+    pub fn queries(&self) -> &[QueryFamilyDeclaration] {
+        &self.queries
+    }
+
+    pub fn declaration(&self, family: QueryFamily) -> &QueryFamilyDeclaration {
+        let index = QueryFamily::ALL
+            .iter()
+            .position(|candidate| *candidate == family)
+            .expect("the query family catalog is exhaustive");
+        &self.queries[index]
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != LANGUAGE_QUERY_PACK_SCHEMA {
+            return Err(format!(
+                "unsupported language query pack schema {}",
+                self.schema
+            ));
+        }
+        if self.adapter_schema.trim().is_empty() {
+            return Err("query pack adapter schema must not be empty".to_string());
+        }
+        if self.queries.len() != QueryFamily::ALL.len() {
+            return Err(format!(
+                "language query pack has {} declarations; expected {}",
+                self.queries.len(),
+                QueryFamily::ALL.len()
+            ));
+        }
+        for (expected, declaration) in QueryFamily::ALL.iter().zip(&self.queries) {
+            if declaration.family != *expected {
+                return Err(format!(
+                    "language query declaration order is not total at {expected:?}"
+                ));
+            }
+            match declaration.support {
+                CapabilitySupport::Provided => {
+                    if declaration.authority.is_none() {
+                        return Err(format!(
+                            "provided {:?} query has no authority",
+                            declaration.family
+                        ));
+                    }
+                    if declaration
+                        .source
+                        .as_ref()
+                        .is_none_or(|source| source.trim().is_empty())
+                    {
+                        return Err(format!(
+                            "provided {:?} query has no source",
+                            declaration.family
+                        ));
+                    }
+                    if declaration.captures.is_empty() {
+                        return Err(format!(
+                            "provided {:?} query has no capture declarations",
+                            declaration.family
+                        ));
+                    }
+                    let mut names = std::collections::BTreeSet::new();
+                    for capture in &declaration.captures {
+                        capture.validate()?;
+                        if !names.insert(&capture.name) {
+                            return Err(format!(
+                                "provided {:?} query repeats capture {}",
+                                declaration.family, capture.name
+                            ));
+                        }
+                    }
+                }
+                CapabilitySupport::Unsupported | CapabilitySupport::Unknown => {
+                    if declaration.authority.is_some()
+                        || declaration.source.is_some()
+                        || !declaration.captures.is_empty()
+                    {
+                        return Err(format!(
+                            "unavailable {:?} query retains provided payload",
+                            declaration.family
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GrammarDescriptor {
     lang: Lang,
@@ -678,6 +977,9 @@ pub trait LangPack: Send + Sync {
         "deslop-lang-adapter/1"
     }
     fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest;
+    fn query_pack(&self) -> LanguageQueryPack {
+        LanguageQueryPack::unknown(self.adapter_schema())
+    }
     fn canonical_roles(&self, _node: Node<'_>, _text: &str) -> CanonicalRoleSet {
         CanonicalRoleSet::default()
     }
@@ -1919,6 +2221,82 @@ mod tests {
     }
 
     #[test]
+    fn language_query_pack_is_total_strict_and_wire_pinned() {
+        let capture = QueryCaptureDeclaration::new(
+            "declaration.callable",
+            CanonicalRoleSet::from_roles([CanonicalRole::Declaration, CanonicalRole::Callable]),
+        )
+        .unwrap();
+        let pack = LanguageQueryPack::new(
+            "deslop-lang-adapter/query-test-1",
+            QueryFamily::ALL
+                .into_iter()
+                .map(|family| {
+                    if family == QueryFamily::Declarations {
+                        QueryFamilyDeclaration::provided(
+                            family,
+                            CapabilityAuthority::Adapter,
+                            "(function_item) @declaration.callable",
+                            vec![capture.clone()],
+                        )
+                    } else {
+                        QueryFamilyDeclaration::unknown(family)
+                    }
+                })
+                .collect(),
+        )
+        .unwrap();
+        assert_eq!(pack.schema(), LANGUAGE_QUERY_PACK_SCHEMA);
+        assert_eq!(pack.queries().len(), 6);
+        assert_eq!(
+            serde_json::to_value(&pack).unwrap(),
+            serde_json::json!({
+                "schema": "deslop.language-query-pack/1",
+                "adapter_schema": "deslop-lang-adapter/query-test-1",
+                "queries": [
+                    {
+                        "family": "declarations",
+                        "support": "provided",
+                        "authority": "adapter",
+                        "source": "(function_item) @declaration.callable",
+                        "captures": [{
+                            "name": "declaration.callable",
+                            "roles": {
+                                "schema": "deslop.canonical-roles/1",
+                                "roles": ["declaration", "callable"]
+                            }
+                        }]
+                    },
+                    {"family":"references","support":"unknown","authority":null,"source":null,"captures":[]},
+                    {"family":"scopes","support":"unknown","authority":null,"source":null,"captures":[]},
+                    {"family":"control","support":"unknown","authority":null,"source":null,"captures":[]},
+                    {"family":"comments","support":"unknown","authority":null,"source":null,"captures":[]},
+                    {"family":"opaque-generated","support":"unknown","authority":null,"source":null,"captures":[]}
+                ]
+            })
+        );
+
+        let value = serde_json::to_value(pack).unwrap();
+        assert!(serde_json::from_value::<LanguageQueryPack>(value.clone()).is_ok());
+        let mut missing = value.clone();
+        missing["queries"].as_array_mut().unwrap().pop();
+        assert!(serde_json::from_value::<LanguageQueryPack>(missing).is_err());
+        let mut reordered = value.clone();
+        reordered["queries"].as_array_mut().unwrap().swap(0, 1);
+        assert!(serde_json::from_value::<LanguageQueryPack>(reordered).is_err());
+        let mut missing_source = value.clone();
+        missing_source["queries"][0]["source"] = serde_json::Value::Null;
+        assert!(serde_json::from_value::<LanguageQueryPack>(missing_source).is_err());
+        let mut duplicate_capture = value;
+        let duplicate = duplicate_capture["queries"][0]["captures"][0].clone();
+        duplicate_capture["queries"][0]["captures"]
+            .as_array_mut()
+            .unwrap()
+            .push(duplicate);
+        assert!(serde_json::from_value::<LanguageQueryPack>(duplicate_capture).is_err());
+    }
+
+    #[test]
     fn capability_catalog_is_total_tiered_and_wire_pinned() {
         assert_eq!(
             SemanticTier::ALL.map(|tier| {
@@ -2046,6 +2424,16 @@ mod tests {
             assert_eq!(manifest.adapter_schema(), pack.adapter_schema());
             assert_eq!(manifest.capabilities().len(), 23);
             assert_eq!(manifest.highest_complete_tier(), None);
+            let queries = pack.query_pack();
+            queries.validate().unwrap();
+            assert_eq!(queries.adapter_schema(), pack.adapter_schema());
+            assert_eq!(queries.queries().len(), 6);
+            assert!(
+                queries
+                    .queries()
+                    .iter()
+                    .all(|query| query.support() == CapabilitySupport::Unknown)
+            );
         }
     }
 }

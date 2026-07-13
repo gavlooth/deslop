@@ -457,7 +457,8 @@ mod tests {
     use deslop_core::Lang;
     use deslop_lang::{
         AdapterCapability, CanonicalRole, CapabilityAuthority, CapabilityDeclaration, GENERIC_PACK,
-        GrammarDescriptor, LangPack, RUST_PACK, Registry,
+        GrammarDescriptor, LangPack, LanguageQueryPack, QueryCaptureDeclaration, QueryFamily,
+        QueryFamilyDeclaration, RUST_PACK, Registry,
     };
 
     use crate::{ProjectSnapshotBuilder, RepositoryId};
@@ -468,7 +469,10 @@ mod tests {
         extension: &'static str,
         branch: usize,
         canonical_roles: bool,
+        queries: bool,
+        query_capture_mismatch: bool,
         manifest_adapter_schema: Option<&'static str>,
+        query_adapter_schema: Option<&'static str>,
     }
 
     impl LangPack for SameLangPack {
@@ -521,6 +525,81 @@ mod tests {
                 "ERROR" => vec![CanonicalRole::Error],
                 _ => Vec::new(),
             })
+        }
+
+        fn query_pack(&self) -> LanguageQueryPack {
+            let adapter_schema = self.query_adapter_schema.unwrap_or(self.adapter_schema());
+            if !self.queries {
+                return LanguageQueryPack::unknown(adapter_schema);
+            }
+            let capture = |name, roles: &[CanonicalRole]| {
+                QueryCaptureDeclaration::new(
+                    name,
+                    CanonicalRoleSet::from_roles(roles.iter().copied()),
+                )
+                .unwrap()
+            };
+            LanguageQueryPack::new(
+                adapter_schema,
+                vec![
+                    QueryFamilyDeclaration::provided(
+                        QueryFamily::Declarations,
+                        CapabilityAuthority::Adapter,
+                        "(function_item) @declaration",
+                        vec![capture(
+                            if self.query_capture_mismatch {
+                                "wrong-declaration"
+                            } else {
+                                "declaration"
+                            },
+                            &[CanonicalRole::Declaration, CanonicalRole::Callable],
+                        )],
+                    ),
+                    QueryFamilyDeclaration::provided(
+                        QueryFamily::References,
+                        CapabilityAuthority::Adapter,
+                        "(call_expression function: (identifier) @reference)",
+                        vec![capture(
+                            "reference",
+                            &[CanonicalRole::Expression, CanonicalRole::Read],
+                        )],
+                    ),
+                    QueryFamilyDeclaration::provided(
+                        QueryFamily::Scopes,
+                        CapabilityAuthority::Adapter,
+                        "(block) @scope",
+                        vec![capture(
+                            "scope",
+                            &[CanonicalRole::Module, CanonicalRole::Block],
+                        )],
+                    ),
+                    QueryFamilyDeclaration::provided(
+                        QueryFamily::Control,
+                        CapabilityAuthority::Adapter,
+                        "(if_expression) @control",
+                        vec![capture(
+                            "control",
+                            &[CanonicalRole::Expression, CanonicalRole::Branch],
+                        )],
+                    ),
+                    QueryFamilyDeclaration::provided(
+                        QueryFamily::Comments,
+                        CapabilityAuthority::Adapter,
+                        "(line_comment) @comment",
+                        vec![capture("comment", &[CanonicalRole::Comment])],
+                    ),
+                    QueryFamilyDeclaration::provided(
+                        QueryFamily::OpaqueGenerated,
+                        CapabilityAuthority::Adapter,
+                        "(macro_invocation) @opaque\n(attribute_item) @generated",
+                        vec![
+                            capture("opaque", &[CanonicalRole::OpaqueRegion]),
+                            capture("generated", &[CanonicalRole::Generated]),
+                        ],
+                    ),
+                ],
+            )
+            .unwrap()
         }
 
         fn lang(&self) -> Lang {
@@ -591,7 +670,10 @@ mod tests {
         extension: "left",
         branch: 7,
         canonical_roles: false,
+        queries: false,
+        query_capture_mismatch: false,
         manifest_adapter_schema: None,
+        query_adapter_schema: None,
     };
     static RIGHT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-right",
@@ -599,7 +681,10 @@ mod tests {
         extension: "right",
         branch: 11,
         canonical_roles: false,
+        queries: false,
+        query_capture_mismatch: false,
         manifest_adapter_schema: None,
+        query_adapter_schema: None,
     };
     static ALTERNATE_LEFT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left-alternate",
@@ -607,7 +692,10 @@ mod tests {
         extension: "left",
         branch: 8,
         canonical_roles: false,
+        queries: false,
+        query_capture_mismatch: false,
         manifest_adapter_schema: None,
+        query_adapter_schema: None,
     };
     static CAPABILITY_LEFT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -615,7 +703,32 @@ mod tests {
         extension: "left",
         branch: 7,
         canonical_roles: true,
+        queries: false,
+        query_capture_mismatch: false,
         manifest_adapter_schema: None,
+        query_adapter_schema: None,
+    };
+    static QUERY_LEFT_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left",
+        schema: "same-lang-left/7",
+        extension: "left",
+        branch: 7,
+        canonical_roles: false,
+        queries: true,
+        query_capture_mismatch: false,
+        manifest_adapter_schema: None,
+        query_adapter_schema: None,
+    };
+    static BAD_QUERY_CAPTURE_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left-bad-query",
+        schema: "same-lang-left-bad-query/1",
+        extension: "left",
+        branch: 7,
+        canonical_roles: false,
+        queries: true,
+        query_capture_mismatch: true,
+        manifest_adapter_schema: None,
+        query_adapter_schema: None,
     };
     static MISMATCHED_CAPABILITY_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -623,7 +736,21 @@ mod tests {
         extension: "left",
         branch: 7,
         canonical_roles: false,
+        queries: false,
+        query_capture_mismatch: false,
         manifest_adapter_schema: Some("wrong-adapter/1"),
+        query_adapter_schema: None,
+    };
+    static MISMATCHED_QUERY_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left",
+        schema: "same-lang-left/7",
+        extension: "left",
+        branch: 7,
+        canonical_roles: false,
+        queries: false,
+        query_capture_mismatch: false,
+        manifest_adapter_schema: None,
+        query_adapter_schema: Some("wrong-query-adapter/1"),
     };
 
     #[test]
@@ -786,6 +913,127 @@ mod tests {
     }
 
     #[test]
+    fn stored_query_pack_compiles_and_executes_all_six_families() {
+        let root = tempfile::tempdir().unwrap();
+        let source = b"#[generated]\nfn sample(value: i32) {\n    // note\n    if value > 0 { helper(); }\n    vec![value];\n}\n";
+        let build = |adapter: &'static dyn LangPack| {
+            let mut registry = Registry::new(&GENERIC_PACK);
+            registry.register(adapter);
+            let snapshot = ProjectSnapshotBuilder::new(
+                root.path(),
+                RepositoryId::explicit("language-query-pack-test").unwrap(),
+            )
+            .unwrap()
+            .with_registry(registry)
+            .with_overlay("queries.left", source.to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+            ProjectAnalysis::build(snapshot).unwrap()
+        };
+        let unknown = build(&LEFT_PACK);
+        let provided = build(&QUERY_LEFT_PACK);
+        assert_eq!(unknown.id(), provided.id());
+
+        let path = Path::new("queries.left");
+        let unavailable = unknown.compile_language_query_pack(path).unwrap();
+        let parse_counts = provided.parse_counts();
+        let projection = provided.compile_language_query_pack(path).unwrap();
+        assert!(Arc::ptr_eq(projection.analysis(), &provided));
+        assert_eq!(projection.schema(), crate::LANGUAGE_QUERY_PROJECTION_SCHEMA);
+        assert_eq!(projection.path(), path);
+        assert_eq!(unavailable.compiled().len(), 0);
+        assert_eq!(projection.compiled().len(), 6);
+        assert_ne!(unavailable.id(), projection.id());
+        assert!(
+            unavailable
+                .pack()
+                .queries()
+                .iter()
+                .all(|query| query.support() == CapabilitySupport::Unknown)
+        );
+        assert!(
+            projection
+                .pack()
+                .queries()
+                .iter()
+                .all(|query| query.support() == CapabilitySupport::Provided)
+        );
+
+        let root_node = provided.file_node_ids(path).unwrap().next().unwrap();
+        let capture_counts = QueryFamily::ALL.map(|family| {
+            let compiled = projection.query(family).unwrap();
+            assert_eq!(
+                compiled.query().capture_names().collect::<Vec<_>>(),
+                compiled
+                    .declaration()
+                    .captures()
+                    .iter()
+                    .map(QueryCaptureDeclaration::name)
+                    .collect::<Vec<_>>()
+            );
+            provided
+                .syntax_query_matches(compiled.query(), root_node)
+                .unwrap()
+                .iter()
+                .map(|query_match| query_match.captures().len())
+                .sum::<usize>()
+        });
+        assert_eq!(capture_counts, [1, 1, 2, 1, 1, 2]);
+        assert_eq!(capture_counts.into_iter().sum::<usize>(), 8);
+        assert_eq!(provided.parse_counts(), parse_counts);
+        assert!(
+            parse_counts
+                .values()
+                .all(|count| count.parser_invocations == 1)
+        );
+
+        let identity = provided
+            .snapshot()
+            .entry(path)
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap();
+        assert_eq!(identity.queries(), projection.pack());
+        let mut legacy = serde_json::to_value(identity).unwrap();
+        legacy.as_object_mut().unwrap().remove("queries");
+        assert!(
+            serde_json::from_value::<crate::LanguageAdapterIdentity>(legacy)
+                .unwrap_err()
+                .to_string()
+                .contains("missing field `queries`")
+        );
+    }
+
+    #[test]
+    fn stored_query_pack_rejects_capture_contract_drift() {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::new(&GENERIC_PACK);
+        registry.register(&BAD_QUERY_CAPTURE_PACK);
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("query-capture-contract-test").unwrap(),
+        )
+        .unwrap()
+        .with_registry(registry)
+        .with_overlay("bad.left", b"fn sample() {}\n".to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        assert_eq!(
+            analysis
+                .compile_language_query_pack(Path::new("bad.left"))
+                .unwrap_err(),
+            crate::LanguageQueryProjectionError::CaptureContractMismatch {
+                family: QueryFamily::Declarations,
+                declared: vec!["wrong-declaration".to_string()],
+                compiled: vec!["declaration".to_string()],
+            }
+        );
+    }
+
+    #[test]
     fn projection_identity_changes_when_only_the_stored_adapter_identity_changes() {
         let root = tempfile::tempdir().unwrap();
         let build = |adapter: &'static dyn LangPack| {
@@ -896,6 +1144,29 @@ mod tests {
         assert!(
             error.to_string().contains(
                 "capability manifest targets wrong-adapter/1 but adapter schema is same-lang-left/7"
+            ),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_query_pack_for_another_adapter_schema() {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::new(&GENERIC_PACK);
+        registry.register(&MISMATCHED_QUERY_PACK);
+        let error = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("adapter-query-mismatch-test").unwrap(),
+        )
+        .unwrap()
+        .with_registry(registry)
+        .with_overlay("sample.left", b"fn sample() {}\n".to_vec())
+        .unwrap()
+        .build()
+        .unwrap_err();
+        assert!(
+            error.to_string().contains(
+                "query pack targets wrong-query-adapter/1 but adapter schema is same-lang-left/7"
             ),
             "{error}"
         );

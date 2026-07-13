@@ -1365,6 +1365,58 @@ query packs must not imply name resolution, CFG, generation provenance, or other
 Agent assignment: `/root` owns M2.2 integration and M2.3 continuation; no concurrent file edits are
 assigned.
 
+#### M2.3 terminal checkpoint — total versioned query packs
+
+Active hypothesis: adapter queries can be portable contract inputs without overstating semantics if
+each required capture family is declared total, exact query source/capture metadata is stored in the
+adapter identity, and compiled captures remain raw syntactic evidence with explicit authority.
+
+CONVERGENCE: freeze one six-family query-pack wire vector for declarations, references, scopes,
+control, comments, and opaque/generated code; reject missing/order/support/source/capture errors;
+compile one fully provided custom pack against its exact stored grammar; verify declared capture names
+equal compiled Tree-sitter names and execute every family over one fixture with pinned counts. A
+query-only adapter change must preserve raw analysis identity and invalidate derived projection
+identity. If unavailable production entries remain explicit and all workspace gates pass, M2.3 is
+done; no capture may be promoted to resolved binding, CFG edge, or generated-code provenance.
+
+Current approach: define `deslop.language-query-pack/1`, six ordered families, total declarations,
+capture metadata with canonical role sets, and provided/unsupported/unknown validation in
+`deslop-lang`. Require `LangPack` to return an exact pack, defaulting all entries to unknown. Store and
+validate it in `LanguageAdapterIdentity`. Add an analysis-owning compiled query-pack projection in
+`deslop-parse` that reuses `SyntaxQuery`, checks exact capture contracts, and retains unavailable
+declarations rather than suppressing them.
+
+Validation path: pinned JSON and malformed truth table; registry-wide totality; adapter-schema
+mismatch rejection; custom six-query compile/capture/result oracle; query-only identity invalidation;
+focused tests/clippy followed by full workspace gates.
+
+Next checkpoint: all six families are explicit for every adapter, the custom pack compiles and runs
+node-owned captures without reparsing, and production packs remain honest unknowns until M2.6-M2.10.
+
+Negative-memory constraints: query captures are syntactic facts, not S2/S3 conclusions; absence of a
+capture is not proof of semantic absence; opaque/generated is a capture category rather than verified
+provenance; exact grammar dialect and stored pack must drive compilation; no path-based reselection.
+
+Terminal result: PASS. `deslop.language-query-pack/1` freezes six ordered total families with explicit
+support, authority, exact source, unique capture names, and canonical role metadata. Snapshot adapter
+identity stores the validated exact pack using length-framed identity parts and rejects adapter-schema
+mismatch. `deslop.language-query-projection/1` retains its analysis, compiles only provided families
+against the stored grammar, preserves all unavailable declarations, and rejects declared/compiled
+capture drift. The fixed custom pack executes `[1,1,2,1,1,2]` captures by family (8 total) without
+changing its one-parse ledger. Query-only change preserves raw analysis identity and invalidates the
+projection; all seven production registry packs remain six-for-six unknown. All workspace gates pass.
+
+Next checkpoint: begin M2.4 with a versioned operator/token classification and lexical-policy schema.
+Use exact owned token regions and stored dialect packs; do not reinterpret current Halstead token lists
+as a complete lexical contract.
+
+Negative-memory constraints carried forward: captures are syntactic evidence, not resolution or CFG;
+capture absence proves nothing semantic; opaque/generated capture labels are not verified provenance;
+query source/captures belong in exact derived identity and must compile against stored grammar only.
+
+Agent assignment: `/root` owns M2.3 integration and M2.4 continuation; no concurrent file edits are
+assigned.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link

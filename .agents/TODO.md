@@ -268,7 +268,14 @@ reports, benchmark records, and work orders.
   including an aliased `type_identifier`/`identifier`; unknown production capability fails typed.
   Raw analysis identity and `NodeKey/1` remain unchanged. Exact wire/malformed-input tests and all
   workspace tests, build, warning-denied rustdoc, strict clippy, format, and whitespace pass.
-- [ ] M2.3 Define query packs for declarations, references, scopes, control, comments, and opaque/generated code.
+- [x] M2.3 Define query packs for declarations, references, scopes, control, comments, and opaque/generated code.
+  Evidence: `deslop.language-query-pack/1` makes all six ordered families total with explicit
+  provided/unsupported/unknown support, authority, exact query source, capture names, and role sets.
+  Exact packs are stored in framed adapter identity. `deslop.language-query-projection/1` compiles
+  provided entries against the stored grammar, retains unknowns and its analysis, and rejects capture
+  drift. A fixed custom pack executes capture counts `[1,1,2,1,1,2]` (8 total) with no reparse;
+  query-only changes preserve raw analysis identity and change projection identity. Seven production
+  registry packs remain honest all-unknown. Full workspace gates pass.
 - [ ] M2.4 Define operator/token classification and language-specific lexical policies.
 - [ ] M2.5 Define parse-error, unsupported-construct, macro, generated-code, and dialect policies.
 - [ ] M2.6 Implement/repair the Rust adapter and golden fixtures.
