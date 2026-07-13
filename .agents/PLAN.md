@@ -1594,6 +1594,54 @@ JS 61/42, TS 143/90, TSX 107/68; query vectors `[1,1,3,0,2,1]`, `[4,2,3,0,1,0]`,
 TypeScript, and TSX grammar identities. Malformed TS and TSX lock their exact `ERROR` facts. Every
 file parses once and all workspace gates pass. Next: M2.8 Python production policy and goldens.
 
+#### Active M2.8 execution plan — Python production policy and goldens
+
+Active hypothesis: the single stored Python 0.25.0 grammar can supply the same complete S1 contract
+without dialect branching. Canonical roles and query captures must agree for decorated, async, nested,
+comprehension, and pattern-matching syntax; no syntactic type annotation grants compiler/type authority.
+
+CONVERGENCE: compile all six query families against the stored Python grammar; run canonical-role,
+query, lexical, and construct projections over one fixed valid golden plus a malformed golden; pin the
+complete numerical vectors, exact `python/tree-sitter-python/0.25.0` identity, Unicode/comments/
+operators, legacy unsupported constructs, exact generated markers, and one parse per file. If the
+valid fixture derives S1, malformed recovery is exact, no query capture exceeds its role contract, and
+all workspace gates pass, M2.8 is done.
+
+Current approach: implement production policy directly on `PythonPack`. Treat module, function/class/
+decorated definitions, parameters, blocks, statements, control flow, calls, writes, reads, literals,
+comments, and errors as raw-kind syntactic roles. Query declarations/references/scopes/control/comments
+and opaque legacy constructs independently. Use a total case-sensitive Unicode-aware lexical policy
+with exact `*` handling. Recovery is file-incomplete; legacy Python 2 `exec_statement` and
+`print_statement` are opaque unsupported constructs; macros are unsupported; exact `# @generated`
+comments and `@generated` decorators are generated markers. Declare only the stored Python grammar.
+
+Validation path: per-pack schema/S1 checks; actual grammar query compilation; numerical valid and
+malformed projections; query/canonical-role semantic audit; ownership/no-reparse assertions; affected
+strict checks; full workspace gates.
+
+Negative-memory constraints: repeated `LangPack` methods require `impl LangPack for PythonPack`
+anchors; query compilation alone does not prove capture-role consistency; exact-text `*` must not
+collide with the terminal wildcard; Python annotations and pattern syntax remain syntactic and do not
+grant name resolution, CFG, effects, macro/AST rewriting, or compiler/type authority. Hindsight search
+mode `keyword` is invalid on the shared server; omit mode for targeted retrieval.
+
+Agent assignment: `/root` owns M2.8 policy, fixtures, integration, and verification; no concurrent
+file edits are assigned.
+
+Current checkpoint (2026-07-14T01:47:47+02:00): audited the Python pack, exact grammar descriptor,
+existing decorated/async/nested behavioral fixture, and grammar node catalog. Production M2 policy is
+still unknown. The catalog contains explicit legacy `exec_statement` and `print_statement` nodes, so
+the unsupported boundary can be fixture-tested without inventing grammar evidence.
+
+Terminal checkpoint (2026-07-14T01:58:48+02:00): M2.8 is complete. Python now derives S1 with all
+six queries compiled against `tree-sitter-python` 0.25.0, total lexical ownership, exact recovery/
+construct/dialect policy, and no S2+ promotion. The valid golden locks 127 CST facts, 75 token owners,
+108 role assignments across 21 roles, query vector `[4,1,8,3,2,2]`, two exact generated facts, and
+two opaque legacy constructs. The malformed golden locks one `ERROR` for `return value +`. An
+executable audit proves every actual query capture carries all declared canonical roles. Exact-text
+keyword rules prevent named `await`/`lambda`/`type`/`yield` composites from suppressing operands.
+Every file parses once and all workspace gates pass. Next: M2.9 Clojure production policy/goldens.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link

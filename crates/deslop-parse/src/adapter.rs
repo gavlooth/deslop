@@ -1639,17 +1639,17 @@ mod tests {
             RepositoryId::explicit("canonical-role-unavailable-test").unwrap(),
         )
         .unwrap()
-        .with_overlay("unknown.py", b"def sample():\n    pass\n".to_vec())
+        .with_overlay("unknown.jl", b"function sample()\nend\n".to_vec())
         .unwrap()
         .build()
         .unwrap();
         let analysis = ProjectAnalysis::build(snapshot).unwrap();
         assert_eq!(
             analysis
-                .canonical_role_projection(Path::new("unknown.py"))
+                .canonical_role_projection(Path::new("unknown.jl"))
                 .unwrap_err(),
             CanonicalRoleProjectionError::CapabilityUnavailable {
-                path: PathBuf::from("unknown.py"),
+                path: PathBuf::from("unknown.jl"),
                 support: CapabilitySupport::Unknown,
             }
         );
@@ -2398,6 +2398,226 @@ mod tests {
                 "ERROR",
                 "export const Broken = (): JSX.Element => (\n  <section>{items.map((item) => <span>{item}</span>)}",
             )]
+        );
+        assert!(
+            analysis
+                .parse_counts()
+                .values()
+                .all(|count| count.parser_invocations == 1)
+        );
+    }
+
+    #[test]
+    fn python_production_adapter_golden_matrix_is_owned_and_parse_once() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("python-production-adapter-golden").unwrap(),
+        )
+        .unwrap()
+        .with_overlay(
+            "adapter_matrix.py",
+            include_bytes!("../../../tests/fixtures/python/adapter_matrix.py").to_vec(),
+        )
+        .unwrap()
+        .with_overlay(
+            "malformed.py",
+            include_bytes!("../../../tests/fixtures/python/malformed.py").to_vec(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let path = Path::new("adapter_matrix.py");
+        let identity = analysis
+            .snapshot()
+            .entry(path)
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap();
+        assert_eq!(
+            identity.capabilities().highest_complete_tier(),
+            Some(SemanticTier::S1)
+        );
+
+        let roles = analysis.canonical_role_projection(path).unwrap();
+        let lexical = analysis.lexical_token_projection(path).unwrap();
+        let constructs = analysis.construct_policy_projection(path).unwrap();
+        let queries = analysis.compile_language_query_pack(path).unwrap();
+        for owner in [
+            roles.analysis(),
+            lexical.analysis(),
+            constructs.analysis(),
+            queries.analysis(),
+        ] {
+            assert!(Arc::ptr_eq(owner, &analysis));
+        }
+        assert_eq!(constructs.dialect().dialect(), "python");
+        assert_eq!(constructs.dialect().grammar_id(), "tree-sitter-python");
+        assert_eq!(constructs.dialect().grammar_version(), "0.25.0");
+
+        let mut role_counts = std::collections::BTreeMap::new();
+        for fact in roles.facts() {
+            for role in fact.roles().iter() {
+                *role_counts.entry(role.as_str()).or_insert(0_usize) += 1;
+            }
+        }
+        let mut lexical_counts = std::collections::BTreeMap::new();
+        for fact in lexical.facts() {
+            *lexical_counts
+                .entry(fact.classification().token_class().as_str())
+                .or_insert(0_usize) += 1;
+        }
+        let root_node = analysis.file_node_ids(path).unwrap().next().unwrap();
+        let query_counts = QueryFamily::ALL.map(|family| {
+            let compiled = queries.query(family).unwrap();
+            analysis
+                .syntax_query_matches(compiled.query(), root_node)
+                .unwrap()
+                .iter()
+                .map(|matched| matched.captures().len())
+                .sum::<usize>()
+        });
+        let mut construct_counts = std::collections::BTreeMap::new();
+        for fact in constructs.facts() {
+            *construct_counts
+                .entry(fact.kind().as_str())
+                .or_insert(0_usize) += 1;
+        }
+        assert_eq!(roles.facts().len(), 127);
+        assert_eq!(
+            role_counts,
+            std::collections::BTreeMap::from([
+                ("block", 7),
+                ("branch", 2),
+                ("call", 1),
+                ("callable", 1),
+                ("case", 2),
+                ("comment", 2),
+                ("declaration", 4),
+                ("expression", 36),
+                ("generated", 1),
+                ("import", 1),
+                ("literal", 5),
+                ("loop", 1),
+                ("match", 1),
+                ("module", 1),
+                ("opaque-region", 2),
+                ("parameter", 3),
+                ("project", 1),
+                ("read", 27),
+                ("statement", 5),
+                ("type", 2),
+                ("write", 3),
+            ])
+        );
+        assert_eq!(lexical.facts().len(), 75);
+        assert_eq!(
+            lexical_counts,
+            std::collections::BTreeMap::from([
+                ("comment", 2),
+                ("delimiter", 6),
+                ("identifier", 26),
+                ("keyword", 13),
+                ("literal", 5),
+                ("operator", 8),
+                ("other", 3),
+                ("punctuation", 12),
+            ])
+        );
+        assert_eq!(query_counts, [4, 1, 8, 3, 2, 2]);
+        assert_eq!(
+            construct_counts,
+            std::collections::BTreeMap::from(
+                [("generated-code", 2), ("unsupported-construct", 2),]
+            )
+        );
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "π"
+                && fact.classification().token_class() == LexicalTokenClass::Identifier
+        }));
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "*"
+                && fact.classification().operator_class() == Some(LexicalOperatorClass::Arithmetic)
+        }));
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "."
+                && fact.classification().operator_class()
+                    == Some(LexicalOperatorClass::MemberAccess)
+        }));
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "await"
+                && fact.classification().token_class() == LexicalTokenClass::Keyword
+        }));
+        assert!(!lexical.facts().iter().any(|fact| {
+            fact.text().starts_with("await ")
+                && fact.classification().token_class() == LexicalTokenClass::Keyword
+        }));
+        for comment in ["# @generated", "# line comment"] {
+            assert!(lexical.facts().iter().any(|fact| {
+                fact.text() == comment
+                    && fact.classification().token_class() == LexicalTokenClass::Comment
+            }));
+        }
+        assert_eq!(
+            constructs
+                .facts()
+                .iter()
+                .map(|fact| (fact.kind().as_str(), fact.raw().raw_kind(), fact.text()))
+                .collect::<Vec<_>>(),
+            [
+                ("generated-code", "comment", "# @generated"),
+                ("generated-code", "decorator", "@generated"),
+                ("unsupported-construct", "print_statement", "print total",),
+                (
+                    "unsupported-construct",
+                    "exec_statement",
+                    "exec \"legacy = True\"",
+                ),
+            ]
+        );
+
+        for compiled in queries.compiled() {
+            let declarations = compiled.declaration().captures();
+            for matched in analysis
+                .syntax_query_matches(compiled.query(), root_node)
+                .unwrap()
+                .iter()
+            {
+                for capture in matched.captures() {
+                    let declaration = declarations
+                        .iter()
+                        .find(|declared| declared.name() == capture.capture_name())
+                        .unwrap();
+                    let fact = roles
+                        .facts()
+                        .iter()
+                        .find(|fact| fact.node() == capture.node())
+                        .unwrap();
+                    for required in declaration.roles().iter() {
+                        assert!(
+                            fact.roles().contains(required),
+                            "{} capture {} lacks role {} on raw kind {}",
+                            compiled.declaration().family().as_str(),
+                            capture.capture_name(),
+                            required.as_str(),
+                            fact.raw().raw_kind(),
+                        );
+                    }
+                }
+            }
+        }
+
+        let malformed = analysis
+            .construct_policy_projection(Path::new("malformed.py"))
+            .unwrap();
+        assert_eq!(
+            malformed
+                .facts()
+                .iter()
+                .map(|fact| (fact.kind().as_str(), fact.raw().raw_kind(), fact.text()))
+                .collect::<Vec<_>>(),
+            [("parse-error", "ERROR", "return value +")]
         );
         assert!(
             analysis

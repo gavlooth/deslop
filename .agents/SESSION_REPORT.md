@@ -7733,3 +7733,104 @@ handles: `M2.7 ECMAScript golden`, `query capture canonical role consistency`, `
 grammar no fallback`.
 
 **Signature:** Codex (GPT-5), M2.7 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2.8 active checkpoint — Python production policy and goldens
+
+**Date/time:** 2026-07-14T01:47:47+02:00
+
+**Objective/target:** implement every frozen M2.1-M2.5 production policy surface for Python and prove
+its exact authority boundary through fixed valid and malformed golden fixtures.
+
+**Changes:** planning/audit only. Inspected `PythonPack`, its exact
+`python/tree-sitter-python/0.25.0` descriptor, existing decorated/async/nested behavioral fixture and
+tests, and the installed grammar node catalog. Defined a convergent matrix covering all four retained
+projections, all six query families, numerical counts, exact syntax evidence, and one parse per file.
+
+**Commands/checks run:** targeted Hindsight active-plan and negative-memory search; targeted `rg` and
+source reads for the Python pack, fixture inventory, parser tests, dependency version, and installed
+grammar node catalog.
+
+**Results:** ACTIVE / UNVERIFIED. Python still exposes the default unknown role, query, lexical,
+construct/recovery, and dialect policy. The grammar catalog explicitly contains decorated, match,
+type-alias, legacy `exec_statement`, and legacy `print_statement` nodes, enabling a real unsupported
+boundary rather than a fabricated detector.
+
+**Invalidated assumptions / negative memory:** the shared Hindsight MCP does not accept search mode
+`keyword`; two targeted calls failed with `unknown search mode` and returned no memory. Omitting mode
+correctly selected graph traversal. This tooling correction is stored durably. Existing behavioral
+region support is not evidence of S1 completion, and Python annotations/patterns cannot promote S2+
+authority.
+
+**Current recommendation/next actions:** add the Python policy methods using an implementation-specific
+anchor, compile after each method group, then build and numerically pin valid/malformed fixtures.
+
+**Blockers/dependencies/restart:** Serena remains unable to expose Rust symbols; targeted local reads,
+compiler checks, real query compilation, and runtime projections are the fallback. No functional
+blocker or dependency change applies.
+
+**Negative-memory status:** invalid Hindsight mode recorded in Hindsight and locally; existing
+query/role and exact-star constraints carried forward. Search handles: `M2.8 Python golden`,
+`Hindsight unknown search mode keyword`, `query capture canonical role consistency`.
+
+**Signature:** Codex (GPT-5), M2.8 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M2.8 terminal checkpoint — Python production policy and goldens
+
+**Date/time:** 2026-07-14T01:58:48+02:00
+
+**Objective/target:** complete every frozen M2.1-M2.5 production adapter surface for Python and prove
+the exact supported boundary with valid/malformed numerical goldens and actual query-role agreement.
+
+**Changes:** `PythonPack` now provides raw-kind canonical roles for modules, decorated/function/class
+definitions, parameters, scopes, statements/control/pattern matching, calls/reads/writes/literals,
+comments, recovery, generated, and opaque legacy syntax. Added all six syntax query families, total
+case-sensitive Unicode lexical classification, file-incomplete recovery, opaque Python 2
+`exec_statement`/`print_statement` rules, explicitly unsupported macros, exact `# @generated` and
+`@generated` markers, and exact `python/tree-sitter-python/0.25.0` dialect provenance. The manifest
+derives S1 and leaves S2-S4 unknown. Added valid/malformed fixtures and a retained-analysis oracle that
+also executes every query capture against its declared canonical roles. Moved the production-unknown
+rejection oracle from Python to Julia, which remains unknown pending M2.10.
+
+**Commands/checks run:** focused schema/check/test cycles; diagnostic then pinned Python golden test;
+complete `cargo test -p deslop-lang -p deslop-parse`; production adapter golden matrix filter; affected
+strict clippy, format, and whitespace checks; then `cargo test --workspace --all-features`; `cargo
+build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features
+--no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all
+-- --check`; and `git diff --check`.
+
+**Results:** PASS. The valid golden contains 127 CST role facts and 108 role assignments across 21
+categories; 75 non-overlapping lexical owners with counts comment 2, delimiter 6, identifier 26,
+keyword 13, literal 5, operator 8, other 3, punctuation 12; query captures `[4,1,8,3,2,2]`; and exact
+construct counts generated 2 / unsupported 2. Unicode `π`, arithmetic `*`, member-access `.`, both
+full comments, exact generated comment/decorator, and exact opaque `print total` / `exec \"legacy =
+True\"` are pinned. The member call proves operands below `await` remain independent token owners. The
+malformed golden emits exactly one file-incomplete `ERROR` for `return value +`. Every query capture
+has every role declared by its query contract, every file invokes the parser once, and all workspace
+gates pass; only the two repository-designated slow probes are ignored.
+
+**Invalidated assumptions / negative memory:** a raw-kind keyword rule is unsafe when Tree-sitter
+uses the same kind for a named composite and its anonymous keyword leaf. Initial Python rules for
+`await`, `lambda`, `type`, and `yield` caused lexical projection to claim whole composite subtrees as
+single keywords; the member-call probe showed `await helpers.normalize(total)` suppressing all
+operands. Corrected policy uses exact-text rules for these four keywords, raising truthful ownership
+from 66 to 75 facts. Preferred audit: compare installed named and anonymous node catalogs for raw-kind
+collisions and probe at least one operand-bearing composite. Existing constraints also hold: query
+compilation alone is insufficient, exact `*` must not collide with wildcard, annotations/patterns are
+syntactic only, and Python S1 grants no resolution/CFG/effect/compiler authority.
+
+**Current recommendation/next actions:** execute M2.9 with the same numerical and query-role gates for
+the Clojure production adapter, paying special attention to reader/macro forms and composite token
+ownership.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, service restart, or live-state
+activation applies.
+
+**Negative-memory status:** Python composite/keyword collision requires durable Hindsight storage;
+the invalid Hindsight `keyword` search mode was already recorded. Search handles: `M2.8 Python
+golden`, `Python await composite lexical suppression`, `named anonymous raw-kind collision`.
+
+**Signature:** Codex (GPT-5), M2.8 integration owner, terminal checkpoint, 2026-07-14.

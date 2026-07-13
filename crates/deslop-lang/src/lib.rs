@@ -2453,6 +2453,300 @@ impl LangPack for JuliaPack {
     }
 }
 
+fn python_canonical_roles(node: Node<'_>, text: &str) -> CanonicalRoleSet {
+    let roles = match node.kind() {
+        "module" => vec![CanonicalRole::Project, CanonicalRole::Module],
+        "function_definition" => vec![CanonicalRole::Declaration, CanonicalRole::Callable],
+        "class_definition" => vec![CanonicalRole::Declaration, CanonicalRole::Type],
+        "decorated_definition" => match python_definition_kind(node) {
+            Some("function_definition") => {
+                vec![CanonicalRole::Declaration, CanonicalRole::Callable]
+            }
+            Some("class_definition") => vec![CanonicalRole::Declaration, CanonicalRole::Type],
+            _ => Vec::new(),
+        },
+        "lambda" => vec![CanonicalRole::Callable],
+        "import_statement" | "import_from_statement" | "future_import_statement" => {
+            vec![CanonicalRole::Declaration, CanonicalRole::Import]
+        }
+        "type_alias_statement" => vec![CanonicalRole::Declaration, CanonicalRole::Type],
+        "parameters"
+        | "lambda_parameters"
+        | "default_parameter"
+        | "typed_parameter"
+        | "typed_default_parameter"
+        | "list_splat_pattern"
+        | "dictionary_splat_pattern" => vec![CanonicalRole::Parameter],
+        "block" => vec![CanonicalRole::Block],
+        "expression_statement"
+        | "assert_statement"
+        | "delete_statement"
+        | "global_statement"
+        | "nonlocal_statement"
+        | "pass_statement"
+        | "raise_statement"
+        | "return_statement"
+        | "break_statement"
+        | "continue_statement" => vec![CanonicalRole::Statement],
+        "if_statement" | "elif_clause" => vec![CanonicalRole::Branch],
+        "match_statement" => vec![CanonicalRole::Branch, CanonicalRole::Match],
+        "case_clause" => vec![CanonicalRole::Case],
+        "for_statement" | "while_statement" => vec![CanonicalRole::Loop],
+        "call" => vec![CanonicalRole::Expression, CanonicalRole::Call],
+        "assignment" | "augmented_assignment" | "named_expression" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Write]
+        }
+        "identifier" | "attribute" => vec![CanonicalRole::Expression, CanonicalRole::Read],
+        "integer" | "float" | "string" | "true" | "false" | "none" | "ellipsis" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Literal]
+        }
+        "list"
+        | "set"
+        | "tuple"
+        | "dictionary"
+        | "list_comprehension"
+        | "set_comprehension"
+        | "dictionary_comprehension"
+        | "generator_expression" => vec![CanonicalRole::Expression],
+        "comment" => vec![CanonicalRole::Comment],
+        "ERROR" => vec![CanonicalRole::Error],
+        "exec_statement" | "print_statement" => vec![CanonicalRole::OpaqueRegion],
+        "decorator" if text.get(node.start_byte()..node.end_byte()) == Some("@generated") => {
+            vec![CanonicalRole::Generated]
+        }
+        _ => Vec::new(),
+    };
+    CanonicalRoleSet::from_roles(roles)
+}
+
+fn python_query_pack(adapter_schema: &str) -> LanguageQueryPack {
+    let capture = |name, roles: &[CanonicalRole]| {
+        QueryCaptureDeclaration::new(name, CanonicalRoleSet::from_roles(roles.iter().copied()))
+            .expect("the Python query capture is valid")
+    };
+    LanguageQueryPack::new(
+        adapter_schema,
+        vec![
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Declarations,
+                CapabilityAuthority::Adapter,
+                "[(function_definition) (class_definition) (decorated_definition) (import_statement) (import_from_statement) (future_import_statement) (type_alias_statement)] @declaration",
+                vec![capture("declaration", &[CanonicalRole::Declaration])],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::References,
+                CapabilityAuthority::Adapter,
+                "(call function: (_) @reference)",
+                vec![capture(
+                    "reference",
+                    &[CanonicalRole::Expression, CanonicalRole::Read],
+                )],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Scopes,
+                CapabilityAuthority::Adapter,
+                "(module) @scope.module\n(block) @scope.block",
+                vec![
+                    capture("scope.module", &[CanonicalRole::Module]),
+                    capture("scope.block", &[CanonicalRole::Block]),
+                ],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Control,
+                CapabilityAuthority::Adapter,
+                "[(if_statement) (elif_clause) (match_statement)] @control.branch\n[(for_statement) (while_statement)] @control.loop",
+                vec![
+                    capture("control.branch", &[CanonicalRole::Branch]),
+                    capture("control.loop", &[CanonicalRole::Loop]),
+                ],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Comments,
+                CapabilityAuthority::Adapter,
+                "(comment) @comment",
+                vec![capture("comment", &[CanonicalRole::Comment])],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::OpaqueGenerated,
+                CapabilityAuthority::Adapter,
+                "[(exec_statement) (print_statement)] @opaque",
+                vec![capture("opaque", &[CanonicalRole::OpaqueRegion])],
+            ),
+        ],
+    )
+    .expect("the Python query pack is valid")
+}
+
+fn python_lexical_policy(adapter_schema: &str) -> LanguageLexicalPolicy {
+    let token =
+        |raw_kind, class| LexicalRule::new(raw_kind, None, LexicalClassification::token(class));
+    let exact_token = |raw_kind: &'static str, text: &'static str, class| {
+        LexicalRule::new(
+            raw_kind,
+            Some(text.to_string()),
+            LexicalClassification::token(class),
+        )
+    };
+    let operator = |raw_kind: &'static str, text: Option<&str>, class: LexicalOperatorClass| {
+        LexicalRule::new(
+            raw_kind,
+            text.map(str::to_string),
+            LexicalClassification::operator(class),
+        )
+    };
+    let mut rules = vec![
+        operator("+", None, LexicalOperatorClass::Arithmetic),
+        operator("-", None, LexicalOperatorClass::Arithmetic),
+        operator("*", Some("*"), LexicalOperatorClass::Arithmetic),
+        operator("/", None, LexicalOperatorClass::Arithmetic),
+        operator("//", None, LexicalOperatorClass::Arithmetic),
+        operator("%", None, LexicalOperatorClass::Arithmetic),
+        operator("**", None, LexicalOperatorClass::Arithmetic),
+        operator("@", None, LexicalOperatorClass::Arithmetic),
+        operator("==", None, LexicalOperatorClass::Comparison),
+        operator("!=", None, LexicalOperatorClass::Comparison),
+        operator("<", None, LexicalOperatorClass::Comparison),
+        operator(">", None, LexicalOperatorClass::Comparison),
+        operator("<=", None, LexicalOperatorClass::Comparison),
+        operator(">=", None, LexicalOperatorClass::Comparison),
+        operator("is", None, LexicalOperatorClass::Comparison),
+        operator("in", None, LexicalOperatorClass::Comparison),
+        operator("and", None, LexicalOperatorClass::Logical),
+        operator("or", None, LexicalOperatorClass::Logical),
+        operator("not", None, LexicalOperatorClass::Logical),
+        operator("=", None, LexicalOperatorClass::Assignment),
+        operator("+=", None, LexicalOperatorClass::Assignment),
+        operator("-=", None, LexicalOperatorClass::Assignment),
+        operator("*=", None, LexicalOperatorClass::Assignment),
+        operator("/=", None, LexicalOperatorClass::Assignment),
+        operator("//=", None, LexicalOperatorClass::Assignment),
+        operator("%=", None, LexicalOperatorClass::Assignment),
+        operator("**=", None, LexicalOperatorClass::Assignment),
+        operator("@=", None, LexicalOperatorClass::Assignment),
+        operator("&=", None, LexicalOperatorClass::Assignment),
+        operator("|=", None, LexicalOperatorClass::Assignment),
+        operator("^=", None, LexicalOperatorClass::Assignment),
+        operator(">>=", None, LexicalOperatorClass::Assignment),
+        operator("<<=", None, LexicalOperatorClass::Assignment),
+        operator("&", None, LexicalOperatorClass::Bitwise),
+        operator("|", None, LexicalOperatorClass::Bitwise),
+        operator("^", None, LexicalOperatorClass::Bitwise),
+        operator("~", None, LexicalOperatorClass::Bitwise),
+        operator("<<", None, LexicalOperatorClass::Bitwise),
+        operator(">>", None, LexicalOperatorClass::Bitwise),
+        operator(".", None, LexicalOperatorClass::MemberAccess),
+        operator(":=", None, LexicalOperatorClass::Other),
+    ];
+    rules.extend(
+        ["identifier"]
+            .into_iter()
+            .map(|kind| token(kind, LexicalTokenClass::Identifier)),
+    );
+    rules.extend(
+        [
+            "integer",
+            "float",
+            "string",
+            "string_content",
+            "escape_interpolation",
+            "true",
+            "false",
+            "none",
+            "ellipsis",
+        ]
+        .into_iter()
+        .map(|kind| token(kind, LexicalTokenClass::Literal)),
+    );
+    rules.extend(
+        [
+            "def", "class", "return", "raise", "if", "elif", "else", "match", "case", "for",
+            "while", "break", "continue", "try", "except", "finally", "with", "as", "import",
+            "from", "pass", "async", "global", "nonlocal", "assert", "del",
+        ]
+        .into_iter()
+        .map(|kind| token(kind, LexicalTokenClass::Keyword)),
+    );
+    rules.extend(
+        ["await", "lambda", "type", "yield"]
+            .into_iter()
+            .map(|kind| exact_token(kind, kind, LexicalTokenClass::Keyword)),
+    );
+    rules.extend(
+        ["(", ")", "[", "]", "{", "}"]
+            .into_iter()
+            .map(|kind| token(kind, LexicalTokenClass::Delimiter)),
+    );
+    rules.extend(
+        [";", ",", ":", "->"]
+            .into_iter()
+            .map(|kind| token(kind, LexicalTokenClass::Punctuation)),
+    );
+    rules.extend([
+        token("comment", LexicalTokenClass::Comment),
+        token("ERROR", LexicalTokenClass::Error),
+        token("*", LexicalTokenClass::Other),
+    ]);
+    LanguageLexicalPolicy::provided(
+        adapter_schema,
+        CapabilityAuthority::Adapter,
+        IdentifierCasePolicy::Sensitive,
+        true,
+        vec!["#".to_string()],
+        Vec::new(),
+        rules,
+    )
+    .expect("the Python lexical policy is valid")
+}
+
+fn python_construct_policy(adapter_schema: &str) -> LanguageConstructPolicy {
+    LanguageConstructPolicy::new(
+        adapter_schema,
+        ParseRecoveryPolicy::provided(
+            CapabilityAuthority::Syntax,
+            ParseRecoveryHandling::FileIncomplete,
+        ),
+        vec![
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::UnsupportedConstruct,
+                CapabilityAuthority::Adapter,
+                vec![
+                    ConstructRule::new("exec_statement", None, ConstructHandling::Opaque),
+                    ConstructRule::new("print_statement", None, ConstructHandling::Opaque),
+                ],
+            )
+            .expect("the Python unsupported policy is valid"),
+            ConstructPolicySection::unsupported(ConstructPolicyKind::Macro),
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::GeneratedCode,
+                CapabilityAuthority::Adapter,
+                vec![
+                    ConstructRule::new(
+                        "comment",
+                        Some("# @generated".to_string()),
+                        ConstructHandling::SurfaceSyntax,
+                    ),
+                    ConstructRule::new(
+                        "decorator",
+                        Some("@generated".to_string()),
+                        ConstructHandling::SurfaceSyntax,
+                    ),
+                ],
+            )
+            .expect("the Python generated policy is valid"),
+        ],
+        DialectPolicy::provided(
+            CapabilityAuthority::Syntax,
+            vec![DialectDeclaration::new(
+                "python",
+                "tree-sitter-python",
+                "0.25.0",
+            )],
+        )
+        .expect("the Python dialect policy is valid"),
+    )
+    .expect("the Python construct policy is valid")
+}
+
 impl LangPack for PythonPack {
     fn name(&self) -> &'static str {
         "python"
@@ -2460,6 +2754,27 @@ impl LangPack for PythonPack {
 
     fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
         LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
+            .with_declaration(CapabilityDeclaration::provided(
+                AdapterCapability::CanonicalRoles,
+                CapabilityAuthority::Adapter,
+            ))
+            .expect("the Python S1 capability declaration is valid")
+    }
+
+    fn canonical_roles(&self, node: Node<'_>, text: &str) -> CanonicalRoleSet {
+        python_canonical_roles(node, text)
+    }
+
+    fn query_pack(&self) -> LanguageQueryPack {
+        python_query_pack(self.adapter_schema())
+    }
+
+    fn lexical_policy(&self) -> LanguageLexicalPolicy {
+        python_lexical_policy(self.adapter_schema())
+    }
+
+    fn construct_policy(&self) -> LanguageConstructPolicy {
+        python_construct_policy(self.adapter_schema())
     }
 
     fn lang(&self) -> Lang {
@@ -4412,7 +4727,7 @@ mod tests {
             assert_eq!(manifest.capabilities().len(), 23);
             let production_policy = matches!(
                 pack.lang(),
-                Lang::JavaScript | Lang::TypeScript | Lang::Rust
+                Lang::JavaScript | Lang::TypeScript | Lang::Python | Lang::Rust
             );
             assert_eq!(
                 manifest.highest_complete_tier(),
@@ -4444,8 +4759,10 @@ mod tests {
             assert_eq!(constructs.parse_recovery().support(), expected);
             assert_eq!(constructs.dialects().support(), expected);
             assert!(constructs.constructs().iter().all(|section| {
-                let expected_section = if matches!(pack.lang(), Lang::JavaScript | Lang::TypeScript)
-                    && section.kind() == ConstructPolicyKind::Macro
+                let expected_section = if matches!(
+                    pack.lang(),
+                    Lang::JavaScript | Lang::TypeScript | Lang::Python
+                ) && section.kind() == ConstructPolicyKind::Macro
                 {
                     CapabilitySupport::Unsupported
                 } else {

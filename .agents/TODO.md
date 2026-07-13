@@ -311,7 +311,14 @@ reports, benchmark records, and work orders.
   totals JS 61/42, TS 143/90, TSX 107/68; query vectors `[1,1,3,0,2,1]`, `[4,2,3,0,1,0]`, and
   `[3,0,2,0,1,0]`; exact generated/unsupported facts; malformed TS/TSX error evidence; and one parse
   per file. All workspace gates pass.
-- [ ] M2.8 Implement/repair Python adapter and golden fixtures.
+- [x] M2.8 Implement/repair Python adapter and golden fixtures.
+  Evidence: production `PythonPack` now provides composable canonical roles, all six syntax query
+  families, a total Unicode/comment/operator lexical policy, file-incomplete recovery, opaque legacy
+  `exec`/`print`, exact generated markers, and `python/tree-sitter-python/0.25.0` provenance. It derives
+  S1 while S2-S4 stay unknown. Valid/malformed goldens lock 127 CST facts, 75 token owners, 108 role
+  assignments across 21 roles, query captures `[4,1,8,3,2,2]`, four exact construct facts, one exact
+  malformed `ERROR`, query-to-role consistency, and one parse per file. Exact-text keyword rules keep
+  `await`/`lambda`/`type`/`yield` composites from suppressing their operands. All workspace gates pass.
 - [ ] M2.9 Implement/repair Clojure adapter and golden fixtures.
 - [ ] M2.10 Implement/repair Julia adapter and golden fixtures.
 - [ ] M2.11 Add cross-adapter construct matrices and unsupported-capability leakage tests.
