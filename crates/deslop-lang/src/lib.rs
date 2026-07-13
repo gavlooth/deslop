@@ -7,6 +7,212 @@ use serde::{Deserialize, Deserializer, Serialize};
 use tree_sitter::Node;
 
 pub const LANGUAGE_ADAPTER_CAPABILITY_SCHEMA: &str = "deslop.language-adapter-capabilities/1";
+pub const CANONICAL_ROLE_SCHEMA: &str = "deslop.canonical-roles/1";
+
+/// Portable syntactic categories projected by language adapters.
+///
+/// Roles are intentionally composable: for example a grammar node may be both a declaration and a
+/// callable, or both an expression and a call. Raw grammar kinds and fields remain authoritative
+/// grammar evidence and are never replaced by this vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CanonicalRole {
+    Project,
+    Module,
+    Declaration,
+    Type,
+    Callable,
+    Parameter,
+    Block,
+    Statement,
+    Expression,
+    Branch,
+    Loop,
+    Match,
+    Case,
+    Call,
+    Read,
+    Write,
+    Literal,
+    Comment,
+    Import,
+    Export,
+    Error,
+    Generated,
+    OpaqueRegion,
+}
+
+impl CanonicalRole {
+    pub const ALL: [Self; 23] = [
+        Self::Project,
+        Self::Module,
+        Self::Declaration,
+        Self::Type,
+        Self::Callable,
+        Self::Parameter,
+        Self::Block,
+        Self::Statement,
+        Self::Expression,
+        Self::Branch,
+        Self::Loop,
+        Self::Match,
+        Self::Case,
+        Self::Call,
+        Self::Read,
+        Self::Write,
+        Self::Literal,
+        Self::Comment,
+        Self::Import,
+        Self::Export,
+        Self::Error,
+        Self::Generated,
+        Self::OpaqueRegion,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::Module => "module",
+            Self::Declaration => "declaration",
+            Self::Type => "type",
+            Self::Callable => "callable",
+            Self::Parameter => "parameter",
+            Self::Block => "block",
+            Self::Statement => "statement",
+            Self::Expression => "expression",
+            Self::Branch => "branch",
+            Self::Loop => "loop",
+            Self::Match => "match",
+            Self::Case => "case",
+            Self::Call => "call",
+            Self::Read => "read",
+            Self::Write => "write",
+            Self::Literal => "literal",
+            Self::Comment => "comment",
+            Self::Import => "import",
+            Self::Export => "export",
+            Self::Error => "error",
+            Self::Generated => "generated",
+            Self::OpaqueRegion => "opaque-region",
+        }
+    }
+
+    fn catalog_index(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|candidate| *candidate == self)
+            .expect("the canonical role catalog is exhaustive")
+    }
+
+    fn bit(self) -> u32 {
+        1_u32 << self.catalog_index()
+    }
+}
+
+/// A canonical, duplicate-free set of composable roles.
+///
+/// Its wire form pins both the role schema and catalog order. Construction order does not affect
+/// serialization; malformed reordered or duplicate wire roles fail closed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CanonicalRoleSet {
+    bits: u32,
+}
+
+#[derive(Serialize)]
+struct CanonicalRoleSetRef<'roles> {
+    schema: &'static str,
+    roles: &'roles [CanonicalRole],
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CanonicalRoleSetWire {
+    schema: String,
+    roles: Vec<CanonicalRole>,
+}
+
+impl CanonicalRoleSet {
+    pub fn from_roles(roles: impl IntoIterator<Item = CanonicalRole>) -> Self {
+        let mut set = Self::default();
+        for role in roles {
+            set.insert(role);
+        }
+        set
+    }
+
+    pub fn insert(&mut self, role: CanonicalRole) {
+        self.bits |= role.bit();
+    }
+
+    pub fn contains(self, role: CanonicalRole) -> bool {
+        self.bits & role.bit() != 0
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.bits == 0
+    }
+
+    pub fn len(self) -> usize {
+        self.bits.count_ones() as usize
+    }
+
+    pub fn union(self, other: Self) -> Self {
+        Self {
+            bits: self.bits | other.bits,
+        }
+    }
+
+    pub fn iter(self) -> impl Iterator<Item = CanonicalRole> {
+        CanonicalRole::ALL
+            .into_iter()
+            .filter(move |role| self.contains(*role))
+    }
+}
+
+impl Serialize for CanonicalRoleSet {
+    fn serialize<Serializer>(
+        &self,
+        serializer: Serializer,
+    ) -> std::result::Result<Serializer::Ok, Serializer::Error>
+    where
+        Serializer: serde::Serializer,
+    {
+        let roles = self.iter().collect::<Vec<_>>();
+        CanonicalRoleSetRef {
+            schema: CANONICAL_ROLE_SCHEMA,
+            roles: &roles,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for CanonicalRoleSet {
+    fn deserialize<Deserializer>(
+        deserializer: Deserializer,
+    ) -> std::result::Result<Self, Deserializer::Error>
+    where
+        Deserializer: serde::Deserializer<'de>,
+    {
+        let wire = CanonicalRoleSetWire::deserialize(deserializer)?;
+        if wire.schema != CANONICAL_ROLE_SCHEMA {
+            return Err(Deserializer::Error::custom(format!(
+                "unsupported canonical role schema {}; expected {CANONICAL_ROLE_SCHEMA}",
+                wire.schema
+            )));
+        }
+        let mut previous = None;
+        for role in &wire.roles {
+            let index = role.catalog_index();
+            if previous.is_some_and(|previous| index <= previous) {
+                return Err(Deserializer::Error::custom(
+                    "canonical roles must be unique and in catalog order",
+                ));
+            }
+            previous = Some(index);
+        }
+        Ok(Self::from_roles(wire.roles))
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RegionSpan {
@@ -472,6 +678,9 @@ pub trait LangPack: Send + Sync {
         "deslop-lang-adapter/1"
     }
     fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest;
+    fn canonical_roles(&self, _node: Node<'_>, _text: &str) -> CanonicalRoleSet {
+        CanonicalRoleSet::default()
+    }
     fn lang(&self) -> Lang;
     fn extensions(&self) -> &'static [&'static str];
     fn grammar(&self) -> Option<tree_sitter::Language>;
@@ -1645,6 +1854,68 @@ mod tests {
             registry.pack_for_path(Path::new("sample.tsx")).lang(),
             Lang::TypeScript
         );
+    }
+
+    #[test]
+    fn canonical_role_catalog_is_composable_ordered_and_wire_pinned() {
+        assert_eq!(CanonicalRole::ALL.len(), 23);
+        let composed = CanonicalRoleSet::from_roles([
+            CanonicalRole::Call,
+            CanonicalRole::Callable,
+            CanonicalRole::Declaration,
+            CanonicalRole::Expression,
+            CanonicalRole::Call,
+        ]);
+        assert_eq!(composed.len(), 4);
+        assert!(composed.contains(CanonicalRole::Declaration));
+        assert!(composed.contains(CanonicalRole::Callable));
+        assert!(composed.contains(CanonicalRole::Expression));
+        assert!(composed.contains(CanonicalRole::Call));
+        assert_eq!(
+            composed.iter().collect::<Vec<_>>(),
+            [
+                CanonicalRole::Declaration,
+                CanonicalRole::Callable,
+                CanonicalRole::Expression,
+                CanonicalRole::Call,
+            ]
+        );
+
+        let all = CanonicalRoleSet::from_roles(CanonicalRole::ALL);
+        let value = serde_json::to_value(all).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "schema": "deslop.canonical-roles/1",
+                "roles": [
+                    "project", "module", "declaration", "type", "callable", "parameter",
+                    "block", "statement", "expression", "branch", "loop", "match", "case",
+                    "call", "read", "write", "literal", "comment", "import", "export",
+                    "error", "generated", "opaque-region"
+                ]
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<CanonicalRoleSet>(value).unwrap(),
+            all
+        );
+
+        for malformed in [
+            serde_json::json!({
+                "schema": "deslop.canonical-roles/999",
+                "roles": ["call"]
+            }),
+            serde_json::json!({
+                "schema": "deslop.canonical-roles/1",
+                "roles": ["call", "expression"]
+            }),
+            serde_json::json!({
+                "schema": "deslop.canonical-roles/1",
+                "roles": ["call", "call"]
+            }),
+        ] {
+            assert!(serde_json::from_value::<CanonicalRoleSet>(malformed).is_err());
+        }
     }
 
     #[test]

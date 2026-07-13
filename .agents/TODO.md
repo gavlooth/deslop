@@ -260,7 +260,14 @@ reports, benchmark records, and work orders.
   a capability-only change preserves raw analysis identity but changes stored adapter/projection
   identity. Exact JSON, tier truth-table, registry, snapshot, and identity tests pass together with
   all-feature workspace tests, build, warning-denied rustdoc, strict clippy, format, and whitespace.
-- [ ] M2.2 Define canonical roles and retain raw grammar kinds/fields alongside them.
+- [x] M2.2 Define canonical roles and retain raw grammar kinds/fields alongside them.
+  Evidence: `deslop.canonical-roles/1` pins 23 composable roles and a canonical sorted,
+  duplicate-free wire set. `deslop.canonical-role-projection/1` is capability-gated, retains its
+  owning analysis, and pairs every `NodeId`/role set with raw visible kind/id, grammar kind/id, and
+  parent field. The fixed custom-adapter oracle locks 32 nodes, 11 raw fields, and 22 assignments,
+  including an aliased `type_identifier`/`identifier`; unknown production capability fails typed.
+  Raw analysis identity and `NodeKey/1` remain unchanged. Exact wire/malformed-input tests and all
+  workspace tests, build, warning-denied rustdoc, strict clippy, format, and whitespace pass.
 - [ ] M2.3 Define query packs for declarations, references, scopes, control, comments, and opaque/generated code.
 - [ ] M2.4 Define operator/token classification and language-specific lexical policies.
 - [ ] M2.5 Define parse-error, unsupported-construct, macro, generated-code, and dialect policies.

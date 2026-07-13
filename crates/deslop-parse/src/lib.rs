@@ -8,9 +8,9 @@ use deslop_lang::{LangPack, Registry, detect_lang};
 use tree_sitter::{Parser, Tree};
 
 pub use deslop_lang::{
-    AdapterCapability, CapabilityAuthority, CapabilityDeclaration, CapabilitySupport,
-    LANGUAGE_ADAPTER_CAPABILITY_SCHEMA, LanguageAdapterCapabilityManifest, RegionSpan,
-    SemanticTier,
+    AdapterCapability, CANONICAL_ROLE_SCHEMA, CanonicalRole, CanonicalRoleSet, CapabilityAuthority,
+    CapabilityDeclaration, CapabilitySupport, LANGUAGE_ADAPTER_CAPABILITY_SCHEMA,
+    LanguageAdapterCapabilityManifest, RegionSpan, SemanticTier,
 };
 
 // M1.3 owns the raw arena internally; M1.4 adds owner-validated public node views.
@@ -26,7 +26,10 @@ mod planner;
 mod query;
 mod snapshot;
 
-pub use adapter::{SyntaxAdapterFacts, SyntaxAdapterFactsError};
+pub use adapter::{
+    CANONICAL_ROLE_PROJECTION_SCHEMA, CanonicalNodeRoles, CanonicalRoleProjection,
+    CanonicalRoleProjectionError, RawSyntaxFact, SyntaxAdapterFacts, SyntaxAdapterFactsError,
+};
 pub use aggregation::{
     InclusiveSyntaxPolicy, SyntaxAggregateLookupError, SyntaxAggregateOwner,
     SyntaxAggregateProjection, SyntaxAggregates, SyntaxAggregationError,

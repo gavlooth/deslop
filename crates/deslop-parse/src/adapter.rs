@@ -1,11 +1,142 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use deslop_lang::{RegionClass, RegionSpan, TailPositionClass};
+use deslop_lang::{
+    AdapterCapability, CanonicalRoleSet, CapabilitySupport, RegionClass, RegionSpan,
+    TailPositionClass,
+};
 use tree_sitter::Node;
 
 use crate::arena::tree_nodes_preorder;
-use crate::{NodeId, ProjectAnalysis};
+use crate::{NodeId, ProjectAnalysis, ProjectionId};
+
+pub const CANONICAL_ROLE_PROJECTION_SCHEMA: &str = "deslop.canonical-role-projection/1";
+
+/// Raw grammar evidence retained alongside a canonical role set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawSyntaxFact {
+    raw_kind: Box<str>,
+    raw_kind_id: u16,
+    raw_grammar_kind: Box<str>,
+    raw_grammar_kind_id: u16,
+    field: Option<Box<str>>,
+}
+
+impl RawSyntaxFact {
+    pub fn raw_kind(&self) -> &str {
+        &self.raw_kind
+    }
+
+    pub fn raw_kind_id(&self) -> u16 {
+        self.raw_kind_id
+    }
+
+    pub fn raw_grammar_kind(&self) -> &str {
+        &self.raw_grammar_kind
+    }
+
+    pub fn raw_grammar_kind_id(&self) -> u16 {
+        self.raw_grammar_kind_id
+    }
+
+    pub fn field(&self) -> Option<&str> {
+        self.field.as_deref()
+    }
+}
+
+/// One canonical-role fact tied to an exact raw syntax node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CanonicalNodeRoles {
+    node: NodeId,
+    raw: RawSyntaxFact,
+    roles: CanonicalRoleSet,
+}
+
+impl CanonicalNodeRoles {
+    pub fn node(&self) -> NodeId {
+        self.node
+    }
+
+    pub fn raw(&self) -> &RawSyntaxFact {
+        &self.raw
+    }
+
+    pub fn roles(&self) -> CanonicalRoleSet {
+        self.roles
+    }
+}
+
+/// An owned role projection whose `NodeId` values remain valid through the retained analysis.
+#[derive(Debug, Clone)]
+pub struct CanonicalRoleProjection {
+    id: ProjectionId,
+    analysis: Arc<ProjectAnalysis>,
+    path: PathBuf,
+    facts: Box<[CanonicalNodeRoles]>,
+}
+
+impl CanonicalRoleProjection {
+    pub fn schema(&self) -> &'static str {
+        CANONICAL_ROLE_PROJECTION_SCHEMA
+    }
+
+    pub fn id(&self) -> &ProjectionId {
+        &self.id
+    }
+
+    pub fn analysis(&self) -> &Arc<ProjectAnalysis> {
+        &self.analysis
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn facts(&self) -> &[CanonicalNodeRoles] {
+        &self.facts
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CanonicalRoleProjectionError {
+    Syntax(SyntaxAdapterFactsError),
+    CapabilityUnavailable {
+        path: PathBuf,
+        support: CapabilitySupport,
+    },
+    Identity {
+        detail: String,
+    },
+}
+
+impl fmt::Display for CanonicalRoleProjectionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Syntax(error) => error.fmt(formatter),
+            Self::CapabilityUnavailable { path, support } => write!(
+                formatter,
+                "canonical roles are {} for {}",
+                support.as_str(),
+                path.display()
+            ),
+            Self::Identity { detail } => {
+                write!(
+                    formatter,
+                    "canonical role projection identity failed: {detail}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for CanonicalRoleProjectionError {}
+
+impl From<SyntaxAdapterFactsError> for CanonicalRoleProjectionError {
+    fn from(error: SyntaxAdapterFactsError) -> Self {
+        Self::Syntax(error)
+    }
+}
 
 /// Owned results of language-pack syntax hooks for one existing analysis node.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,6 +253,13 @@ impl fmt::Display for SyntaxAdapterFactsError {
 
 impl std::error::Error for SyntaxAdapterFactsError {}
 
+struct ValidatedSyntaxNodes<'analysis> {
+    pack: &'static dyn deslop_lang::LangPack,
+    text: &'analysis str,
+    nodes: Vec<Node<'analysis>>,
+    ids: Vec<NodeId>,
+}
+
 impl ProjectAnalysis {
     /// Evaluate language-pack hooks once over the retained private Tree and return owned facts.
     ///
@@ -131,6 +269,96 @@ impl ProjectAnalysis {
         &self,
         path: &Path,
     ) -> Result<Box<[SyntaxAdapterFacts]>, SyntaxAdapterFactsError> {
+        let syntax = self.validated_syntax_nodes(path)?;
+        let mut facts = Vec::with_capacity(syntax.nodes.len());
+        for (tree_node, node) in syntax.nodes.into_iter().zip(syntax.ids) {
+            facts.push(SyntaxAdapterFacts {
+                node,
+                region_class: syntax.pack.region_class(tree_node, syntax.text),
+                enclosing_region: syntax.pack.enclosing_region(tree_node, syntax.text),
+                long_method_region: syntax.pack.is_long_method_region(tree_node, syntax.text),
+                behavioral_container: syntax.pack.is_behavioral_container(tree_node, syntax.text),
+                constant_definition_region: syntax
+                    .pack
+                    .is_constant_definition_region(tree_node, syntax.text),
+                duplication_data_region: syntax
+                    .pack
+                    .is_duplication_data_region(tree_node, syntax.text),
+                tail_position_class: syntax.pack.tail_position_class(tree_node, syntax.text),
+                metric_branch_contribution: syntax
+                    .pack
+                    .metric_branch_contribution(tree_node, syntax.text),
+                metric_nesting: syntax.pack.is_metric_nesting(tree_node, syntax.text),
+                metric_flow_break: syntax.pack.is_metric_flow_break(tree_node, syntax.text),
+            });
+        }
+        Ok(facts.into_boxed_slice())
+    }
+
+    /// Build the canonical-role projection declared by the exact stored language adapter.
+    ///
+    /// Unknown or unsupported capability is a typed failure, not an empty authoritative mapping.
+    /// Each fact copies the raw grammar identity and parent field from the immutable arena, while
+    /// the projection retains this analysis so its process-local node IDs cannot outlive their owner.
+    pub fn canonical_role_projection(
+        self: &Arc<Self>,
+        path: &Path,
+    ) -> Result<CanonicalRoleProjection, CanonicalRoleProjectionError> {
+        let syntax = self.validated_syntax_nodes(path)?;
+        let identity = self
+            .snapshot()
+            .entry(path)
+            .and_then(|entry| entry.language_adapter_identity())
+            .expect("validated source syntax has a stored adapter identity");
+        let support = identity
+            .capabilities()
+            .declaration(AdapterCapability::CanonicalRoles)
+            .support();
+        if support != CapabilitySupport::Provided {
+            return Err(CanonicalRoleProjectionError::CapabilityUnavailable {
+                path: path.to_path_buf(),
+                support,
+            });
+        }
+
+        let id = self
+            .derive_projection_id(
+                CANONICAL_ROLE_PROJECTION_SCHEMA,
+                deslop_lang::CANONICAL_ROLE_SCHEMA.as_bytes(),
+                AdapterCapability::CanonicalRoles.as_str().as_bytes(),
+            )
+            .map_err(|error| CanonicalRoleProjectionError::Identity {
+                detail: error.to_string(),
+            })?;
+        let mut facts = Vec::with_capacity(syntax.nodes.len());
+        for (tree_node, node) in syntax.nodes.into_iter().zip(syntax.ids) {
+            let view = self
+                .node(node)
+                .expect("validated syntax nodes belong to this analysis");
+            facts.push(CanonicalNodeRoles {
+                node,
+                raw: RawSyntaxFact {
+                    raw_kind: view.raw_kind().into(),
+                    raw_kind_id: view.raw_kind_id(),
+                    raw_grammar_kind: view.raw_grammar_kind().into(),
+                    raw_grammar_kind_id: view.raw_grammar_kind_id(),
+                    field: view.field().map(Into::into),
+                },
+                roles: syntax.pack.canonical_roles(tree_node, syntax.text),
+            });
+        }
+        Ok(CanonicalRoleProjection {
+            id,
+            analysis: Arc::clone(self),
+            path: path.to_path_buf(),
+            facts: facts.into_boxed_slice(),
+        })
+    }
+
+    fn validated_syntax_nodes<'analysis>(
+        &'analysis self,
+        path: &Path,
+    ) -> Result<ValidatedSyntaxNodes<'analysis>, SyntaxAdapterFactsError> {
         let file = self
             .file(path)
             .ok_or_else(|| SyntaxAdapterFactsError::FileNotFound {
@@ -163,8 +391,7 @@ impl ProjectAnalysis {
                 path: path.to_path_buf(),
             }
         })?;
-        let mut facts = Vec::with_capacity(nodes.len());
-        for (index, (tree_node, node)) in nodes.into_iter().zip(ids).enumerate() {
+        for (index, (&tree_node, &node)) in nodes.iter().zip(&ids).enumerate() {
             let view = self.node(node).map_err(|error| {
                 SyntaxAdapterFactsError::TreeArenaNodeMismatch {
                     path: path.to_path_buf(),
@@ -203,21 +430,13 @@ impl ProjectAnalysis {
                     ),
                 });
             }
-            facts.push(SyntaxAdapterFacts {
-                node,
-                region_class: pack.region_class(tree_node, text),
-                enclosing_region: pack.enclosing_region(tree_node, text),
-                long_method_region: pack.is_long_method_region(tree_node, text),
-                behavioral_container: pack.is_behavioral_container(tree_node, text),
-                constant_definition_region: pack.is_constant_definition_region(tree_node, text),
-                duplication_data_region: pack.is_duplication_data_region(tree_node, text),
-                tail_position_class: pack.tail_position_class(tree_node, text),
-                metric_branch_contribution: pack.metric_branch_contribution(tree_node, text),
-                metric_nesting: pack.is_metric_nesting(tree_node, text),
-                metric_flow_break: pack.is_metric_flow_break(tree_node, text),
-            });
         }
-        Ok(facts.into_boxed_slice())
+        Ok(ValidatedSyntaxNodes {
+            pack,
+            text,
+            nodes,
+            ids,
+        })
     }
 }
 
@@ -237,7 +456,7 @@ mod tests {
     use super::*;
     use deslop_core::Lang;
     use deslop_lang::{
-        AdapterCapability, CapabilityAuthority, CapabilityDeclaration, GENERIC_PACK,
+        AdapterCapability, CanonicalRole, CapabilityAuthority, CapabilityDeclaration, GENERIC_PACK,
         GrammarDescriptor, LangPack, RUST_PACK, Registry,
     };
 
@@ -276,6 +495,32 @@ mod tests {
             } else {
                 manifest
             }
+        }
+
+        fn canonical_roles(&self, node: Node<'_>, _text: &str) -> CanonicalRoleSet {
+            if !self.canonical_roles {
+                return CanonicalRoleSet::default();
+            }
+            CanonicalRoleSet::from_roles(match node.kind() {
+                "source_file" => vec![CanonicalRole::Project],
+                "type_item" => vec![CanonicalRole::Declaration, CanonicalRole::Type],
+                "type_identifier" | "primitive_type" | "generic_type" => {
+                    vec![CanonicalRole::Type]
+                }
+                "function_item" => {
+                    vec![CanonicalRole::Declaration, CanonicalRole::Callable]
+                }
+                "parameters" | "parameter" => vec![CanonicalRole::Parameter],
+                "block" => vec![CanonicalRole::Block],
+                "expression_statement" => vec![CanonicalRole::Statement],
+                "call_expression" => vec![CanonicalRole::Expression, CanonicalRole::Call],
+                "identifier" => vec![CanonicalRole::Expression, CanonicalRole::Read],
+                "integer_literal" | "string_literal" => {
+                    vec![CanonicalRole::Expression, CanonicalRole::Literal]
+                }
+                "ERROR" => vec![CanonicalRole::Error],
+                _ => Vec::new(),
+            })
         }
 
         fn lang(&self) -> Lang {
@@ -415,6 +660,129 @@ mod tests {
                     .all(|fact| fact.metric_branch_contribution() == branch)
             );
         }
+    }
+
+    #[test]
+    fn canonical_role_projection_preserves_every_raw_kind_and_field() {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::new(&GENERIC_PACK);
+        registry.register(&CAPABILITY_LEFT_PACK);
+        let path = Path::new("roles.left");
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("canonical-role-projection-test").unwrap(),
+        )
+        .unwrap()
+        .with_registry(registry)
+        .with_overlay(
+            path,
+            b"type Alias = Vec<String>;\nfn sample(value: i32) { value(); }\n".to_vec(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let raw_analysis_id = analysis.id().clone();
+        let projection = analysis.canonical_role_projection(path).unwrap();
+        let repeated = analysis.canonical_role_projection(path).unwrap();
+
+        assert_eq!(projection.schema(), CANONICAL_ROLE_PROJECTION_SCHEMA);
+        assert_eq!(projection.path(), path);
+        assert!(Arc::ptr_eq(projection.analysis(), &analysis));
+        assert_eq!(projection.id(), repeated.id());
+        assert_eq!(analysis.id(), &raw_analysis_id);
+        assert_eq!(
+            projection.id(),
+            &analysis
+                .derive_projection_id(
+                    CANONICAL_ROLE_PROJECTION_SCHEMA,
+                    deslop_lang::CANONICAL_ROLE_SCHEMA.as_bytes(),
+                    AdapterCapability::CanonicalRoles.as_str().as_bytes(),
+                )
+                .unwrap()
+        );
+        assert_eq!(projection.facts(), repeated.facts());
+        assert_eq!(
+            projection.facts().len(),
+            analysis.file_node_ids(path).unwrap().len()
+        );
+
+        for fact in projection.facts() {
+            let raw = fact.raw();
+            let view = analysis.node(fact.node()).unwrap();
+            assert_eq!(view.key().schema(), "deslop.node-key/1");
+            assert!(
+                !serde_json::to_string(view.key())
+                    .unwrap()
+                    .contains("canonical_role")
+            );
+            assert_eq!(raw.raw_kind(), view.raw_kind());
+            assert_eq!(raw.raw_kind_id(), view.raw_kind_id());
+            assert_eq!(raw.raw_grammar_kind(), view.raw_grammar_kind());
+            assert_eq!(raw.raw_grammar_kind_id(), view.raw_grammar_kind_id());
+            assert_eq!(raw.field(), view.field());
+        }
+
+        let alias = projection
+            .facts()
+            .iter()
+            .find(|fact| {
+                fact.raw().raw_kind() == "type_identifier"
+                    && fact.raw().raw_grammar_kind() == "identifier"
+            })
+            .expect("the projection must retain an aliased visible and raw grammar kind");
+        assert_eq!(alias.raw().field(), Some("name"));
+        assert!(alias.roles().contains(CanonicalRole::Type));
+
+        let function = projection
+            .facts()
+            .iter()
+            .find(|fact| fact.raw().raw_kind() == "function_item")
+            .unwrap();
+        assert_eq!(
+            function.roles().iter().collect::<Vec<_>>(),
+            [CanonicalRole::Declaration, CanonicalRole::Callable]
+        );
+
+        let node_count = projection.facts().len();
+        let raw_field_count = projection
+            .facts()
+            .iter()
+            .filter(|fact| fact.raw().field().is_some())
+            .count();
+        let role_assignments = projection
+            .facts()
+            .iter()
+            .map(|fact| fact.roles().len())
+            .sum::<usize>();
+        assert_eq!(
+            (node_count, raw_field_count, role_assignments),
+            (32, 11, 22)
+        );
+    }
+
+    #[test]
+    fn canonical_role_projection_rejects_unknown_capability() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("canonical-role-unavailable-test").unwrap(),
+        )
+        .unwrap()
+        .with_overlay("unknown.rs", b"fn sample() {}\n".to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        assert_eq!(
+            analysis
+                .canonical_role_projection(Path::new("unknown.rs"))
+                .unwrap_err(),
+            CanonicalRoleProjectionError::CapabilityUnavailable {
+                path: PathBuf::from("unknown.rs"),
+                support: CapabilitySupport::Unknown,
+            }
+        );
     }
 
     #[test]

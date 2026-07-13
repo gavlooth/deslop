@@ -7232,3 +7232,58 @@ tier from partial syntax, omit unavailable declarations, decouple capabilities f
 identity, add `Lang::Tsx`, or put canonical roles into `NodeKey/1`.
 
 **Signature:** Codex (GPT-5), M2.1 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2.2 terminal checkpoint — canonical roles beside raw grammar facts
+
+**Date/time:** 2026-07-14T00:37:29+02:00
+
+**Objective/target:** define a small stable and composable canonical-role vocabulary without erasing
+raw Tree-sitter evidence, changing raw analysis identity, or prematurely claiming production adapter
+coverage assigned to M2.6-M2.10.
+
+**Changes:** added `deslop.canonical-roles/1` with 23 ordered roles and a compact set that serializes
+in canonical catalog order and strictly rejects wrong schemas, duplicates, reordering, and unknown
+fields. `LangPack` gains a default-empty role callback. Added capability-gated
+`deslop.canonical-role-projection/1`: it retains the exact `Arc<ProjectAnalysis>` and emits one owned
+fact per raw node with `NodeId`, visible kind/id, raw grammar kind/id, parent field, and composed role
+set. Unknown or unsupported stored capability returns a typed error rather than an empty confirmed
+projection. Refactored the private Tree/raw-arena validation walk so legacy syntax-hook facts and role
+facts share the exact same node/span/field/flag mismatch guard. Public role/raw/projection types and
+schema constants are re-exported from `deslop-parse`.
+
+**Commands/checks run:** focused canonical role catalog and parse projection tests; affected strict
+clippy; `cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`;
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`;
+`cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. The exact role catalog contains 23 roles. The custom retained Rust-grammar fixture
+projects 32 nodes, preserves 11 raw parent fields, and emits 22 role assignments. Every projected raw
+fact equals its arena `NodeView`; the oracle specifically retains visible `type_identifier` versus
+raw grammar `identifier` with field `name`, and composes declaration+callable on a function. Repeated
+projection has identical identity/facts and retains the same analysis pointer. Production Rust still
+declares canonical roles unknown and fails with typed `CapabilityUnavailable`. Raw analysis identity
+and all `deslop.node-key/1` values remain unchanged. All workspace gates pass.
+
+**Invalidated assumptions / negative memory:** canonical roles are not a replacement for grammar
+kinds, aliases, numeric IDs, or fields. A default-empty callback is not evidence of support; the
+stored capability manifest gates projection. Role policy is derived adapter state and must not enter
+`ProjectAnalysisId` or `NodeKey/1`. M2.2 defines the common contract only; claiming per-language
+coverage before focused query/mapping fixtures would be false authority.
+
+**Current recommendation/next actions:** implement M2.3 as versioned query-pack declarations for the
+six required capture families, compiled through the existing owned Tree-sitter query substrate.
+Distinguish syntactic captures from S2 name resolution/control-flow authority and keep production
+packs unknown until their language milestones install fixture-backed packs.
+
+**Blockers/dependencies/restart:** none. No dependency, service restart, cache clear, or migration is
+required. Rust consumers rebuild for the additive `LangPack::canonical_roles` method and new public
+projection types; workspace build already verifies internal consumers.
+
+**Negative-memory status:** recorded locally; Hindsight consolidation follows. Never erase raw
+grammar evidence, authorize an empty set under unavailable capability, mutate raw identity for roles,
+or treat syntactic role/query captures as semantic resolution or control-flow proof.
+
+**Signature:** Codex (GPT-5), M2.2 integration owner, terminal checkpoint, 2026-07-14.

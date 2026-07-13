@@ -1311,6 +1311,60 @@ claim canonical-role support until a total fixture-backed mapping exists.
 Agent assignment: `/root` owns M2.1 integration and M2.2 continuation; no concurrent file edits are
 assigned.
 
+#### M2.2 terminal checkpoint — canonical roles beside raw grammar facts
+
+Active hypothesis: a small composable role set can normalize portable syntactic categories without
+erasing grammar-specific evidence if role facts are a versioned derived projection over the immutable
+raw arena, not a mutation of `NodeKey/1` or `ProjectAnalysisId`.
+
+CONVERGENCE: pin one exact role vocabulary/wire vector, exercise multi-role composition and strict
+deserialize ordering, then build one custom adapter projection over a real retained Tree. Every role
+fact must retain its `NodeId`, raw kind/id, raw grammar kind/id, raw parent field, and canonical set;
+the projection must retain its owning analysis and derive identity through the stored adapter schema
+and manifest. Unknown canonical-role capability must fail as unavailable rather than return an empty
+authoritative mapping. If the custom projection aligns node-for-node with the raw arena, raw identity
+and `NodeKey/1` remain unchanged, and workspace gates pass, M2.2 is done. Production mapping quality
+and golden fixtures stay in M2.6-M2.10.
+
+Current approach: define `deslop.canonical-roles/1`, the exact project/module/declaration/type/
+callable/parameter/block/statement/expression/branch/loop/match/case/call/read/write/literal/comment/
+import/export/error/generated/opaque-region catalog, and a sorted duplicate-free composable role set
+in `deslop-lang`. Add a default-empty `LangPack` callback but gate public role projection execution on
+the exact stored `CanonicalRoles` capability. Refactor the existing private Tree/raw-arena alignment
+walk once so legacy syntax-hook facts and role facts share the same mismatch checks.
+
+Validation path: exact role JSON and catalog-size test; malformed schema/order/duplicate rejection;
+custom adapter node-for-node role/raw fact oracle including aliased grammar names and raw fields;
+unknown-capability rejection for a production pack; projection ownership/identity and unchanged raw
+analysis/`NodeKey/1` assertions; focused tests/clippy followed by workspace-wide gates.
+
+Next checkpoint: M2.2 terminal proof with numerical node/role/raw-field counts and no production pack
+claiming canonical-role authority ahead of its language fixture milestone.
+
+Negative-memory constraints: canonical roles are derived and may be composed; never overwrite raw
+kind/grammar-kind/field data, place roles in `NodeKey/1`, treat an empty role set as confirmed when the
+capability is unknown, or implement query-pack/scope/control semantics assigned to M2.3 and later.
+
+Terminal result: PASS. `deslop.canonical-roles/1` freezes 23 composable roles and a deterministic
+schema-bearing set whose wire rejects wrong schemas, duplicates, and reordering. The capability-gated
+`deslop.canonical-role-projection/1` retains its exact `Arc<ProjectAnalysis>` and pairs every projected
+`NodeId` with raw visible kind/id, raw grammar kind/id, parent field, and canonical set. The fixed
+custom Rust-grammar adapter fixture locks 32 nodes, 11 raw fields, and 22 role assignments, including
+the visible `type_identifier` versus grammar `identifier` alias. Repeated projection is deterministic;
+unknown production capability is typed unavailable. Raw analysis identity and `NodeKey/1` remain
+unchanged, and all workspace gates pass.
+
+Next checkpoint: begin M2.3 with versioned query-pack declarations and exact owned capture contracts
+for declarations, references, scopes, control, comments, and opaque/generated code. Keep production
+packs honest until each language fixture milestone supplies its actual queries.
+
+Negative-memory constraints carried forward: role mapping remains a derived projection; an empty set
+is not support when the capability is unavailable; raw grammar evidence is never normalized away;
+query packs must not imply name resolution, CFG, generation provenance, or other higher-tier facts.
+
+Agent assignment: `/root` owns M2.2 integration and M2.3 continuation; no concurrent file edits are
+assigned.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link
