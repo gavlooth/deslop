@@ -1546,6 +1546,54 @@ file-incomplete `ERROR` fact for `=`. Both files parse once. The lexical schema 
 exact `*` grammar token does not collide with the terminal wildcard. All workspace gates pass. Next:
 M2.7 JavaScript, TypeScript, and TSX production policies and goldens.
 
+#### Active M2.7 execution plan — JavaScript, TypeScript, and TSX dialect goldens
+
+Active hypothesis: JavaScript and TypeScript can share stable role/lexical/recovery helpers while
+retaining separate query packs and exact dialect declarations for JavaScript/JSX and
+TypeScript/TSX. Completing canonical roles should derive S1 without promoting typed syntax to type
+authority or adding a public TSX language.
+
+CONVERGENCE: compile every provided query family independently against JavaScript, TypeScript, and
+TSX stored grammars; run all four M2 projections over fixed `.js`, `.ts`, and `.tsx` goldens plus
+malformed typed fixtures; pin per-dialect role/token/query/construct counts, exact grammar identity,
+Unicode/comments/operators, and one parse per file. Generated facts require exact markers; macros are
+explicitly unsupported; S2+ stays unknown. If all three dialects derive S1 and every workspace gate
+passes, M2.7 is done.
+
+Current approach: add JS-family helpers beside the production packs, but keep grammar-specific query
+builders where node catalogs diverge. Canonical roles remain raw-kind syntactic annotations. Lexical
+rules cover ECMAScript/TypeScript token kinds with exact `*` handling and total fallback. Recovery is
+file-incomplete; `with_statement` is an opaque unsupported construct; `/* @generated */` and exact
+`@generated` decorators are generated markers; macro policy is explicitly unsupported. JavaScript
+declares javascript/jsx over tree-sitter-javascript 0.25.0; TypeScript declares typescript/tsx over
+their distinct tree-sitter-typescript 0.23.2 grammar ids.
+
+Validation path: per-pack schema validation and S1 derivation; query compilation for all stored
+dialects; numerical valid/malformed matrix; ownership/no-reparse assertions; affected strict checks;
+full workspace gates.
+
+Negative-memory constraints: TypeScript must never fall back to the JavaScript grammar; TSX remains a
+stored dialect, not `Lang::Tsx`; syntactic type annotations do not grant compiler/type evidence;
+decorators/comments count as generated only when exact policy markers match; dynamic calls, optional
+chaining, JSX, and decorators do not grant name resolution, CFG, effects, or expansion authority;
+repeated LangPack methods require implementation-specific patch anchors.
+
+Agent assignment: `/root` owns M2.7 shared policy, dialect fixtures, integration, and verification; no
+concurrent file edits are assigned.
+
+Current checkpoint (2026-07-14T01:34:31+02:00): M0.4 grammar split and existing typed/TSX/JSX fixtures
+audited. A shared composable canonical-role mapper is now wired to both production packs, and each
+manifest derives S1 while keeping S2+ unknown; `cargo check -p deslop-lang` passes. Query, lexical,
+construct/dialect policies and the numerical matrix remain pending.
+
+Terminal checkpoint (2026-07-14T01:44:25+02:00): M2.7 is complete. JavaScript, TypeScript, and TSX
+compile all six query families against their exact stored grammars and expose S1 role, lexical,
+recovery, construct, and dialect policy without S2+ promotion. Valid goldens lock role/token totals
+JS 61/42, TS 143/90, TSX 107/68; query vectors `[1,1,3,0,2,1]`, `[4,2,3,0,1,0]`, and
+`[3,0,2,0,1,0]`; exact generated and opaque `with_statement` facts; and distinct JavaScript,
+TypeScript, and TSX grammar identities. Malformed TS and TSX lock their exact `ERROR` facts. Every
+file parses once and all workspace gates pass. Next: M2.8 Python production policy and goldens.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link

@@ -2099,6 +2099,315 @@ mod tests {
     }
 
     #[test]
+    fn ecmascript_production_adapter_golden_matrix_is_owned_and_parse_once() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("ecmascript-production-adapter-golden").unwrap(),
+        )
+        .unwrap()
+        .with_overlay(
+            "adapter_matrix.js",
+            include_bytes!("../../../tests/fixtures/typescript/adapter_matrix.js").to_vec(),
+        )
+        .unwrap()
+        .with_overlay(
+            "adapter_matrix.ts",
+            include_bytes!("../../../tests/fixtures/typescript/adapter_matrix.ts").to_vec(),
+        )
+        .unwrap()
+        .with_overlay(
+            "adapter_matrix.tsx",
+            include_bytes!("../../../tests/fixtures/typescript/adapter_matrix.tsx").to_vec(),
+        )
+        .unwrap()
+        .with_overlay(
+            "malformed.ts",
+            include_bytes!("../../../tests/fixtures/typescript/malformed.ts").to_vec(),
+        )
+        .unwrap()
+        .with_overlay(
+            "malformed.tsx",
+            include_bytes!("../../../tests/fixtures/typescript/malformed.tsx").to_vec(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+
+        for (path, dialect, grammar_id, grammar_version) in [
+            (
+                Path::new("adapter_matrix.js"),
+                "javascript",
+                "tree-sitter-javascript",
+                "0.25.0",
+            ),
+            (
+                Path::new("adapter_matrix.ts"),
+                "typescript",
+                "tree-sitter-typescript/typescript",
+                "0.23.2",
+            ),
+            (
+                Path::new("adapter_matrix.tsx"),
+                "tsx",
+                "tree-sitter-typescript/tsx",
+                "0.23.2",
+            ),
+        ] {
+            let identity = analysis
+                .snapshot()
+                .entry(path)
+                .unwrap()
+                .language_adapter_identity()
+                .unwrap();
+            assert_eq!(
+                identity.capabilities().highest_complete_tier(),
+                Some(SemanticTier::S1)
+            );
+
+            let roles = analysis.canonical_role_projection(path).unwrap();
+            let lexical = analysis.lexical_token_projection(path).unwrap();
+            let constructs = analysis.construct_policy_projection(path).unwrap();
+            let queries = analysis.compile_language_query_pack(path).unwrap();
+            for owner in [
+                roles.analysis(),
+                lexical.analysis(),
+                constructs.analysis(),
+                queries.analysis(),
+            ] {
+                assert!(Arc::ptr_eq(owner, &analysis));
+            }
+            assert_eq!(constructs.dialect().dialect(), dialect);
+            assert_eq!(constructs.dialect().grammar_id(), grammar_id);
+            assert_eq!(constructs.dialect().grammar_version(), grammar_version);
+
+            let mut role_counts = std::collections::BTreeMap::new();
+            for fact in roles.facts() {
+                for role in fact.roles().iter() {
+                    *role_counts.entry(role.as_str()).or_insert(0_usize) += 1;
+                }
+            }
+            let mut lexical_counts = std::collections::BTreeMap::new();
+            for fact in lexical.facts() {
+                *lexical_counts
+                    .entry(fact.classification().token_class().as_str())
+                    .or_insert(0_usize) += 1;
+            }
+            let root_node = analysis.file_node_ids(path).unwrap().next().unwrap();
+            let query_counts = QueryFamily::ALL.map(|family| {
+                let compiled = queries.query(family).unwrap();
+                analysis
+                    .syntax_query_matches(compiled.query(), root_node)
+                    .unwrap()
+                    .iter()
+                    .map(|matched| matched.captures().len())
+                    .sum::<usize>()
+            });
+            let mut construct_counts = std::collections::BTreeMap::new();
+            for fact in constructs.facts() {
+                *construct_counts
+                    .entry(fact.kind().as_str())
+                    .or_insert(0_usize) += 1;
+            }
+            match path.to_str().unwrap() {
+                "adapter_matrix.js" => {
+                    assert_eq!(roles.facts().len(), 61);
+                    assert_eq!(
+                        role_counts,
+                        std::collections::BTreeMap::from([
+                            ("block", 2),
+                            ("call", 1),
+                            ("callable", 1),
+                            ("comment", 2),
+                            ("declaration", 1),
+                            ("export", 1),
+                            ("expression", 16),
+                            ("literal", 3),
+                            ("module", 1),
+                            ("opaque-region", 1),
+                            ("parameter", 1),
+                            ("project", 1),
+                            ("read", 11),
+                            ("statement", 2),
+                            ("write", 1),
+                        ])
+                    );
+                    assert_eq!(lexical.facts().len(), 42);
+                    assert_eq!(
+                        lexical_counts,
+                        std::collections::BTreeMap::from([
+                            ("comment", 2),
+                            ("delimiter", 10),
+                            ("identifier", 11),
+                            ("keyword", 4),
+                            ("literal", 3),
+                            ("operator", 4),
+                            ("other", 1),
+                            ("punctuation", 7),
+                        ])
+                    );
+                    assert_eq!(query_counts, [1, 1, 3, 0, 2, 1]);
+                    assert_eq!(
+                        construct_counts,
+                        std::collections::BTreeMap::from([
+                            ("generated-code", 1),
+                            ("unsupported-construct", 1),
+                        ])
+                    );
+                    assert!(lexical.facts().iter().any(|fact| {
+                        fact.text() == "π"
+                            && fact.classification().token_class() == LexicalTokenClass::Identifier
+                    }));
+                    assert!(lexical.facts().iter().any(|fact| {
+                        fact.text() == "*"
+                            && fact.classification().operator_class()
+                                == Some(LexicalOperatorClass::Arithmetic)
+                    }));
+                    for comment in ["/* @generated */", "// line comment"] {
+                        assert!(lexical.facts().iter().any(|fact| {
+                            fact.text() == comment
+                                && fact.classification().token_class() == LexicalTokenClass::Comment
+                        }));
+                    }
+                    assert!(constructs.facts().iter().any(|fact| {
+                        fact.kind() == ConstructPolicyFactKind::GeneratedCode
+                            && fact.text() == "/* @generated */"
+                    }));
+                    assert!(constructs.facts().iter().any(|fact| {
+                        fact.kind() == ConstructPolicyFactKind::UnsupportedConstruct
+                            && fact.raw().raw_kind() == "with_statement"
+                            && fact.construct_handling() == Some(ConstructHandling::Opaque)
+                    }));
+                }
+                "adapter_matrix.ts" => {
+                    assert_eq!(roles.facts().len(), 143);
+                    assert_eq!(
+                        role_counts,
+                        std::collections::BTreeMap::from([
+                            ("block", 2),
+                            ("call", 2),
+                            ("callable", 3),
+                            ("comment", 1),
+                            ("declaration", 4),
+                            ("export", 1),
+                            ("expression", 24),
+                            ("generated", 1),
+                            ("literal", 4),
+                            ("module", 1),
+                            ("parameter", 6),
+                            ("project", 1),
+                            ("read", 18),
+                            ("statement", 1),
+                            ("type", 2),
+                        ])
+                    );
+                    assert_eq!(lexical.facts().len(), 90);
+                    assert_eq!(
+                        lexical_counts,
+                        std::collections::BTreeMap::from([
+                            ("comment", 1),
+                            ("delimiter", 22),
+                            ("identifier", 26),
+                            ("keyword", 9),
+                            ("literal", 4),
+                            ("operator", 10),
+                            ("other", 2),
+                            ("punctuation", 16),
+                        ])
+                    );
+                    assert_eq!(query_counts, [4, 2, 3, 0, 1, 0]);
+                    assert_eq!(
+                        construct_counts,
+                        std::collections::BTreeMap::from([("generated-code", 2)])
+                    );
+                    for marker in ["/* @generated */", "@generated"] {
+                        assert!(constructs.facts().iter().any(|fact| {
+                            fact.kind() == ConstructPolicyFactKind::GeneratedCode
+                                && fact.text() == marker
+                        }));
+                    }
+                }
+                "adapter_matrix.tsx" => {
+                    assert_eq!(roles.facts().len(), 107);
+                    assert_eq!(
+                        role_counts,
+                        std::collections::BTreeMap::from([
+                            ("block", 1),
+                            ("callable", 1),
+                            ("comment", 1),
+                            ("declaration", 3),
+                            ("export", 1),
+                            ("expression", 17),
+                            ("import", 1),
+                            ("literal", 2),
+                            ("module", 1),
+                            ("parameter", 2),
+                            ("project", 1),
+                            ("read", 13),
+                            ("type", 1),
+                        ])
+                    );
+                    assert_eq!(lexical.facts().len(), 68);
+                    assert_eq!(
+                        lexical_counts,
+                        std::collections::BTreeMap::from([
+                            ("comment", 1),
+                            ("delimiter", 16),
+                            ("identifier", 19),
+                            ("keyword", 8),
+                            ("literal", 2),
+                            ("operator", 11),
+                            ("other", 2),
+                            ("punctuation", 9),
+                        ])
+                    );
+                    assert_eq!(query_counts, [3, 0, 2, 0, 1, 0]);
+                    assert!(construct_counts.is_empty());
+                    assert!(roles.facts().iter().any(|fact| {
+                        fact.raw().raw_kind() == "jsx_element"
+                            && fact.roles().contains(CanonicalRole::Expression)
+                    }));
+                }
+                unexpected => panic!("unexpected ECMAScript golden path: {unexpected}"),
+            }
+        }
+
+        let malformed_ts = analysis
+            .construct_policy_projection(Path::new("malformed.ts"))
+            .unwrap();
+        assert_eq!(
+            malformed_ts
+                .facts()
+                .iter()
+                .map(|fact| (fact.kind().as_str(), fact.raw().raw_kind(), fact.text()))
+                .collect::<Vec<_>>(),
+            [("parse-error", "ERROR", ".")]
+        );
+        let malformed_tsx = analysis
+            .construct_policy_projection(Path::new("malformed.tsx"))
+            .unwrap();
+        assert_eq!(
+            malformed_tsx
+                .facts()
+                .iter()
+                .map(|fact| (fact.kind().as_str(), fact.raw().raw_kind(), fact.text()))
+                .collect::<Vec<_>>(),
+            [(
+                "parse-error",
+                "ERROR",
+                "export const Broken = (): JSX.Element => (\n  <section>{items.map((item) => <span>{item}</span>)}",
+            )]
+        );
+        assert!(
+            analysis
+                .parse_counts()
+                .values()
+                .all(|count| count.parser_invocations == 1)
+        );
+    }
+
+    #[test]
     fn stored_query_pack_compiles_and_executes_all_six_families() {
         let root = tempfile::tempdir().unwrap();
         let source = b"#[generated]\nfn sample(value: i32) {\n    // note\n    if value > 0 { helper(); }\n    vec![value];\n}\n";

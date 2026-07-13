@@ -7634,3 +7634,102 @@ star sentinel correction is recorded locally and requires durable Hindsight cons
 handles: `M2.6 Rust golden`, `lexical exact star wildcard`, `Rust S1 derived`.
 
 **Signature:** Codex (GPT-5), M2.6 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2.7 active checkpoint — JavaScript, TypeScript, and TSX dialect goldens
+
+**Date/time:** 2026-07-14T01:34:31+02:00
+
+**Objective/target:** complete production adapter policy for JavaScript plus the TypeScript/TSX
+grammar family and prove every stored dialect independently through golden projections.
+
+**Changes:** audited the JavaScript and TypeScript packs, the separate TypeScript and TSX grammar
+selections from M0.4, existing typed/TSX/JSX valid and malformed fixtures, and the prior negative
+memory forbidding JavaScript grammar fallback and public `Lang::Tsx`. Added one shared composable
+canonical-role mapper for program/module, declarations/callables/types, imports/exports, parameters,
+blocks/statements/control, calls/read/write/literals, JSX, comments/errors, opaque `with`, and exact
+`@generated` decorators. Both production manifests now provide canonical roles and derive S1 while
+S2+ remains unknown.
+
+**Commands/checks run:** targeted Hindsight search; targeted reads of both production packs and all
+existing TypeScript/TSX/JSX fixture sources; `cargo fmt --all`; `cargo check -p deslop-lang`; and
+post-edit target-string audit confirming both production implementations were wired.
+
+**Results:** ACTIVE / WORKSPACE-WIDE UNVERIFIED. Canonical roles compile and manifests now derive S1;
+query, lexical, construct/dialect policies and numerical golden coverage remain incomplete.
+
+**Invalidated assumptions / negative memory:** no new failed experiment. Existing constraint remains
+authoritative: TypeScript/TSX must use their stored official grammars, never JavaScript fallback; typed
+CST nodes do not establish compiler/type facts.
+
+**Current recommendation/next actions:** implement shared role/lexical/construct helpers with separate
+query/dialect builders, then run the three-dialect numerical matrix before pinning counts.
+
+**Blockers/dependencies/restart:** none. Serena Rust symbols remain unavailable; local compiler/query
+oracles are the fallback. No dependency or restart applies.
+
+**Negative-memory status:** no new failure; M0.4 grammar-fallback and Lang::Tsx prohibitions loaded.
+
+**Signature:** Codex (GPT-5), M2.7 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M2.7 terminal checkpoint — JavaScript, TypeScript, and TSX dialect goldens
+
+**Date/time:** 2026-07-14T01:44:25+02:00
+
+**Objective/target:** complete the production adapter implementation for JavaScript and the public
+TypeScript family, compile every stored query against the exact JavaScript/TypeScript/TSX grammar,
+and prove the supported boundary with numerical valid and malformed goldens.
+
+**Changes:** added shared ECMAScript canonical-role, total lexical, file-incomplete recovery,
+unsupported-construct, generated-marker, and dialect-policy helpers. JavaScript and TypeScript each
+derive S1 from the completed syntactic capabilities while S2-S4 remain unknown. Query packs remain
+grammar-aware: JavaScript declarations use the JavaScript catalog; TypeScript adds typed declaration
+kinds; all six families compile independently against JavaScript, TypeScript, and TSX. JavaScript
+declares javascript/jsx over `tree-sitter-javascript` 0.25.0; TypeScript declares typescript/tsx over
+the distinct `tree-sitter-typescript` grammar ids at 0.23.2. Macros are explicitly unsupported;
+`with_statement` is opaque; only exact `/* @generated */` comments and `@generated` decorators emit
+generated facts. Added `.js`, `.ts`, and `.tsx` production goldens and a retained-analysis integration
+oracle covering all four M2 projections plus the existing malformed typed fixtures. Generator
+declarations/functions and typed abstract classes were included during the terminal semantic audit.
+
+**Commands/checks run:** repeated focused `cargo check/test -p deslop-lang`; focused diagnostic and
+pinned `cargo test -p deslop-parse ecmascript_production_adapter_golden_matrix_is_owned_and_parse_once`;
+complete affected `cargo test -p deslop-lang -p deslop-parse`; affected strict clippy, format, and
+whitespace checks; then `cargo test --workspace --all-features`; `cargo build --workspace
+--all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`; `cargo
+clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`; and
+`git diff --check`.
+
+**Results:** PASS. JavaScript locks 61 CST role facts with 45 assignments across 15 categories, 42
+token owners, query captures `[1,1,3,0,2,1]`, one exact generated fact, and one opaque unsupported
+`with_statement`. TypeScript locks 143 role facts with 71 assignments across 15 categories, 90 token
+owners, query captures `[4,2,3,0,1,0]`, and exact generated comment/decorator facts. TSX locks 107
+role facts with 45 assignments across 14 categories, 68 token owners, query captures
+`[3,0,2,0,1,0]`, JSX expression evidence, and no fabricated construct facts. Unicode `π`, exact
+arithmetic `*`, and full comment owners are pinned. Malformed TypeScript emits exactly one `ERROR`
+fact for `.`, while malformed TSX emits one exact file-incomplete `ERROR` region. Every file records
+one parser invocation. All workspace gates pass; only the two repository-designated slow probes are
+ignored.
+
+**Invalidated assumptions / negative memory:** no grammar catalog split was needed for the shared
+scope/control/comment/opaque families, but query compilation alone does not prove capture-role
+consistency. The terminal audit found generator declarations/functions present in declaration query
+authority but absent from the canonical role mapper; this was corrected, along with typed abstract
+class query coverage, before full gates. Exact stored grammar identity remains authoritative:
+TypeScript/TSX never fall back to JavaScript, TSX remains a dialect rather than a public `Lang`, and
+typed/JSX syntax does not grant name resolution, CFG, effects, expansion, or compiler/type authority.
+
+**Current recommendation/next actions:** execute M2.8 using the same projection-gated method for the
+Python production adapter and fixed valid/malformed goldens.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, service restart, or live-state
+activation applies.
+
+**Negative-memory status:** terminal semantic-audit lesson requires durable Hindsight storage. Search
+handles: `M2.7 ECMAScript golden`, `query capture canonical role consistency`, `TypeScript exact
+grammar no fallback`.
+
+**Signature:** Codex (GPT-5), M2.7 integration owner, terminal checkpoint, 2026-07-14.

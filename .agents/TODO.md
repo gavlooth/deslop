@@ -303,7 +303,14 @@ reports, benchmark records, and work orders.
   nodes, 110 token owners, 78 role assignments across 17 roles, query captures `[5,2,5,1,2,3]`,
   six construct regions, and one exact `ERROR` fact, with one parse per file. The literal `*` raw
   token is now distinct from the terminal wildcard. All workspace gates pass.
-- [ ] M2.7 Implement/repair JavaScript, TypeScript, and TSX adapters and golden fixtures.
+- [x] M2.7 Implement/repair JavaScript, TypeScript, and TSX adapters and golden fixtures.
+  Evidence: JavaScript and TypeScript now share a production ECMAScript role/lexical/recovery policy
+  while retaining distinct JavaScript, TypeScript, and TSX query compilation and exact stored grammar
+  provenance. All three dialects derive S1 and leave S2-S4 unknown; macros are explicitly unsupported,
+  `with_statement` is opaque, and generated facts require exact markers. Fixed goldens lock role/token
+  totals JS 61/42, TS 143/90, TSX 107/68; query vectors `[1,1,3,0,2,1]`, `[4,2,3,0,1,0]`, and
+  `[3,0,2,0,1,0]`; exact generated/unsupported facts; malformed TS/TSX error evidence; and one parse
+  per file. All workspace gates pass.
 - [ ] M2.8 Implement/repair Python adapter and golden fixtures.
 - [ ] M2.9 Implement/repair Clojure adapter and golden fixtures.
 - [ ] M2.10 Implement/repair Julia adapter and golden fixtures.
