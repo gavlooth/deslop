@@ -57,7 +57,6 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     Scan(ScanArgs),
-    #[command(alias = "health")]
     Metrics(MetricsArgs),
     Graph(GraphArgs),
     #[cfg(feature = "mcp")]
@@ -1543,6 +1542,12 @@ mod tests {
         assert_eq!(args.paths, vec![PathBuf::from("src")]);
         assert!(matches!(args.format, GraphFormat::Dot));
         assert!(args.no_calls);
+    }
+
+    #[test]
+    fn health_is_not_a_metrics_command_alias() {
+        let error = Cli::try_parse_from(["deslop", "health"]).expect_err("health alias removed");
+        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
     }
 
     #[test]

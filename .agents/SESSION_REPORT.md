@@ -5281,3 +5281,90 @@ project-derived facts, and whole-verifier-root completeness claims without persi
 consolidation passed. Recheck under M1/M2 owned syntax facts and M0.13/M6 versioned work-order context.
 
 **Signature:** Codex (GPT-5), M0.8 integration owner, 2026-07-13.
+
+---
+
+## M0.9 checkpoint — remove uncalibrated metric authority
+
+**Date/time:** 2026-07-13T14:59:34+02:00
+
+**Objective:** complete M0.9 by replacing the uncalibrated health/readability/refactor-confidence
+contract with honest, evidence-only metric output while preserving M0.8 fail-closed provenance.
+
+**Target:** `deslop-metrics`, CLI command discovery, MCP payload/discovery contracts, README/SPEC,
+durable roadmap, numerical regressions, and jj history. `/root` owned all writes and final integration;
+three read-only agents audited the implementation surface, contract tests, and validation matrix.
+
+**Changes:**
+
+- Bumped the breaking metric wire contract to `deslop.metrics/5`. Removed `health_score`,
+  `readability_score`, `readability_model`, confidence bands, the absolute `0.50` threshold,
+  `refactor_candidates`, and `refactor_confidence_distribution`; no compatibility aliases remain.
+- Replaced the old region container with `heuristic_burden` under model
+  `deslop-heuristic-burden/1`. Machine-readable metadata is `experimental=true`,
+  `human_calibrated=false`, `authority="triage_only"`, and `gating_permitted=false`.
+  `measurement_support` describes token/CST sample support rather than measured correctness.
+- Kept scan-local z-scores/percentiles only as `heuristic_outliers`. There is no raw-score OR gate;
+  cohorts below eight regions and flat/tied cohorts cannot emit outliers. Mixed partial scans keep
+  intrinsic complete-file facts but serialize the project distribution and `repo_relative` as null,
+  render `n/a`, emit zero outliers/hotspots, and retain CLI exit 2.
+- Corrected adjacent `/5` measurement labels: `compression_ratio` is now zero-order
+  `byte_entropy_bits_per_byte` in real `0..8` units and is no longer given a universal low-is-bad
+  hotspot direction; Halstead `effort` is now the conventional `lexical_effort` formula.
+- Removed the CLI `health` alias. Updated live MCP tool discovery, the duplicate MCP spec source,
+  MCP payload tests, README, SPEC migration guidance, and `.agents/TODO.md`.
+- Preserved M0.8 as distinct parent `nxlxzzws` and reconstructed M0.9 as child `oyrxxokr`; M0.8
+  history was not collapsed or rewritten by the M0.9 content.
+
+**Commands run:** focused `cargo check/test` for metrics, MCP, and CLI; clean/sloppy/malformed CLI
+JSON/text probes with `jq`; removed-alias exit probe; `deslop slop` invariance probe;
+`cargo fmt --all --check`; `git diff --check`; `cargo build --workspace`;
+`cargo build -p deslop-slim --no-default-features`; `cargo test --workspace`;
+`cargo test -p deslop-mcp --features slim-llm -- --test-threads=1`; and
+`cargo clippy --workspace -- -D warnings`.
+
+**Results:** PASS after the recorded corrections. Workspace: 254 tests plus doc-tests. Feature-enabled
+MCP: 22 tests. Formatting, whitespace, workspace build, no-default-features slim build, and
+warnings-denied clippy passed. Exact formula scores are `0.06968888888888888`,
+`0.18417777777777777`, `0.37495233115468407`, and `0.5394771590413944`. The synthetic outlier
+distribution `[0.10 × 9, 0.30]` remains mean `0.12`, stddev `0.06`, z `3`, percentile `1`; tied and
+sub-eight cohorts emit no outlier. A four-region fixture has raw burden `0.7970946844830109` and still
+emits zero outliers, proving removal of the absolute gate.
+
+Measured corpus output preserves evidence but not authority: clean is 30 regions/3 scan-local
+outliers, mean `0.038917726028306614`, stddev `0.05291790403358435`; sloppy is 38/4, mean
+`0.054624429903073535`, stddev `0.07069575147135337`. Both emit `/5` and zero legacy authority keys.
+The independent slop detector remains `0.819672131147541` clean versus `60.32388663967611` sloppy.
+Malformed TypeScript emits `/5`, `partial`, null distribution, 0 regions/outliers/hotspots, exact
+line-2 bytes 62–63 diagnostic, and exit 2. `deslop health --help` is rejected with exit 2.
+
+**Failure modes / invalidated assumptions:** the first broad gate found one warnings-denied clippy
+`let_and_return`; the byte-entropy helper now returns the expression directly and the full gate was
+rerun. `cargo test -p deslop-cli --lib` was an invalid command because the package has only a binary;
+the correct `--bin deslop` target passed. More importantly, clean health `40.43731597021308` versus
+sloppy health `45.288553975740356`, plus three clean relative-only “refactor candidates,” invalidates
+the assumption that hand-set formula burden or scan-relative unusualness can authorize health,
+readability, refactor need, confidence, or safety.
+
+**Current recommendation/checkpoint:** M0.9 is complete. Execute M0.10 next by moving the exact
+clean/sloppy, performance, duplicate-order, and false-resolution live probes from
+`.agents/ALGORITHM_AUDIT.md` into automated regression suites, then run M0.11's recorded full gate.
+
+**Blockers:** none. Serena remains configured as Python-only for this Rust workspace, so targeted local
+Rust inspection remains the fallback.
+
+**Next actions:** automate the M0.10 probes without turning clean/sloppy corpus burden ordering into a
+readability calibration gate; retain current numerical measurements as schema/invariance evidence only.
+M8.3 still owns CFG-based complexity and estimator-label replacement, and M8 owns any future
+human-readable label after held-out calibration.
+
+**Dependencies/restart:** rebuild or reinstall CLI/MCP binaries and migrate `/4` clients explicitly to
+`/5`; removed health/readability/refactor fields have no replacement. No repository data migration or
+configuration change is required.
+
+**Negative-memory status:** Hindsight now supersedes the older recommendation to preserve the absolute
+`0.50` threshold. No metric threshold may regain readability/refactor authority before M8 held-out
+human calibration beats frozen size/simple baselines with acceptable calibration and confidence
+intervals. Search handles: `metrics/5 heuristic_burden health reversal triage_only gating_permitted`.
+
+**Signature:** Codex (GPT-5), M0.9 integration owner, 2026-07-13.

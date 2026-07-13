@@ -259,7 +259,7 @@ fn patch_verification_properties() -> Value {
 fn metrics_tool_spec() -> Value {
     tool(
         "metrics",
-        "Return read-only deslop.metrics/4 JSON with Tree-sitter-derived per-region structural readability, labeled intrinsic confidence plus numeric score, explicit confidence_basis, nested repo_relative z-score/percentile, distribution statistics, ranked candidates, and complexity/entropy hotspots. Flat distributions cannot create relative candidates. Confidence is uncalibrated triage evidence, not proof that a rewrite is safe.",
+        "Return read-only deslop.metrics/5 JSON with per-region structural measurements, experimental heuristic burden, scan-local burden outliers, and complexity/entropy hotspots. Burden and outliers are triage evidence only: they are not health, readability, refactor need, probability, confidence, or safety.",
         object_schema(json!({
             "paths": paths_schema(),
             "sigma": { "type": "number", "default": 2.0 }
@@ -1097,6 +1097,12 @@ mod tests {
         assert_scan_analyzer_schema(tool_by_name(tools, "propose"));
         assert_verify_coverage_schema(tool_by_name(tools, "verify"));
         assert_fix_tool_schema(tool_by_name(tools, "fix"));
+        let metrics_description = tool_by_name(tools, "metrics")["description"]
+            .as_str()
+            .expect("metrics description");
+        assert!(metrics_description.contains("deslop.metrics/5"));
+        assert!(metrics_description.contains("experimental heuristic burden"));
+        assert!(metrics_description.contains("not health, readability, refactor need"));
         assert!(
             tool_by_name(tools, "graph")["description"]
                 .as_str()
@@ -1167,7 +1173,7 @@ mod tests {
     }
 
     #[test]
-    fn metrics_tool_exposes_readability_and_refactor_confidence() {
+    fn metrics_tool_exposes_only_neutral_heuristic_burden() {
         let temp = tempfile::tempdir().expect("tempdir");
         let source = temp.path().join("sample.js");
         std::fs::write(
@@ -1176,38 +1182,44 @@ mod tests {
         )
         .expect("fixture");
         let report = metrics_tool(&json!({ "paths": [source] })).expect("metrics");
-        assert_eq!(report["schema"], "deslop.metrics/4");
-        assert_eq!(report["readability_model"]["calibrated"], false);
-        assert!(report["refactor_confidence_distribution"]["mean"].is_number());
-        assert!(report["refactor_confidence_distribution"]["stddev"].is_number());
+        assert_eq!(report["schema"], "deslop.metrics/5");
+        assert_eq!(report["heuristic_model"]["experimental"], true);
+        assert_eq!(report["heuristic_model"]["human_calibrated"], false);
+        assert_eq!(report["heuristic_model"]["authority"], "triage_only");
+        assert_eq!(report["heuristic_model"]["gating_permitted"], false);
+        assert!(report["heuristic_burden_distribution"]["mean"].is_number());
+        assert!(report["heuristic_burden_distribution"]["stddev"].is_number());
         let regions = report["functions"].as_array().expect("regions");
         assert!(regions.iter().any(|region| {
             region["kind"] == "class_declaration"
-                && region["readability"]["refactor_confidence"].is_object()
-                && region["readability"]["refactor_confidence_score"].is_number()
-                && region["readability"]["confidence_basis"] == "tree_intrinsic_v1"
-                && region["readability"]["repo_relative"]["zscore"].is_number()
-                && region["readability"]["repo_relative"]["percentile"].is_number()
+                && region["heuristic_burden"]["score"].is_number()
+                && region["heuristic_burden"]["measurement_support"].is_number()
+                && region["heuristic_burden"]["basis"] == "tree_heuristic_v1"
+                && region["heuristic_burden"]["repo_relative"]["zscore"].is_number()
+                && region["heuristic_burden"]["repo_relative"]["percentile"].is_number()
         }));
         assert!(regions.iter().any(|region| {
             region["kind"] == "method_definition"
-                && region["readability"]["measurement_confidence"].is_number()
+                && region["heuristic_burden"]["measurement_support"].is_number()
         }));
         let class = regions
             .iter()
             .find(|region| region["kind"] == "class_declaration")
             .expect("class region");
-        let labeled = class["readability"]["refactor_confidence"]
-            .as_object()
-            .expect("labeled confidence");
-        assert_eq!(labeled.len(), 1);
-        assert_eq!(
-            labeled.values().next(),
-            Some(&class["readability"]["refactor_confidence_score"])
-        );
-        assert!(class["readability"].get("refactor_zscore").is_none());
-        assert!(class["readability"].get("refactor_percentile").is_none());
-        assert!(report["refactor_candidates"].is_array());
+        assert!(class.get("readability").is_none());
+        assert!(report["heuristic_outliers"].is_array());
+        for forbidden in [
+            "health_score",
+            "readability_score",
+            "readability_model",
+            "refactor_candidates",
+            "refactor_confidence_distribution",
+        ] {
+            assert!(
+                report.get(forbidden).is_none(),
+                "unexpected key {forbidden}"
+            );
+        }
     }
 
     fn tools_list_response() -> Value {

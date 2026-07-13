@@ -6,8 +6,7 @@ use deslop_core::{AnalysisStatus, FileAnalysis, Lang, Span, file_analyses_status
 use deslop_lang::{LangPack, RegionClass, RegionSpan, Registry};
 use deslop_parse::{SourceFile, analysis_provenance_or_failed, parse_source};
 use ignore::WalkBuilder;
-use serde::ser::SerializeMap;
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 use tree_sitter::Node;
 
 #[derive(Debug, Clone, Copy)]
@@ -27,12 +26,10 @@ pub struct MetricsReport {
     pub status: AnalysisStatus,
     pub analyses: Vec<FileAnalysis>,
     pub functions: Vec<RegionMetrics>,
-    pub refactor_candidates: Vec<ReadabilityCandidate>,
-    pub refactor_confidence_distribution: ConfidenceDistribution,
+    pub heuristic_outliers: Vec<HeuristicBurdenOutlier>,
+    pub heuristic_burden_distribution: Option<BurdenDistribution>,
     pub hotspots: Vec<Hotspot>,
-    pub health_score: Option<f64>,
-    pub readability_score: Option<f64>,
-    pub readability_model: ReadabilityModel,
+    pub heuristic_model: HeuristicBurdenModel,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,14 +42,17 @@ pub struct RegionMetrics {
     pub complexity: ComplexityMetrics,
     pub expressivity: ExpressivityMetrics,
     pub halstead: HalsteadMetrics,
-    pub readability: ReadabilityMetrics,
+    pub heuristic_burden: HeuristicBurdenMetrics,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
-pub struct ReadabilityModel {
+pub struct HeuristicBurdenModel {
     pub id: &'static str,
-    pub calibrated: bool,
-    pub confidence_meaning: &'static str,
+    pub experimental: bool,
+    pub human_calibrated: bool,
+    pub authority: &'static str,
+    pub gating_permitted: bool,
+    pub meaning: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -71,21 +71,18 @@ pub struct ExpressivityMetrics {
     pub decision_density: f64,
     pub unique_token_ratio: f64,
     pub comment_to_code_ratio: f64,
-    pub compression_ratio: f64,
+    pub byte_entropy_bits_per_byte: f64,
     pub token_entropy: f64,
     pub structural_entropy: f64,
     pub information_volume: f64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
-pub struct ReadabilityMetrics {
+pub struct HeuristicBurdenMetrics {
     pub score: f64,
-    pub measurement_confidence: f64,
-    #[serde(serialize_with = "serialize_labeled_confidence")]
-    pub refactor_confidence: f64,
-    pub refactor_confidence_score: f64,
-    pub confidence_basis: &'static str,
-    pub repo_relative: RepoRelativeConfidence,
+    pub measurement_support: f64,
+    pub basis: &'static str,
+    pub repo_relative: Option<RepoRelativeBurden>,
     pub size_support: f64,
     pub complexity_burden: f64,
     pub information_burden: f64,
@@ -101,7 +98,7 @@ pub struct HalsteadMetrics {
     pub total_operands: usize,
     pub volume: f64,
     pub difficulty: f64,
-    pub effort: f64,
+    pub lexical_effort: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -115,55 +112,29 @@ pub struct Hotspot {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ReadabilityCandidate {
+pub struct HeuristicBurdenOutlier {
     pub rank: usize,
     pub path: PathBuf,
     pub name: String,
     pub kind: String,
     pub span: Span,
-    pub readability_score: f64,
-    pub measurement_confidence: f64,
-    #[serde(serialize_with = "serialize_labeled_confidence")]
-    pub refactor_confidence: f64,
-    pub refactor_confidence_score: f64,
-    pub confidence_basis: &'static str,
-    pub repo_relative: RepoRelativeConfidence,
+    pub heuristic_burden: f64,
+    pub measurement_support: f64,
+    pub basis: &'static str,
+    pub repo_relative: RepoRelativeBurden,
     pub size_support: f64,
     pub reasons: Vec<String>,
 }
 
-const REFACTOR_CANDIDATE_THRESHOLD: f64 = 0.50;
-const RELATIVE_REFACTOR_Z_THRESHOLD: f64 = 1.0;
-const RELATIVE_REFACTOR_PERCENTILE_THRESHOLD: f64 = 0.90;
+const RELATIVE_BURDEN_Z_THRESHOLD: f64 = 1.0;
+const RELATIVE_BURDEN_PERCENTILE_THRESHOLD: f64 = 0.90;
 const MIN_RELATIVE_REGIONS: usize = 8;
-const MIN_CONFIDENCE_RANGE: f64 = 0.05;
-const MIN_CONFIDENCE_STDDEV: f64 = 0.01;
-const CONFIDENCE_BASIS: &str = "tree_intrinsic_v1";
-
-fn confidence_label(score: f64) -> &'static str {
-    match score.clamp(0.0, 1.0) {
-        score if score < 0.20 => "very_low",
-        score if score < 0.40 => "low",
-        score if score < 0.60 => "moderate",
-        score if score < 0.80 => "high",
-        _ => "very_high",
-    }
-}
-
-fn serialize_labeled_confidence<S>(
-    score: &f64,
-    serializer: S,
-) -> std::result::Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let mut map = serializer.serialize_map(Some(1))?;
-    map.serialize_entry(confidence_label(*score), score)?;
-    map.end()
-}
+const MIN_BURDEN_RANGE: f64 = 0.05;
+const MIN_BURDEN_STDDEV: f64 = 0.01;
+const HEURISTIC_BASIS: &str = "tree_heuristic_v1";
 
 #[derive(Debug, Clone, Copy, Serialize)]
-pub struct ConfidenceDistribution {
+pub struct BurdenDistribution {
     pub count: usize,
     pub mean: f64,
     pub median: f64,
@@ -173,11 +144,11 @@ pub struct ConfidenceDistribution {
     pub p25: f64,
     pub p75: f64,
     pub flat: bool,
-    pub relative_candidate_eligible: bool,
+    pub relative_outlier_eligible: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
-pub struct RepoRelativeConfidence {
+pub struct RepoRelativeBurden {
     pub zscore: f64,
     pub percentile: f64,
 }
@@ -211,10 +182,11 @@ pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<Metrics
     });
     analyses.sort_by(|a, b| a.path.cmp(&b.path));
     let status = file_analyses_status(&analyses);
-    let refactor_confidence_distribution = normalize_refactor_confidence(&mut functions);
     let authoritative = status == AnalysisStatus::Complete;
-    let refactor_candidates = if authoritative {
-        detect_refactor_candidates(&functions, refactor_confidence_distribution)
+    let heuristic_burden_distribution =
+        authoritative.then(|| normalize_heuristic_burden(&mut functions));
+    let heuristic_outliers = if let Some(distribution) = heuristic_burden_distribution {
+        detect_heuristic_outliers(&functions, distribution)
     } else {
         Vec::new()
     };
@@ -223,24 +195,21 @@ pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<Metrics
     } else {
         Vec::new()
     };
-    let health_score =
-        (authoritative && !functions.is_empty()).then(|| health_score(&functions, &hotspots));
-    let readability_score =
-        (authoritative && !functions.is_empty()).then(|| repo_readability_score(&functions));
     Ok(MetricsReport {
-        schema: "deslop.metrics/4",
+        schema: "deslop.metrics/5",
         status,
         analyses,
         functions,
-        refactor_candidates,
-        refactor_confidence_distribution,
+        heuristic_outliers,
+        heuristic_burden_distribution,
         hotspots,
-        health_score,
-        readability_score,
-        readability_model: ReadabilityModel {
-            id: "deslop-structural-readability/1",
-            calibrated: false,
-            confidence_meaning: "measurement_confidence is parse/sample reliability; refactor_confidence uses tree_intrinsic_v1; repo_relative contains scan-local zscore and percentile",
+        heuristic_model: HeuristicBurdenModel {
+            id: "deslop-heuristic-burden/1",
+            experimental: true,
+            human_calibrated: false,
+            authority: "triage_only",
+            gating_permitted: false,
+            meaning: "hand-set structural burden evidence for triage only; not readability, health, refactor need, probability, confidence, or safety",
         },
     })
 }
@@ -276,39 +245,23 @@ pub fn render_text(report: &MetricsReport, hotspots_only: bool) -> String {
     if !hotspots_only {
         out.push_str(&regions_text(&report.functions));
     }
-    out.push_str(&refactor_candidates_text(&report.refactor_candidates));
+    out.push_str(&heuristic_outliers_text(&report.heuristic_outliers));
     out.push_str(&hotspots_text(&report.hotspots));
     out
 }
 
 fn metrics_summary_line(report: &MetricsReport) -> String {
-    let distribution = report.refactor_confidence_distribution;
-    let (Some(health_score), Some(readability_score)) =
-        (report.health_score, report.readability_score)
-    else {
+    let Some(distribution) = report.heuristic_burden_distribution else {
         return format!(
-            "Repo health: unavailable (0 complete region(s))\nStructural readability: unavailable ({}; partial analysis)\nRefactor confidence distribution: n={} mean={:.3} std={:.3} median={:.3} p25={:.3} p75={:.3} min={:.3} max={:.3} flat={} relative-eligible={}\n",
-            report.readability_model.id,
-            distribution.count,
-            distribution.mean,
-            distribution.stddev,
-            distribution.median,
-            distribution.p25,
-            distribution.p75,
-            distribution.min,
-            distribution.max,
-            distribution.flat,
-            distribution.relative_candidate_eligible,
+            "Experimental heuristic burden: per-region evidence only ({}; requested snapshot incomplete)\nBurden distribution: unavailable\n",
+            report.heuristic_model.id,
         );
     };
     format!(
-        "Repo health: {:.1}/100 ({} region(s), {} hotspot(s))\nStructural readability: {:.1}/100 ({}; uncalibrated, {} refactor candidate(s))\nRefactor confidence distribution: n={} mean={:.3} std={:.3} median={:.3} p25={:.3} p75={:.3} min={:.3} max={:.3} flat={} relative-eligible={}\n",
-        health_score,
+        "Experimental heuristic burden: {} region(s), {} scan-local outlier(s) ({}; not health/readability/refactor authority)\nBurden distribution: n={} mean={:.3} std={:.3} median={:.3} p25={:.3} p75={:.3} min={:.3} max={:.3} flat={} outlier-eligible={}\n",
         report.functions.len(),
-        report.hotspots.len(),
-        readability_score,
-        report.readability_model.id,
-        report.refactor_candidates.len(),
+        report.heuristic_outliers.len(),
+        report.heuristic_model.id,
         distribution.count,
         distribution.mean,
         distribution.stddev,
@@ -318,13 +271,13 @@ fn metrics_summary_line(report: &MetricsReport) -> String {
         distribution.min,
         distribution.max,
         distribution.flat,
-        distribution.relative_candidate_eligible,
+        distribution.relative_outlier_eligible,
     )
 }
 
 fn regions_text(functions: &[RegionMetrics]) -> String {
     let mut out = String::from(
-        "\nregion                                kind          read meas refac     z   pct cyc cog nest nloc   MI  dens uniq byteH  tokH  astH   info\n",
+        "\nregion                                kind          burden support     z   pct cyc cog nest nloc   MI  dens uniq byteH  tokH  astH   info\n",
     );
     for region in functions {
         out.push_str(&region_text_line(region));
@@ -333,15 +286,23 @@ fn regions_text(functions: &[RegionMetrics]) -> String {
 }
 
 fn region_text_line(region: &RegionMetrics) -> String {
+    let (zscore, percentile) = region.heuristic_burden.repo_relative.map_or_else(
+        || ("n/a".to_string(), "n/a".to_string()),
+        |relative| {
+            (
+                format!("{:.2}", relative.zscore),
+                format!("{:.3}", relative.percentile),
+            )
+        },
+    );
     format!(
-        "{:<37} {:<13} {:>4.0} {:>4.2} {:>5.2} {:>5.2} {:>5.3} {:>3.0} {:>3.0} {:>4} {:>4} {:>5.1} {:>5.3} {:>4.2} {:>5.3} {:>5.3} {:>5.3} {:>6.1}\n",
+        "{:<37} {:<13} {:>6.3} {:>6.3} {:>5} {:>5} {:>3.0} {:>3.0} {:>4} {:>4} {:>5.1} {:>5.3} {:>4.2} {:>5.3} {:>5.3} {:>5.3} {:>6.1}\n",
         short_name(region),
         region.kind,
-        region.readability.score,
-        region.readability.measurement_confidence,
-        region.readability.refactor_confidence_score,
-        region.readability.repo_relative.zscore,
-        region.readability.repo_relative.percentile,
+        region.heuristic_burden.score,
+        region.heuristic_burden.measurement_support,
+        zscore,
+        percentile,
         region.complexity.cyclomatic,
         region.complexity.cognitive,
         region.complexity.max_nesting,
@@ -349,7 +310,7 @@ fn region_text_line(region: &RegionMetrics) -> String {
         region.complexity.maintainability_index,
         region.expressivity.decision_density,
         region.expressivity.unique_token_ratio,
-        region.expressivity.compression_ratio,
+        region.expressivity.byte_entropy_bits_per_byte,
         region.expressivity.token_entropy,
         region.expressivity.structural_entropy,
         region.expressivity.information_volume,
@@ -368,28 +329,28 @@ fn hotspots_text(hotspots: &[Hotspot]) -> String {
     out
 }
 
-fn refactor_candidates_text(candidates: &[ReadabilityCandidate]) -> String {
-    let mut out = String::from("\nreadability refactor candidates\n");
-    if candidates.is_empty() {
+fn heuristic_outliers_text(outliers: &[HeuristicBurdenOutlier]) -> String {
+    let mut out = String::from("\nscan-local heuristic burden outliers\n");
+    if outliers.is_empty() {
         out.push_str("  none\n");
         return out;
     }
-    for candidate in candidates {
+    for outlier in outliers {
         out.push_str(&format!(
-            "  #{:<2} {:<39} kind={} confidence={:.2} z={:.2} percentile={:.3} readability={:.1} {}\n",
-            candidate.rank,
+            "  #{:<2} {:<39} kind={} burden={:.3} support={:.3} z={:.2} percentile={:.3} {}\n",
+            outlier.rank,
             format!(
                 "{}:{} {}",
-                candidate.path.display(),
-                candidate.span.start_line,
-                candidate.name
+                outlier.path.display(),
+                outlier.span.start_line,
+                outlier.name
             ),
-            candidate.kind,
-            candidate.refactor_confidence_score,
-            candidate.repo_relative.zscore,
-            candidate.repo_relative.percentile,
-            candidate.readability_score,
-            candidate.reasons.join(", "),
+            outlier.kind,
+            outlier.heuristic_burden,
+            outlier.measurement_support,
+            outlier.repo_relative.zscore,
+            outlier.repo_relative.percentile,
+            outlier.reasons.join(", "),
         ));
     }
     out
@@ -535,7 +496,7 @@ fn measure_region(pack: &dyn LangPack, source: &SourceFile, region: MetricRegion
         pack.line_comments(),
         ast.information,
     );
-    let readability = readability_metrics(
+    let heuristic_burden = heuristic_burden_metrics(
         &complexity,
         &expressivity,
         ast.node_count,
@@ -550,7 +511,7 @@ fn measure_region(pack: &dyn LangPack, source: &SourceFile, region: MetricRegion
         complexity,
         expressivity,
         halstead,
-        readability,
+        heuristic_burden,
     }
 }
 
@@ -804,7 +765,7 @@ fn halstead(tokens: &[Token], pack: &dyn LangPack) -> HalsteadMetrics {
         total_operands,
         volume,
         difficulty,
-        effort: volume * difficulty,
+        lexical_effort: volume * difficulty,
     }
 }
 
@@ -844,7 +805,7 @@ fn expressivity(
         decision_density: ratio(cyclomatic, information.tokens),
         unique_token_ratio: ratio(information.vocabulary as f64, information.tokens),
         comment_to_code_ratio: ratio(comment_lines as f64, nloc),
-        compression_ratio: entropy_ratio(text),
+        byte_entropy_bits_per_byte: byte_entropy_bits_per_byte(text),
         token_entropy: information.token_entropy,
         structural_entropy: information.structural_entropy,
         information_volume: information.information_volume,
@@ -866,12 +827,12 @@ fn information_stats<K: Ord>(
     }
 }
 
-fn readability_metrics(
+fn heuristic_burden_metrics(
     complexity: &ComplexityMetrics,
     expressivity: &ExpressivityMetrics,
     ast_nodes: usize,
     ast_available: bool,
-) -> ReadabilityMetrics {
+) -> HeuristicBurdenMetrics {
     let complexity_burden = 0.50 * saturating(complexity.cognitive, 10.0)
         + 0.30 * saturating((complexity.cyclomatic - 1.0).max(0.0), 8.0)
         + 0.20 * saturating(complexity.max_nesting as f64, 4.0);
@@ -893,23 +854,18 @@ fn readability_metrics(
         + 0.15 * entropy_burden
         + 0.20 * interaction_burden)
         .clamp(0.0, 1.0);
-    let measurement_confidence =
+    let measurement_support =
         (0.20 + 0.45 * saturating(expressivity.tokens as f64, 32.0) + 0.30 * structural_support)
             .clamp(0.0, 0.95);
     let size_support =
         saturating(expressivity.tokens as f64, 64.0).max(saturating(complexity.nloc as f64, 20.0));
-    let refactor_confidence =
-        (total_burden * (0.50 + size_support)).clamp(0.0, 1.0) * measurement_confidence;
-    ReadabilityMetrics {
-        score: 100.0 * (1.0 - total_burden),
-        measurement_confidence,
-        refactor_confidence,
-        refactor_confidence_score: refactor_confidence,
-        confidence_basis: CONFIDENCE_BASIS,
-        repo_relative: RepoRelativeConfidence {
-            zscore: 0.0,
-            percentile: 0.5,
-        },
+    let heuristic_burden =
+        (total_burden * (0.50 + size_support)).clamp(0.0, 1.0) * measurement_support;
+    HeuristicBurdenMetrics {
+        score: heuristic_burden,
+        measurement_support,
+        basis: HEURISTIC_BASIS,
+        repo_relative: None,
         size_support,
         complexity_burden,
         information_burden,
@@ -947,22 +903,22 @@ fn maintainability_index(volume: f64, cyclomatic: f64, nloc: usize) -> f64 {
     (raw * 100.0 / 171.0).clamp(0.0, 100.0)
 }
 
-fn normalize_refactor_confidence(functions: &mut [RegionMetrics]) -> ConfidenceDistribution {
+fn normalize_heuristic_burden(functions: &mut [RegionMetrics]) -> BurdenDistribution {
     let values = functions
         .iter()
-        .map(|region| region.readability.refactor_confidence_score)
+        .map(|region| region.heuristic_burden.score)
         .collect::<Vec<_>>();
-    let (distribution, normalized) = confidence_normalization(&values);
+    let (distribution, normalized) = burden_normalization(&values);
     for (region, (zscore, percentile)) in functions.iter_mut().zip(normalized) {
-        region.readability.repo_relative = RepoRelativeConfidence { zscore, percentile };
+        region.heuristic_burden.repo_relative = Some(RepoRelativeBurden { zscore, percentile });
     }
     distribution
 }
 
-fn confidence_normalization(values: &[f64]) -> (ConfidenceDistribution, Vec<(f64, f64)>) {
+fn burden_normalization(values: &[f64]) -> (BurdenDistribution, Vec<(f64, f64)>) {
     if values.is_empty() {
         return (
-            ConfidenceDistribution {
+            BurdenDistribution {
                 count: 0,
                 mean: 0.0,
                 median: 0.0,
@@ -972,7 +928,7 @@ fn confidence_normalization(values: &[f64]) -> (ConfidenceDistribution, Vec<(f64
                 p25: 0.0,
                 p75: 0.0,
                 flat: true,
-                relative_candidate_eligible: false,
+                relative_outlier_eligible: false,
             },
             Vec::new(),
         );
@@ -999,8 +955,8 @@ fn confidence_normalization(values: &[f64]) -> (ConfidenceDistribution, Vec<(f64
         .sqrt();
     let min = sorted[0];
     let max = sorted[count - 1];
-    let flat = count < 2 || max - min < MIN_CONFIDENCE_RANGE || stddev < MIN_CONFIDENCE_STDDEV;
-    let distribution = ConfidenceDistribution {
+    let flat = count < 2 || max - min < MIN_BURDEN_RANGE || stddev < MIN_BURDEN_STDDEV;
+    let distribution = BurdenDistribution {
         count,
         mean,
         median: quantile(&sorted, 0.50),
@@ -1010,7 +966,7 @@ fn confidence_normalization(values: &[f64]) -> (ConfidenceDistribution, Vec<(f64
         p25: quantile(&sorted, 0.25),
         p75: quantile(&sorted, 0.75),
         flat,
-        relative_candidate_eligible: count >= MIN_RELATIVE_REGIONS && !flat,
+        relative_outlier_eligible: count >= MIN_RELATIVE_REGIONS && !flat,
     };
     let mut indexed = values.iter().copied().enumerate().collect::<Vec<_>>();
     indexed.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
@@ -1061,83 +1017,69 @@ fn quantile(sorted: &[f64], probability: f64) -> f64 {
     }
 }
 
-fn detect_refactor_candidates(
+fn detect_heuristic_outliers(
     functions: &[RegionMetrics],
-    distribution: ConfidenceDistribution,
-) -> Vec<ReadabilityCandidate> {
-    let mut candidates = functions
+    distribution: BurdenDistribution,
+) -> Vec<HeuristicBurdenOutlier> {
+    let mut outliers = functions
         .iter()
-        .filter(|region| is_refactor_candidate(region.readability, distribution))
-        .map(|region| readability_candidate(region, distribution))
+        .filter(|region| is_heuristic_outlier(region.heuristic_burden, distribution))
+        .map(heuristic_outlier)
         .collect::<Vec<_>>();
-    candidates.sort_by(|a, b| {
+    outliers.sort_by(|a, b| {
         b.repo_relative
             .percentile
             .total_cmp(&a.repo_relative.percentile)
             .then(b.repo_relative.zscore.total_cmp(&a.repo_relative.zscore))
-            .then(
-                b.refactor_confidence_score
-                    .total_cmp(&a.refactor_confidence_score),
-            )
+            .then(b.heuristic_burden.total_cmp(&a.heuristic_burden))
             .then(a.path.cmp(&b.path))
             .then(a.span.start_line.cmp(&b.span.start_line))
     });
-    for (index, candidate) in candidates.iter_mut().enumerate() {
-        candidate.rank = index + 1;
+    for (index, outlier) in outliers.iter_mut().enumerate() {
+        outlier.rank = index + 1;
     }
-    candidates
+    outliers
 }
 
-fn is_refactor_candidate(
-    readability: ReadabilityMetrics,
-    distribution: ConfidenceDistribution,
-) -> bool {
-    readability.refactor_confidence_score >= REFACTOR_CANDIDATE_THRESHOLD
-        || (distribution.relative_candidate_eligible
-            && readability.repo_relative.zscore >= RELATIVE_REFACTOR_Z_THRESHOLD
-            && readability.repo_relative.percentile >= RELATIVE_REFACTOR_PERCENTILE_THRESHOLD)
+fn is_heuristic_outlier(burden: HeuristicBurdenMetrics, distribution: BurdenDistribution) -> bool {
+    let Some(relative) = burden.repo_relative else {
+        return false;
+    };
+    distribution.relative_outlier_eligible
+        && relative.zscore >= RELATIVE_BURDEN_Z_THRESHOLD
+        && relative.percentile >= RELATIVE_BURDEN_PERCENTILE_THRESHOLD
 }
 
-fn readability_candidate(
-    region: &RegionMetrics,
-    distribution: ConfidenceDistribution,
-) -> ReadabilityCandidate {
-    let readability = region.readability;
+fn heuristic_outlier(region: &RegionMetrics) -> HeuristicBurdenOutlier {
+    let burden = region.heuristic_burden;
     let mut reasons = Vec::new();
-    push_burden_reason(&mut reasons, "complexity", readability.complexity_burden);
-    push_burden_reason(&mut reasons, "information", readability.information_burden);
-    push_burden_reason(&mut reasons, "entropy", readability.entropy_burden);
+    push_burden_reason(&mut reasons, "complexity", burden.complexity_burden);
+    push_burden_reason(&mut reasons, "information", burden.information_burden);
+    push_burden_reason(&mut reasons, "entropy", burden.entropy_burden);
     push_burden_reason(
         &mut reasons,
         "complexity×information",
-        readability.interaction_burden,
+        burden.interaction_burden,
     );
-    reasons.push(format!("size-support={:.2}", readability.size_support));
-    if readability.refactor_confidence_score >= REFACTOR_CANDIDATE_THRESHOLD {
-        reasons.push("absolute-threshold".to_string());
-    }
-    if distribution.relative_candidate_eligible
-        && readability.repo_relative.zscore >= RELATIVE_REFACTOR_Z_THRESHOLD
-        && readability.repo_relative.percentile >= RELATIVE_REFACTOR_PERCENTILE_THRESHOLD
-    {
-        reasons.push(format!(
-            "relative-z={:.2}, percentile={:.3}",
-            readability.repo_relative.zscore, readability.repo_relative.percentile
-        ));
-    }
-    ReadabilityCandidate {
+    reasons.push(format!("size-support={:.2}", burden.size_support));
+    let relative = burden
+        .repo_relative
+        .expect("heuristic outliers require complete repo-relative evidence");
+    reasons.push(format!(
+        "scan-relative-z={:.2}, percentile={:.3}",
+        relative.zscore, relative.percentile
+    ));
+    HeuristicBurdenOutlier {
         rank: 0,
         path: region.path.clone(),
         name: region.name.clone(),
         kind: region.kind.clone(),
         span: region.span,
-        readability_score: readability.score,
-        measurement_confidence: readability.measurement_confidence,
-        refactor_confidence: readability.refactor_confidence_score,
-        refactor_confidence_score: readability.refactor_confidence_score,
-        confidence_basis: readability.confidence_basis,
-        repo_relative: readability.repo_relative,
-        size_support: readability.size_support,
+        heuristic_burden: burden.score,
+        measurement_support: burden.measurement_support,
+        basis: burden.basis,
+        repo_relative: relative,
+        size_support: burden.size_support,
         reasons,
     }
 }
@@ -1200,9 +1142,9 @@ fn check_complexity_hotspots(
         ),
         ("nloc", region.complexity.nloc as f64, distributions.nloc),
         (
-            "halstead-effort",
-            region.halstead.effort,
-            distributions.effort,
+            "halstead-lexical-effort",
+            region.halstead.lexical_effort,
+            distributions.lexical_effort,
         ),
     ];
     for (name, value, distribution) in checks {
@@ -1228,11 +1170,6 @@ fn check_expressivity_hotspots(
                 "unique-token-ratio",
                 region.expressivity.unique_token_ratio,
                 distributions.unique_token_ratio,
-            ),
-            (
-                "compression-ratio",
-                region.expressivity.compression_ratio,
-                distributions.compression_ratio,
             ),
         ];
         for (name, value, distribution) in checks {
@@ -1298,10 +1235,9 @@ struct MetricDistributions {
     cyclomatic: Distribution,
     cognitive: Distribution,
     nloc: Distribution,
-    effort: Distribution,
+    lexical_effort: Distribution,
     decision_density: Distribution,
     unique_token_ratio: Distribution,
-    compression_ratio: Distribution,
     comment_to_code_ratio: Distribution,
 }
 
@@ -1311,7 +1247,11 @@ impl MetricDistributions {
             cyclomatic: distribution(functions.iter().map(|region| region.complexity.cyclomatic)),
             cognitive: distribution(functions.iter().map(|region| region.complexity.cognitive)),
             nloc: distribution(functions.iter().map(|region| region.complexity.nloc as f64)),
-            effort: distribution(functions.iter().map(|region| region.halstead.effort)),
+            lexical_effort: distribution(
+                functions
+                    .iter()
+                    .map(|region| region.halstead.lexical_effort),
+            ),
             decision_density: distribution(
                 functions
                     .iter()
@@ -1321,11 +1261,6 @@ impl MetricDistributions {
                 functions
                     .iter()
                     .map(|region| region.expressivity.unique_token_ratio),
-            ),
-            compression_ratio: distribution(
-                functions
-                    .iter()
-                    .map(|region| region.expressivity.compression_ratio),
             ),
             comment_to_code_ratio: distribution(
                 functions
@@ -1359,34 +1294,6 @@ fn distribution(values: impl Iterator<Item = f64>) -> Distribution {
     }
 }
 
-fn health_score(functions: &[RegionMetrics], hotspots: &[Hotspot]) -> f64 {
-    if functions.is_empty() {
-        return 100.0;
-    }
-    let avg_mi = functions
-        .iter()
-        .map(|region| region.complexity.maintainability_index)
-        .sum::<f64>()
-        / functions.len() as f64;
-    let hotspot_ratio = hotspots.len() as f64 / functions.len() as f64;
-    (avg_mi - (hotspot_ratio * 100.0)).clamp(0.0, 100.0)
-}
-
-fn repo_readability_score(functions: &[RegionMetrics]) -> f64 {
-    let total_confidence = functions
-        .iter()
-        .map(|region| region.readability.measurement_confidence)
-        .sum::<f64>();
-    if total_confidence == 0.0 {
-        return 100.0;
-    }
-    functions
-        .iter()
-        .map(|region| region.readability.score * region.readability.measurement_confidence)
-        .sum::<f64>()
-        / total_confidence
-}
-
 fn shannon_entropy(counts: impl Iterator<Item = usize>) -> f64 {
     let counts = counts.filter(|count| *count > 0).collect::<Vec<_>>();
     let total = counts.iter().sum::<usize>() as f64;
@@ -1410,23 +1317,22 @@ fn normalized_entropy(counts: impl Iterator<Item = usize>) -> f64 {
     (shannon_entropy(counts.iter().copied()) / (counts.len() as f64).log2()).clamp(0.0, 1.0)
 }
 
-fn entropy_ratio(text: &str) -> f64 {
+fn byte_entropy_bits_per_byte(text: &str) -> f64 {
     if text.is_empty() {
-        return 1.0;
+        return 0.0;
     }
     let mut counts = BTreeMap::new();
     for byte in text.bytes() {
         *counts.entry(byte).or_insert(0usize) += 1;
     }
     let len = text.len() as f64;
-    let entropy = counts
+    counts
         .values()
         .map(|count| {
             let probability = *count as f64 / len;
             -probability * probability.log2()
         })
-        .sum::<f64>();
-    (entropy / 8.0).clamp(0.0, 1.0)
+        .sum::<f64>()
 }
 
 fn ratio(numerator: f64, denominator: usize) -> f64 {
@@ -1509,13 +1415,12 @@ mod tests {
 
         let report = metrics_paths(&[malformed], MetricsConfig::default()).expect("metrics");
 
-        assert_eq!(report.schema, "deslop.metrics/4");
+        assert_eq!(report.schema, "deslop.metrics/5");
         assert_eq!(report.status, AnalysisStatus::Partial);
         assert!(report.functions.is_empty());
-        assert!(report.refactor_candidates.is_empty());
+        assert!(report.heuristic_outliers.is_empty());
         assert!(report.hotspots.is_empty());
-        assert!(report.health_score.is_none());
-        assert!(report.readability_score.is_none());
+        assert!(report.heuristic_burden_distribution.is_none());
     }
 
     #[test]
@@ -1534,10 +1439,18 @@ mod tests {
 
         assert_eq!(report.status, AnalysisStatus::Partial);
         assert!(!report.functions.is_empty());
-        assert!(report.refactor_candidates.is_empty());
+        assert!(report.heuristic_outliers.is_empty());
         assert!(report.hotspots.is_empty());
-        assert!(report.health_score.is_none());
-        assert!(report.readability_score.is_none());
+        assert!(report.heuristic_burden_distribution.is_none());
+        assert!(
+            report
+                .functions
+                .iter()
+                .all(|region| region.heuristic_burden.repo_relative.is_none())
+        );
+        let text = render_text(&report, false);
+        assert!(text.contains("Burden distribution: unavailable"));
+        assert!(text.contains("  n/a   n/a"));
     }
 
     #[test]
@@ -1549,7 +1462,26 @@ mod tests {
         assert_eq!(halstead.total_operands, 3);
         assert!((halstead.volume - 11.609_640).abs() < 0.000_01);
         assert!((halstead.difficulty - 1.0).abs() < 0.000_01);
-        assert!((halstead.effort - 11.609_640).abs() < 0.000_01);
+        assert!((halstead.lexical_effort - 11.609_640).abs() < 0.000_01);
+    }
+
+    #[test]
+    fn byte_entropy_uses_bits_per_byte_and_not_a_compression_label() {
+        assert_close(byte_entropy_bits_per_byte("aaaa"), 0.0);
+        assert_close(byte_entropy_bits_per_byte("ab"), 1.0);
+
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn sample(value: i32) -> i32 { value + 1 }\n".to_string(),
+        );
+        let region = metrics_source(&source)
+            .expect("metrics")
+            .into_iter()
+            .find(|region| region.name == "sample")
+            .expect("sample region");
+        let json = serde_json::to_value(region.expressivity).expect("expressivity JSON");
+        assert!(json["byte_entropy_bits_per_byte"].is_number());
+        assert!(json.get("compression_ratio").is_none());
     }
 
     #[test]
@@ -1567,6 +1499,12 @@ mod tests {
         )
         .expect("fixture");
         let report = metrics_paths(&[path], MetricsConfig { sigma: 1.0 }).expect("metrics");
+        let bloated = report
+            .functions
+            .iter()
+            .find(|region| region.name == "bloated")
+            .expect("bloated region");
+        assert!(bloated.heuristic_burden.score > 0.50);
         assert!(
             report
                 .hotspots
@@ -1579,26 +1517,50 @@ mod tests {
                 .iter()
                 .all(|hotspot| !hotspot.name.starts_with("clean_"))
         );
+        assert!(report.heuristic_outliers.is_empty());
         assert!(
-            report
-                .refactor_candidates
-                .iter()
-                .any(|candidate| candidate.name == "bloated"),
-            "candidates: {:?}",
-            report.refactor_candidates,
+            !report
+                .heuristic_burden_distribution
+                .expect("complete distribution")
+                .relative_outlier_eligible
         );
-        assert!(report.refactor_candidates.iter().all(|candidate| {
-            candidate.refactor_confidence_score >= REFACTOR_CANDIDATE_THRESHOLD
-                || (report
-                    .refactor_confidence_distribution
-                    .relative_candidate_eligible
-                    && candidate.repo_relative.zscore >= RELATIVE_REFACTOR_Z_THRESHOLD
-                    && candidate.repo_relative.percentile >= RELATIVE_REFACTOR_PERCENTILE_THRESHOLD)
-        }));
     }
 
     #[test]
-    fn tree_sitter_supplies_entropy_and_readability_evidence() {
+    fn text_output_uses_neutral_experimental_labels() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("sample.rs");
+        std::fs::write(&path, "fn sample(value: i32) -> i32 { value + 1 }\n").expect("fixture");
+        let report = metrics_paths(&[path], MetricsConfig::default()).expect("metrics");
+        let text = render_text(&report, false);
+        assert!(text.contains("Experimental heuristic burden"));
+        assert!(text.contains("scan-local heuristic burden outliers"));
+        for forbidden in [
+            "Repo health:",
+            "Structural readability:",
+            "Refactor confidence distribution:",
+            "readability refactor candidates",
+            "confidence=",
+        ] {
+            assert!(!text.contains(forbidden), "unexpected text {forbidden}");
+        }
+        let json = serde_json::to_value(&report).expect("metrics JSON");
+        assert_eq!(json["schema"], "deslop.metrics/5");
+        assert_eq!(json["heuristic_model"]["authority"], "triage_only");
+        assert_eq!(json["heuristic_model"]["gating_permitted"], false);
+        for forbidden in [
+            "health_score",
+            "readability_score",
+            "readability_model",
+            "refactor_candidates",
+            "refactor_confidence_distribution",
+        ] {
+            assert!(json.get(forbidden).is_none(), "unexpected key {forbidden}");
+        }
+    }
+
+    #[test]
+    fn tree_sitter_supplies_entropy_and_heuristic_burden_evidence() {
         let source = SourceFile::new(
             PathBuf::from("sample.rs"),
             "fn readable(value: i32) -> i32 { value + 1 }\n".to_string(),
@@ -1613,9 +1575,9 @@ mod tests {
         assert!(function.expressivity.token_entropy > 0.0);
         assert!(function.expressivity.structural_entropy > 0.0);
         assert!(function.expressivity.information_volume > 0.0);
-        assert!((0.0..=100.0).contains(&function.readability.score));
-        assert!(function.readability.measurement_confidence > 0.20);
-        assert!((0.0..=1.0).contains(&function.readability.refactor_confidence_score));
+        assert!((0.0..=1.0).contains(&function.heuristic_burden.score));
+        assert!(function.heuristic_burden.measurement_support > 0.20);
+        assert_eq!(function.heuristic_burden.basis, HEURISTIC_BASIS);
     }
 
     #[test]
@@ -1636,9 +1598,9 @@ mod tests {
                 .any(|region| region.kind == "method_definition")
         );
         assert!(
-            report.iter().all(|region| {
-                (0.0..=1.0).contains(&region.readability.refactor_confidence_score)
-            })
+            report
+                .iter()
+                .all(|region| (0.0..=1.0).contains(&region.heuristic_burden.score))
         );
 
         let python = SourceFile::new(
@@ -1789,28 +1751,34 @@ mod tests {
             max_nesting: 4,
             ..low_complexity
         };
-        let balanced_information = readability_test_expressivity(0.90, 0.50, 256.0);
-        let difficult_information = readability_test_expressivity(0.20, 0.90, 1024.0);
+        let balanced_information = burden_test_expressivity(0.90, 0.50, 256.0);
+        let difficult_information = burden_test_expressivity(0.20, 0.90, 1024.0);
 
-        let baseline = readability_metrics(&low_complexity, &balanced_information, 128, true);
+        let baseline = heuristic_burden_metrics(&low_complexity, &balanced_information, 128, true);
         let complexity_only =
-            readability_metrics(&high_complexity, &balanced_information, 128, true);
-        let entropy_only = readability_metrics(&low_complexity, &difficult_information, 128, true);
-        let combined = readability_metrics(&high_complexity, &difficult_information, 128, true);
+            heuristic_burden_metrics(&high_complexity, &balanced_information, 128, true);
+        let entropy_only =
+            heuristic_burden_metrics(&low_complexity, &difficult_information, 128, true);
+        let combined =
+            heuristic_burden_metrics(&high_complexity, &difficult_information, 128, true);
 
-        assert!(baseline.score > entropy_only.score);
-        assert!(entropy_only.score > complexity_only.score);
-        assert!(complexity_only.score > combined.score);
+        assert_close(baseline.score, 0.069_688_888_888_888_88);
+        assert_close(complexity_only.score, 0.374_952_331_154_684_07);
+        assert_close(entropy_only.score, 0.184_177_777_777_777_77);
+        assert_close(combined.score, 0.539_477_159_041_394_4);
+
+        assert!(baseline.score < entropy_only.score);
+        assert!(entropy_only.score < complexity_only.score);
+        assert!(complexity_only.score < combined.score);
         assert!(combined.interaction_burden > complexity_only.interaction_burden);
         for score in [baseline, complexity_only, entropy_only, combined] {
-            assert!((0.0..=100.0).contains(&score.score));
-            assert!((0.0..=0.95).contains(&score.measurement_confidence));
-            assert!((0.0..=1.0).contains(&score.refactor_confidence_score));
+            assert!((0.0..=1.0).contains(&score.score));
+            assert!((0.0..=0.95).contains(&score.measurement_support));
         }
     }
 
     #[test]
-    fn size_increases_support_not_refactor_suspicion_by_itself() {
+    fn size_increases_support_without_claiming_refactor_confidence() {
         let complexity = ComplexityMetrics {
             cyclomatic: 4.0,
             cognitive: 6.0,
@@ -1818,17 +1786,17 @@ mod tests {
             nloc: 8,
             maintainability_index: 70.0,
         };
-        let mut small = readability_test_expressivity(0.85, 0.70, 256.0);
+        let mut small = burden_test_expressivity(0.85, 0.70, 256.0);
         small.tokens = 8;
         let mut large = small;
         large.tokens = 256;
-        let small_score = readability_metrics(&complexity, &small, 16, true);
-        let large_score = readability_metrics(&complexity, &large, 256, true);
+        let small_score = heuristic_burden_metrics(&complexity, &small, 16, true);
+        let large_score = heuristic_burden_metrics(&complexity, &large, 256, true);
         assert!(large_score.size_support > small_score.size_support);
-        assert!(large_score.measurement_confidence > small_score.measurement_confidence);
-        assert!(large_score.refactor_confidence_score > small_score.refactor_confidence_score);
+        assert!(large_score.measurement_support > small_score.measurement_support);
+        assert!(large_score.score > small_score.score);
 
-        let simple_large = readability_metrics(
+        let simple_large = heuristic_burden_metrics(
             &ComplexityMetrics {
                 cyclomatic: 1.0,
                 cognitive: 0.0,
@@ -1836,18 +1804,18 @@ mod tests {
                 nloc: 80,
                 maintainability_index: 90.0,
             },
-            &readability_test_expressivity(0.95, 0.50, 256.0),
+            &burden_test_expressivity(0.95, 0.50, 256.0),
             256,
             true,
         );
-        assert!(simple_large.refactor_confidence_score < large_score.refactor_confidence_score);
+        assert!(simple_large.score < large_score.score);
     }
 
     #[test]
-    fn confidence_normalization_surfaces_outlier_but_not_flat_or_tied_values() {
+    fn burden_normalization_surfaces_outlier_but_not_flat_or_tied_values() {
         let mut outlier_values = vec![0.10; 9];
         outlier_values.push(0.30);
-        let (distribution, normalized) = confidence_normalization(&outlier_values);
+        let (distribution, normalized) = burden_normalization(&outlier_values);
         assert_close(distribution.mean, 0.12);
         assert_close(distribution.median, 0.10);
         assert_close(distribution.stddev, 0.06);
@@ -1856,11 +1824,11 @@ mod tests {
         assert_close(distribution.min, 0.10);
         assert_close(distribution.max, 0.30);
         assert!(!distribution.flat);
-        assert!(distribution.relative_candidate_eligible);
+        assert!(distribution.relative_outlier_eligible);
         assert_close(normalized[9].0, 3.0);
         assert_close(normalized[9].1, 1.0);
 
-        let mut relative_outlier = readability_metrics(
+        let mut relative_outlier = heuristic_burden_metrics(
             &ComplexityMetrics {
                 cyclomatic: 1.0,
                 cognitive: 0.0,
@@ -1868,83 +1836,78 @@ mod tests {
                 nloc: 12,
                 maintainability_index: 90.0,
             },
-            &readability_test_expressivity(0.90, 0.50, 256.0),
+            &burden_test_expressivity(0.90, 0.50, 256.0),
             128,
             true,
         );
-        relative_outlier.refactor_confidence = outlier_values[9];
-        relative_outlier.refactor_confidence_score = outlier_values[9];
-        relative_outlier.repo_relative = RepoRelativeConfidence {
+        relative_outlier.score = outlier_values[9];
+        relative_outlier.repo_relative = Some(RepoRelativeBurden {
             zscore: normalized[9].0,
             percentile: normalized[9].1,
-        };
-        assert!(relative_outlier.refactor_confidence_score < REFACTOR_CANDIDATE_THRESHOLD);
-        assert!(is_refactor_candidate(relative_outlier, distribution));
+        });
+        assert!(is_heuristic_outlier(relative_outlier, distribution));
 
-        let (flat, flat_normalized) = confidence_normalization(&vec![0.20; 10]);
+        let (flat, flat_normalized) = burden_normalization(&vec![0.20; 10]);
         assert!(flat.flat);
-        assert!(!flat.relative_candidate_eligible);
+        assert!(!flat.relative_outlier_eligible);
         assert!(
             flat_normalized
                 .iter()
                 .all(|(zscore, percentile)| *zscore == 0.0 && *percentile == 0.5)
         );
         let mut tied = relative_outlier;
-        tied.refactor_confidence = 0.20;
-        tied.refactor_confidence_score = 0.20;
-        tied.repo_relative = RepoRelativeConfidence {
+        tied.score = 0.20;
+        tied.repo_relative = Some(RepoRelativeBurden {
             zscore: flat_normalized[0].0,
             percentile: flat_normalized[0].1,
-        };
-        assert!(!is_refactor_candidate(tied, flat));
+        });
+        assert!(!is_heuristic_outlier(tied, flat));
 
-        let (exact, _) = confidence_normalization(&[0.10, 0.20, 0.30, 0.40]);
+        let (exact, _) = burden_normalization(&[0.10, 0.20, 0.30, 0.40]);
+        assert_eq!(exact.count, 4);
+        assert!(!exact.relative_outlier_eligible);
         assert_close(exact.mean, 0.25);
         assert_close(exact.median, 0.25);
         assert_close(exact.stddev, 0.111_803_398_874_989_48);
         assert_close(exact.p25, 0.175);
         assert_close(exact.p75, 0.325);
+        let mut high_absolute_burden = relative_outlier;
+        high_absolute_burden.score = 1.0;
+        high_absolute_burden.repo_relative = Some(RepoRelativeBurden {
+            zscore: 10.0,
+            percentile: 1.0,
+        });
+        assert!(!is_heuristic_outlier(high_absolute_burden, exact));
     }
 
     #[test]
-    fn labeled_confidence_json_has_one_stable_band_and_numeric_companion() {
-        let cases = [
-            (0.00, "very_low"),
-            (0.19, "very_low"),
-            (0.20, "low"),
-            (0.40, "moderate"),
-            (0.60, "high"),
-            (0.70, "high"),
-            (0.80, "very_high"),
-            (1.00, "very_high"),
-        ];
-        for (score, expected_label) in cases {
-            let mut readability = readability_metrics(
-                &ComplexityMetrics {
-                    cyclomatic: 1.0,
-                    cognitive: 0.0,
-                    max_nesting: 0,
-                    nloc: 12,
-                    maintainability_index: 90.0,
-                },
-                &readability_test_expressivity(0.90, 0.50, 256.0),
-                128,
-                true,
-            );
-            readability.refactor_confidence = score;
-            readability.refactor_confidence_score = score;
-            let json = serde_json::to_value(readability).expect("serialize readability");
-            let labeled = json["refactor_confidence"]
-                .as_object()
-                .expect("labeled object");
-            assert_eq!(labeled.len(), 1);
-            assert_eq!(labeled[expected_label], score);
-            assert_eq!(json["refactor_confidence_score"], score);
-            assert_eq!(json["confidence_basis"], CONFIDENCE_BASIS);
-            assert!(json["repo_relative"]["zscore"].is_number());
-            assert!(json["repo_relative"]["percentile"].is_number());
-            assert!(json.get("refactor_zscore").is_none());
-            assert!(json.get("refactor_percentile").is_none());
+    fn heuristic_burden_json_has_no_readability_health_or_confidence_claims() {
+        let burden = heuristic_burden_metrics(
+            &ComplexityMetrics {
+                cyclomatic: 4.0,
+                cognitive: 6.0,
+                max_nesting: 2,
+                nloc: 12,
+                maintainability_index: 70.0,
+            },
+            &burden_test_expressivity(0.90, 0.50, 256.0),
+            128,
+            true,
+        );
+        let json = serde_json::to_value(burden).expect("serialize burden");
+        assert!(json["score"].is_number());
+        assert!(json["measurement_support"].is_number());
+        assert_eq!(json["basis"], HEURISTIC_BASIS);
+        assert!(json["repo_relative"].is_null());
+        for forbidden in [
+            "readability",
+            "health",
+            "refactor_confidence",
+            "refactor_confidence_score",
+            "measurement_confidence",
+            "confidence_basis",
+        ] {
+            assert!(json.get(forbidden).is_none(), "unexpected key {forbidden}");
         }
     }
 
@@ -1955,7 +1918,7 @@ mod tests {
         );
     }
 
-    fn readability_test_expressivity(
+    fn burden_test_expressivity(
         token_entropy: f64,
         structural_entropy: f64,
         information_volume: f64,
@@ -1966,7 +1929,7 @@ mod tests {
             decision_density: 0.0,
             unique_token_ratio: 0.5,
             comment_to_code_ratio: 0.0,
-            compression_ratio: 0.5,
+            byte_entropy_bits_per_byte: 4.0,
             token_entropy,
             structural_entropy,
             information_volume,

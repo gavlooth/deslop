@@ -276,7 +276,8 @@ work orders, prompts, verification authority, or writes.
 M0 uses coarse quarantine because per-fact dependency provenance does not exist yet. A non-complete
 file emits diagnostics and contributes no parser/external/cross-file findings, structural metrics,
 graph authority beyond its file node, edit, work order, or prompt. If any requested path is
-non-complete, project-derived duplication/boundary analysis, repo-relative metric candidates, and
+non-complete, project-derived duplication/boundary analysis, repo-relative metric normalization and
+outliers, and
 all rewrite-capable project output are withheld. Text-only packs without a grammar may still emit
 `never-auto` report evidence, but never structural metrics or rewrites. CLI read-only commands emit
 their structured partial result and exit 2; CLI agent/propose output is atomic and emits no JSONL.
@@ -377,7 +378,6 @@ header). `safe-auto`: `consecutive-blank-lines` (collapse).
 ```
 deslop scan     [PATHS…] [--format text|json|sarif|agent] [--baseline FILE] [--since REF] [--fail-on major] [--julia-external[=staticlint|jet|off]] [--julia-project DIR]
 deslop metrics  [PATHS…] [--format text|json] [--hotspots-only] [--sigma N]
-deslop health   [PATHS…] [--format text|json] [--hotspots-only] [--sigma N] # alias
 deslop slop     [PATHS…] [--format text|json]                 # weighted slop score
 deslop graph    [PATHS…] [--format json|dot] [--no-calls]      # file/symbol dependency graph for refactor planning
 deslop fix      [--paths PATH… | --workorders FILE] [--apply] [--characterize] [--allow-unverified] [--coverage MODE] [--provider anthropic|openai] [--base-url URL] [--model M] [--mock recorded.txt] [--check-cmd "CMD"] [--no-backup] # bundled slim consumer; dry-run by default
@@ -397,9 +397,10 @@ deslop rules                                                   # class, precondi
   findings and **fails CI only on new slop** (ratchet). Heavy external analyzers are
   opt-in; `--julia-external` selects StaticLint by default and `--julia-project` passes
   `julia --project=...`.
-- **`metrics`/`health`**: computes per-region complexity, entropy, structural readability,
-  and separate measurement/refactor confidence; ranks absolute refactor candidates and
-  repo-relative bloat hotspots; emits text or JSON.
+- **`metrics`**: emits transparent per-region structural and lexical measurements, an experimental
+  heuristic-burden axis, scan-local burden outliers, and complexity/entropy hotspots. These are
+  read-only triage evidence, never health, readability, refactor-need, probability, confidence,
+  safety, or rewrite gates.
 - **`graph`**: emits `deslop.graph/2`, a deterministic Tree-sitter-derived dependency graph
   for LLM refactor planning. Nodes are files, symbols, and external-or-unresolved placeholders; edges are
   `contains`, `imports`, `calls`, and `inherits`. In graph/2, `resolved` is exact syntax ownership
@@ -432,58 +433,59 @@ deslop rules                                                   # class, precondi
 
 ---
 
-## 9. Metrics / health
+## 9. Metrics
 
-`deslop metrics` measures bloat-prone regions, not just rule findings. It is built on
+`deslop metrics` measures structural and lexical properties per region, independently of rule
+findings. It is built on
 `LangPack`: each pack declares metric region node kinds, branch node kinds,
 nesting/control-flow node kinds, line-comment tokens, and Halstead operator tokens.
-`deslop-parse` supplies the CST; non-complete inputs expose diagnostics but do not emit structural
-regions, candidates, hotspots, or aggregate scores.
+`deslop-parse` supplies the CST. A non-complete file emits diagnostics and no structural regions.
+In a mixed requested snapshot, complete-file regions may retain intrinsic measurements, but
+project-derived normalization, outliers, and hotspots are withheld and the CLI exits 2.
 
 Per region:
-- **Complexity:** cyclomatic (`branch_count + 1`), cognitive control/nesting/flow-break
-  score, max nesting, NLOC, Halstead Volume/Difficulty/Effort, Maintainability Index
-  normalized 0-100.
+- **Complexity:** current cyclomatic (`branch_count + 1`) and cognitive
+  control/nesting/flow-break estimates, max nesting, NLOC, conventional Halstead
+  Volume/Difficulty/lexical-effort formulas, and Maintainability Index normalized 0-100.
 - **Expressivity / density:** decision density (`cyclomatic / tokens`), unique-token
-  ratio, comment-to-code ratio, and a compression/redundancy proxy.
+  ratio and comment-to-code ratio.
 - **Tree-sitter entropy:** normalized Shannon entropy over CST leaf tokens plus normalized
   entropy over CST node kinds. Token information volume is `leaf_count * raw_token_entropy`.
   A registered text-only language may still emit report-only findings, but metrics remain unavailable
   until the pack supplies a grammar.
-- **Compression proxy:** currently byte entropy normalized to `0.0..1.0`, chosen to avoid
-  a compression dependency while still flagging repetitive low-information regions.
-- **Structural readability:** a bounded deterministic model combines cognitive/cyclomatic/
-  nesting burden, information volume, lexical redundancy, structural disorder, and the
-  complexity-by-information interaction. Higher scores are easier to read. The model id is
-  `deslop-structural-readability/1` and `calibrated=false`; it is not a human-agreement
-  probability.
-- **Confidence and size:** `measurement_confidence` reports parse/sample reliability.
-  `size_support` rises with CST leaf count and NLOC. `refactor_confidence` combines readability
-  burden, measurement confidence, and size support, so size strengthens existing complexity/
-  entropy evidence but cannot make a large simple region suspicious by itself.
-- **Confidence distribution and normalization:** the report emits count, mean, median, population
-  standard deviation, min/max, and linearly interpolated p25/p75 for raw refactor confidence.
-  Every region also receives a mean-relative z-score and tie-aware empirical percentile. Regions
-  qualify as candidates either at raw confidence `>= 0.50`, or repo-relatively at z-score `>= 1.0`
-  and percentile `>= 0.90`. Relative selection requires at least 8 regions and is disabled when
-  the confidence range is below `0.05` or standard deviation below `0.01`; flat/tied distributions
-  therefore cannot manufacture refactor targets. Region traversal retains nested containers and
-  members, so classes/impls and their methods/functions are scored.
-- **Labeled JSON confidence (`deslop.metrics/4`):** `refactor_confidence` is a one-entry object
-  whose key communicates the band and whose value is the score, e.g. `{"high": 0.70}`.
-  `refactor_confidence_score` repeats the numeric value for sorting and arithmetic. Bands are
-  `very_low` `[0.00,0.20)`, `low` `[0.20,0.40)`, `moderate` `[0.40,0.60)`, `high`
-  `[0.60,0.80)`, and `very_high` `[0.80,1.00]`. `confidence_basis` is
-  `tree_intrinsic_v1`, making the fixed cross-codebase structural basis explicit. Scan-local
-  normalization is nested separately as `repo_relative: {zscore, percentile}`. The schema moved
-  from `/3` to `/4` to add per-file analysis provenance, an aggregate status, and nullable aggregate
-  scores when the requested snapshot is incomplete.
+- **Byte entropy:** `byte_entropy_bits_per_byte` is zero-order Shannon entropy in bits per source
+  byte (`0.0..8.0`). It is not compression, sequence regularity, surprisal, or evidence with a
+  universal good/bad direction.
+- **Experimental heuristic burden:** the hand-set `deslop-heuristic-burden/1` formula combines
+  structural-load, information, entropy, and interaction components with `measurement_support`
+  from sample size and CST availability. Higher `score` means more formula burden. The model is
+  machine-labeled `experimental=true`, `human_calibrated=false`, `authority="triage_only"`, and
+  `gating_permitted=false`; it does not measure human readability, health, refactor need, safety,
+  probability, or confidence.
+- **Scan-local normalization:** `heuristic_burden_distribution` reports count, mean, median,
+  population standard deviation, min/max, and interpolated p25/p75. Complete snapshots give each
+  region a mean-relative z-score and tie-aware empirical percentile. `heuristic_outliers` contains
+  only regions with z-score `>= 1.0` and percentile `>= 0.90`; outlier listing requires at least
+  eight regions and is disabled when the range is below `0.05` or standard deviation below `0.01`.
+  This is unusualness within that scan, not an absolute candidate gate. In incomplete snapshots the
+  distribution and every `repo_relative` value are `null`.
+- **JSON contract (`deslop.metrics/5`):** `/5` removes the uncalibrated `health_score`,
+  `readability_score`, `readability_model`, `refactor_candidates`, confidence bands, and
+  `refactor_confidence_distribution` fields. Region traversal still retains nested containers and
+  members so the transparent measurements remain inspectable. Client migration is explicit: the
+  old region container is replaced by `heuristic_burden`; only its former raw burden formula
+  survives, with downgraded triage-only authority. `measurement_confidence` becomes
+  `measurement_support`, `compression_ratio` becomes `byte_entropy_bits_per_byte`, and Halstead
+  `effort` becomes `lexical_effort`; `repo_relative` and the top-level burden distribution are
+  nullable when project context is incomplete. The removed health/readability scores,
+  refactor-confidence fields, and candidate gate have no direct replacement, and `/5` emits no
+  compatibility aliases for them.
 
-After scanning, metrics are compared against the run's own distribution. A hotspot is a
+For complete requested snapshots, metrics are compared against the run's own distribution. A hotspot is a
 region at least `--sigma` standard deviations from the repo median on high complexity or
 low expressivity. Low-expressivity checks require a minimum token count to avoid tiny helper
-false positives. Ranked hotspots are `llm-only` cleanup candidates for future slim/MCP
-workflows; metrics itself does not rewrite code.
+false positives. Ranked hotspots are scan-local triage signals only. Metrics does not create work
+orders, authorize rewrites, or participate in refactor-safety decisions.
 
 ---
 
@@ -497,7 +499,7 @@ It implements the core JSON-RPC MCP methods needed by coding agents:
 `initialize`, `tools/list`, and `tools/call`. Tool payloads reuse the existing
 `deslop.findings/2`, `deslop.workorder/1`, `deslop.fix/1`, `deslop.patch/1`,
 `deslop.characterization-test/1`, `deslop.verify/1`, `deslop.apply/1`, and
-`deslop.metrics/4`/`deslop.graph/2` schemas. The `fix` tool scans/proposes work orders, reuses
+`deslop.metrics/5`/`deslop.graph/2` schemas. The `fix` tool scans/proposes work orders, reuses
 `deslop_slim::build_prompt`, and returns prompt entries containing `workorder_id`, `path`,
 line range, `region_fingerprint`, contract, findings, and prompt text. The caller rewrites
 the region and submits `deslop.patch/1` patches through `apply`, so the existing
@@ -622,8 +624,9 @@ Optional live smoke sits outside the default suite.
 Mutation tests cover exact native CST mutant generation for Rust, Clojure, Julia, and Python,
 content-keyed native check-cmd scoring for killed versus survived mutants, verdict downgrade from
 native survivors, timeout-as-killed behavior, and covered-line restriction.
-Metrics tests cover cyclomatic counts, known Halstead numbers, hotspot detection, and a
-throwaway pack driving metric declarations without central language edits.
+Metrics tests cover branch estimates, known Halstead numbers, exact heuristic-burden arithmetic,
+scan-local outlier normalization, byte-entropy units, partial-snapshot suppression, neutral `/5`
+serialization, hotspot detection, and a throwaway pack driving declarations without central edits.
 MCP tests cover `tools/list` schemas, `tools/call scan`, `fix` prompt generation,
 default-build `fix mode=auto` feature-required errors, propose→verify round-trip, stale
 `region_fingerprint` rejection, MCP coverage bool back-compat/defaults, bad coverage-mode
@@ -648,7 +651,7 @@ zero on a clean fixture. SARIF shape remains covered by `sarif_render_has_requir
 2. **M2 — The loop + clj-kondo:** `deslop-protocol` + `propose`/`verify`/`apply` +
    `deslop-verify` gate (parse + `--check-cmd` + defensive guard) + clj-kondo/clippy
    `analyzer-confirmed` fixes + duplication detection + plugin registry.
-3. **M3 — Metrics + MCP + breadth:** `deslop metrics/health`, `deslop-mcp` (the real
+3. **M3 — Metrics + MCP + breadth:** `deslop metrics`, `deslop-mcp` (the real
    "propose to the LLM" channel), SARIF 2.1.0, and config-gated Julia StaticLint/JET adapter.
 4. **M4 — Optional consumers:** `deslop-slim` reference consumer + `deslop-lsp` +
    pre-commit hook +

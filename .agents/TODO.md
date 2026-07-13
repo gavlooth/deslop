@@ -69,9 +69,15 @@ reports, benchmark records, and work orders.
   provenance defaults unknown; mixed-scan aggregate suppression; zero findings/orders/prompts/model
   calls/writes; metrics/4 null scores; graph/2 file-only; LSP diagnostic/no action; findings/2 and
   slim/2 schema regressions; scoped verifier rediscovery; full workspace and MCP feature gates.
-- [ ] M0.9 Relabel or remove uncalibrated health/readability/refactor-confidence gates. **NEXT**
+- [x] M0.9 Replace the uncalibrated health/readability/refactor-confidence contract with
+  `deslop.metrics/5` experimental heuristic burden. Remove the health alias, aggregate scalars,
+  confidence bands, absolute threshold, and refactor candidates; expose typed
+  `triage_only`/`gating_permitted=false` metadata, measurement support, transparent components, and
+  complete-snapshot-only scan-relative outliers. Evidence: exact formula/distribution values,
+  n<8/flat/no-absolute selection, partial null relative context, clean/sloppy `/5` smokes with zero
+  legacy keys, neutral text, rejected health alias, MCP parity, and zero rewrite authority.
 - [ ] M0.10 Add the exact clean/sloppy, performance, duplicate-order, and false-resolution probes from
-  `.agents/ALGORITHM_AUDIT.md` to automated regression suites.
+  `.agents/ALGORITHM_AUDIT.md` to automated regression suites. **NEXT**
 - [ ] M0.11 Run focused tests, then full fmt/build/test/clippy gates and record measured before/after values.
 - [ ] M0.12 Separate the exact-byte `RevisionGuard` from the trimmed cross-revision baseline fingerprint;
   migrate region/work-order IDs explicitly and reject boundary-whitespace staleness.
