@@ -1581,6 +1581,63 @@ mod tests {
     }
 
     #[test]
+    fn metrics_paths_locks_current_parse_amplification_count() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/python/behavioral.py");
+
+        deslop_parse::reset_parse_source_invocations();
+        let report = metrics_paths(&[path], MetricsConfig::default()).expect("metrics");
+
+        assert_eq!(report.functions.len(), 5);
+        // Current path: one outer provenance parse, then repeated provenance, region discovery,
+        // and one parse per region (R + 3). M1's owned snapshot target is one parse total.
+        assert_eq!(deslop_parse::parse_source_invocations(), 8);
+    }
+
+    #[test]
+    fn trivial_helpers_do_not_change_intrinsic_target_metrics() {
+        let target = "fn target(x: i32) -> i32 { if x > 0 { x + 1 } else { 0 } }\n";
+        let base = SourceFile::new(PathBuf::from("sample.rs"), target.to_string());
+        let expanded = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            format!(
+                "{target}{}",
+                (0..20)
+                    .map(|index| format!("fn helper_{index}() -> i32 {{ {index} }}\n"))
+                    .collect::<String>()
+            ),
+        );
+
+        let base_target = metrics_source(&base)
+            .expect("base metrics")
+            .into_iter()
+            .find(|region| region.name == "target")
+            .expect("base target");
+        let expanded_target = metrics_source(&expanded)
+            .expect("expanded metrics")
+            .into_iter()
+            .find(|region| region.name == "target")
+            .expect("expanded target");
+
+        assert_eq!(
+            serde_json::to_value((
+                base_target.complexity,
+                base_target.expressivity,
+                base_target.halstead,
+                base_target.heuristic_burden,
+            ))
+            .expect("base intrinsic metrics"),
+            serde_json::to_value((
+                expanded_target.complexity,
+                expanded_target.expressivity,
+                expanded_target.halstead,
+                expanded_target.heuristic_burden,
+            ))
+            .expect("expanded intrinsic metrics")
+        );
+    }
+
+    #[test]
     fn nested_class_and_method_regions_are_both_scored() {
         let source = SourceFile::new(
             PathBuf::from("sample.js"),

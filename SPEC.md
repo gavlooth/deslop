@@ -627,6 +627,15 @@ native survivors, timeout-as-killed behavior, and covered-line restriction.
 Metrics tests cover branch estimates, known Halstead numbers, exact heuristic-burden arithmetic,
 scan-local outlier normalization, byte-entropy units, partial-snapshot suppression, neutral `/5`
 serialization, hotspot detection, and a throwaway pack driving declarations without central edits.
+Algorithm-contract tests also lock clean/sloppy `/5` honesty and exact independent slop-density
+snapshots, current parse amplification (`5` Python behavioral regions require `8` `parse_source`
+calls, with one parse per file remaining the M1 target), invariance of a target region's intrinsic
+metrics when trivial helpers are added, conservation of all `62` sloppy-corpus findings in `28`
+unique region work orders under overlapping/reordered inputs, the exact `compact_label`
+false-resolution probe, and preservation of all `11` findings in the largest slim rewrite region.
+An ignored self-scan probe records metric/graph structure and elapsed time at checkpoints; because
+the tests themselves change the scanned source tree, its totals and wall time are informational and
+not fixed pass/fail thresholds.
 MCP tests cover `tools/list` schemas, `tools/call scan`, `fix` prompt generation,
 default-build `fix mode=auto` feature-required errors, propose→verify round-trip, stale
 `region_fingerprint` rejection, MCP coverage bool back-compat/defaults, bad coverage-mode

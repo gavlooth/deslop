@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -7,6 +8,24 @@ use deslop_lang::{LangPack, Registry, detect_lang};
 use tree_sitter::{Parser, Tree};
 
 pub use deslop_lang::RegionSpan;
+
+thread_local! {
+    static PARSE_SOURCE_INVOCATIONS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Reset the current thread's source-parse invocation counter.
+///
+/// This is public instrumentation for algorithm regression tests and future one-parse ownership work.
+#[doc(hidden)]
+pub fn reset_parse_source_invocations() {
+    PARSE_SOURCE_INVOCATIONS.set(0);
+}
+
+/// Return the current thread's source-parse invocation count since the last reset.
+#[doc(hidden)]
+pub fn parse_source_invocations() -> usize {
+    PARSE_SOURCE_INVOCATIONS.get()
+}
 
 #[derive(Debug, Clone)]
 pub struct SourceFile {
@@ -109,6 +128,7 @@ pub fn parse_source(source: &SourceFile) -> Result<Option<Tree>> {
     let Some(mut parser) = parser_for_pack(pack, Some(&source.path))? else {
         return Ok(None);
     };
+    PARSE_SOURCE_INVOCATIONS.with(|count| count.set(count.get() + 1));
     Ok(parser.parse(&source.text, None))
 }
 

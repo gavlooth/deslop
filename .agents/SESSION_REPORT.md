@@ -5368,3 +5368,79 @@ human calibration beats frozen size/simple baselines with acceptable calibration
 intervals. Search handles: `metrics/5 heuristic_burden health reversal triage_only gating_permitted`.
 
 **Signature:** Codex (GPT-5), M0.9 integration owner, 2026-07-13.
+
+---
+
+## M0.10 checkpoint — automate algorithm contract probes
+
+**Date/time:** 2026-07-13T15:17:38+02:00
+
+**Objective:** complete M0.10 by moving the clean/sloppy, parse-performance, duplicate-order,
+aggregation, and false-resolution probes from the algorithm audit into deterministic regression
+suites without converting unstable wall time or corpus-derived totals into false semantic authority.
+
+**Target:** parse instrumentation, metrics invariants, CLI corpus integration tests, graph resolution,
+slim aggregation, SPEC/audit documentation, durable roadmap, and jj checkpoint. `/root` owned all
+writes and final integration; three read-only agents audited contract, core, and integration surfaces.
+
+**Changes:**
+
+- Added an honest clean/sloppy CLI contract for `deslop.metrics/5`: complete provenance, experimental
+  triage-only metadata, no removed health/readability/refactor-confidence keys, and exact independent
+  slop-density snapshots (`0.819672131147541` clean, `60.32388663967611` sloppy).
+- Added thread-local `parse_source` invocation instrumentation and locked the current amplification:
+  the five-region Python behavioral fixture makes eight source parses (`R + 3`). Added a relational
+  regression proving that adding 20 trivial helpers does not change the target region's intrinsic
+  complexity, expressivity, Halstead, or heuristic-burden evidence. One parse per file remains M1.
+- Strengthened workorder regressions to require 28 unique target regions and IDs while conserving all
+  62 current sloppy-corpus findings. Repeated, overlapping, reordered, and equivalent path inputs
+  serialize identically. The largest Rust region contains exactly 11 merged findings: one long-method,
+  nine near-duplicate, and one let-and-return finding.
+- Locked the false-resolution probes: `compact_label` has two definitions and ten syntactic calls, each
+  targeting the same caller file; the corpus graph is 21 files, 74 symbols, and 197 edges with no
+  non-containment `resolved` claims and no false `require`/`:require` calls.
+- Strengthened slim aggregation so its single rewrite prompt retains all 11 rule-evidence entries; the
+  existing verifier regression confirms the grouped patch verifies and applies once.
+- Added an explicitly ignored self-scan probe. At this checkpoint it measured 39 metric files, 1,745
+  regions, 5,715 graph nodes, and 13,392 edges; metrics took 48.217533591s and graph 1.769094036s.
+  The probe gates only stable schema/structural facts and logs source-tree-dependent counts and time.
+- Marked the audit's 31-unique-ID value as historical pre-M0.1 evidence, documented the current
+  conservation contract in the audit/SPEC, completed M0.10 in the roadmap, and made M0.11 **NEXT**.
+
+**Commands run:** focused parse-amplification and helper-invariance metrics tests; CLI algorithm,
+workorder, and graph integration suites; slim and verify aggregation tests; the ignored crates
+performance probe with `--nocapture`; `cargo fmt --all --check`; `git diff --check`; and
+`cargo test --workspace`.
+
+**Results:** PASS. All seven focused commands passed. The workspace has 259 passing tests plus one
+intentional ignored performance probe and passing doc-tests. Formatting and whitespace checks passed.
+The measured operation-count contract is exactly eight `parse_source` calls for five metric regions;
+the current workorder and graph snapshots match the numbers above.
+
+**Failure modes / invalidated assumptions:** an initial counter implementation used unstable
+`LocalKey::update` and failed with E0658 on the repository toolchain; it was replaced by stable
+`LocalKey::with` plus `Cell::get/set`. The slow probe initially froze exact self-scan counts, but adding
+its own source changed those counts; source-tree totals and elapsed time are now recorded rather than
+gated. Finally, treating the historical 31 unique workorder IDs as current was invalidated by the
+post-grouping analyzer/region semantics, which now yield 28 unique targets while conserving all 62
+findings.
+
+**Current recommendation/checkpoint:** M0.10 is complete. Execute M0.11 next: rerun focused checks and
+the complete fmt/build/test/slim-feature/clippy matrix, then record the measured before/after evidence.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; targeted local Rust reads
+remain the fallback.
+
+**Next actions:** run the exhaustive M0.11 release gate without treating the intentionally ignored
+performance probe as part of the default suite. If code or fixtures change, rerun that probe explicitly
+and interpret count/time deltas rather than mechanically updating a threshold.
+
+**Dependencies/restart:** rebuild test and CLI binaries to include the instrumentation and contract
+suites. No runtime restart, data migration, public schema migration, or configuration change is needed.
+
+**Negative-memory status:** Hindsight records that 31 unique IDs is historical pre-grouping evidence,
+not a timeless gate. Current authority is 28 unique targets plus 62-finding conservation and exact
+overlap/order invariance; recheck the snapshot after analyzer rules, packs, region boundaries, fixtures,
+or workorder schema change. Search handles: `M0.10 sloppy corpus 62 findings 31 historical 28 current`.
+
+**Signature:** Codex (GPT-5), M0.10 integration owner, 2026-07-13.

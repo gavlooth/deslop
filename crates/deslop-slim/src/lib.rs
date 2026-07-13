@@ -1449,8 +1449,27 @@ mod tests {
         assert_eq!(prompts.len(), 3);
         assert_eq!(rewrite.patches.len(), 3);
         assert_eq!(unique_patch_ids.len(), 3);
-        assert!(large_region_prompt.text.contains("rule: long-method"));
-        assert!(large_region_prompt.text.contains("rule: let-and-return"));
+        assert_eq!(
+            large_region_prompt
+                .text
+                .matches("rule: long-method")
+                .count(),
+            1
+        );
+        assert_eq!(
+            large_region_prompt
+                .text
+                .matches("rule: near-duplicate")
+                .count(),
+            9
+        );
+        assert_eq!(
+            large_region_prompt
+                .text
+                .matches("rule: let-and-return")
+                .count(),
+            1
+        );
         Ok(())
     }
 

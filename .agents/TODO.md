@@ -76,9 +76,13 @@ reports, benchmark records, and work orders.
   complete-snapshot-only scan-relative outliers. Evidence: exact formula/distribution values,
   n<8/flat/no-absolute selection, partial null relative context, clean/sloppy `/5` smokes with zero
   legacy keys, neutral text, rejected health alias, MCP parity, and zero rewrite authority.
-- [ ] M0.10 Add the exact clean/sloppy, performance, duplicate-order, and false-resolution probes from
-  `.agents/ALGORITHM_AUDIT.md` to automated regression suites. **NEXT**
-- [ ] M0.11 Run focused tests, then full fmt/build/test/clippy gates and record measured before/after values.
+- [x] M0.10 Add the exact clean/sloppy, performance, duplicate-order, and false-resolution probes from
+  `.agents/ALGORITHM_AUDIT.md` to automated regression suites. Evidence: honest clean/sloppy `/5`
+  schema plus exact independent slop scores; 5-region/8-parse amplification and helper invariance;
+  current 28 unique work orders conserving all 62 findings under overlapping/reordered inputs;
+  exact 2-definition/10-call `compact_label` and 21-file/74-symbol/197-edge corpus graph probes;
+  all 11 largest-region findings preserved through slim/verify; ignored measured self-scan probe.
+- [ ] M0.11 Run focused tests, then full fmt/build/test/clippy gates and record measured before/after values. **NEXT**
 - [ ] M0.12 Separate the exact-byte `RevisionGuard` from the trimmed cross-revision baseline fingerprint;
   migrate region/work-order IDs explicitly and reject boundary-whitespace staleness.
 - [ ] M0.13 Persist proposal analyzer config, capability, and source-revision context so verify/apply

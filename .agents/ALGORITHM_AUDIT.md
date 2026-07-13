@@ -29,7 +29,7 @@ that snapshot.
 | Typed TypeScript fixture | metrics falls back to one file region; graph skips extraction | TypeScript uses the JavaScript grammar. |
 | Clojure `if`/`when` fixture | cyclomatic `1`, cognitive `0` | Pack head tokens are compared with grammar node-kind strings and never match. |
 | Rust `propose` fixture | 13 orders, 3 unique IDs; one region repeated 11 times | Slim rewrites one region repeatedly and apply later rejects overlaps. |
-| Entire sloppy corpus | 62 orders, 31 unique IDs, 8 duplicated region IDs | Multi-finding region grouping is missing system-wide. |
+| Entire sloppy corpus (historical, before M0.1 grouping) | 62 orders, 31 unique IDs, 8 duplicated region IDs | Multi-finding region grouping was missing system-wide; this count is not a current snapshot invariant. |
 | Current workspace gate | 179 tests pass; fmt and clippy pass | Existing tests do not cover these external-contract failures. |
 
 The labelled rule corpus still shows useful analyzer signal: `deslop slop` separates clean from
@@ -384,6 +384,14 @@ Benchmark design:
   Unicode, and three-character operators.
 - Partial parse errors report coverage/unknown rather than synthetic clean metrics.
 - Clean/sloppy smoke cannot reproduce the current reversed health ordering.
+
+M0.10 automation preserves the post-grouping contract separately from the historical evidence above:
+the current sloppy corpus emits 28 unique region work orders containing all 62 findings, and repeated,
+overlapping, or reordered equivalent path inputs serialize identically. The clean/sloppy metric smoke
+asserts honest `deslop.metrics/5` authority metadata and absence of removed health/readability fields;
+only the independent slop detector's deterministic `0.819672131147541` versus
+`60.32388663967611` separation is frozen. A slow ignored self-scan logs performance and structural
+counts without treating source-tree-dependent totals or wall time as stable gates.
 
 ## Negative-memory constraints
 

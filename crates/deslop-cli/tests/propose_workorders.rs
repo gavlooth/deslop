@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -38,6 +38,16 @@ fn finding_count(work_orders: &[WorkOrder]) -> usize {
         .sum()
 }
 
+fn target_keys(work_orders: &[WorkOrder]) -> BTreeSet<String> {
+    work_orders
+        .iter()
+        .map(|work_order| {
+            let value = serde_json::to_value(work_order).expect("work order JSON");
+            format!("{}|{}|{}", value["path"], value["kind"], value["region"])
+        })
+        .collect()
+}
+
 fn sloppy_rust_fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus/sloppy/slop_rust.rs")
 }
@@ -54,12 +64,38 @@ fn propose_groups_the_multi_finding_rust_corpus_into_unique_regions() {
     assert_unique_ids(&work_orders);
     assert_eq!(finding_count(&work_orders), 13);
     assert_eq!(largest_group, Some(11));
+    let largest = work_orders
+        .iter()
+        .find(|work_order| work_order.findings.len() == 11)
+        .expect("largest grouped region");
+    let rule_counts =
+        largest
+            .findings
+            .iter()
+            .fold(BTreeMap::<&str, usize>::new(), |mut counts, finding| {
+                *counts.entry(&finding.rule).or_default() += 1;
+                counts
+            });
+    assert_eq!(
+        rule_counts,
+        BTreeMap::from([
+            ("let-and-return", 1),
+            ("long-method", 1),
+            ("near-duplicate", 9),
+        ])
+    );
 }
 
 #[test]
 fn propose_deduplicates_repeated_and_overlapping_input_paths() {
     let fixture = sloppy_rust_fixture();
     let corpus_dir = fixture.parent().expect("corpus directory").to_path_buf();
+
+    let full_corpus = propose(std::slice::from_ref(&corpus_dir));
+    assert_eq!(full_corpus.len(), 28);
+    assert_unique_ids(&full_corpus);
+    assert_eq!(finding_count(&full_corpus), 62);
+    assert_eq!(target_keys(&full_corpus).len(), 28);
 
     let repeated = propose(&[fixture.clone(), fixture.clone()]);
     assert_eq!(repeated.len(), 3);
@@ -70,6 +106,11 @@ fn propose_deduplicates_repeated_and_overlapping_input_paths() {
     assert_eq!(overlapping.len(), 28);
     assert_unique_ids(&overlapping);
     assert_eq!(finding_count(&overlapping), 62);
+    assert_eq!(target_keys(&overlapping).len(), 28);
+    assert_eq!(
+        serde_json::to_value(full_corpus).expect("full corpus JSON"),
+        serde_json::to_value(overlapping).expect("overlapping JSON")
+    );
 }
 
 #[test]
