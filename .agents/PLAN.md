@@ -1034,6 +1034,20 @@ boundary/external manifests, followed by the shared root/discovery/read/presenta
 legacy path adapter cutover. The temporary internal `SourceFile` text bridge must be removed or made
 non-reparsable before M1.9 completion.
 
+Planner/prepared-analyzer checkpoint update (2026-07-13): analyzer and metrics path APIs now share
+one root/repository/scope/discovery/read/presentation planner and build one immutable snapshot. Auto
+repository identity uses normalized VCS remote/root-commit evidence when available and a path-bound
+identity only for unversioned roots. Analyzer boundary discovery pins every candidate TOML/YAML/JSON
+artifact before analysis; its private completeness witness cannot be forged by callers. Boundary
+evidence uses only NodeViews and pinned artifact bytes, with no reread or parse. Partial sources or
+invalid UTF-8 artifacts withhold all repository-negative boundary claims. Presentation paths are
+bound into projection identity before findings/fingerprints/suppression/cross-file messages, and one
+cached `AnalyzerFile`/adapter-fact projection is reused across local, duplication, and boundary passes.
+Repeated prepared scans remain byte-identical after live files are mutated; rebuilding changed inputs
+changes projection identity. The active terminal work is removal of the reparsable internal
+`SourceFile` bridge, static primary-surface no-parse/no-read guards, and an explicit no-grammar text
+source contract or documented M2 invalidation before checking M1.9.
+
 Negative-memory constraints: do not expose borrowed Tree-sitter nodes; duplicate `LangPack` raw-kind
 logic; infer durable identity from reanchors; union nested inclusive metric regions; reread paths after
 snapshot construction; use path-selected language instead of stored grammar; or count an incremental

@@ -6731,3 +6731,71 @@ per-pass parsing, live external/boundary reads, Lang/path pack reconstruction, m
 suppression, hidden boundary completeness, or suppression-root-dependent primary identity.
 
 **Signature:** Codex (GPT-5), M1.9 integration owner, owned analyzer checkpoint, 2026-07-13.
+
+---
+
+## M1.9 planner and prepared-analyzer checkpoint
+
+**Date/time:** 2026-07-13T22:13:36+02:00
+
+**Objective/target:** centralize compatibility path planning for metrics/analyzer, pin boundary inputs,
+and make the default analyzer path a one-snapshot owned projection without live rereads, reparses, or
+forgeable project-level completeness.
+
+**Changes:** added `ProjectSnapshotPlanner` with explicit/auto root and repository authority,
+requested/exact-logical scopes, canonical versus legacy-ignore discovery, source/analysis overlays,
+deduplicated one-read multi-role entries, and presentation mapping. Auto root rejects multi-repository
+scope and uses VCS identity from normalized remote/root commits when available, falling back to a
+path-bound local identity only without VCS evidence. Metrics and analyzer path APIs now build one
+planner snapshot and one `ProjectAnalysis` before delegating.
+
+Added an opaque `PreparedAnalyzerAnalysis` with a private input manifest and boundary completeness
+witness. Boundary discovery pins all TOML/YAML/JSON candidate bytes as analysis inputs; policy filters
+well-known tool artifacts later. Boundary code evidence was ported from borrowed Tree nodes to
+`NodeId`/`NodeView` parents, ordered children, spans, kinds, and pinned text. The pass has no
+`parse_source`, `SourceFile::read`, or live artifact read. A single cached `AnalyzerFile` vector now
+serves local rules, cross-file duplication, and boundary analysis. Presentation paths enter projection
+policy before finding construction, suppression, fingerprints, messages, and sorting. Optional
+externals remain explicitly unavailable unless a future revision-isolated plan is prepared; no live
+process is run.
+
+**Commands/checks run:** focused planner, boundary, presentation, partial, invalid-UTF-8, and
+revision-pinning tests; `cargo test -p deslop-parse -p deslop-metrics -p deslop-analyzer`;
+`cargo clippy -p deslop-analyzer -p deslop-parse -p deslop-metrics --all-targets --all-features -- -D warnings`;
+`cargo fmt --all -- --check`; and a static `rg` guard proving `boundary.rs` contains neither
+`parse_source` nor `SourceFile::read`.
+
+**Results:** PARTIAL PASS. Parse passes 72/72, metrics 27/27, and analyzer 66/66; strict clippy,
+formatting, and the boundary static guard pass. Planner tests prove repository-bound root selection,
+cross-repository rejection, exact-logical overlays, canonical/legacy discovery, one disk read across
+compatible roles, presentation preference, and VCS identity normalization. Prepared boundary tests
+pin exactly `config-key-unread`, `config-key-unconsumed`, and `config-key-shadowed`, keep a live key
+quiet, retain a cold `1/1/1/0` parse ledger, record zero legacy parses, remain deterministic after disk
+mutation, and change projection identity only after rebuilding changed bytes. Partial syntax and
+invalid UTF-8 boundary artifacts produce explicit downgrade reports and zero boundary claims.
+
+**Invalidated assumptions / negative memory:** a public `Complete` enum is not a completeness proof;
+the witness is now private and planner-produced. Presentation cannot be post-hoc or omitted from
+projection identity because it changes paths, fingerprints, peer messages, suppression, and ordering.
+Project-negative boundary findings cannot ignore partial source files. Reconstructing an analyzer
+view for each pass violates the one-adapter-projection intent even without reparsing, so views are now
+cached once. Silently skipping unreadable/invalid config bytes is not authoritative; invalid UTF-8 is
+an explicit failed analysis input.
+
+**Current recommendation/next actions:** replace the internal `SourceFile` compatibility member with
+a non-reparsable pinned text view and add static no-read/no-parse/no-pack-reselection guards for both
+primary path projections. Resolve the registered no-grammar text-pack snapshot contract explicitly
+or record a scoped M2 invalidation. Then run workspace-wide gates and check M1.9 only if every stated
+acceptance condition holds.
+
+**Blockers:** none external. The internal analyzer text bridge is still reparsable and the custom
+no-grammar test pack cannot yet enter `ProjectAnalysis`; both are deliberate remaining M1.9 work.
+
+**Dependencies/restart:** no new dependency, service restart, cache clear, or data migration. Rebuild
+Rust consumers for the new planner and prepared projection behavior.
+
+**Negative-memory status:** recorded locally and ready for Hindsight consolidation. Never expose a
+forgeable completeness flag, rebase display paths after projection, run boundary on incomplete
+projects, reconstruct per-pass adapter facts, or analyze live artifact bytes.
+
+**Signature:** Codex (GPT-5), M1.9 integration owner, planner/prepared checkpoint, 2026-07-13.

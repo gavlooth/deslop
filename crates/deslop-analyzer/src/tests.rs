@@ -839,12 +839,217 @@ fn path_deduplication_is_input_order_invariant_and_prefers_relative_paths() {
         .to_path_buf();
     let dotted = PathBuf::from(".").join(&relative);
 
-    let forward =
-        deduplicate_supported_paths(vec![absolute.clone(), dotted.clone(), relative.clone()]);
-    let reversed = deduplicate_supported_paths(vec![relative.clone(), absolute, dotted]);
+    let forward = scan_paths(&[absolute.clone(), dotted.clone(), relative.clone()]).unwrap();
+    let reversed = scan_paths(&[relative.clone(), absolute, dotted]).unwrap();
 
-    assert_eq!(forward, vec![relative.clone()]);
-    assert_eq!(reversed, vec![relative]);
+    assert_eq!(forward.len(), 1);
+    assert_eq!(reversed.len(), 1);
+    assert_eq!(forward[0].path, relative);
+    assert_eq!(forward[0].path, reversed[0].path);
+}
+
+#[test]
+fn prepared_projection_identity_binds_presentation_paths() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let snapshot = ProjectSnapshotBuilder::new(
+        root.path(),
+        RepositoryId::explicit("prepared-presentation").unwrap(),
+    )
+    .unwrap()
+    .with_overlay("sample.rs", b"fn unfinished() { todo!(); }\n".to_vec())
+    .unwrap()
+    .build()
+    .unwrap();
+    let analysis = ProjectAnalysis::build(snapshot).unwrap();
+    let manifest = AnalyzerInputManifest {
+        report_sources: vec![PathBuf::from("sample.rs")],
+        boundary_artifacts: Vec::new(),
+        boundary_coverage: BoundaryCoverage::Unavailable {
+            reason: "disabled".to_string(),
+        },
+        external_unavailable_reason: "not prepared".to_string(),
+    };
+    let first = PreparedAnalyzerAnalysis::new(
+        analysis.clone(),
+        manifest.clone(),
+        SnapshotPresentationMap::from_entries([(
+            PathBuf::from("sample.rs"),
+            PathBuf::from("first.rs"),
+        )])
+        .unwrap(),
+    )
+    .unwrap();
+    let second = PreparedAnalyzerAnalysis::new(
+        analysis,
+        manifest,
+        SnapshotPresentationMap::from_entries([(
+            PathBuf::from("sample.rs"),
+            PathBuf::from("second.rs"),
+        )])
+        .unwrap(),
+    )
+    .unwrap();
+    let mut config = AnalyzerConfig::default();
+    config.boundary.enabled = false;
+    let first = scan_prepared_analysis(first, config.clone()).unwrap();
+    let second = scan_prepared_analysis(second, config).unwrap();
+    assert_ne!(first.id, second.id);
+    assert_eq!(first.reports[0].path, Path::new("first.rs"));
+    assert_eq!(second.reports[0].path, Path::new("second.rs"));
+    assert_ne!(
+        first.reports[0].findings[0].fingerprint,
+        second.reports[0].findings[0].fingerprint
+    );
+}
+
+#[test]
+fn prepared_boundary_withholds_project_claims_when_any_source_is_partial() {
+    let root = tempfile::tempdir().expect("tempdir");
+    fs::write(root.path().join("settings.toml"), "used_knob = 1\n").unwrap();
+    fs::write(
+        root.path().join("broken.ts"),
+        "const used_knob = config.get('used-knob');\nfunction broken( {\n",
+    )
+    .unwrap();
+    deslop_parse::reset_parse_source_invocations();
+    let reports = scan_paths(&[root.path().to_path_buf()]).unwrap();
+    assert!(
+        reports
+            .iter()
+            .any(|report| report.analysis.status == AnalysisStatus::Partial)
+    );
+    assert!(
+        reports
+            .iter()
+            .flat_map(|report| &report.findings)
+            .all(|finding| !finding.rule.starts_with("config-key-"))
+    );
+    assert_eq!(deslop_parse::parse_source_invocations(), 0);
+}
+
+#[test]
+fn prepared_boundary_is_revision_pinned_parse_once_and_deterministic() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let artifact = root.path().join("settings.toml");
+    let code = root.path().join("main.jl");
+    fs::write(
+        &artifact,
+        "phantom_knob = 1\necho_only = 2\nshadowed_knob = 3\nlive_knob = 4\n",
+    )
+    .unwrap();
+    fs::write(
+        &code,
+        concat!(
+            "echo_only = parse(Int, get(options, \"echo-only\", \"2\"))\n",
+            "println(echo_only)\n",
+            "shadowed_knob = parse(Int, get(options, \"shadowed-knob\", \"3\"))\n",
+            "shadowed_knob = min(shadowed_knob, 3)\n",
+            "run_shadowed(shadowed_knob)\n",
+            "live_knob = parse(Int, get(options, \"live-knob\", \"4\"))\n",
+            "run_live(live_knob)\n",
+        ),
+    )
+    .unwrap();
+
+    let build_prepared = || {
+        let mut planner = ProjectSnapshotPlanner::resolve(ProjectSnapshotRequest {
+            invocation_base: root.path().to_path_buf(),
+            root: RootSpec::Explicit(root.path().to_path_buf()),
+            repository: RepositorySpec::Explicit(
+                RepositoryId::explicit("prepared-boundary-pinning").unwrap(),
+            ),
+            scope: ScopeSpec::Requested(vec![PathBuf::from(".")]),
+            discovery: DiscoveryPolicy::LegacyRespectIgnore,
+        })
+        .unwrap();
+        let boundary_artifact = planner.add_disk_analysis_input(&artifact).unwrap();
+        let built = planner.build().unwrap();
+        let analysis = ProjectAnalysis::build(built.snapshot).unwrap();
+        let manifest = AnalyzerInputManifest {
+            report_sources: analysis
+                .files()
+                .map(|file| file.key().path.clone())
+                .collect(),
+            boundary_artifacts: vec![boundary_artifact],
+            boundary_coverage: BoundaryCoverage::Complete,
+            external_unavailable_reason: "not prepared".to_string(),
+        };
+        PreparedAnalyzerAnalysis::new(analysis, manifest, built.presentation).unwrap()
+    };
+
+    deslop_parse::reset_parse_source_invocations();
+    let prepared = build_prepared();
+    let cold_counts = prepared.analysis.parse_counts();
+    assert_eq!(cold_counts.len(), 1);
+    assert!(cold_counts.values().all(|count| {
+        (
+            count.requested,
+            count.owners,
+            count.parser_invocations,
+            count.reused,
+        ) == (1, 1, 1, 0)
+    }));
+    let first = scan_prepared_analysis(prepared.clone(), AnalyzerConfig::default()).unwrap();
+    let second = scan_prepared_analysis(prepared.clone(), AnalyzerConfig::default()).unwrap();
+    let boundary = first
+        .reports
+        .iter()
+        .flat_map(|report| &report.findings)
+        .filter(|finding| finding.rule.starts_with("config-key-"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        boundary
+            .iter()
+            .map(|finding| finding.rule.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "config-key-unconsumed",
+            "config-key-shadowed",
+            "config-key-unread"
+        ]
+    );
+    assert_eq!(first.id, second.id);
+    assert_eq!(
+        serde_json::to_string(&first.reports).unwrap(),
+        serde_json::to_string(&second.reports).unwrap()
+    );
+
+    fs::write(&artifact, "replacement_key = 9\n").unwrap();
+    fs::write(&code, "run_replacement()\n").unwrap();
+    let pinned = scan_prepared_analysis(prepared, AnalyzerConfig::default()).unwrap();
+    assert_eq!(first.id, pinned.id);
+    assert_eq!(
+        serde_json::to_string(&first.reports).unwrap(),
+        serde_json::to_string(&pinned.reports).unwrap()
+    );
+    assert_eq!(first.analysis.parse_counts(), cold_counts);
+    assert_eq!(deslop_parse::parse_source_invocations(), 0);
+
+    let rebuilt = scan_prepared_analysis(build_prepared(), AnalyzerConfig::default()).unwrap();
+    assert_ne!(first.id, rebuilt.id);
+}
+
+#[test]
+fn invalid_utf8_boundary_artifact_downgrades_without_negative_claims() {
+    let root = tempfile::tempdir().expect("tempdir");
+    fs::write(root.path().join("settings.toml"), [0xff, b'=', b'1', b'\n']).unwrap();
+    fs::write(root.path().join("main.jl"), "run()\n").unwrap();
+    let reports = scan_paths(&[root.path().to_path_buf()]).unwrap();
+    let artifact = reports
+        .iter()
+        .find(|report| report.path.ends_with("settings.toml"))
+        .expect("invalid boundary artifact has a report");
+    assert_eq!(artifact.analysis.status, AnalysisStatus::Failed);
+    assert_eq!(
+        artifact.analysis.diagnostics[0].code,
+        "invalid-utf8-analysis-input"
+    );
+    assert!(
+        reports
+            .iter()
+            .flat_map(|report| &report.findings)
+            .all(|finding| !finding.rule.starts_with("config-key-"))
+    );
 }
 
 #[test]

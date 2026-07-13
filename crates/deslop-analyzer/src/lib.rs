@@ -1,24 +1,23 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
 
 use anyhow::{Context, Result, bail};
 use deslop_core::{
     AnalysisDiagnostic, AnalysisProvenance, AnalysisStatus, DetectedBy, Edit, FileReport, Finding,
     Lang, SafetyClass, Severity, Span, baseline_fingerprint, reports_permit_rewrites,
 };
-use deslop_external::{
-    CljKondoAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait, ExternalFindings, JuliaAnalyzer,
-};
-use deslop_lang::{LangPack, Registry as LangRegistry, Rule};
+use deslop_external::{CljKondoAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait, JuliaAnalyzer};
+#[cfg(test)]
+use deslop_lang::Registry as LangRegistry;
+use deslop_lang::{LangPack, Rule};
 use deslop_parse::{
-    NodeId, ParsedFile, ProjectAnalysis, ProjectionId, SourceFile, SyntaxAdapterFacts,
-    analysis_provenance_or_failed, parse_source,
+    DiscoveryPolicy, NodeId, ParsedFile, ProjectAnalysis, ProjectSnapshotPlanner,
+    ProjectSnapshotRequest, ProjectionId, RepositorySpec, RootSpec, ScopeSpec,
+    SnapshotPresentationMap, SourceFile, SyntaxAdapterFacts, analysis_provenance_or_failed,
+    parse_source,
 };
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 
 mod agnostic;
@@ -33,8 +32,6 @@ mod test_pack;
 #[cfg(test)]
 mod tests;
 mod tokens;
-
-static EXTERNAL_NOTICE_EMITTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -174,6 +171,8 @@ pub struct ScanContext {
 const ANALYZER_PROJECTION_SCHEMA: &str = "deslop.analyzer.projection/1";
 const ANALYZER_CAPABILITIES: &[u8] =
     b"rules=deslop.analyzer-owned/1\0boundary=disabled\0external=pinned-unavailable";
+const PREPARED_ANALYZER_CAPABILITIES: &[u8] =
+    b"rules=deslop.analyzer-owned/1\0boundary=pinned-complete/1\0external=pinned-unavailable";
 
 #[derive(Debug)]
 pub struct AnalyzerProjection {
@@ -183,6 +182,63 @@ pub struct AnalyzerProjection {
     pub reports: Vec<FileReport>,
     pub input_contents: BTreeMap<PathBuf, String>,
     pub external_capabilities: Vec<ExternalCapability>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum BoundaryCoverage {
+    Complete,
+    Unavailable { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnalyzerInputManifest {
+    report_sources: Vec<PathBuf>,
+    boundary_artifacts: Vec<PathBuf>,
+    boundary_coverage: BoundaryCoverage,
+    external_unavailable_reason: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedAnalyzerAnalysis {
+    analysis: Arc<ProjectAnalysis>,
+    inputs: AnalyzerInputManifest,
+    presentation: SnapshotPresentationMap,
+}
+
+impl PreparedAnalyzerAnalysis {
+    fn new(
+        analysis: Arc<ProjectAnalysis>,
+        mut inputs: AnalyzerInputManifest,
+        presentation: SnapshotPresentationMap,
+    ) -> Result<Self> {
+        inputs.report_sources.sort();
+        inputs.report_sources.dedup();
+        inputs.boundary_artifacts.sort();
+        inputs.boundary_artifacts.dedup();
+        for path in &inputs.report_sources {
+            if analysis.file(path).is_none() {
+                bail!(
+                    "prepared analyzer report source {} is not parsed",
+                    path.display()
+                );
+            }
+        }
+        for path in &inputs.boundary_artifacts {
+            if analysis.snapshot().entry(path).is_none() {
+                bail!(
+                    "prepared boundary artifact {} is not pinned",
+                    path.display()
+                );
+            }
+        }
+        Ok(Self {
+            analysis,
+            inputs,
+            presentation,
+        })
+    }
 }
 
 /// One analyzer view over a file already parsed and owned by `ProjectAnalysis`.
@@ -200,6 +256,14 @@ pub struct AnalyzerFile<'analysis> {
 
 impl<'analysis> AnalyzerFile<'analysis> {
     pub fn new(analysis: &'analysis ProjectAnalysis, file: &'analysis ParsedFile) -> Result<Self> {
+        Self::new_with_path(analysis, file, file.key().path.clone())
+    }
+
+    fn new_with_path(
+        analysis: &'analysis ProjectAnalysis,
+        file: &'analysis ParsedFile,
+        display_path: PathBuf,
+    ) -> Result<Self> {
         let text = file.text().ok_or_else(|| {
             anyhow::anyhow!("syntax text unavailable for {}", file.key().path.display())
         })?;
@@ -219,7 +283,7 @@ impl<'analysis> AnalyzerFile<'analysis> {
             analysis,
             file,
             source: SourceFile::new_with_lang(
-                file.key().path.clone(),
+                display_path,
                 text.to_string(),
                 file.grammar().lang(),
             ),
@@ -694,25 +758,98 @@ pub fn scan_analysis(
     analysis: Arc<ProjectAnalysis>,
     config: AnalyzerConfig,
 ) -> Result<AnalyzerProjection> {
-    let mut config = config;
-    config.suppression.match_root = None;
     if config.boundary.enabled {
         bail!(
             "owned source-only analysis cannot prove config-boundary coverage; disable boundary analysis or use a prepared analyzer input manifest"
         );
     }
+    scan_owned_analysis(analysis, None, None, config)
+}
+
+/// Run analyzer rules over a project analysis whose project-level inputs were pinned by the
+/// snapshot planner. Enabled boundary analysis requires complete discovery coverage.
+pub fn scan_prepared_analysis(
+    prepared: PreparedAnalyzerAnalysis,
+    config: AnalyzerConfig,
+) -> Result<AnalyzerProjection> {
+    if config.boundary.enabled {
+        match &prepared.inputs.boundary_coverage {
+            BoundaryCoverage::Complete => {}
+            BoundaryCoverage::Unavailable { reason } => {
+                bail!("prepared analyzer cannot prove config-boundary coverage: {reason}")
+            }
+        }
+    }
+    scan_owned_analysis(
+        prepared.analysis,
+        Some(&prepared.presentation),
+        Some(&prepared.inputs),
+        config,
+    )
+}
+
+fn scan_owned_analysis(
+    analysis: Arc<ProjectAnalysis>,
+    presentation: Option<&SnapshotPresentationMap>,
+    inputs: Option<&AnalyzerInputManifest>,
+    config: AnalyzerConfig,
+) -> Result<AnalyzerProjection> {
+    let mut config = config;
+    config.suppression.match_root = None;
     let config_snapshot = config.snapshot();
-    let policy = serde_json::to_vec(&config_snapshot).context("serialize analyzer policy")?;
-    let id = analysis.derive_projection_id(
-        ANALYZER_PROJECTION_SCHEMA,
-        &policy,
-        ANALYZER_CAPABILITIES,
-    )?;
+    let mut policy = serde_json::to_vec(&config_snapshot).context("serialize analyzer policy")?;
+    let capabilities = if let Some(inputs) = inputs {
+        policy.extend_from_slice(
+            &serde_json::to_vec(inputs).context("serialize prepared analyzer input manifest")?,
+        );
+        PREPARED_ANALYZER_CAPABILITIES
+    } else {
+        ANALYZER_CAPABILITIES
+    };
+    if let Some(presentation) = presentation {
+        let presentation_entries = presentation
+            .entries()
+            .map(|(logical, display)| (logical.to_path_buf(), display.to_path_buf()))
+            .collect::<Vec<_>>();
+        policy.extend_from_slice(
+            &serde_json::to_vec(&presentation_entries)
+                .context("serialize analyzer presentation paths")?,
+        );
+    }
+    let id = analysis.derive_projection_id(ANALYZER_PROJECTION_SCHEMA, &policy, capabilities)?;
     let mut reports = Vec::new();
     let mut input_contents = BTreeMap::new();
     let mut external_capabilities = Vec::new();
+    let analyzer_files = analysis
+        .files()
+        .filter(|parsed| {
+            parsed.provenance().permits_rewrites()
+                && inputs.is_none_or(|manifest| {
+                    manifest
+                        .report_sources
+                        .binary_search(&parsed.key().path)
+                        .is_ok()
+                })
+        })
+        .map(|parsed| {
+            AnalyzerFile::new_with_path(
+                &analysis,
+                parsed,
+                display_path(presentation, &parsed.key().path),
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
     for parsed in analysis.files() {
-        let path = parsed.key().path.clone();
+        if inputs.is_some_and(|manifest| {
+            manifest
+                .report_sources
+                .binary_search(&parsed.key().path)
+                .is_err()
+        }) {
+            continue;
+        }
+        let logical_path = parsed.key().path.clone();
+        let path = display_path(presentation, &logical_path);
         if let Some(text) = parsed.text() {
             input_contents.insert(path.clone(), text.to_string());
         }
@@ -726,22 +863,25 @@ pub fn scan_analysis(
             });
             continue;
         }
-        let file = AnalyzerFile::new(&analysis, parsed)?;
-        let mut findings = agnostic::findings_analysis(&file, &config);
+        let file = analyzer_files
+            .iter()
+            .find(|file| file.file.key().path == logical_path)
+            .expect("complete prepared source has one analyzer view");
+        let mut findings = agnostic::findings_analysis(file, &config);
         findings.extend(match file.adapter().name() {
             "clojure" => clojure::findings(file.source()),
             "julia" => julia::findings(file.source()),
             "python" => packs::python::python_findings(file.source()),
             "javascript" | "typescript" => packs::javascript::javascript_findings(file.source()),
-            "rust" => packs::rust::rust_findings_analysis(&file),
+            "rust" => packs::rust::rust_findings_analysis(file),
             adapter => bail!(
                 "stored language adapter {adapter:?} has no owned analyzer pack for {}",
-                parsed.key().path.display()
+                logical_path.display()
             ),
         });
-        record_unavailable_external(&file, &config, &mut external_capabilities);
+        record_unavailable_external(file, &config, &mut external_capabilities);
         config.suppression.retain(&mut findings);
-        apply_inline_suppression_analysis(&file, &mut findings);
+        apply_inline_suppression_analysis(file, &mut findings);
         sort_findings(&mut findings);
         reports.push(FileReport {
             path,
@@ -751,22 +891,19 @@ pub fn scan_analysis(
         });
     }
     if reports_permit_rewrites(&reports) && reports.len() >= 2 {
-        let files = analysis
-            .files()
-            .map(|parsed| AnalyzerFile::new(&analysis, parsed))
-            .collect::<Result<Vec<_>>>()?;
-        let mut cross_file = tokens::cross_file_duplicate_findings_analysis(&files, &config);
+        let mut cross_file =
+            tokens::cross_file_duplicate_findings_analysis(&analyzer_files, &config);
         config.suppression.retain(&mut cross_file);
-        for file in &files {
+        for file in &analyzer_files {
             let mut file_findings = cross_file
                 .iter()
-                .filter(|finding| finding.path == file.file.key().path)
+                .filter(|finding| finding.path == file.source().path)
                 .cloned()
                 .collect::<Vec<_>>();
             apply_inline_suppression_analysis(file, &mut file_findings);
             if let Some(report) = reports
                 .iter_mut()
-                .find(|report| report.path == file.file.key().path)
+                .find(|report| report.path == file.source().path)
             {
                 for finding in file_findings {
                     if !report.findings.iter().any(|existing| {
@@ -778,6 +915,67 @@ pub fn scan_analysis(
                     }
                 }
                 sort_findings(&mut report.findings);
+            }
+        }
+    }
+    if config.boundary.enabled {
+        let manifest = inputs.expect("enabled prepared boundary has an input manifest");
+        let mut artifacts = Vec::with_capacity(manifest.boundary_artifacts.len());
+        for logical in &manifest.boundary_artifacts {
+            let entry = analysis
+                .snapshot()
+                .entry(logical)
+                .expect("prepared boundary artifact was validated");
+            let path = display_path(presentation, logical);
+            let skipped = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    config
+                        .boundary
+                        .skip_artifacts
+                        .iter()
+                        .any(|skipped| skipped == name)
+                });
+            if skipped {
+                continue;
+            }
+            let text = match std::str::from_utf8(entry.bytes()) {
+                Ok(text) => text,
+                Err(error) => {
+                    reports.push(FileReport {
+                        path,
+                        lang: Lang::Generic,
+                        analysis: AnalysisProvenance::failed(vec![AnalysisDiagnostic {
+                            code: "invalid-utf8-analysis-input".to_string(),
+                            message: format!(
+                                "prepared boundary artifact is not valid UTF-8: {error}"
+                            ),
+                            span: None,
+                        }]),
+                        findings: Vec::new(),
+                    });
+                    continue;
+                }
+            };
+            input_contents.insert(path.clone(), text.to_string());
+            artifacts.push(SourceFile::new_with_lang(
+                path,
+                text.to_string(),
+                Lang::Generic,
+            ));
+        }
+        if reports_permit_rewrites(&reports) {
+            boundary::add_config_boundary_analysis(
+                &mut reports,
+                &analyzer_files,
+                &artifacts,
+                &config,
+            )?;
+        }
+        if !config.suppression.is_empty() {
+            for report in &mut reports {
+                config.suppression.retain(&mut report.findings);
             }
         }
     }
@@ -797,6 +995,12 @@ pub fn scan_analysis(
     })
 }
 
+fn display_path(presentation: Option<&SnapshotPresentationMap>, logical: &Path) -> PathBuf {
+    presentation
+        .map(|paths| paths.display_path(logical).to_path_buf())
+        .unwrap_or_else(|| logical.to_path_buf())
+}
+
 fn record_unavailable_external(
     file: &AnalyzerFile<'_>,
     config: &AnalyzerConfig,
@@ -810,7 +1014,7 @@ fn record_unavailable_external(
     };
     if let Some(external) = external {
         out.push(ExternalCapability {
-            path: file.file.key().path.clone(),
+            path: file.source().path.clone(),
             analyzer: external.name().to_string(),
             available: false,
             covered_rules: external
@@ -834,203 +1038,53 @@ pub fn scan_paths_with_config(
 }
 
 pub fn scan_paths_with_context(paths: &[PathBuf], config: AnalyzerConfig) -> Result<ScanContext> {
-    let lang_registry = LangRegistry::default();
-    let analyzer_registry = AnalyzerRegistry::default();
     let paths = if paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
         paths.to_vec()
     };
-
-    let mut supported_paths = Vec::new();
-    for path in &paths {
-        collect_supported_paths(
-            &mut supported_paths,
-            path,
-            &lang_registry,
-            &analyzer_registry,
-        )?;
-    }
-    supported_paths = deduplicate_supported_paths(supported_paths);
-    let scanned = scan_supported_paths_parallel(&supported_paths, &config)?;
-    let mut reports = Vec::with_capacity(scanned.len());
-    let mut input_contents = BTreeMap::new();
-    let mut external_capabilities = Vec::new();
-    for scanned in scanned {
-        input_contents.insert(scanned.report.path.clone(), scanned.source_text);
-        reports.push(scanned.report);
-        external_capabilities.extend(scanned.external_capabilities);
-    }
-    if reports_permit_rewrites(&reports) {
-        add_cross_file_duplication(&mut reports, &config)?;
-        input_contents.extend(boundary::add_config_boundary(
-            &mut reports,
-            &supported_paths,
-            &paths,
-            &config,
-        )?);
-    }
-    // Boundary findings are appended after the per-file pass, so suppression must run
-    // over them here (the per-file pass already filtered its own findings).
-    if !config.suppression.is_empty() {
-        for report in &mut reports {
-            config.suppression.retain(&mut report.findings);
-        }
-    }
-    reports.sort_by(|a, b| a.path.cmp(&b.path));
-    external_capabilities.sort_by(|a, b| {
-        a.path
-            .cmp(&b.path)
-            .then(a.analyzer.cmp(&b.analyzer))
-            .then(a.available.cmp(&b.available))
-    });
-    Ok(ScanContext {
-        reports,
-        input_contents,
-        external_capabilities,
-    })
-}
-
-fn deduplicate_supported_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    let mut unique: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
-    for path in paths {
-        let path = normalized_display_path(&path);
-        let identity = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-        unique
-            .entry(identity)
-            .and_modify(|existing| {
-                if path_precedes(&path, existing) {
-                    *existing = path.to_path_buf();
-                }
-            })
-            .or_insert(path);
-    }
-    unique.into_values().collect()
-}
-
-fn normalized_display_path(path: &Path) -> PathBuf {
-    path.components()
-        .filter(|component| !matches!(component, Component::CurDir))
-        .collect()
-}
-
-fn path_precedes(candidate: &Path, current: &Path) -> bool {
-    match (candidate.is_absolute(), current.is_absolute()) {
-        (false, true) => true,
-        (true, false) => false,
-        _ => candidate < current,
-    }
-}
-
-fn collect_supported_paths(
-    paths: &mut Vec<PathBuf>,
-    path: &Path,
-    lang_registry: &LangRegistry,
-    analyzer_registry: &AnalyzerRegistry,
-) -> Result<()> {
-    if path.is_file() {
-        if analysis_pack_for_path(path, lang_registry, analyzer_registry).is_some() {
-            paths.push(path.to_path_buf());
-        }
-        return Ok(());
-    }
-
-    let walker = WalkBuilder::new(path)
-        .hidden(false)
-        .filter_entry(|entry| {
-            let name = entry.file_name().to_string_lossy();
-            !matches!(name.as_ref(), ".git" | ".jj" | "target" | "__pycache__")
-        })
-        .build();
-
-    for entry in walker {
-        let entry = entry.with_context(|| format!("failed to walk {}", path.display()))?;
-        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
-            continue;
-        }
-        let entry_path = entry.into_path();
-        if analysis_pack_for_path(&entry_path, lang_registry, analyzer_registry).is_some() {
-            paths.push(entry_path);
-        }
-    }
-    Ok(())
-}
-
-fn scan_supported_paths_parallel(
-    paths: &[PathBuf],
-    config: &AnalyzerConfig,
-) -> Result<Vec<ScannedFile>> {
-    if paths.is_empty() {
-        return Ok(Vec::new());
-    }
-    let workers = thread::available_parallelism()
-        .map_or(1, usize::from)
-        .min(paths.len());
-    let chunk_size = paths.len().div_ceil(workers);
-    let mut reports = Vec::with_capacity(paths.len());
-    thread::scope(|scope| {
-        let mut handles = Vec::new();
-        for chunk in paths.chunks(chunk_size) {
-            handles.push(scope.spawn(move || {
-                chunk
-                    .iter()
-                    .map(|path| scan_file_with_context(path, config.to_owned()))
-                    .collect::<Result<Vec<_>>>()
-            }));
-        }
-        for handle in handles {
-            let mut chunk_reports = handle
-                .join()
-                .map_err(|_| anyhow::anyhow!("parallel scan worker panicked"))??;
-            reports.append(&mut chunk_reports);
-        }
-        Ok::<_, anyhow::Error>(())
+    let invocation_base = std::env::current_dir().context("resolve analyzer invocation base")?;
+    let mut planner = ProjectSnapshotPlanner::resolve(ProjectSnapshotRequest {
+        invocation_base,
+        root: RootSpec::Auto,
+        repository: RepositorySpec::Auto,
+        scope: ScopeSpec::Requested(paths.clone()),
+        discovery: DiscoveryPolicy::LegacyRespectIgnore,
     })?;
-    reports.sort_by(|a, b| a.report.path.cmp(&b.report.path));
-    Ok(reports)
-}
-
-struct ScannedFile {
-    report: FileReport,
-    source_text: String,
-    external_capabilities: Vec<ExternalCapability>,
-}
-
-fn add_cross_file_duplication(reports: &mut [FileReport], config: &AnalyzerConfig) -> Result<()> {
-    if reports.len() < 2 || config.min_duplication_tokens == 0 {
-        return Ok(());
-    }
-    let sources = reports
-        .iter()
-        .filter(|report| report.analysis.permits_rewrites())
-        .map(|report| SourceFile::read(&report.path))
-        .collect::<Result<Vec<_>>>()?;
-    if sources.len() < 2 {
-        return Ok(());
-    }
-    let mut findings = tokens::cross_file_duplicate_findings(&sources, config);
-    config.suppression.retain(&mut findings);
-    for source in &sources {
-        let mut source_findings = findings
-            .iter()
-            .filter(|finding| finding.path == source.path)
-            .cloned()
-            .collect::<Vec<_>>();
-        apply_inline_suppression(source, &mut source_findings);
-        if let Some(report) = reports.iter_mut().find(|report| report.path == source.path) {
-            for finding in source_findings {
-                if !report.findings.iter().any(|existing| {
-                    existing.rule == finding.rule
-                        && existing.span == finding.span
-                        && existing.fingerprint == finding.fingerprint
-                }) {
-                    report.findings.push(finding);
-                }
-            }
-            sort_findings(&mut report.findings);
+    let mut boundary_artifacts = Vec::new();
+    let boundary_coverage = if config.boundary.enabled {
+        for path in boundary::discover_config_artifacts(&paths)? {
+            boundary_artifacts.push(planner.add_disk_analysis_input(path)?);
         }
-    }
-    Ok(())
+        BoundaryCoverage::Complete
+    } else {
+        BoundaryCoverage::Unavailable {
+            reason: "boundary analysis disabled by policy".to_string(),
+        }
+    };
+    let built = planner.build()?;
+    let analysis = ProjectAnalysis::build(built.snapshot)?;
+    let report_sources = analysis
+        .files()
+        .map(|file| file.key().path.clone())
+        .collect();
+    let prepared = PreparedAnalyzerAnalysis::new(
+        analysis,
+        AnalyzerInputManifest {
+            report_sources,
+            boundary_artifacts,
+            boundary_coverage,
+            external_unavailable_reason:
+                "no revision-isolated external execution plan was prepared".to_string(),
+        },
+        built.presentation,
+    )?;
+    let projection = scan_prepared_analysis(prepared, config)?;
+    Ok(ScanContext {
+        reports: projection.reports,
+        input_contents: projection.input_contents,
+        external_capabilities: projection.external_capabilities,
+    })
 }
 
 pub fn scan_file(path: &Path) -> Result<FileReport> {
@@ -1038,27 +1092,10 @@ pub fn scan_file(path: &Path) -> Result<FileReport> {
 }
 
 pub fn scan_file_with_config(path: &Path, config: AnalyzerConfig) -> Result<FileReport> {
-    Ok(scan_file_with_context(path, config)?.report)
-}
-
-fn scan_file_with_context(path: &Path, config: AnalyzerConfig) -> Result<ScannedFile> {
-    let lang_registry = LangRegistry::default();
-    let analyzer_registry = AnalyzerRegistry::default();
-    let Some(lang_pack) = lang_registry.supported_pack_for_path(path) else {
-        return Ok(ScannedFile {
-            report: empty_report(path, Lang::Generic),
-            source_text: String::new(),
-            external_capabilities: Vec::new(),
-        });
-    };
-    let Some(pack) = analyzer_registry.pack_for_lang(lang_pack.lang()) else {
-        return Ok(ScannedFile {
-            report: empty_report(path, lang_pack.lang()),
-            source_text: String::new(),
-            external_capabilities: Vec::new(),
-        });
-    };
-    scan_file_with_pack_context(path, pack, config)
+    Ok(scan_paths_with_config(&[path.to_path_buf()], config)?
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| empty_report(path, Lang::Generic)))
 }
 
 #[cfg(test)]
@@ -1067,66 +1104,10 @@ fn scan_file_with_pack(
     pack: &'static dyn AnalysisPack,
     config: AnalyzerConfig,
 ) -> Result<FileReport> {
-    Ok(scan_file_with_pack_context(path, pack, config)?.report)
-}
-
-fn scan_file_with_pack_context(
-    path: &Path,
-    pack: &'static dyn AnalysisPack,
-    config: AnalyzerConfig,
-) -> Result<ScannedFile> {
     let text = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
     let source = SourceFile::new_with_lang(path.to_path_buf(), text, pack.lang());
-    let source_text = source.text.clone();
-    let mut report = scan_source_with_pack(&source, pack, &config);
-    if !report.analysis.permits_rewrites() {
-        return Ok(ScannedFile {
-            report,
-            source_text,
-            external_capabilities: Vec::new(),
-        });
-    }
-    let mut external_capabilities = Vec::new();
-    if let Some(external) = pack.external_analyzer(&config) {
-        let analyzer = external.name().to_string();
-        let covered_rules = external
-            .covered_rules()
-            .iter()
-            .map(|rule| (*rule).to_string())
-            .collect::<Vec<_>>();
-        match external.analyze(path, &source)? {
-            ExternalFindings::Available(external_findings) => {
-                external_capabilities.push(ExternalCapability {
-                    path: path.to_path_buf(),
-                    analyzer,
-                    available: true,
-                    covered_rules,
-                });
-                let covered = external.covered_rules();
-                report
-                    .findings
-                    .retain(|finding| !covered.contains(&finding.rule.as_str()));
-                report.findings.extend(external_findings);
-            }
-            ExternalFindings::Unavailable { notice } => {
-                external_capabilities.push(ExternalCapability {
-                    path: path.to_path_buf(),
-                    analyzer,
-                    available: false,
-                    covered_rules,
-                });
-                emit_external_notice_once(&notice);
-            }
-        }
-    }
-    config.suppression.retain(&mut report.findings);
-    sort_findings(&mut report.findings);
-    Ok(ScannedFile {
-        report,
-        source_text,
-        external_capabilities,
-    })
+    Ok(scan_source_with_pack(&source, pack, &config))
 }
 
 #[cfg(test)]
@@ -1143,15 +1124,6 @@ fn scan_file_with_registries(
         return Ok(empty_report(path, lang_pack.lang()));
     };
     scan_file_with_pack(path, pack, config)
-}
-
-fn analysis_pack_for_path(
-    path: &Path,
-    lang_registry: &LangRegistry,
-    analyzer_registry: &AnalyzerRegistry,
-) -> Option<&'static dyn AnalysisPack> {
-    let lang_pack = lang_registry.supported_pack_for_path(path)?;
-    analyzer_registry.pack_for_lang(lang_pack.lang())
 }
 
 fn empty_report(path: &Path, lang: Lang) -> FileReport {
@@ -1437,12 +1409,6 @@ fn sort_findings(findings: &mut [Finding]) {
             .then(a.span.start_line.cmp(&b.span.start_line))
             .then(a.rule.cmp(&b.rule))
     });
-}
-
-fn emit_external_notice_once(notice: &str) {
-    if !EXTERNAL_NOTICE_EMITTED.swap(true, Ordering::Relaxed) {
-        eprintln!("{notice}");
-    }
 }
 
 #[allow(clippy::too_many_arguments)]

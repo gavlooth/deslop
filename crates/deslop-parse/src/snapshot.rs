@@ -33,6 +33,7 @@ const SNAPSHOT_ID_DOMAIN: &str = "deslop project snapshot v1";
 const ANALYSIS_ID_DOMAIN: &str = "deslop project analysis v1";
 const PROJECTION_ID_DOMAIN: &str = "deslop analysis projection v1";
 const LOCAL_REPOSITORY_DOMAIN: &str = "deslop local repository v1";
+const VCS_REPOSITORY_DOMAIN: &str = "deslop vcs repository v1";
 const GRAMMAR_SELECTOR: &str = "deslop-grammar-selector/1";
 const PARSER_BUILD: &str = concat!(
     "deslop-parse/",
@@ -83,6 +84,29 @@ impl RepositoryId {
             [root.to_str().expect("validated Unicode root").as_bytes()],
         );
         Ok(Self(format!("repo1_{digest}")))
+    }
+
+    pub fn vcs(primary_remote: Option<&str>, root_commits: &[String]) -> Result<Self> {
+        let primary_remote = primary_remote
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let mut roots = root_commits
+            .iter()
+            .map(|root| root.trim())
+            .filter(|root| !root.is_empty())
+            .collect::<Vec<_>>();
+        roots.sort_unstable();
+        roots.dedup();
+        if primary_remote.is_none() && roots.is_empty() {
+            bail!("VCS repository identity requires a remote or root commit");
+        }
+        let mut parts = Vec::with_capacity(roots.len() + 1);
+        parts.push(primary_remote.unwrap_or("").as_bytes());
+        parts.extend(roots.into_iter().map(str::as_bytes));
+        Ok(Self(format!(
+            "repo1_{}",
+            domain_digest(VCS_REPOSITORY_DOMAIN, parts)
+        )))
     }
 
     pub fn as_str(&self) -> &str {
@@ -538,6 +562,13 @@ pub enum ScopeSpec {
     DefaultAtInvocationBase,
     Requested(Vec<PathBuf>),
     ExactFiles(Vec<PathBuf>),
+    ExactLogicalFiles(Vec<PathBuf>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiscoveryPolicy {
+    Canonical,
+    LegacyRespectIgnore,
 }
 
 pub struct ProjectSnapshotBuilder {
@@ -547,8 +578,10 @@ pub struct ProjectSnapshotBuilder {
     requested_scope: ScopeSpec,
     overlays: BTreeMap<PathBuf, Vec<u8>>,
     analysis_inputs: BTreeMap<PathBuf, Vec<u8>>,
+    disk_analysis_inputs: BTreeSet<PathBuf>,
     store: Arc<SourceStore>,
     registry: Registry,
+    discovery: DiscoveryPolicy,
 }
 
 impl ProjectSnapshotBuilder {
@@ -569,8 +602,10 @@ impl ProjectSnapshotBuilder {
             requested_scope: ScopeSpec::DefaultAtInvocationBase,
             overlays: BTreeMap::new(),
             analysis_inputs: BTreeMap::new(),
+            disk_analysis_inputs: BTreeSet::new(),
             store: Arc::new(SourceStore::default()),
             registry: Registry::default(),
+            discovery: DiscoveryPolicy::Canonical,
         })
     }
 
@@ -607,6 +642,17 @@ impl ProjectSnapshotBuilder {
     pub fn with_registry(mut self, registry: Registry) -> Self {
         self.registry = registry;
         self
+    }
+
+    pub fn with_discovery_policy(mut self, discovery: DiscoveryPolicy) -> Self {
+        self.discovery = discovery;
+        self
+    }
+
+    pub fn with_disk_analysis_input(mut self, path: impl AsRef<Path>) -> Result<Self> {
+        let path = normalize_builder_input_path(&self.root, path.as_ref())?;
+        self.disk_analysis_inputs.insert(path);
+        Ok(self)
     }
 
     pub fn with_overlay(
@@ -647,15 +693,35 @@ impl ProjectSnapshotBuilder {
     }
 
     pub fn build(self) -> Result<Arc<ProjectSnapshot>> {
-        let (scope, exact_files) = match &self.requested_scope {
-            ScopeSpec::DefaultAtInvocationBase => (vec![PathBuf::from(".")], false),
+        let (requested_scope, exact_files) = match &self.requested_scope {
+            ScopeSpec::DefaultAtInvocationBase => (
+                normalize_scope(&self.root, &self.invocation_base, &[PathBuf::from(".")])?,
+                false,
+            ),
             ScopeSpec::Requested(scope) if scope.is_empty() => bail!(
                 "requested scope must contain at least one path; use ExactFiles for an exact empty set"
             ),
-            ScopeSpec::Requested(scope) => (scope.clone(), false),
-            ScopeSpec::ExactFiles(scope) => (scope.clone(), true),
+            ScopeSpec::Requested(scope) => (
+                normalize_scope(&self.root, &self.invocation_base, scope)?,
+                false,
+            ),
+            ScopeSpec::ExactFiles(scope) => (
+                normalize_scope(&self.root, &self.invocation_base, scope)?,
+                true,
+            ),
+            ScopeSpec::ExactLogicalFiles(scope) => (
+                scope
+                    .iter()
+                    .map(|path| {
+                        Ok(ScopeEntry {
+                            path: normalize_logical_path(path)?,
+                            kind: ScopeEntryKind::File,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?,
+                true,
+            ),
         };
-        let requested_scope = normalize_scope(&self.root, &self.invocation_base, &scope)?;
         if exact_files
             && requested_scope
                 .iter()
@@ -663,7 +729,8 @@ impl ProjectSnapshotBuilder {
         {
             bail!("exact file scope contains a directory");
         }
-        let disk_sources = collect_disk_sources(&self.root, &requested_scope, &self.registry)?;
+        let disk_sources =
+            collect_disk_sources(&self.root, &requested_scope, &self.registry, self.discovery)?;
         let mut inputs = BTreeMap::<PathBuf, (SnapshotEntryKind, Vec<u8>)>::new();
         let mut read_counts = BTreeMap::<PathBuf, usize>::new();
         for (logical, physical) in disk_sources {
@@ -688,12 +755,24 @@ impl ProjectSnapshotBuilder {
                 );
             }
         }
-        for (path, bytes) in self.analysis_inputs {
+        for path in self.disk_analysis_inputs {
             if inputs.contains_key(&path) {
-                bail!(
-                    "snapshot entry {} has conflicting input kinds",
-                    path.display()
-                );
+                continue;
+            }
+            let physical = self.root.join(&path);
+            let bytes = std::fs::read(&physical)
+                .with_context(|| format!("failed to read analysis input {}", physical.display()))?;
+            *read_counts.entry(path.clone()).or_default() += 1;
+            inputs.insert(path, (SnapshotEntryKind::AnalysisInput, bytes));
+        }
+        for (path, bytes) in self.analysis_inputs {
+            if let Some((kind, existing)) = inputs.get(&path) {
+                if existing != &bytes {
+                    bail!("snapshot entry {} has conflicting bytes", path.display());
+                }
+                if *kind == SnapshotEntryKind::Source {
+                    continue;
+                }
             }
             inputs.insert(path, (SnapshotEntryKind::AnalysisInput, bytes));
         }
@@ -2245,6 +2324,7 @@ fn collect_disk_sources(
     root: &Path,
     scope: &[ScopeEntry],
     registry: &Registry,
+    discovery: DiscoveryPolicy,
 ) -> Result<BTreeMap<PathBuf, PathBuf>> {
     let mut physical_to_logical = BTreeMap::<PathBuf, PathBuf>::new();
     for scope_entry in scope {
@@ -2255,23 +2335,28 @@ fn collect_disk_sources(
             root.join(logical_scope)
         };
         if scope_entry.kind == ScopeEntryKind::File {
+            if !physical_scope.exists() {
+                continue;
+            }
             insert_disk_source(root, &physical_scope, registry, &mut physical_to_logical)?;
             continue;
         }
-        let walker = WalkBuilder::new(&physical_scope)
-            .hidden(false)
-            .parents(false)
-            .ignore(false)
-            .git_ignore(false)
-            .git_global(false)
-            .git_exclude(false)
-            .filter_entry(|entry| {
-                !matches!(
-                    entry.file_name().to_str(),
-                    Some(".git" | ".jj" | "target" | "__pycache__")
-                )
-            })
-            .build();
+        let mut walker = WalkBuilder::new(&physical_scope);
+        walker.hidden(false).filter_entry(|entry| {
+            !matches!(
+                entry.file_name().to_str(),
+                Some(".git" | ".jj" | "target" | "__pycache__")
+            )
+        });
+        if discovery == DiscoveryPolicy::Canonical {
+            walker
+                .parents(false)
+                .ignore(false)
+                .git_ignore(false)
+                .git_global(false)
+                .git_exclude(false);
+        }
+        let walker = walker.build();
         for entry in walker {
             let entry =
                 entry.with_context(|| format!("failed to walk {}", physical_scope.display()))?;

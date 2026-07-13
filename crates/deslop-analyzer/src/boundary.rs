@@ -38,14 +38,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use deslop_core::{DetectedBy, FileReport, Finding, Lang, SafetyClass, Severity};
-use deslop_parse::{SourceFile, parse_source};
+use deslop_parse::{NodeId, SourceFile};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use tree_sitter::Node;
 
-use crate::{AnalyzerConfig, finding};
+use crate::{AnalyzerConfig, AnalyzerFile, finding};
 
 /// Tuning for the boundary pass. All fields have working defaults; everything here is
 /// surfaced through `[analyzer.boundary]` so behavior is config-governed, never silent.
@@ -179,15 +178,15 @@ struct KeyEvidence {
 /// `source_paths` are the already-collected analyzable code files; config artifacts are
 /// discovered independently (they are not "supported languages"). New findings for artifact
 /// files get their own `FileReport` appended.
-pub(crate) fn add_config_boundary(
+pub(crate) fn add_config_boundary_analysis(
     reports: &mut Vec<FileReport>,
-    source_paths: &[PathBuf],
-    scan_roots: &[PathBuf],
+    code_files: &[AnalyzerFile<'_>],
+    artifact_sources: &[SourceFile],
     config: &AnalyzerConfig,
-) -> Result<Vec<(PathBuf, String)>> {
+) -> Result<()> {
     let boundary = &config.boundary;
     if !boundary.enabled {
-        return Ok(Vec::new());
+        return Ok(());
     }
     let sinks = sink_matcher(boundary);
     let ignore = ignore_matcher(boundary);
@@ -197,45 +196,31 @@ pub(crate) fn add_config_boundary(
     // Phase 1: config artifacts → declared keys. Artifacts on the skip list (tool configs
     // consumed outside this repo) contribute no `declared` evidence, so their keys can
     // never produce config-key-unread.
-    let artifacts = collect_config_artifacts(scan_roots);
-    let mut consulted_artifacts = Vec::new();
-    let mut artifact_sources: Vec<SourceFile> = Vec::new();
-    for path in &artifacts {
-        let skipped = path
+    for source in artifact_sources {
+        let skipped = source
+            .path
             .file_name()
             .and_then(|n| n.to_str())
             .is_some_and(|name| boundary.skip_artifacts.iter().any(|s| s == name));
         if skipped {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(path) else {
-            continue;
-        };
-        consulted_artifacts.push((path.clone(), text.clone()));
-        let source = SourceFile::new_with_lang(path.clone(), text, Lang::Generic);
-        for (line, key) in artifact_keys(&source) {
+        for (line, key) in artifact_keys(source) {
             let normalized = normalize_key(&key);
             if normalized.len() < boundary.min_key_length || ignore(&normalized, &key) {
                 continue;
             }
             let entry = evidence.entry(normalized).or_default();
             entry.spellings.insert(key);
-            entry.declared.push((path.clone(), line));
+            entry.declared.push((source.path.clone(), line));
         }
-        artifact_sources.push(source);
     }
 
     // Phase 2: code files → parse/echo/store/live/shadow evidence.
     // Pass 2a collects key-string occurrences so identifier matching in 2b can include
     // parse-bound names; key strings and convention-named identifiers share normalization.
-    let mut code_sources: Vec<SourceFile> = Vec::new();
-    for path in source_paths {
-        if let Ok(source) = SourceFile::read(path) {
-            code_sources.push(source);
-        }
-    }
-    for source in &code_sources {
-        collect_code_evidence(source, &mut evidence, &sinks, &ignore, boundary);
+    for file in code_files {
+        collect_code_evidence_analysis(file, &mut evidence, &sinks, &ignore, boundary)?;
     }
 
     // Phase 3: verdicts.
@@ -293,7 +278,11 @@ pub(crate) fn add_config_boundary(
             && entry.shadowed.is_empty()
         {
             let (path, line) = &entry.parsed[0];
-            if let Some(source) = code_sources.iter().find(|s| &s.path == path) {
+            if let Some(source) = code_files
+                .iter()
+                .map(AnalyzerFile::source)
+                .find(|source| &source.path == path)
+            {
                 let echoes = entry.echoed.len();
                 let stores = entry.stored.len();
                 extra_reports.entry(path.clone()).or_default().push(finding(
@@ -318,7 +307,11 @@ pub(crate) fn add_config_boundary(
 
         // config-key-shadowed: parsed binding literal-overwritten before live use.
         for (path, line, literal) in &entry.shadowed {
-            if let Some(source) = code_sources.iter().find(|s| &s.path == path) {
+            if let Some(source) = code_files
+                .iter()
+                .map(AnalyzerFile::source)
+                .find(|source| &source.path == path)
+            {
                 extra_reports.entry(path.clone()).or_default().push(finding(
                     source,
                     *line,
@@ -345,10 +338,11 @@ pub(crate) fn add_config_boundary(
                 report.findings.append(&mut findings);
             }
         } else {
-            let lang = code_sources
+            let lang = code_files
                 .iter()
-                .find(|s| s.path == path)
-                .map_or(Lang::Generic, |s| s.lang);
+                .map(AnalyzerFile::source)
+                .find(|source| source.path == path)
+                .map_or(Lang::Generic, |source| source.lang);
             reports.push(FileReport {
                 path,
                 lang,
@@ -357,7 +351,7 @@ pub(crate) fn add_config_boundary(
             });
         }
     }
-    Ok(consulted_artifacts)
+    Ok(())
 }
 
 fn sink_matcher(boundary: &BoundaryConfig) -> impl Fn(&str) -> bool + '_ {
@@ -418,7 +412,7 @@ fn looks_like_key(text: &str) -> bool {
         && !text.ends_with('.')
 }
 
-fn collect_config_artifacts(scan_roots: &[PathBuf]) -> Vec<PathBuf> {
+pub(crate) fn discover_config_artifacts(scan_roots: &[PathBuf]) -> Result<Vec<PathBuf>> {
     use ignore::WalkBuilder;
     let mut out = Vec::new();
     for root in scan_roots {
@@ -438,7 +432,13 @@ fn collect_config_artifacts(scan_roots: &[PathBuf]) -> Vec<PathBuf> {
                 )
             })
             .build();
-        for entry in walker.flatten() {
+        for entry in walker {
+            let entry = entry.with_context(|| {
+                format!(
+                    "failed to enumerate config artifacts below {}",
+                    root.display()
+                )
+            })?;
             if !entry.file_type().is_some_and(|k| k.is_file()) {
                 continue;
             }
@@ -450,7 +450,7 @@ fn collect_config_artifacts(scan_roots: &[PathBuf]) -> Vec<PathBuf> {
     }
     out.sort();
     out.dedup();
-    out
+    Ok(out)
 }
 
 fn is_config_artifact(path: &Path) -> bool {
@@ -524,22 +524,21 @@ enum UseClass {
     Live,
 }
 
-fn collect_code_evidence(
-    source: &SourceFile,
+fn collect_code_evidence_analysis(
+    file: &AnalyzerFile<'_>,
     evidence: &mut BTreeMap<String, KeyEvidence>,
     sinks: &impl Fn(&str) -> bool,
     ignore: &impl Fn(&str, &str) -> bool,
     boundary: &BoundaryConfig,
-) {
-    let Some(tree) = parse_source(source).ok().flatten() else {
-        return;
+) -> Result<()> {
+    let source = file.source();
+    let Some(root) = file.node_ids().next() else {
+        return Ok(());
     };
-    let root = tree.root_node();
-    let text = source.text.as_bytes();
 
     // 2a: key-string occurrences (string literals that look like keys).
-    let mut string_nodes: Vec<(Node, String)> = Vec::new();
-    collect_key_strings(root, text, &mut string_nodes);
+    let mut string_nodes = Vec::new();
+    collect_key_strings_analysis(file, root, &mut string_nodes);
     // Track, per normalized key, the identifiers that parse-site results bind to in this
     // file (so 2b can attribute those identifiers' uses to the key even when the identifier
     // spelling does not match the key) plus the earliest parse-site line (so shadowing in
@@ -558,10 +557,10 @@ fn collect_code_evidence(
         }
         // Only strings that participate in a call are classified; a bare string in a list
         // is inert data and proves nothing about wiring.
-        let Some((callee, call_node)) = enclosing_call(*node, text) else {
+        let Some((callee, call_node)) = enclosing_call_analysis(file, *node) else {
             continue;
         };
-        let line = node.start_position().row + 1;
+        let line = node_view(file, *node).span().start_point().row() + 1;
         let entry = evidence.entry(normalized.clone()).or_default();
         entry.spellings.insert(raw_key.clone());
         if sinks(&callee) {
@@ -574,7 +573,7 @@ fn collect_code_evidence(
         };
         if is_lookup {
             entry.parsed.push((source.path.clone(), line));
-            if let Some(alias) = binding_target(call_node, text) {
+            if let Some(alias) = binding_target_analysis(file, call_node) {
                 let slot = bound_aliases
                     .entry(normalized.clone())
                     .or_insert_with(|| (BTreeSet::new(), line));
@@ -583,13 +582,13 @@ fn collect_code_evidence(
                 alias_scopes
                     .entry(normalized)
                     .or_default()
-                    .push(enclosing_function_span(call_node, source.text.len()));
+                    .push(enclosing_function_span_analysis(file, call_node));
             } else {
                 // The lookup's result is not bound to a name: if it flows directly into
                 // another expression (an argument to a further call, a condition, an
                 // arithmetic operand), that IS consumption — classify it in place so
                 // `f(x=env_flag("KEY"))` does not read as parsed-and-dropped.
-                match classify_identifier_use(call_node, text, sinks) {
+                match classify_identifier_use_analysis(file, call_node, sinks) {
                     UseClass::Echo => entry.echoed.push((source.path.clone(), line)),
                     UseClass::Store => entry.stored.push((source.path.clone(), line)),
                     UseClass::Live => entry.live.push((source.path.clone(), line)),
@@ -606,8 +605,8 @@ fn collect_code_evidence(
     // 2b: identifier occurrences. An identifier counts as key evidence when its normalized
     // spelling equals the key (convention naming) or it was bound from a parse site above.
     let keys: BTreeSet<String> = evidence.keys().cloned().collect();
-    let mut ident_nodes: Vec<(Node, String)> = Vec::new();
-    collect_identifiers(root, text, &mut ident_nodes);
+    let mut ident_nodes = Vec::new();
+    collect_identifiers_analysis(file, root, &mut ident_nodes);
     for (node, ident) in &ident_nodes {
         let normalized = normalize_key(ident);
         // An identifier can witness SEVERAL keys at once: nested fallback lookups like
@@ -629,8 +628,8 @@ fn collect_code_evidence(
             continue;
         }
         let attributed: Vec<String> = attributed.into_iter().cloned().collect();
-        let line = node.start_position().row + 1;
-        let class = classify_identifier_use(*node, text, sinks);
+        let line = node_view(file, *node).span().start_point().row() + 1;
+        let class = classify_identifier_use_analysis(file, *node, sinks);
         for key in attributed {
             let Some(entry) = evidence.get_mut(&key) else {
                 continue;
@@ -652,25 +651,26 @@ fn collect_code_evidence(
             if !aliases.contains(ident) && normalize_key(ident) != *key {
                 continue;
             }
-            let line = node.start_position().row + 1;
-            if line <= *parse_line || inside_guarded_block(*node) {
+            let line = node_view(file, *node).span().start_point().row() + 1;
+            if line <= *parse_line || inside_guarded_block_analysis(file, *node) {
                 continue;
             }
             // Scope check: only shadows inside a function that actually parses this key.
-            let byte = node.start_byte();
+            let byte = node_view(file, *node).span().start_byte();
             let in_scope = alias_scopes
                 .get(key)
                 .is_some_and(|spans| spans.iter().any(|(s, e)| byte >= *s && byte < *e));
             if !in_scope {
                 continue;
             }
-            if let Some(literal) = literal_reassignment(*node, text)
+            if let Some(literal) = literal_reassignment_analysis(file, *node)
                 && let Some(entry) = evidence.get_mut(key)
             {
                 entry.shadowed.push((source.path.clone(), line, literal));
             }
         }
     }
+    Ok(())
 }
 
 /// True when the node sits inside a conditional/exception construct (up to the enclosing
@@ -678,10 +678,11 @@ fn collect_code_evidence(
 /// Boolean-operator ancestors count as guards too — `cond && (x = "lit")` (Julia) and
 /// `x = maybe() or "lit"` (Python) are short-circuit conditionals, not unconditional
 /// overwrites.
-fn inside_guarded_block(node: Node) -> bool {
-    let mut current = node.parent();
+fn inside_guarded_block_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> bool {
+    let mut current = node_view(file, node).parent();
     while let Some(parent) = current {
-        let kind = parent.kind();
+        let view = node_view(file, parent);
+        let kind = view.raw_kind();
         if kind.contains("function") || kind.contains("method") {
             return false;
         }
@@ -702,23 +703,25 @@ fn inside_guarded_block(node: Node) -> bool {
         {
             return true;
         }
-        current = parent.parent();
+        current = view.parent();
     }
     false
 }
 
 /// Byte span of the function/method enclosing `node`; whole file when at top level (a
 /// top-level parse site legitimately scopes shadow detection to the entire script).
-fn enclosing_function_span(node: Node, file_len: usize) -> (usize, usize) {
-    let mut current = node.parent();
+fn enclosing_function_span_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> (usize, usize) {
+    let mut current = node_view(file, node).parent();
     while let Some(parent) = current {
-        let kind = parent.kind();
+        let view = node_view(file, parent);
+        let kind = view.raw_kind();
         if kind.contains("function") || kind.contains("method") {
-            return (parent.start_byte(), parent.end_byte());
+            let span = view.span();
+            return (span.start_byte(), span.end_byte());
         }
-        current = parent.parent();
+        current = view.parent();
     }
-    (0, file_len)
+    (0, file.source().text.len())
 }
 
 /// `ALL_CAPS_WITH_UNDERSCORES` — the environment-variable naming shape.
@@ -731,29 +734,37 @@ fn is_env_shaped(key: &str) -> bool {
 }
 
 /// String literal nodes whose inner text looks like a config key.
-fn collect_key_strings<'t>(node: Node<'t>, text: &[u8], out: &mut Vec<(Node<'t>, String)>) {
-    let kind = node.kind();
+fn collect_key_strings_analysis(
+    file: &AnalyzerFile<'_>,
+    node: NodeId,
+    out: &mut Vec<(NodeId, String)>,
+) {
+    let view = node_view(file, node);
+    let kind = view.raw_kind();
     if kind.contains("comment") {
         return;
     }
     if kind.contains("string") || kind.contains("str_lit") {
-        if let Ok(raw) = node.utf8_text(text) {
-            let inner = raw.trim_matches(|c| matches!(c, '"' | '\'' | '`'));
-            // Interpolated strings are echo surfaces, not keys.
-            if !inner.contains('$') && !inner.contains('{') && looks_like_key(inner) {
-                out.push((node, inner.to_string()));
-            }
+        let raw = view.text();
+        let inner = raw.trim_matches(|c| matches!(c, '"' | '\'' | '`'));
+        // Interpolated strings are echo surfaces, not keys.
+        if !inner.contains('$') && !inner.contains('{') && looks_like_key(inner) {
+            out.push((node, inner.to_string()));
         }
         return;
     }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_key_strings(child, text, out);
+    for child in view.children() {
+        collect_key_strings_analysis(file, child, out);
     }
 }
 
-fn collect_identifiers<'t>(node: Node<'t>, text: &[u8], out: &mut Vec<(Node<'t>, String)>) {
-    let kind = node.kind();
+fn collect_identifiers_analysis(
+    file: &AnalyzerFile<'_>,
+    node: NodeId,
+    out: &mut Vec<(NodeId, String)>,
+) {
+    let view = node_view(file, node);
+    let kind = view.raw_kind();
     if kind.contains("comment") || kind.contains("string") || kind.contains("str_lit") {
         return;
     }
@@ -764,24 +775,22 @@ fn collect_identifiers<'t>(node: Node<'t>, text: &[u8], out: &mut Vec<(Node<'t>,
         || kind == "variable_name"
         || kind == "name"
     {
-        if let Ok(ident) = node.utf8_text(text) {
-            out.push((node, ident.to_string()));
-        }
+        out.push((node, view.text().to_string()));
         return;
     }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_identifiers(child, text, out);
+    for child in view.children() {
+        collect_identifiers_analysis(file, child, out);
     }
 }
 
 /// Nearest enclosing call expression and its callee name.
-fn enclosing_call<'t>(node: Node<'t>, text: &[u8]) -> Option<(String, Node<'t>)> {
-    let mut current = node.parent();
+fn enclosing_call_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> Option<(String, NodeId)> {
+    let mut current = node_view(file, node).parent();
     while let Some(parent) = current {
-        let kind = parent.kind();
+        let view = node_view(file, parent);
+        let kind = view.raw_kind();
         if kind.contains("call") || kind.contains("invocation") || kind == "macro_expression" {
-            if let Some(callee) = callee_name(parent, text) {
+            if let Some(callee) = callee_name_analysis(file, parent) {
                 return Some((callee, parent));
             }
             return None;
@@ -790,16 +799,17 @@ fn enclosing_call<'t>(node: Node<'t>, text: &[u8]) -> Option<(String, Node<'t>)>
         if kind.contains("function") || kind.contains("method") || kind.contains("class") {
             return None;
         }
-        current = parent.parent();
+        current = view.parent();
     }
     None
 }
 
 /// Callee name of a call node: the text of its first identifier-ish child (covers
 /// `foo(...)`, `obj.foo(...)`, `Module.foo(...)` — the last path segment wins).
-fn callee_name(call: Node, text: &[u8]) -> Option<String> {
-    let target = call.child(0)?;
-    let raw = target.utf8_text(text).ok()?;
+fn callee_name_analysis(file: &AnalyzerFile<'_>, call: NodeId) -> Option<String> {
+    let target = node_view(file, call).children().first().copied()?;
+    let target_view = node_view(file, target);
+    let raw = target_view.text();
     let head = raw.lines().next().unwrap_or(raw);
     let name = head.rsplit(['.', ':', '/']).next().unwrap_or(head);
     let cleaned: String = name
@@ -814,20 +824,21 @@ fn callee_name(call: Node, text: &[u8]) -> Option<String> {
 }
 
 /// If `call`'s value is assigned to a simple identifier, return that identifier.
-fn binding_target(call: Node, text: &[u8]) -> Option<String> {
+fn binding_target_analysis(file: &AnalyzerFile<'_>, call: NodeId) -> Option<String> {
     let mut current = call;
     for _ in 0..4 {
-        let parent = current.parent()?;
-        let kind = parent.kind();
+        let parent = node_view(file, current).parent()?;
+        let parent_view = node_view(file, parent);
+        let kind = parent_view.raw_kind();
         if kind.contains("assignment")
             || kind.contains("variable_declarat")
             || kind.contains("let")
             || kind.contains("binding")
             || kind.contains("short_var")
         {
-            let lhs = parent.child(0)?;
-            let raw = lhs.utf8_text(text).ok()?;
-            let name = raw.trim();
+            let lhs = parent_view.children().first().copied()?;
+            let lhs_view = node_view(file, lhs);
+            let name = lhs_view.text().trim();
             let simple =
                 !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
             return simple.then(|| name.to_string());
@@ -850,23 +861,29 @@ fn binding_target(call: Node, text: &[u8]) -> Option<String> {
 /// callee), while the same shape with no enclosing call is a data-structure store. The
 /// motivating incident's `driver_config = (canvas_top_k=canvas_top_k,)` is a store; the
 /// superficially identical `f(canvas_top_k=canvas_top_k)` is live.
-fn classify_identifier_use(node: Node, text: &[u8], sinks: &impl Fn(&str) -> bool) -> UseClass {
+fn classify_identifier_use_analysis(
+    file: &AnalyzerFile<'_>,
+    node: NodeId,
+    sinks: &impl Fn(&str) -> bool,
+) -> UseClass {
     // Assignment LHS is a (re)definition, not a use.
-    if let Some(parent) = node.parent() {
-        let kind = parent.kind();
+    if let Some(parent) = node_view(file, node).parent() {
+        let parent_view = node_view(file, parent);
+        let kind = parent_view.raw_kind();
         if (kind.contains("assignment")
             || kind.contains("variable_declarat")
             || kind.contains("let"))
-            && parent.child(0).map(|c| c.id()) == Some(node.id())
+            && parent_view.children().first().copied() == Some(node)
         {
             return UseClass::Parse; // definitions carry no consumption evidence
         }
     }
-    let mut current = node.parent();
+    let mut current = node_view(file, node).parent();
     let mut hops = 0;
     let mut saw_store_shape = false;
     while let Some(parent) = current {
-        let kind = parent.kind();
+        let parent_view = node_view(file, parent);
+        let kind = parent_view.raw_kind();
         if hops > 8 {
             break;
         }
@@ -875,7 +892,7 @@ fn classify_identifier_use(node: Node, text: &[u8], sinks: &impl Fn(&str) -> boo
             return UseClass::Echo;
         }
         if kind.contains("call") || kind.contains("invocation") || kind == "macro_expression" {
-            return match callee_name(parent, text) {
+            return match callee_name_analysis(file, parent) {
                 Some(callee) if sinks(&callee) => UseClass::Echo,
                 _ => UseClass::Live,
             };
@@ -915,7 +932,7 @@ fn classify_identifier_use(node: Node, text: &[u8], sinks: &impl Fn(&str) -> boo
         {
             return UseClass::Store;
         }
-        current = parent.parent();
+        current = parent_view.parent();
         hops += 1;
     }
     if saw_store_shape {
@@ -928,29 +945,32 @@ fn classify_identifier_use(node: Node, text: &[u8], sinks: &impl Fn(&str) -> boo
 /// If this identifier node is the LHS of an assignment whose RHS is literal-only
 /// (numbers/strings/booleans and pure literal arithmetic, or min/max over the identifier
 /// and literals), return the RHS text.
-fn literal_reassignment(node: Node, text: &[u8]) -> Option<String> {
-    let parent = node.parent()?;
-    let kind = parent.kind();
+fn literal_reassignment_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> Option<String> {
+    let parent = node_view(file, node).parent()?;
+    let parent_view = node_view(file, parent);
+    let kind = parent_view.raw_kind();
     if !(kind.contains("assignment") || kind.contains("variable_declarat")) {
         return None;
     }
-    if parent.child(0).map(|c| c.id()) != Some(node.id()) {
+    let children = parent_view.children();
+    if children.first().copied() != Some(node) {
         return None;
     }
-    let rhs = parent.child(parent.child_count().saturating_sub(1))?;
-    if rhs.id() == node.id() {
+    let rhs = children.last().copied()?;
+    if rhs == node {
         return None;
     }
-    let ident_text = node.utf8_text(text).ok()?.to_string();
-    if rhs_is_literal_only(rhs, text, &ident_text) {
-        rhs.utf8_text(text).ok().map(|s| s.trim().to_string())
+    let ident_text = node_view(file, node).text().to_string();
+    if rhs_is_literal_only_analysis(file, rhs, &ident_text) {
+        Some(node_view(file, rhs).text().trim().to_string())
     } else {
         None
     }
 }
 
-fn rhs_is_literal_only(node: Node, text: &[u8], self_ident: &str) -> bool {
-    let kind = node.kind();
+fn rhs_is_literal_only_analysis(file: &AnalyzerFile<'_>, node: NodeId, self_ident: &str) -> bool {
+    let view = node_view(file, node);
+    let kind = view.raw_kind();
     if kind.contains("comment") {
         return true;
     }
@@ -967,17 +987,22 @@ fn rhs_is_literal_only(node: Node, text: &[u8], self_ident: &str) -> bool {
     if kind == "identifier" || kind.ends_with("_identifier") {
         // The binding itself may appear (e.g. `x = min(x, 3)`); any OTHER identifier
         // means the RHS is not literal-only.
-        return node
-            .utf8_text(text)
-            .is_ok_and(|t| t == self_ident || t == "min" || t == "max" || t == "clamp");
+        let text = view.text();
+        return text == self_ident || text == "min" || text == "max" || text == "clamp";
     }
-    if node.child_count() == 0 {
+    if view.child_count() == 0 {
         // Operators, parens, commas.
         return true;
     }
-    let mut cursor = node.walk();
-    node.children(&mut cursor)
-        .all(|child| rhs_is_literal_only(child, text, self_ident))
+    view.children()
+        .into_iter()
+        .all(|child| rhs_is_literal_only_analysis(file, child, self_ident))
+}
+
+fn node_view<'a>(file: &'a AnalyzerFile<'a>, node: NodeId) -> deslop_parse::NodeView<'a> {
+    file.analysis
+        .node(node)
+        .expect("boundary node belongs to its prepared project analysis")
 }
 
 #[cfg(test)]

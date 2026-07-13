@@ -7,10 +7,11 @@ use anyhow::{Context, Result};
 use deslop_core::{AnalysisStatus, FileAnalysis, Lang, Span, file_analyses_status};
 use deslop_lang::{LangPack, RegionClass, RegionSpan, Registry};
 use deslop_parse::{
-    InclusiveSyntaxPolicy, NodeId, ParsedFile, ProjectAnalysis, ProjectionId, SourceFile,
-    SyntaxAdapterFacts, analysis_provenance_or_failed, parse_source,
+    DiscoveryPolicy, InclusiveSyntaxPolicy, NodeId, ParsedFile, ProjectAnalysis,
+    ProjectSnapshotPlanner, ProjectSnapshotRequest, ProjectionId, RepositorySpec, RootSpec,
+    ScopeSpec, SnapshotPresentationMap, SourceFile, SyntaxAdapterFacts,
+    analysis_provenance_or_failed, parse_source,
 };
-use ignore::WalkBuilder;
 use serde::Serialize;
 use tree_sitter::Node;
 
@@ -185,58 +186,23 @@ struct Token {
 }
 
 pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<MetricsReport> {
-    let mut functions = Vec::new();
-    let mut analyses = Vec::new();
-    for path in input_files(paths)? {
-        let source = SourceFile::read(&path)?;
-        let analysis = analysis_provenance_or_failed(&source);
-        analyses.push(FileAnalysis {
-            path: source.path.clone(),
-            lang: source.lang,
-            analysis: analysis.clone(),
-        });
-        if analysis.permits_rewrites() {
-            functions.extend(metrics_source(&source)?);
-        }
-    }
-    functions.sort_by(|a, b| {
-        a.path
-            .cmp(&b.path)
-            .then(a.span.start_line.cmp(&b.span.start_line))
-            .then(a.name.cmp(&b.name))
-    });
-    analyses.sort_by(|a, b| a.path.cmp(&b.path));
-    let status = file_analyses_status(&analyses);
-    let authoritative = status == AnalysisStatus::Complete;
-    let heuristic_burden_distribution =
-        authoritative.then(|| normalize_heuristic_burden(&mut functions));
-    let heuristic_outliers = if let Some(distribution) = heuristic_burden_distribution {
-        detect_heuristic_outliers(&functions, distribution)
+    let invocation_base =
+        std::env::current_dir().context("resolve metrics invocation directory")?;
+    let scope = if paths.is_empty() {
+        ScopeSpec::DefaultAtInvocationBase
     } else {
-        Vec::new()
+        ScopeSpec::Requested(paths.to_vec())
     };
-    let hotspots = if authoritative {
-        detect_hotspots(&functions, config.sigma)
-    } else {
-        Vec::new()
-    };
-    Ok(MetricsReport {
-        schema: "deslop.metrics/5",
-        status,
-        analyses,
-        functions,
-        heuristic_outliers,
-        heuristic_burden_distribution,
-        hotspots,
-        heuristic_model: HeuristicBurdenModel {
-            id: "deslop-heuristic-burden/1",
-            experimental: true,
-            human_calibrated: false,
-            authority: "triage_only",
-            gating_permitted: false,
-            meaning: "hand-set structural burden evidence for triage only; not readability, health, refactor need, probability, confidence, or safety",
-        },
-    })
+    let built = ProjectSnapshotPlanner::resolve(ProjectSnapshotRequest {
+        invocation_base,
+        root: RootSpec::Auto,
+        repository: RepositorySpec::Auto,
+        scope,
+        discovery: DiscoveryPolicy::LegacyRespectIgnore,
+    })?
+    .build()?;
+    let analysis = ProjectAnalysis::build(built.snapshot)?;
+    metrics_report(&analysis, config, Some(&built.presentation))
 }
 
 /// Compute metrics from one already-owned immutable project analysis without reading or parsing.
@@ -248,7 +214,7 @@ pub fn metrics_analysis(
     policy.extend_from_slice(&config.sigma.to_bits().to_le_bytes());
     let id =
         analysis.derive_projection_id(METRICS_PROJECTION_SCHEMA, &policy, METRICS_CAPABILITIES)?;
-    let report = metrics_report(&analysis, config)?;
+    let report = metrics_report(&analysis, config, None)?;
     Ok(MetricsProjection {
         id,
         analysis,
@@ -257,17 +223,28 @@ pub fn metrics_analysis(
     })
 }
 
-fn metrics_report(analysis: &ProjectAnalysis, config: MetricsConfig) -> Result<MetricsReport> {
+fn metrics_report(
+    analysis: &ProjectAnalysis,
+    config: MetricsConfig,
+    presentation: Option<&SnapshotPresentationMap>,
+) -> Result<MetricsReport> {
     let mut functions = Vec::new();
     let mut analyses = Vec::new();
     for file in analysis.files() {
+        let display_path = presentation
+            .map(|paths| paths.display_path(&file.key().path).to_path_buf())
+            .unwrap_or_else(|| file.key().path.clone());
         analyses.push(FileAnalysis {
-            path: file.key().path.clone(),
+            path: display_path.clone(),
             lang: file.grammar().lang(),
             analysis: file.provenance().clone(),
         });
         if file.provenance().permits_rewrites() {
-            functions.extend(metrics_file(analysis, file)?);
+            let mut file_metrics = metrics_file(analysis, file)?;
+            for region in &mut file_metrics {
+                region.path.clone_from(&display_path);
+            }
+            functions.extend(file_metrics);
         }
     }
     finish_metrics_report(analyses, functions, config)
@@ -526,42 +503,6 @@ pub fn render_json(report: &MetricsReport) -> Result<String> {
 
 pub fn halstead_for_text(pack: &dyn LangPack, text: &str) -> HalsteadMetrics {
     halstead(&tokenize(text, pack.line_comments()), pack)
-}
-
-fn input_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
-    let paths = if paths.is_empty() {
-        vec![PathBuf::from(".")]
-    } else {
-        paths.to_vec()
-    };
-    let registry = Registry::default();
-    let mut files = Vec::new();
-    for path in paths {
-        if path.is_file() {
-            if registry.supported_pack_for_path(&path).is_some() {
-                files.push(path);
-            }
-            continue;
-        }
-        let walker = WalkBuilder::new(&path)
-            .hidden(false)
-            .filter_entry(|entry| {
-                let name = entry.file_name().to_string_lossy();
-                !matches!(name.as_ref(), ".git" | ".jj" | "target" | "__pycache__")
-            })
-            .build();
-        for entry in walker {
-            let entry = entry.with_context(|| format!("failed to walk {}", path.display()))?;
-            if !entry.file_type().is_some_and(|kind| kind.is_file()) {
-                continue;
-            }
-            let path = entry.into_path();
-            if registry.supported_pack_for_path(&path).is_some() {
-                files.push(path);
-            }
-        }
-    }
-    Ok(files)
 }
 
 fn metric_regions(pack: &dyn LangPack, source: &SourceFile) -> Result<Vec<MetricRegion>> {
