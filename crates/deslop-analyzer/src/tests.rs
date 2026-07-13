@@ -1,8 +1,8 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use deslop_core::{AnalysisStatus, Finding, Lang, SafetyClass};
-use deslop_parse::SourceFile;
+use deslop_parse::{ProjectAnalysis, ProjectSnapshotBuilder, RepositoryId, SourceFile};
 
 use super::*;
 
@@ -845,4 +845,375 @@ fn path_deduplication_is_input_order_invariant_and_prefers_relative_paths() {
 
     assert_eq!(forward, vec![relative.clone()]);
     assert_eq!(reversed, vec![relative]);
+}
+
+#[test]
+fn owned_scan_analysis_is_parse_once_deterministic_and_partial_safe() {
+    let root = tempfile::tempdir().expect("tempdir");
+    deslop_parse::reset_parse_source_invocations();
+    let snapshot = ProjectSnapshotBuilder::new(
+        root.path(),
+        RepositoryId::explicit("owned-analyzer-matrix").unwrap(),
+    )
+    .unwrap()
+    .with_overlay(
+        "tests/fixtures/python/behavioral.py",
+        include_bytes!("../../../tests/fixtures/python/behavioral.py").to_vec(),
+    )
+    .unwrap()
+    .with_overlay(
+        "tests/fixtures/dup/behavior.rs",
+        include_bytes!("../../../tests/fixtures/dup/behavior.rs").to_vec(),
+    )
+    .unwrap()
+    .with_overlay(
+        "tests/fixtures/typescript/component.tsx",
+        include_bytes!("../../../tests/fixtures/typescript/component.tsx").to_vec(),
+    )
+    .unwrap()
+    .with_overlay(
+        "tests/fixtures/typescript/malformed.ts",
+        include_bytes!("../../../tests/fixtures/typescript/malformed.ts").to_vec(),
+    )
+    .unwrap()
+    .with_overlay(
+        "idioms.rs",
+        b"fn foo(x: i32) -> i32 { x }\nfn f(v: Vec<String>, xs: Vec<i32>) -> Vec<i32> {\n    let _ = &v.clone();\n    xs.into_iter().map(|x| foo(x)).collect()\n}\nfn tail() -> i32 {\n    return 1;\n}\n"
+            .to_vec(),
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+    let analysis = ProjectAnalysis::build(snapshot).unwrap();
+    let cold_counts = analysis.parse_counts();
+    assert_eq!(cold_counts.len(), 5);
+    assert!(cold_counts.values().all(|count| {
+        (
+            count.requested,
+            count.owners,
+            count.parser_invocations,
+            count.reused,
+        ) == (1, 1, 1, 0)
+    }));
+    let boundary_error = scan_analysis(analysis.clone(), AnalyzerConfig::default())
+        .expect_err("source-only analysis must not claim boundary coverage");
+    assert!(
+        boundary_error
+            .to_string()
+            .contains("cannot prove config-boundary coverage")
+    );
+    assert_eq!(analysis.parse_counts(), cold_counts);
+    assert_eq!(deslop_parse::parse_source_invocations(), 0);
+
+    let mut config = AnalyzerConfig::default();
+    config.boundary.enabled = false;
+    config.python.long_method_nloc = Some(3);
+    let first = scan_analysis(analysis.clone(), config.clone()).unwrap();
+    let second = scan_analysis(analysis.clone(), config.clone()).unwrap();
+    assert_eq!(first.id, second.id);
+    assert_eq!(
+        serde_json::to_string(&(
+            &first.reports,
+            &first.input_contents,
+            &first.external_capabilities,
+        ))
+        .unwrap(),
+        serde_json::to_string(&(
+            &second.reports,
+            &second.input_contents,
+            &second.external_capabilities,
+        ))
+        .unwrap()
+    );
+    assert_eq!(analysis.parse_counts(), cold_counts);
+    assert_eq!(deslop_parse::parse_source_invocations(), 0);
+
+    let findings = first
+        .reports
+        .iter()
+        .flat_map(|report| report.findings.iter())
+        .collect::<Vec<_>>();
+    assert_eq!(findings.len(), 9, "{findings:#?}");
+    let expected = [
+        ("consecutive-blank-lines", 2, 3, "6a501adaa439fdee"),
+        ("long-method", 4, 9, "5497c8ef53d9cf57"),
+        ("long-method", 5, 7, "2dddbe7c1175c1ea"),
+        ("consecutive-blank-lines", 10, 11, "ddf3aa860042ca2e"),
+        ("long-method", 13, 18, "a63349b9dc2deef7"),
+        ("near-duplicate", 13, 18, "e78e22cf018ba4cd"),
+        ("needless-clone", 3, 3, "22249ca9c4db7d7f"),
+        ("redundant-closure", 4, 4, "dd9a9bdf11c2f805"),
+        ("needless-return", 7, 7, "ca78faf42b98702e"),
+    ];
+    for (rule, start, end, fingerprint) in expected {
+        assert!(
+            findings.iter().any(|finding| {
+                finding.rule == rule
+                    && finding.span.start_line == start
+                    && finding.span.end_line == end
+                    && finding.fingerprint == fingerprint
+            }),
+            "missing {rule} {start}..{end} {fingerprint}: {findings:#?}"
+        );
+    }
+    let malformed = first
+        .reports
+        .iter()
+        .find(|report| report.path.ends_with("malformed.ts"))
+        .unwrap();
+    assert_eq!(malformed.analysis.status, AnalysisStatus::Partial);
+    assert_eq!(malformed.findings.len(), 0);
+    assert!(malformed.analysis.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "tree-sitter-error"
+            && diagnostic.span.is_some_and(|span| {
+                span.start_line == 2 && span.start_byte == 62 && span.end_byte == 63
+            })
+    }));
+
+    config.python.long_method_nloc = Some(4);
+    let threshold_four = scan_analysis(analysis.clone(), config).unwrap();
+    assert_ne!(first.id, threshold_four.id);
+    assert_eq!(
+        threshold_four
+            .reports
+            .iter()
+            .map(|report| report.findings.len())
+            .sum::<usize>(),
+        8
+    );
+    assert_eq!(analysis.parse_counts(), cold_counts);
+    assert_eq!(deslop_parse::parse_source_invocations(), 0);
+}
+
+#[test]
+fn owned_scan_masks_strings_comments_and_constants_but_keeps_real_rust_evidence() {
+    let root = tempfile::tempdir().unwrap();
+    let source = r#"const LIMIT: i32 = 4096;
+fn unfinished() -> i32 {
+    let text = "TODO: implement 77";
+    // placeholder 88
+    todo!();
+    let marker = "deslop:ignore-next-line needless-return";
+    return 31415;
+}
+fn suppressed() -> i32 {
+    // deslop:ignore-next-line needless-return
+    return 2718;
+}
+"#;
+    let snapshot = ProjectSnapshotBuilder::new(
+        root.path(),
+        RepositoryId::explicit("owned-rust-mask-test").unwrap(),
+    )
+    .unwrap()
+    .with_overlay("masked.rs", source.as_bytes().to_vec())
+    .unwrap()
+    .build()
+    .unwrap();
+    let analysis = ProjectAnalysis::build(snapshot).unwrap();
+    let counts = analysis.parse_counts();
+    deslop_parse::reset_parse_source_invocations();
+    let mut config = AnalyzerConfig::default();
+    config.boundary.enabled = false;
+    config.min_duplication_tokens = 0;
+    let projection = scan_analysis(analysis.clone(), config).unwrap();
+    let findings = &projection.reports[0].findings;
+    assert_eq!(
+        findings
+            .iter()
+            .map(|finding| (finding.rule.as_str(), finding.span.start_line))
+            .collect::<Vec<_>>(),
+        [
+            ("incompleteness", 5),
+            ("magic-number", 7),
+            ("needless-return", 7),
+        ]
+    );
+    assert_eq!(analysis.parse_counts(), counts);
+    assert_eq!(deslop_parse::parse_source_invocations(), 0);
+}
+
+#[test]
+fn owned_scan_computes_cross_file_duplication_without_reparse() {
+    let root = tempfile::tempdir().unwrap();
+    let first =
+        b"fn alpha(input: i32) -> i32 {\n    let value = input + 10;\n    value * value - 3\n}\n";
+    let second =
+        b"fn beta(item: i32) -> i32 {\n    let result = item + 10;\n    result * result - 3\n}\n";
+    let snapshot = ProjectSnapshotBuilder::new(
+        root.path(),
+        RepositoryId::explicit("owned-cross-file-test").unwrap(),
+    )
+    .unwrap()
+    .with_overlay("a.rs", first.to_vec())
+    .unwrap()
+    .with_overlay("b.rs", second.to_vec())
+    .unwrap()
+    .build()
+    .unwrap();
+    let analysis = ProjectAnalysis::build(snapshot).unwrap();
+    let counts = analysis.parse_counts();
+    deslop_parse::reset_parse_source_invocations();
+    let mut config = AnalyzerConfig::default();
+    config.boundary.enabled = false;
+    config.min_duplication_tokens = 12;
+    config.min_meaningful_tokens = 5;
+    let projection = scan_analysis(analysis.clone(), config).unwrap();
+    let cross_file = projection
+        .reports
+        .iter()
+        .flat_map(|report| report.findings.iter())
+        .filter(|finding| matches!(finding.rule.as_str(), "duplicate-block" | "near-duplicate"))
+        .collect::<Vec<_>>();
+    assert!(!cross_file.is_empty(), "{:#?}", projection.reports);
+    assert!(
+        cross_file
+            .iter()
+            .any(|finding| finding.path == Path::new("b.rs") && finding.message.contains("a.rs:"))
+    );
+    assert_eq!(analysis.parse_counts(), counts);
+    assert_eq!(deslop_parse::parse_source_invocations(), 0);
+}
+
+#[test]
+fn owned_scan_ignores_legacy_suppression_match_root_in_identity_and_results() {
+    let root = tempfile::tempdir().unwrap();
+    let snapshot = ProjectSnapshotBuilder::new(
+        root.path(),
+        RepositoryId::explicit("owned-suppression-path-test").unwrap(),
+    )
+    .unwrap()
+    .with_overlay("vendor/sample.rs", b"fn sample() {}\n\n\n".to_vec())
+    .unwrap()
+    .build()
+    .unwrap();
+    let analysis = ProjectAnalysis::build(snapshot).unwrap();
+    let mut builder = Suppression::builder();
+    builder.ignore_path("sample.rs");
+    let suppression = builder.build().unwrap();
+    let mut canonical = AnalyzerConfig::default();
+    canonical.boundary.enabled = false;
+    canonical.min_duplication_tokens = 0;
+    canonical.suppression = suppression.clone();
+    let mut rooted = canonical.clone();
+    rooted.suppression = suppression.with_match_root(PathBuf::from("vendor"));
+
+    let canonical = scan_analysis(analysis.clone(), canonical).unwrap();
+    let rooted = scan_analysis(analysis, rooted).unwrap();
+    assert_eq!(canonical.id, rooted.id);
+    assert_eq!(
+        serde_json::to_value(&canonical.reports).unwrap(),
+        serde_json::to_value(&rooted.reports).unwrap()
+    );
+    assert!(has_rule(&canonical.reports[0], "consecutive-blank-lines"));
+}
+
+#[test]
+fn owned_scan_dispatches_from_each_exact_stored_adapter() {
+    let root = tempfile::tempdir().unwrap();
+    let snapshot = ProjectSnapshotBuilder::new(
+        root.path(),
+        RepositoryId::explicit("owned-pack-dispatch-test").unwrap(),
+    )
+    .unwrap()
+    .with_overlay(
+        "sample.py",
+        b"if value == None:\n    pass\nfor idx in range(len(items)):\n    print(items[idx])\nif key in data.keys():\n    pass\nvalues = list([x for x in items])\n".to_vec(),
+    )
+    .unwrap()
+    .with_overlay(
+        "sample.js",
+        b"var count = 0;\nif (count == null) {\n  count = 1;\n}\nasync function load() {\n  return await fetch('/x');\n}\n".to_vec(),
+    )
+    .unwrap()
+    .with_overlay(
+        "sample.tsx",
+        b"var count: number = 0;\nif (count == null) { count = 1; }\nasync function load(): Promise<void> { return await fetch('/x'); }\n".to_vec(),
+    )
+    .unwrap()
+    .with_overlay(
+        "sample.clj",
+        b"(def a (not (= x y)))\n(def b (not (nil? z)))\n(def c (if p true false))\n".to_vec(),
+    )
+    .unwrap()
+    .with_overlay(
+        "sample.jl",
+        b"function f(xs)\n    for i in 1:length(xs)\n        println(xs[i])\n    end\nend\n".to_vec(),
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+    let analysis = ProjectAnalysis::build(snapshot).unwrap();
+    for (path, adapter) in [
+        ("sample.py", "python"),
+        ("sample.js", "javascript"),
+        ("sample.tsx", "typescript"),
+        ("sample.clj", "clojure"),
+        ("sample.jl", "julia"),
+    ] {
+        assert_eq!(
+            analysis.language_adapter(Path::new(path)).unwrap().name(),
+            adapter
+        );
+    }
+    let mut config = AnalyzerConfig::default();
+    config.boundary.enabled = false;
+    config.min_duplication_tokens = 0;
+    let projection = scan_analysis(analysis, config).unwrap();
+    assert_eq!(projection.external_capabilities.len(), 1);
+    assert_eq!(projection.external_capabilities[0].analyzer, "clj-kondo");
+    assert!(!projection.external_capabilities[0].available);
+    assert_eq!(
+        projection.external_capabilities[0].covered_rules,
+        [
+            "unused-binding",
+            "unused-private-def",
+            "unused-namespace",
+            "redundant-do",
+        ]
+    );
+    let rules = |path: &str| {
+        projection
+            .reports
+            .iter()
+            .find(|report| report.path == Path::new(path))
+            .unwrap()
+            .findings
+            .iter()
+            .map(|finding| finding.rule.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    assert_eq!(
+        rules("sample.py"),
+        [
+            "py-dict-keys-membership",
+            "py-list-comprehension-wrapper",
+            "py-none-comparison",
+            "py-range-len",
+        ]
+        .into_iter()
+        .collect()
+    );
+    for path in ["sample.js", "sample.tsx"] {
+        assert_eq!(
+            rules(path),
+            [
+                "js-loose-equality",
+                "js-unnecessary-await",
+                "js-var-declaration",
+            ]
+            .into_iter()
+            .collect()
+        );
+    }
+    assert_eq!(
+        rules("sample.clj"),
+        ["reimpl-boolean", "reimpl-not=", "reimpl-some?"]
+            .into_iter()
+            .collect()
+    );
+    assert_eq!(
+        rules("sample.jl"),
+        ["reimpl-eachindex"].into_iter().collect()
+    );
 }

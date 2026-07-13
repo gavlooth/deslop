@@ -301,6 +301,7 @@ dependencies = [
  "ignore",
  "regex",
  "serde",
+ "serde_json",
  "tempfile",
  "tree-sitter",
 ]

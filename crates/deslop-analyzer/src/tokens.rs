@@ -1,11 +1,11 @@
 use deslop_core::{DetectedBy, Finding, Lang, SafetyClass, Severity};
 use deslop_lang::{LangPack, RegionClass, Registry as LangRegistry};
-use deslop_parse::{SourceFile, parse_source};
+use deslop_parse::{NodeId, SourceFile, parse_source};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tree_sitter::Node;
 
-use crate::{AnalyzerConfig, finding};
+use crate::{AnalyzerConfig, AnalyzerFile, finding};
 
 #[derive(Debug, Clone)]
 struct Token {
@@ -72,6 +72,40 @@ pub(crate) fn duplicate_token_sequences(
     out
 }
 
+pub(crate) fn duplicate_token_sequences_analysis(
+    file: &AnalyzerFile<'_>,
+    config: &AnalyzerConfig,
+) -> Vec<Finding> {
+    let source = file.source();
+    let min_tokens = config.min_duplication_tokens;
+    let min_meaningful_tokens = config.min_meaningful_tokens;
+    let tokens = tokenize_analysis(file);
+    if min_tokens == 0 || tokens.len() < min_tokens * 2 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut reported_until = 0;
+    for i in 0..=(tokens.len() - min_tokens) {
+        for j in (i + min_tokens)..=(tokens.len() - min_tokens) {
+            if j < reported_until {
+                continue;
+            }
+            let Some(match_info) =
+                duplicate_match(&tokens, i, j, min_tokens, min_meaningful_tokens)
+            else {
+                continue;
+            };
+            if non_removable_rust_match_analysis(file, match_info.left, match_info.right) {
+                continue;
+            }
+            out.push(duplicate_finding(source, &tokens, match_info));
+            reported_until = j + min_tokens;
+            break;
+        }
+    }
+    out
+}
+
 pub(crate) fn cross_file_duplicate_findings(
     sources: &[SourceFile],
     config: &AnalyzerConfig,
@@ -83,6 +117,75 @@ pub(crate) fn cross_file_duplicate_findings(
     let tokenized = sources
         .iter()
         .map(|source| (source, tokenize(source)))
+        .collect::<Vec<_>>();
+    let mut exact_windows = HashMap::<Vec<String>, CrossFileWindow>::new();
+    let mut normalized_windows = HashMap::<Vec<String>, CrossFileWindow>::new();
+    let mut out = Vec::new();
+    for (source_index, (source, tokens)) in tokenized.iter().enumerate() {
+        if tokens.len() < min_tokens {
+            continue;
+        }
+        for start in 0..=(tokens.len() - min_tokens) {
+            let window = &tokens[start..start + min_tokens];
+            if !single_segment(window)
+                || meaningful_count(window) < config.min_meaningful_tokens
+                || already_reported_cross_file(&out, source, window)
+            {
+                continue;
+            }
+            let exact_key = token_key(window, |token| token.exact.as_str());
+            if let Some(first) = exact_windows.get(&exact_key)
+                && first.source_index != source_index
+            {
+                out.push(cross_file_finding(
+                    source,
+                    tokens,
+                    start,
+                    min_tokens,
+                    "duplicate-block",
+                    first,
+                    meaningful_count(window),
+                ));
+                continue;
+            }
+            exact_windows.entry(exact_key).or_insert_with(|| {
+                CrossFileWindow::new(source_index, source.path.to_path_buf(), source, window)
+            });
+
+            let normalized_key = token_key(window, |token| token.normalized.as_str());
+            if let Some(first) = normalized_windows.get(&normalized_key)
+                && first.source_index != source_index
+            {
+                out.push(cross_file_finding(
+                    source,
+                    tokens,
+                    start,
+                    min_tokens,
+                    "near-duplicate",
+                    first,
+                    meaningful_count(window),
+                ));
+                continue;
+            }
+            normalized_windows.entry(normalized_key).or_insert_with(|| {
+                CrossFileWindow::new(source_index, source.path.to_path_buf(), source, window)
+            });
+        }
+    }
+    out
+}
+
+pub(crate) fn cross_file_duplicate_findings_analysis(
+    files: &[AnalyzerFile<'_>],
+    config: &AnalyzerConfig,
+) -> Vec<Finding> {
+    let min_tokens = config.min_duplication_tokens;
+    if min_tokens == 0 || files.len() < 2 {
+        return Vec::new();
+    }
+    let tokenized = files
+        .iter()
+        .map(|file| (file.source(), tokenize_analysis(file)))
         .collect::<Vec<_>>();
     let mut exact_windows = HashMap::<Vec<String>, CrossFileWindow>::new();
     let mut normalized_windows = HashMap::<Vec<String>, CrossFileWindow>::new();
@@ -292,14 +395,29 @@ fn tokenize(source: &SourceFile) -> Vec<Token> {
     let pack = registry.pack_for_lang(source.lang);
     let segments = behavioral_segments(source, pack);
     let masks = token_masks(source, pack);
+    tokenize_with(source, pack, &segments, &masks)
+}
+
+fn tokenize_analysis(file: &AnalyzerFile<'_>) -> Vec<Token> {
+    let segments = behavioral_segments_analysis(file);
+    let masks = token_masks_analysis(file);
+    tokenize_with(file.source(), file.adapter(), &segments, &masks)
+}
+
+fn tokenize_with(
+    source: &SourceFile,
+    pack: &dyn LangPack,
+    segments: &[Segment],
+    masks: &[MaskRange],
+) -> Vec<Token> {
     let mut out = Vec::new();
     let mut iter = source.text.char_indices().peekable();
     while let Some((start, ch)) = iter.next() {
         if ch.is_whitespace() {
             continue;
         }
-        if let Some(mask) = mask_for_byte(&masks, start) {
-            push_masked_token(&mut out, &source.text, &segments, mask, start);
+        if let Some(mask) = mask_for_byte(masks, start) {
+            push_masked_token(&mut out, &source.text, segments, mask, start);
             skip_until_byte(&mut iter, mask.end_byte);
             continue;
         }
@@ -307,7 +425,7 @@ fn tokenize(source: &SourceFile) -> Vec<Token> {
             skip_until_newline(&mut iter);
             continue;
         }
-        let Some(segment) = segment_for_byte(&segments, start) else {
+        let Some(segment) = segment_for_byte(segments, start) else {
             skip_token(&source.text, &mut iter, start, ch);
             continue;
         };
@@ -536,6 +654,22 @@ fn behavioral_segments(source: &SourceFile, pack: &dyn LangPack) -> Vec<Segment>
         .collect()
 }
 
+fn behavioral_segments_analysis(file: &AnalyzerFile<'_>) -> Vec<Segment> {
+    let Some(root) = file.node_ids().next() else {
+        return Vec::new();
+    };
+    let mut segments = Vec::new();
+    collect_behavioral_segments_analysis(file, root, false, &mut segments);
+    segments
+        .into_iter()
+        .enumerate()
+        .map(|(id, mut segment)| {
+            segment.id = id;
+            segment
+        })
+        .collect()
+}
+
 fn token_masks(source: &SourceFile, pack: &dyn LangPack) -> Vec<MaskRange> {
     let Some(tree) = parse_source(source).ok().flatten() else {
         return Vec::new();
@@ -547,6 +681,44 @@ fn token_masks(source: &SourceFile, pack: &dyn LangPack) -> Vec<MaskRange> {
     collect_token_masks(tree.root_node(), &source.text, pack, &mut masks);
     masks.sort_by_key(|mask| (mask.start_byte, mask.end_byte));
     masks
+}
+
+fn token_masks_analysis(file: &AnalyzerFile<'_>) -> Vec<MaskRange> {
+    let Some(root) = file.node_ids().next() else {
+        return Vec::new();
+    };
+    let mut masks = Vec::new();
+    collect_token_masks_analysis(file, root, &mut masks);
+    masks.sort_by_key(|mask| (mask.start_byte, mask.end_byte));
+    masks
+}
+
+fn collect_token_masks_analysis(file: &AnalyzerFile<'_>, node: NodeId, masks: &mut Vec<MaskRange>) {
+    let Ok(view) = file.analysis.node(node) else {
+        return;
+    };
+    let kind = view.raw_kind();
+    let mask_kind = if kind.contains("comment") {
+        Some(MaskKind::Comment)
+    } else if file.fact(node).is_duplication_data_region() {
+        Some(MaskKind::Data)
+    } else if kind.contains("string") || kind.contains("str_lit") {
+        Some(MaskKind::String)
+    } else {
+        None
+    };
+    if let Some(kind) = mask_kind {
+        let span = view.span();
+        masks.push(MaskRange {
+            start_byte: span.start_byte(),
+            end_byte: span.end_byte().min(file.source().text.len()),
+            kind,
+        });
+        return;
+    }
+    for child in view.children() {
+        collect_token_masks_analysis(file, child, masks);
+    }
 }
 
 fn collect_token_masks(
@@ -615,6 +787,35 @@ fn collect_behavioral_segments(
     }
 }
 
+fn collect_behavioral_segments_analysis(
+    file: &AnalyzerFile<'_>,
+    node: NodeId,
+    in_body: bool,
+    segments: &mut Vec<Segment>,
+) {
+    let Ok(view) = file.analysis.node(node) else {
+        return;
+    };
+    let fact = file.fact(node);
+    match fact.region_class() {
+        RegionClass::Declaration if !fact.is_behavioral_container() => return,
+        RegionClass::Behavioral if !in_body => {
+            let span = view.span();
+            segments.push(Segment {
+                id: 0,
+                start_byte: span.start_byte(),
+                end_byte: span.end_byte().min(file.source().text.len()),
+            });
+            return;
+        }
+        RegionClass::Behavioral | RegionClass::Declaration | RegionClass::Other => {}
+    }
+    let child_in_body = in_body || fact.region_class() == RegionClass::Behavioral;
+    for child in view.children() {
+        collect_behavioral_segments_analysis(file, child, child_in_body, segments);
+    }
+}
+
 fn segment_for_byte(segments: &[Segment], byte: usize) -> Option<Segment> {
     segments
         .iter()
@@ -658,6 +859,143 @@ fn non_removable_rust_mapping_rhyme(
     };
     is_in_pure_path_mapping_context(source, root, left_start, left_end)
         && is_in_pure_path_mapping_context(source, root, right_start, right_end)
+}
+
+fn non_removable_rust_match_analysis(
+    file: &AnalyzerFile<'_>,
+    left: &[Token],
+    right: &[Token],
+) -> bool {
+    if file.source().lang != Lang::Rust {
+        return false;
+    }
+    let Some(root) = file.node_ids().next() else {
+        return false;
+    };
+    let Some((left_start, left_end)) = token_window_range(left) else {
+        return false;
+    };
+    let Some((right_start, right_end)) = token_window_range(right) else {
+        return false;
+    };
+    is_in_pure_path_mapping_context_analysis(file, root, left_start, left_end)
+        && is_in_pure_path_mapping_context_analysis(file, root, right_start, right_end)
+}
+
+fn smallest_enclosing_node_analysis(
+    file: &AnalyzerFile<'_>,
+    node: NodeId,
+    start_byte: usize,
+    end_byte: usize,
+    kind: &str,
+) -> Option<NodeId> {
+    let view = file.analysis.node(node).ok()?;
+    let span = view.span();
+    if span.start_byte() > start_byte || end_byte > span.end_byte() {
+        return None;
+    }
+    for child in view.children() {
+        let child_view = file.analysis.node(child).ok()?;
+        if child_view.is_named()
+            && let Some(enclosing) =
+                smallest_enclosing_node_analysis(file, child, start_byte, end_byte, kind)
+        {
+            return Some(enclosing);
+        }
+    }
+    (view.raw_kind() == kind).then_some(node)
+}
+
+fn is_in_pure_path_mapping_context_analysis(
+    file: &AnalyzerFile<'_>,
+    root: NodeId,
+    start_byte: usize,
+    end_byte: usize,
+) -> bool {
+    if smallest_enclosing_node_analysis(file, root, start_byte, end_byte, "match_expression")
+        .is_some_and(|node| is_pure_path_mapping_match_analysis(file, node))
+    {
+        return true;
+    }
+    ["function_item", "impl_item"].into_iter().any(|kind| {
+        smallest_enclosing_node_analysis(file, root, start_byte, end_byte, kind)
+            .is_some_and(|node| contains_pure_path_mapping_match_analysis(file, node))
+    })
+}
+
+fn contains_pure_path_mapping_match_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> bool {
+    let Ok(view) = file.analysis.node(node) else {
+        return false;
+    };
+    if view.raw_kind() == "match_expression" && is_pure_path_mapping_match_analysis(file, node) {
+        return true;
+    }
+    view.children().into_iter().any(|child| {
+        file.analysis.node(child).is_ok_and(|view| view.is_named())
+            && contains_pure_path_mapping_match_analysis(file, child)
+    })
+}
+
+fn is_pure_path_mapping_match_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> bool {
+    let Some(body) = file.child_by_field(node, "body") else {
+        return false;
+    };
+    let Ok(body_view) = file.analysis.node(body) else {
+        return false;
+    };
+    let arms = body_view
+        .children()
+        .into_iter()
+        .filter(|child| {
+            file.analysis
+                .node(*child)
+                .is_ok_and(|view| view.raw_kind() == "match_arm")
+        })
+        .collect::<Vec<_>>();
+    arms.len() >= 2
+        && arms
+            .into_iter()
+            .all(|arm| is_pure_path_mapping_arm_analysis(file, arm))
+}
+
+fn is_pure_path_mapping_arm_analysis(file: &AnalyzerFile<'_>, arm: NodeId) -> bool {
+    let Some(pattern) = file.child_by_field(arm, "pattern") else {
+        return false;
+    };
+    let Some(value) = file.child_by_field(arm, "value") else {
+        return false;
+    };
+    is_path_like_pattern_analysis(file, pattern) && is_path_like_value_analysis(file, value)
+}
+
+fn is_path_like_pattern_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> bool {
+    let Ok(view) = file.analysis.node(node) else {
+        return false;
+    };
+    match view.raw_kind() {
+        "identifier" | "scoped_identifier" => true,
+        "match_pattern" => {
+            if file.child_by_field(node, "condition").is_some() {
+                return false;
+            }
+            let named = view
+                .children()
+                .into_iter()
+                .filter(|child| file.analysis.node(*child).is_ok_and(|view| view.is_named()))
+                .collect::<Vec<_>>();
+            named.len() == 1 && is_path_like_pattern_analysis(file, named[0])
+        }
+        _ => {
+            let text = view.text();
+            text.contains("::") && !text.contains([' ', '\n', '\t'])
+        }
+    }
+}
+
+fn is_path_like_value_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> bool {
+    file.analysis
+        .node(node)
+        .is_ok_and(|view| matches!(view.raw_kind(), "identifier" | "scoped_identifier"))
 }
 
 fn token_window_range(tokens: &[Token]) -> Option<(usize, usize)> {

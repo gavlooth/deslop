@@ -6664,3 +6664,70 @@ checkpoint. Never reintroduce per-range tokenization, `pack_for_lang` reconstruc
 Tree/arena pairing, collided reset ownership, or post-hoc path rebasing.
 
 **Signature:** Codex (GPT-5), M1.9 integration owner, metrics projection checkpoint, 2026-07-13.
+
+---
+
+## M1.9 analyzer checkpoint — owned source-only projection
+
+**Date/time:** 2026-07-13T21:49:33+02:00
+
+**Objective/target:** migrate the analyzer's file-local and duplication passes onto one immutable
+`ProjectAnalysis`, prove exact stored-adapter dispatch and projection identity, and establish an
+explicit authority boundary for not-yet-pinned config/external inputs.
+
+**Changes:** added `AnalyzerFile` over a retained `ParsedFile`, exact stored `LangPack`, owned
+`SyntaxAdapterFacts`, and `NodeId` lookup. Added `AnalyzerProjection` and `scan_analysis`, binding the
+effective config and owned analyzer capability schema through `ProjectionId`. Primary dispatch uses
+the exact stored adapter name, never path or `Lang` reselection. The projection canonicalizes legacy
+suppression match roots away because primary paths are logical. Enabled boundary analysis is rejected
+until a complete pinned manifest exists; optional externals are recorded unavailable and never run
+against live paths.
+
+Agnostic string/comment/constant masking, long-method regions, tail-return ancestry, comment policy,
+and token duplication now use NodeViews/facts. Duplication derives masks and behavioral segments from
+the owned tree, including the Rust pure-path-mapping exclusion, and cross-file duplication reuses the
+same contexts. Rust redundant-closure/needless-clone field traversal is owned. Python, JS/TS, Clojure,
+and Julia text rules consume a pinned compatibility view. Inline directives recurse only through
+owned comment nodes, so marker strings cannot suppress findings. Partial syntax is quarantined before
+rule execution.
+
+**Commands/checks run:** focused matrix/mask/cross-file/dispatch tests; `cargo fmt --all -- --check`;
+`cargo test -p deslop-analyzer -p deslop-parse`; and
+`cargo clippy -p deslop-analyzer -p deslop-parse --all-targets -- -D warnings`.
+
+**Results:** PARTIAL PASS. Analyzer passes 62/62 and parse passes 68/68; strict all-target clippy and
+format checks pass. The terminal matrix owns five revisions at exact cold ledger `1/1/1/0`, produces
+nine pinned findings across valid Rust/Python and malformed TS, keeps TSX clean, is byte-deterministic
+across repeated projections, invalidates identity and the threshold-equality finding when Python NLOC
+policy changes, leaves the ledger unchanged, and records zero legacy parser calls. Additional tests
+pin Rust NodeView idioms, masks plus positive/negative inline suppression, complete cross-file
+duplication, adapter-only ProjectionId invalidation, canonical suppression-path identity, and exact
+Python/JS/TSX/Clojure/Julia stored-adapter dispatch.
+
+**Invalidated assumptions / negative memory:** a bare `Arc<ProjectAnalysis>` cannot authorize
+repository-negative config-boundary claims, so enabled boundary analysis must fail until a complete
+manifest is supplied. Live external paths cannot enter an immutable projection; unavailable is the
+only current authoritative result. `Lang` dispatch and private suppression match roots are invalid
+projection inputs. Worker-thread legacy parse counters alone are insufficient evidence, so source
+guards and ledger oracles remain required. Silently dropping same-analysis Node lookup failures was
+rejected; owned IDs are invariants and now use explicit expectations in the agnostic/inline path.
+
+**Current recommendation/next actions:** add `PreparedAnalyzerAnalysis` with complete boundary input
+coverage, presentation map, and revision-bound external plans; migrate boundary parsing and external
+execution to pinned bytes/mirrors. Then implement the shared planner, cut over analyzer/metrics path
+APIs, remove or privatize the reparsable `SourceFile` bridge, and enforce static no-read/no-parse/
+no-reselection guards on the primary surface.
+
+**Blockers:** no external blocker. Boundary artifacts and external build environments are not yet
+represented as a complete pinned manifest. The registered no-grammar text-pack contract still needs
+an explicit snapshot text-source representation or documented M2 invalidation.
+
+**Dependencies/restart:** `deslop-analyzer` now uses the workspace's existing `serde_json` dependency
+for canonical effective-config bytes. Rebuild Rust consumers. No service restart, cache clear, or data
+migration is required.
+
+**Negative-memory status:** recorded locally; Hindsight consolidation follows. Never reintroduce
+per-pass parsing, live external/boundary reads, Lang/path pack reconstruction, marker-string inline
+suppression, hidden boundary completeness, or suppression-root-dependent primary identity.
+
+**Signature:** Codex (GPT-5), M1.9 integration owner, owned analyzer checkpoint, 2026-07-13.

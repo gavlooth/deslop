@@ -275,7 +275,7 @@ mod tests {
         fn grammar_descriptor_for_path(&self, _path: &Path) -> Option<GrammarDescriptor> {
             Some(GrammarDescriptor::new(
                 Lang::Rust,
-                self.name,
+                "same-lang",
                 "tree-sitter-rust",
                 "test",
             ))
@@ -330,6 +330,12 @@ mod tests {
         extension: "right",
         branch: 11,
     };
+    static ALTERNATE_LEFT_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left-alternate",
+        schema: "same-lang-left/8",
+        extension: "left",
+        branch: 8,
+    };
 
     #[test]
     fn syntax_facts_use_the_exact_stored_pack_when_lang_values_collide() {
@@ -365,5 +371,36 @@ mod tests {
                     .all(|fact| fact.metric_branch_contribution() == branch)
             );
         }
+    }
+
+    #[test]
+    fn projection_identity_changes_when_only_the_stored_adapter_identity_changes() {
+        let root = tempfile::tempdir().unwrap();
+        let build = |adapter: &'static dyn LangPack| {
+            let mut registry = Registry::new(&GENERIC_PACK);
+            registry.register(adapter);
+            let snapshot = ProjectSnapshotBuilder::new(
+                root.path(),
+                RepositoryId::explicit("adapter-projection-identity-test").unwrap(),
+            )
+            .unwrap()
+            .with_registry(registry)
+            .with_overlay("sample.left", b"fn sample() {}\n".to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+            ProjectAnalysis::build(snapshot).unwrap()
+        };
+        let first = build(&LEFT_PACK);
+        let alternate = build(&ALTERNATE_LEFT_PACK);
+        assert_eq!(first.id(), alternate.id());
+        assert_ne!(
+            first
+                .derive_projection_id("test-projection/1", b"policy", b"capability")
+                .unwrap(),
+            alternate
+                .derive_projection_id("test-projection/1", b"policy", b"capability")
+                .unwrap()
+        );
     }
 }

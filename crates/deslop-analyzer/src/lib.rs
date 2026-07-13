@@ -12,8 +12,11 @@ use deslop_core::{
 use deslop_external::{
     CljKondoAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait, ExternalFindings, JuliaAnalyzer,
 };
-use deslop_lang::{Registry as LangRegistry, Rule};
-use deslop_parse::{SourceFile, analysis_provenance_or_failed, parse_source};
+use deslop_lang::{LangPack, Registry as LangRegistry, Rule};
+use deslop_parse::{
+    NodeId, ParsedFile, ProjectAnalysis, ProjectionId, SourceFile, SyntaxAdapterFacts,
+    analysis_provenance_or_failed, parse_source,
+};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
@@ -166,6 +169,96 @@ pub struct ScanContext {
     pub reports: Vec<FileReport>,
     pub input_contents: BTreeMap<PathBuf, String>,
     pub external_capabilities: Vec<ExternalCapability>,
+}
+
+const ANALYZER_PROJECTION_SCHEMA: &str = "deslop.analyzer.projection/1";
+const ANALYZER_CAPABILITIES: &[u8] =
+    b"rules=deslop.analyzer-owned/1\0boundary=disabled\0external=pinned-unavailable";
+
+#[derive(Debug)]
+pub struct AnalyzerProjection {
+    pub id: ProjectionId,
+    pub analysis: Arc<ProjectAnalysis>,
+    pub config: AnalyzerConfigSnapshot,
+    pub reports: Vec<FileReport>,
+    pub input_contents: BTreeMap<PathBuf, String>,
+    pub external_capabilities: Vec<ExternalCapability>,
+}
+
+/// One analyzer view over a file already parsed and owned by `ProjectAnalysis`.
+///
+/// `source` is a compatibility text view over pinned bytes; syntax authority remains
+/// the analysis-owned arena and exact stored adapter facts.
+pub struct AnalyzerFile<'analysis> {
+    pub analysis: &'analysis ProjectAnalysis,
+    pub file: &'analysis ParsedFile,
+    source: SourceFile,
+    adapter: &'static dyn LangPack,
+    facts: Box<[SyntaxAdapterFacts]>,
+    facts_by_node: HashMap<NodeId, usize>,
+}
+
+impl<'analysis> AnalyzerFile<'analysis> {
+    pub fn new(analysis: &'analysis ProjectAnalysis, file: &'analysis ParsedFile) -> Result<Self> {
+        let text = file.text().ok_or_else(|| {
+            anyhow::anyhow!("syntax text unavailable for {}", file.key().path.display())
+        })?;
+        let adapter = analysis.language_adapter(&file.key().path).ok_or_else(|| {
+            anyhow::anyhow!(
+                "stored language adapter unavailable for {}",
+                file.key().path.display()
+            )
+        })?;
+        let facts = analysis.syntax_adapter_facts(&file.key().path)?;
+        let facts_by_node = facts
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| (fact.node(), index))
+            .collect();
+        Ok(Self {
+            analysis,
+            file,
+            source: SourceFile::new_with_lang(
+                file.key().path.clone(),
+                text.to_string(),
+                file.grammar().lang(),
+            ),
+            adapter,
+            facts,
+            facts_by_node,
+        })
+    }
+
+    pub fn source(&self) -> &SourceFile {
+        &self.source
+    }
+
+    pub fn adapter(&self) -> &'static dyn LangPack {
+        self.adapter
+    }
+
+    pub fn node_ids(&self) -> deslop_parse::NodeIds {
+        self.analysis
+            .file_node_ids(&self.file.key().path)
+            .expect("an analyzer file owns its node range")
+    }
+
+    pub fn fact(&self, node: NodeId) -> &SyntaxAdapterFacts {
+        &self.facts[self.facts_by_node[&node]]
+    }
+
+    pub fn child_by_field(&self, node: NodeId, field: &str) -> Option<NodeId> {
+        self.analysis
+            .node(node)
+            .ok()?
+            .children()
+            .into_iter()
+            .find(|child| {
+                self.analysis
+                    .node(*child)
+                    .is_ok_and(|view| view.field() == Some(field))
+            })
+    }
 }
 
 impl Suppression {
@@ -592,6 +685,143 @@ fn clojure_external_analyzer(
     Some(Box::new(CljKondoAnalyzer))
 }
 
+/// Run file-local analyzer rules over one immutable, already-owned analysis.
+///
+/// Project boundary claims require a prepared input manifest and are intentionally rejected by
+/// this source-only entry point. Optional external analyzers are recorded unavailable rather than
+/// consulting live paths.
+pub fn scan_analysis(
+    analysis: Arc<ProjectAnalysis>,
+    config: AnalyzerConfig,
+) -> Result<AnalyzerProjection> {
+    let mut config = config;
+    config.suppression.match_root = None;
+    if config.boundary.enabled {
+        bail!(
+            "owned source-only analysis cannot prove config-boundary coverage; disable boundary analysis or use a prepared analyzer input manifest"
+        );
+    }
+    let config_snapshot = config.snapshot();
+    let policy = serde_json::to_vec(&config_snapshot).context("serialize analyzer policy")?;
+    let id = analysis.derive_projection_id(
+        ANALYZER_PROJECTION_SCHEMA,
+        &policy,
+        ANALYZER_CAPABILITIES,
+    )?;
+    let mut reports = Vec::new();
+    let mut input_contents = BTreeMap::new();
+    let mut external_capabilities = Vec::new();
+    for parsed in analysis.files() {
+        let path = parsed.key().path.clone();
+        if let Some(text) = parsed.text() {
+            input_contents.insert(path.clone(), text.to_string());
+        }
+        let provenance = parsed.provenance().clone();
+        if !provenance.permits_rewrites() {
+            reports.push(FileReport {
+                path,
+                lang: parsed.grammar().lang(),
+                analysis: provenance,
+                findings: Vec::new(),
+            });
+            continue;
+        }
+        let file = AnalyzerFile::new(&analysis, parsed)?;
+        let mut findings = agnostic::findings_analysis(&file, &config);
+        findings.extend(match file.adapter().name() {
+            "clojure" => clojure::findings(file.source()),
+            "julia" => julia::findings(file.source()),
+            "python" => packs::python::python_findings(file.source()),
+            "javascript" | "typescript" => packs::javascript::javascript_findings(file.source()),
+            "rust" => packs::rust::rust_findings_analysis(&file),
+            adapter => bail!(
+                "stored language adapter {adapter:?} has no owned analyzer pack for {}",
+                parsed.key().path.display()
+            ),
+        });
+        record_unavailable_external(&file, &config, &mut external_capabilities);
+        config.suppression.retain(&mut findings);
+        apply_inline_suppression_analysis(&file, &mut findings);
+        sort_findings(&mut findings);
+        reports.push(FileReport {
+            path,
+            lang: parsed.grammar().lang(),
+            analysis: provenance,
+            findings,
+        });
+    }
+    if reports_permit_rewrites(&reports) && reports.len() >= 2 {
+        let files = analysis
+            .files()
+            .map(|parsed| AnalyzerFile::new(&analysis, parsed))
+            .collect::<Result<Vec<_>>>()?;
+        let mut cross_file = tokens::cross_file_duplicate_findings_analysis(&files, &config);
+        config.suppression.retain(&mut cross_file);
+        for file in &files {
+            let mut file_findings = cross_file
+                .iter()
+                .filter(|finding| finding.path == file.file.key().path)
+                .cloned()
+                .collect::<Vec<_>>();
+            apply_inline_suppression_analysis(file, &mut file_findings);
+            if let Some(report) = reports
+                .iter_mut()
+                .find(|report| report.path == file.file.key().path)
+            {
+                for finding in file_findings {
+                    if !report.findings.iter().any(|existing| {
+                        existing.rule == finding.rule
+                            && existing.span == finding.span
+                            && existing.fingerprint == finding.fingerprint
+                    }) {
+                        report.findings.push(finding);
+                    }
+                }
+                sort_findings(&mut report.findings);
+            }
+        }
+    }
+    reports.sort_by(|left, right| left.path.cmp(&right.path));
+    external_capabilities.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then(left.analyzer.cmp(&right.analyzer))
+    });
+    Ok(AnalyzerProjection {
+        id,
+        analysis,
+        config: config_snapshot,
+        reports,
+        input_contents,
+        external_capabilities,
+    })
+}
+
+fn record_unavailable_external(
+    file: &AnalyzerFile<'_>,
+    config: &AnalyzerConfig,
+    out: &mut Vec<ExternalCapability>,
+) {
+    let external = match file.adapter().name() {
+        "clojure" => clojure_external_analyzer(config),
+        "julia" => julia_external_analyzer(config),
+        "rust" => packs::rust::RUST_PACK.external_analyzer(config),
+        _ => None,
+    };
+    if let Some(external) = external {
+        out.push(ExternalCapability {
+            path: file.file.key().path.clone(),
+            analyzer: external.name().to_string(),
+            available: false,
+            covered_rules: external
+                .covered_rules()
+                .iter()
+                .map(|rule| (*rule).to_string())
+                .collect(),
+        });
+    }
+}
+
 pub fn scan_paths(paths: &[PathBuf]) -> Result<Vec<FileReport>> {
     scan_paths_with_config(paths, AnalyzerConfig::default())
 }
@@ -1012,6 +1242,11 @@ fn apply_inline_suppression(source: &SourceFile, findings: &mut Vec<Finding>) {
     findings.retain(|finding| !is_inline_suppressed(finding, &directives));
 }
 
+fn apply_inline_suppression_analysis(file: &AnalyzerFile<'_>, findings: &mut Vec<Finding>) {
+    let directives = inline_suppression_lines_analysis(file);
+    findings.retain(|finding| !is_inline_suppressed(finding, &directives));
+}
+
 fn is_inline_suppressed(finding: &Finding, directives: &InlineSuppressions) -> bool {
     (finding.span.start_line..=finding.span.end_line)
         .any(|line| directives.is_suppressed_on_line(line, &finding.rule))
@@ -1076,6 +1311,49 @@ fn inline_suppression_lines(source: &SourceFile) -> InlineSuppressions {
     }
     collect_comment_directives(tree.root_node(), source, &mut directives);
     directives
+}
+
+fn inline_suppression_lines_analysis(file: &AnalyzerFile<'_>) -> InlineSuppressions {
+    let mut directives = InlineSuppressions::default();
+    let Some(root) = file.node_ids().next() else {
+        return directives;
+    };
+    let root_view = file
+        .analysis
+        .node(root)
+        .expect("AnalyzerFile root belongs to its analysis");
+    if root_view.has_error() {
+        return directives;
+    }
+    collect_comment_directives_analysis(file, root, &mut directives);
+    directives
+}
+
+fn collect_comment_directives_analysis(
+    file: &AnalyzerFile<'_>,
+    node: NodeId,
+    directives: &mut InlineSuppressions,
+) {
+    let view = file
+        .analysis
+        .node(node)
+        .expect("AnalyzerFile NodeId belongs to its analysis");
+    if view.raw_kind().contains("comment") {
+        let line = file.source().line_for_byte(view.span().start_byte());
+        for (line_offset, line_text) in view.text().lines().enumerate() {
+            if let Some((next_line, rule_names)) = inline_ignore_rules_for_line(line_text) {
+                if next_line {
+                    directives.add_next_line(line + line_offset, &rule_names);
+                } else {
+                    directives.add_same_line(line + line_offset, &rule_names);
+                }
+            }
+        }
+        return;
+    }
+    for child in view.children() {
+        collect_comment_directives_analysis(file, child, directives);
+    }
 }
 
 fn collect_comment_directives(

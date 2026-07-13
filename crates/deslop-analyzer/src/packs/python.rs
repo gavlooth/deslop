@@ -45,7 +45,7 @@ impl Rule<SourceFile, AnalyzerConfig, Finding> for PythonRule {
     }
 }
 
-fn python_findings(source: &SourceFile) -> Vec<Finding> {
+pub(crate) fn python_findings(source: &SourceFile) -> Vec<Finding> {
     let none_cmp = Regex::new(r"(?:==|!=)\s*None\b|\bNone\s*(?:==|!=)").expect("regex");
     let range_len = Regex::new(r"\brange\s*\(\s*len\s*\(").expect("regex");
     let dict_keys = Regex::new(r"\bin\s+[A-Za-z_][A-Za-z0-9_]*\.keys\s*\(\s*\)").expect("regex");

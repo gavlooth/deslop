@@ -1,24 +1,44 @@
-use deslop_core::{DetectedBy, Edit, EditKind, Finding, Lang, SafetyClass, Severity, Splice};
+use deslop_core::{DetectedBy, Edit, EditKind, Finding, SafetyClass, Severity, Splice};
 use deslop_lang::{LangPack, Registry as LangRegistry, TailPositionClass};
 use deslop_parse::{SourceFile, parse_source};
 use regex::Regex;
 use tree_sitter::Node;
 
-use crate::{AnalyzerConfig, finding, tokens};
+use crate::{AnalyzerConfig, AnalyzerFile, finding, tokens};
 
 pub(crate) fn findings(source: &SourceFile, config: &AnalyzerConfig) -> Vec<Finding> {
+    let registry = LangRegistry::default();
+    let comments = registry.pack_for_lang(source.lang).line_comments();
     let mut out = Vec::new();
     out.extend(blank_runs(source));
     out.extend(incompleteness(source));
-    out.extend(magic_numbers(source));
+    out.extend(magic_numbers(source, comments));
     out.extend(long_methods(
         source,
         config.long_method_nloc_for(source.lang),
     ));
-    out.extend(narrating_comments(source));
-    out.extend(comment_blocks(source));
+    out.extend(narrating_comments(source, comments));
+    out.extend(comment_blocks(source, comments));
     out.extend(needless_tail_returns(source));
     out.extend(tokens::duplicate_token_sequences(source, config));
+    out
+}
+
+pub(crate) fn findings_analysis(file: &AnalyzerFile<'_>, config: &AnalyzerConfig) -> Vec<Finding> {
+    let source = file.source();
+    let comments = file.adapter().line_comments();
+    let mut out = Vec::new();
+    out.extend(blank_runs(source));
+    out.extend(incompleteness_analysis(file));
+    out.extend(magic_numbers_analysis(file));
+    out.extend(long_methods_analysis(
+        file,
+        config.long_method_nloc_for(source.lang),
+    ));
+    out.extend(narrating_comments(source, comments));
+    out.extend(comment_blocks(source, comments));
+    out.extend(needless_tail_returns_analysis(file));
+    out.extend(tokens::duplicate_token_sequences_analysis(file, config));
     out
 }
 
@@ -53,6 +73,58 @@ fn incompleteness(source: &SourceFile) -> Vec<Finding> {
     out
 }
 
+fn incompleteness_analysis(file: &AnalyzerFile<'_>) -> Vec<Finding> {
+    incompleteness_with_ranges(file.source(), string_comment_ranges_analysis(file))
+}
+
+fn incompleteness_with_ranges(source: &SourceFile, masked: Vec<(usize, usize)>) -> Vec<Finding> {
+    let mut out = Vec::new();
+    let stub = Regex::new(
+        r#"(?i)(todo!\s*\(|unimplemented!\s*\(|TODO\s*:?\s*implement|throw\b.*TODO|error\s*\(\s*["']TODO|@assert\s+false|not\s+implemented|\bplaceholder\b)"#,
+    )
+    .expect("valid regex");
+    for (idx, line) in source.lines().iter().enumerate() {
+        let line_start = source.line_start_byte(idx + 1);
+        if stub
+            .find_iter(line)
+            .any(|matched| !byte_in_ranges(line_start + matched.start(), &masked))
+        {
+            out.push(finding(
+                source,
+                idx + 1,
+                idx + 1,
+                "incompleteness",
+                Severity::Major,
+                SafetyClass::LlmOnly,
+                DetectedBy::Text,
+                "placeholder or unimplemented code remains",
+                "replace the stub with real behavior or remove the unreachable path",
+                None,
+                None,
+            ));
+        }
+    }
+    out
+}
+
+fn string_comment_ranges_analysis(file: &AnalyzerFile<'_>) -> Vec<(usize, usize)> {
+    file.node_ids()
+        .filter_map(|node| {
+            let view = file
+                .analysis
+                .node(node)
+                .expect("AnalyzerFile NodeId belongs to its analysis");
+            let kind = view.raw_kind();
+            (kind.contains("string") || kind.contains("str_lit") || kind.contains("comment")).then(
+                || {
+                    let span = view.span();
+                    (span.start_byte(), span.end_byte())
+                },
+            )
+        })
+        .collect()
+}
+
 /// Byte ranges of string-literal and comment nodes, so text-based rules can
 /// skip trigger words that appear inside strings/comments (e.g. a log message
 /// or this rule's own pattern definition containing "TODO"). Empty when the
@@ -84,7 +156,7 @@ fn byte_in_ranges(byte: usize, ranges: &[(usize, usize)]) -> bool {
         .any(|&(start, end)| byte >= start && byte < end)
 }
 
-fn magic_numbers(source: &SourceFile) -> Vec<Finding> {
+fn magic_numbers(source: &SourceFile, comments: &[&str]) -> Vec<Finding> {
     let mut out = Vec::new();
     // Suppress literals that live inside strings/comments (e.g. numbers in a
     // docstring) or inside a named-constant definition (binding a literal to a
@@ -92,7 +164,51 @@ fn magic_numbers(source: &SourceFile) -> Vec<Finding> {
     let mut masked = string_comment_ranges(source);
     masked.extend(constant_definition_ranges(source));
     for (idx, line) in source.lines().iter().enumerate() {
-        let code = code_before_comment(line, source.lang);
+        let code = code_before_comment_with_tokens(line, comments);
+        if should_skip_magic_number_line(code) {
+            continue;
+        }
+        if let Some(offset) = first_magic_number(code) {
+            let byte = source.line_start_byte(idx + 1) + offset;
+            if byte_in_ranges(byte, &masked) {
+                continue;
+            }
+            out.push(finding(
+                source,
+                idx + 1,
+                idx + 1,
+                "magic-number",
+                Severity::Minor,
+                SafetyClass::RiskySuggest,
+                DetectedBy::Text,
+                "inline numeric literal should probably be a named constant",
+                "introduce a named constant if the number encodes domain policy",
+                None,
+                None,
+            ));
+            break;
+        }
+    }
+    out
+}
+
+fn magic_numbers_analysis(file: &AnalyzerFile<'_>) -> Vec<Finding> {
+    let source = file.source();
+    let mut masked = string_comment_ranges_analysis(file);
+    masked.extend(file.node_ids().filter_map(|node| {
+        if !file.fact(node).is_constant_definition_region() {
+            return None;
+        }
+        let span = file
+            .analysis
+            .node(node)
+            .expect("AnalyzerFile NodeId belongs to its analysis")
+            .span();
+        Some((span.start_byte(), span.end_byte()))
+    }));
+    let mut out = Vec::new();
+    for (idx, line) in source.lines().iter().enumerate() {
+        let code = code_before_comment_with_tokens(line, file.adapter().line_comments());
         if should_skip_magic_number_line(code) {
             continue;
         }
@@ -223,6 +339,44 @@ fn long_methods(source: &SourceFile, long_method_nloc: usize) -> Vec<Finding> {
     out
 }
 
+fn long_methods_analysis(file: &AnalyzerFile<'_>, long_method_nloc: usize) -> Vec<Finding> {
+    if file.adapter().metrics_regions().is_empty() {
+        return Vec::new();
+    }
+    let source = file.source();
+    let mut out = Vec::new();
+    for node in file.node_ids() {
+        if !file.fact(node).is_long_method_region() {
+            continue;
+        }
+        let view = file
+            .analysis
+            .node(node)
+            .expect("AnalyzerFile NodeId belongs to its analysis");
+        let span = view.span();
+        let start_line = span.start_point().row() + 1;
+        let end_line = span.end_point().row() + 1;
+        let text = source.region_text(start_line, end_line);
+        let nloc = nloc(&text, file.adapter().line_comments());
+        if nloc >= long_method_nloc {
+            out.push(finding(
+                source,
+                start_line,
+                end_line,
+                "long-method",
+                Severity::Major,
+                SafetyClass::LlmOnly,
+                DetectedBy::Complexity,
+                &format!("method has {nloc} non-comment line(s)"),
+                "extract cohesive helpers or reduce unstructured statement bloat",
+                None,
+                None,
+            ));
+        }
+    }
+    out
+}
+
 fn collect_long_methods(
     source: &SourceFile,
     node: Node<'_>,
@@ -284,6 +438,66 @@ fn needless_tail_returns(source: &SourceFile) -> Vec<Finding> {
     let mut out = Vec::new();
     collect_tail_returns(source, tree.root_node(), pack, &mut out);
     out
+}
+
+fn needless_tail_returns_analysis(file: &AnalyzerFile<'_>) -> Vec<Finding> {
+    let source = file.source();
+    let mut out = Vec::new();
+    for node in file.node_ids() {
+        if file.fact(node).tail_position_class() != TailPositionClass::Return
+            || !is_function_tail_return_analysis(file, node)
+        {
+            continue;
+        }
+        let view = file
+            .analysis
+            .node(node)
+            .expect("AnalyzerFile NodeId belongs to its analysis");
+        let span = view.span();
+        out.push(finding(
+            source,
+            span.start_point().row() + 1,
+            span.end_point().row() + 1,
+            "needless-return",
+            Severity::Minor,
+            SafetyClass::SafeWithPrecondition,
+            DetectedBy::Idiom,
+            "tail-position return can usually be an expression",
+            "remove return only after tests/typecheck pass",
+            Some("return is in tail position and control flow remains unchanged"),
+            None,
+        ));
+    }
+    out
+}
+
+fn is_function_tail_return_analysis(file: &AnalyzerFile<'_>, node: deslop_parse::NodeId) -> bool {
+    let view = file
+        .analysis
+        .node(node)
+        .expect("AnalyzerFile NodeId belongs to its analysis");
+    let mut ancestor = view.parent();
+    let body = loop {
+        let Some(candidate) = ancestor else {
+            return false;
+        };
+        if file.fact(candidate).tail_position_class() == TailPositionClass::FunctionBody {
+            break candidate;
+        }
+        ancestor = file
+            .analysis
+            .node(candidate)
+            .expect("AnalyzerFile ancestor belongs to its analysis")
+            .parent();
+    };
+    let body = file
+        .analysis
+        .node(body)
+        .expect("AnalyzerFile function body belongs to its analysis");
+    file.source()
+        .text
+        .get(view.span().end_byte()..body.span().end_byte())
+        .is_some_and(|tail| tail.chars().all(is_tail_padding))
 }
 
 fn collect_tail_returns(
@@ -401,19 +615,19 @@ fn blank_run_finding(source: &SourceFile, start_line: usize, end_line: usize) ->
     )
 }
 
-fn narrating_comments(source: &SourceFile) -> Vec<Finding> {
+fn narrating_comments(source: &SourceFile, comments: &[&str]) -> Vec<Finding> {
     let narration = Regex::new(
         r"(?i)^(import|initialize|define|create|loop|iterate|return|set|get|check|increment|call|assign|print|update|add|remove|now|first|then|next|finally|step\s*\d+|handle|store|compute|calculate|convert|build|setup|start|end|begin|this\s+(function|method|block|loop|line|variable|code)|we\s+(now|then|will|need)|let'?s)\b",
     )
     .expect("valid regex");
     let mut out = Vec::new();
-    let comment_block_lines = full_comment_block_lines(source);
+    let comment_block_lines = full_comment_block_lines(source, comments);
     for (idx, line) in source.lines().iter().enumerate() {
         let line_no = idx + 1;
         if comment_block_lines.contains(&line_no) {
             continue;
         }
-        let Some((comment, _col)) = line_comment(line, source.lang) else {
+        let Some((comment, _col)) = line_comment(line, comments) else {
             continue;
         };
         let text = comment.trim();
@@ -439,13 +653,16 @@ fn narrating_comments(source: &SourceFile) -> Vec<Finding> {
     out
 }
 
-fn full_comment_block_lines(source: &SourceFile) -> std::collections::BTreeSet<usize> {
+fn full_comment_block_lines(
+    source: &SourceFile,
+    comments: &[&str],
+) -> std::collections::BTreeSet<usize> {
     let lines = source.lines();
     let mut out = std::collections::BTreeSet::new();
     let mut run = Vec::new();
     for (idx, line) in lines.iter().enumerate() {
         let is_full_comment =
-            line_comment(line, source.lang).is_some_and(|(_, col)| line[..col].trim().is_empty());
+            line_comment(line, comments).is_some_and(|(_, col)| line[..col].trim().is_empty());
         if is_full_comment {
             run.push(idx + 1);
             continue;
@@ -461,14 +678,14 @@ fn full_comment_block_lines(source: &SourceFile) -> std::collections::BTreeSet<u
     out
 }
 
-fn comment_blocks(source: &SourceFile) -> Vec<Finding> {
+fn comment_blocks(source: &SourceFile, comments: &[&str]) -> Vec<Finding> {
     let mut out = Vec::new();
     let mut run_start: Option<usize> = None;
     let mut seen_code = false;
     for (idx, line) in source.lines().iter().enumerate() {
         let line_no = idx + 1;
         let is_full_comment =
-            line_comment(line, source.lang).is_some_and(|(_, col)| line[..col].trim().is_empty());
+            line_comment(line, comments).is_some_and(|(_, col)| line[..col].trim().is_empty());
         if is_full_comment {
             run_start.get_or_insert(line_no);
             continue;
@@ -511,21 +728,14 @@ fn comment_block_finding(source: &SourceFile, start_line: usize, end_line: usize
     )
 }
 
-fn line_comment(line: &str, lang: Lang) -> Option<(&str, usize)> {
-    LangRegistry::default()
-        .pack_for_lang(lang)
-        .line_comments()
+fn line_comment<'a>(line: &'a str, comments: &[&str]) -> Option<(&'a str, usize)> {
+    comments
         .iter()
         .filter_map(|token| {
             line.find(token)
                 .map(|idx| (&line[idx + token.len()..], idx))
         })
         .min_by_key(|(_, idx)| *idx)
-}
-
-fn code_before_comment(line: &str, lang: Lang) -> &str {
-    let registry = LangRegistry::default();
-    code_before_comment_with_tokens(line, registry.pack_for_lang(lang).line_comments())
 }
 
 fn code_before_comment_with_tokens<'a>(line: &'a str, comment_tokens: &[&str]) -> &'a str {

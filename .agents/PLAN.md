@@ -1025,6 +1025,15 @@ earliest semantic metric owner occurring on that line, falling back to File resi
 line contains no metric-owned byte; this preserves prefixed TS/TSX callable NLOC while assigning a
 same-line nested callable line to the outer owner exactly once.
 
+Analyzer checkpoint update (2026-07-13): the source-only owned analyzer projection now migrates
+file-local agnostic/language/Rust rules, source-wide duplication masks and segments, cross-file
+duplication, configured suppression, and inline comment directives. It rejects enabled boundary
+analysis without a pinned manifest and records requested external analyzers unavailable instead of
+consulting live paths. The active next step is `PreparedAnalyzerAnalysis` plus snapshot-pinned
+boundary/external manifests, followed by the shared root/discovery/read/presentation planner and
+legacy path adapter cutover. The temporary internal `SourceFile` text bridge must be removed or made
+non-reparsable before M1.9 completion.
+
 Negative-memory constraints: do not expose borrowed Tree-sitter nodes; duplicate `LangPack` raw-kind
 logic; infer durable identity from reanchors; union nested inclusive metric regions; reread paths after
 snapshot construction; use path-selected language instead of stored grammar; or count an incremental

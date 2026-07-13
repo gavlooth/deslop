@@ -69,7 +69,7 @@ impl Rule<SourceFile, AnalyzerConfig, Finding> for JavaScriptRule {
     }
 }
 
-fn javascript_findings(source: &SourceFile) -> Vec<Finding> {
+pub(crate) fn javascript_findings(source: &SourceFile) -> Vec<Finding> {
     let loose_eq = Regex::new(r"(^|[^=!])(?:==|!=)([^=]|$)").expect("regex");
     let var_decl = Regex::new(r"^\s*var\s+").expect("regex");
     let unnecessary_await = Regex::new(r"\breturn\s+await\b").expect("regex");
