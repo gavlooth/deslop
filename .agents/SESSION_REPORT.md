@@ -6595,3 +6595,72 @@ external analyzers and config/build artifacts need a snapshot-pinned read manife
 results can retain authority.
 
 **Signature:** Codex (GPT-5), M1.9 integration owner, partial checkpoint, 2026-07-13.
+
+---
+
+## M1.9 metrics projection checkpoint — exclusive ownership and exact adapters
+
+**Date/time:** 2026-07-13T21:33:44+02:00
+
+**Objective/target:** complete the primary metrics half of M1.9 on one immutable shared analysis,
+with deterministic projection identity, exact stored language adapters, reset-aware evidence, and
+terminal numerical/error contracts before beginning analyzer rule migration.
+
+**Changes:** `SnapshotEntry::Source` now retains the exact selected `LangPack` plus its versioned
+name/schema identity; `ProjectSnapshotBuilder` accepts an injected registry and uses it for overlay
+validation, discovery, and grammar resolution. `SyntaxAdapterFacts` uses that stored adapter and
+validates every private Tree node against its owned arena slot across visible/grammar kinds and IDs,
+byte/point spans, fields, and recovery flags. `ProjectAnalysis::derive_projection_id` binds the
+analysis, canonical policy bytes, capability bytes, and sorted per-path adapter identities.
+`MetricsProjection` owns the `Arc<ProjectAnalysis>`, config, ID, and unchanged `/5` report.
+
+Metrics now resolves semantic reset collisions, folds exclusive ranges once, tokenizes each pinned
+file once with absolute offsets, assigns every token to one reset/File owner, assigns each physical
+line once, excludes nested reset subtrees from outer AST evidence, and retains exact File residual.
+The line policy selects the earliest semantic metric owner occurring on a nonblank line and otherwise
+uses File residual; it preserves prefixed TypeScript/TSX callable NLOC while same-line nested Rust is
+charged only to the outer callable. Legacy source/path APIs remain temporarily present; analyzer and
+planner migration are still required before M1.9 completion.
+
+**Commands/checks run:** `cargo test -p deslop-lang -p deslop-parse -p deslop-metrics`; repeated
+focused metrics and adapter tests; `cargo check -p deslop-parse -p deslop-metrics`; `cargo fmt --all`;
+and `cargo clippy -p deslop-metrics --all-targets -- -D warnings`.
+
+**Results:** PARTIAL PASS. Language tests pass 1/1, parse passes 67/67 after the decisive same-`Lang`
+two-adapter regression test, and metrics passes 27/27. The Python fixture conserves 364 bytes and 12
+NLOC across File plus five semantic owners. Cold parse ledger is exactly `1/1/1/0`, repeated
+projections leave it unchanged, legacy parsing remains zero, independent analyses with reversed input
+order produce identical projection/report identities, sigma changes projection identity, malformed
+TS/TSX plus valid Rust yields a clean Partial report with no project-relative claims, and strict
+metrics clippy passes.
+
+**Invalidated assumptions / negative memory:** selecting semantic hooks via `pack_for_lang` is
+invalid because multiple packs may share one `Lang`; exact snapshot-selected adapter identity is now
+the authority. Tree/arena cardinality alone is insufficient; full slot parity is required. Tokenizing
+exclusive ranges independently is invalid because operator/comment state crosses arena boundaries;
+tokenize once source-wide, then attribute by absolute token start. Semantic enclosing spans are not
+one-to-one (nested Clojure callables collide), so reset candidates require explicit one-to-one owner
+resolution. Post-hoc display-path rebasing remains invalid because paths affect ordering, ranks,
+fingerprints, messages, and suppression.
+
+**Current recommendation/next actions:** implement `PreparedAnalyzerAnalysis`, `AnalyzerFile`, and an
+owned `AnalyzerProjection`; migrate provenance, agnostic traversals, token/range logic, Rust rules,
+suppression, duplication, boundary, and external capability handling without `parse_source`, path
+reads, or `pack_for_lang`. Then implement the shared root/discovery/read/presentation planner and make
+both metrics/analyzer path APIs one-snapshot adapters.
+
+**Blockers:** none. Serena remains unavailable for Rust symbols, so local Rust inspection is the
+documented fallback. A bare analysis cannot prove complete boundary/external input capture; the
+prepared analyzer manifest must make unavailable/incomplete coverage explicit. The no-grammar custom
+text-pack analyzer contract also needs an explicit snapshot text-source representation or a documented
+M2 invalidation; a hidden legacy fallback is not acceptable.
+
+**Dependencies/restart:** rebuild Rust consumers for the additive adapter identity, registry builder,
+projection ID, and metrics projection APIs. No new dependency, service restart, cache clear, or data
+migration is required.
+
+**Negative-memory status:** recorded locally in this report; Hindsight consolidation follows this
+checkpoint. Never reintroduce per-range tokenization, `pack_for_lang` reconstruction, count-only
+Tree/arena pairing, collided reset ownership, or post-hoc path rebasing.
+
+**Signature:** Codex (GPT-5), M1.9 integration owner, metrics projection checkpoint, 2026-07-13.

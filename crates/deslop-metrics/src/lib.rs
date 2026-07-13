@@ -1,12 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::ops::Range;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use deslop_core::{AnalysisStatus, FileAnalysis, Lang, Span, file_analyses_status};
 use deslop_lang::{LangPack, RegionClass, RegionSpan, Registry};
 use deslop_parse::{
-    NodeId, ParsedFile, ProjectAnalysis, SourceFile, SyntaxAdapterFacts,
-    analysis_provenance_or_failed, parse_source,
+    InclusiveSyntaxPolicy, NodeId, ParsedFile, ProjectAnalysis, ProjectionId, SourceFile,
+    SyntaxAdapterFacts, analysis_provenance_or_failed, parse_source,
 };
 use ignore::WalkBuilder;
 use serde::Serialize;
@@ -33,6 +35,25 @@ pub struct MetricsReport {
     pub heuristic_burden_distribution: Option<BurdenDistribution>,
     pub hotspots: Vec<Hotspot>,
     pub heuristic_model: HeuristicBurdenModel,
+}
+
+const METRICS_PROJECTION_SCHEMA: &str = "deslop.metrics.projection/1";
+const METRICS_CAPABILITIES: &[u8] = b"report=deslop.metrics/5\0heuristic=deslop-heuristic-burden/1";
+
+#[derive(Debug)]
+pub struct MetricsProjection {
+    pub id: ProjectionId,
+    pub analysis: Arc<ProjectAnalysis>,
+    pub config: MetricsConfig,
+    pub report: MetricsReport,
+}
+
+impl std::ops::Deref for MetricsProjection {
+    type Target = MetricsReport;
+
+    fn deref(&self) -> &Self::Target {
+        &self.report
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -160,6 +181,7 @@ pub struct RepoRelativeBurden {
 struct Token {
     text: String,
     is_comment: bool,
+    start_byte: usize,
 }
 
 pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<MetricsReport> {
@@ -219,9 +241,23 @@ pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<Metrics
 
 /// Compute metrics from one already-owned immutable project analysis without reading or parsing.
 pub fn metrics_analysis(
-    analysis: &ProjectAnalysis,
+    analysis: Arc<ProjectAnalysis>,
     config: MetricsConfig,
-) -> Result<MetricsReport> {
+) -> Result<MetricsProjection> {
+    let mut policy = b"sigma-f64-le\0".to_vec();
+    policy.extend_from_slice(&config.sigma.to_bits().to_le_bytes());
+    let id =
+        analysis.derive_projection_id(METRICS_PROJECTION_SCHEMA, &policy, METRICS_CAPABILITIES)?;
+    let report = metrics_report(&analysis, config)?;
+    Ok(MetricsProjection {
+        id,
+        analysis,
+        config,
+        report,
+    })
+}
+
+fn metrics_report(analysis: &ProjectAnalysis, config: MetricsConfig) -> Result<MetricsReport> {
     let mut functions = Vec::new();
     let mut analyses = Vec::new();
     for file in analysis.files() {
@@ -256,9 +292,11 @@ fn finish_metrics_report(
     let heuristic_outliers = heuristic_burden_distribution.map_or_else(Vec::new, |distribution| {
         detect_heuristic_outliers(&functions, distribution)
     });
-    let hotspots = authoritative
-        .then(|| detect_hotspots(&functions, config.sigma))
-        .unwrap_or_default();
+    let hotspots = if authoritative {
+        detect_hotspots(&functions, config.sigma)
+    } else {
+        Vec::new()
+    };
     Ok(MetricsReport {
         schema: "deslop.metrics/5",
         status,
@@ -314,11 +352,19 @@ impl<'analysis> MetricFile<'analysis> {
 
 fn metrics_file(analysis: &ProjectAnalysis, file: &ParsedFile) -> Result<Vec<RegionMetrics>> {
     let context = MetricFile::new(analysis, file)?;
-    let pack = Registry::default().pack_for_lang(file.grammar().lang());
+    let pack = analysis
+        .language_adapter(&file.key().path)
+        .with_context(|| {
+            format!(
+                "missing stored language adapter for {}",
+                file.key().path.display()
+            )
+        })?;
     let regions = metric_regions_owned(pack, &context)?;
+    let ownership = metric_ownership(pack, &context, &regions)?;
     Ok(regions
         .into_iter()
-        .map(|region| measure_region_owned(pack, &context, region))
+        .map(|region| measure_region_owned(pack, &context, &ownership, region))
         .collect())
 }
 
@@ -557,6 +603,8 @@ fn metric_regions_owned(pack: &dyn LangPack, source: &MetricFile<'_>) -> Result<
     collect_regions_owned(root, pack, source, &mut regions);
     if regions.is_empty() {
         regions.push(whole_file_region_owned(source, Some(root)));
+    } else {
+        assign_semantic_region_owners(&mut regions, source);
     }
     Ok(regions)
 }
@@ -581,6 +629,7 @@ fn collect_regions_owned(
                 .enclosing_region()
                 .unwrap_or_else(|| region_from_view(view.span(), source.text().len())),
             node: Some(node),
+            semantic_owner: None,
             legacy_node: None,
         });
     }
@@ -600,8 +649,215 @@ fn whole_file_region_owned(source: &MetricFile<'_>, node: Option<NodeId>) -> Met
             end_byte: source.text().len(),
         },
         node,
+        semantic_owner: node,
         legacy_node: None,
     }
+}
+
+fn semantic_region_owner(node: NodeId, source: &MetricFile<'_>) -> NodeId {
+    let region = source.fact(node).enclosing_region();
+    let Some(region) = region else {
+        return node;
+    };
+    let expected = region.start_byte..region.end_byte;
+    let mut owner = node;
+    let mut cursor = Some(node);
+    while let Some(candidate) = cursor {
+        let view = source
+            .analysis
+            .node(candidate)
+            .expect("candidate is analysis-owned");
+        if view.span().byte_range() == expected {
+            owner = candidate;
+        }
+        cursor = view.parent();
+    }
+    owner
+}
+
+fn assign_semantic_region_owners(regions: &mut [MetricRegion], source: &MetricFile<'_>) {
+    let candidates = regions
+        .iter()
+        .map(|region| {
+            let node = region.node.expect("declared metric region has a node");
+            semantic_region_owner(node, source)
+        })
+        .collect::<Vec<_>>();
+    let mut groups = HashMap::<NodeId, Vec<usize>>::new();
+    for (index, candidate) in candidates.iter().copied().enumerate() {
+        groups.entry(candidate).or_default().push(index);
+    }
+    for (candidate, indices) in groups {
+        if indices.len() == 1 {
+            regions[indices[0]].semantic_owner = Some(candidate);
+            continue;
+        }
+        let canonical = indices
+            .iter()
+            .copied()
+            .find(|index| regions[*index].node == Some(candidate));
+        for index in indices {
+            regions[index].semantic_owner = Some(if Some(index) == canonical {
+                candidate
+            } else {
+                regions[index]
+                    .node
+                    .expect("declared metric region has a node")
+            });
+        }
+    }
+    let owners = regions
+        .iter()
+        .map(|region| region.semantic_owner.unwrap())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        owners.len(),
+        regions.len(),
+        "semantic metric reset owners must be one-to-one"
+    );
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct OwnedRanges {
+    ranges: BTreeSet<(usize, usize)>,
+}
+
+impl OwnedRanges {
+    fn insert(&mut self, range: Range<usize>) {
+        self.ranges.insert((range.start, range.end));
+    }
+
+    fn merge(&mut self, other: &Self) {
+        self.ranges.extend(other.ranges.iter().copied());
+    }
+
+    fn contains(&self, byte: usize) -> bool {
+        self.ranges
+            .iter()
+            .any(|(start, end)| *start <= byte && byte < *end)
+    }
+
+    fn bytes(&self) -> usize {
+        self.ranges.iter().map(|(start, end)| end - start).sum()
+    }
+
+    fn first_byte_in(&self, start: usize, end: usize) -> Option<usize> {
+        self.ranges.iter().find_map(|(range_start, range_end)| {
+            let candidate = (*range_start).max(start);
+            (candidate < (*range_end).min(end)).then_some(candidate)
+        })
+    }
+}
+
+#[derive(Debug)]
+struct MetricOwnership {
+    by_owner: HashMap<NodeId, OwnedRanges>,
+    tokens_by_owner: HashMap<NodeId, Vec<Token>>,
+    nloc_by_owner: HashMap<NodeId, usize>,
+    comment_lines_by_owner: HashMap<NodeId, usize>,
+    file_ranges: OwnedRanges,
+    file_tokens: Vec<Token>,
+    file_nloc: usize,
+    file_comment_lines: usize,
+}
+
+fn metric_ownership(
+    pack: &dyn LangPack,
+    source: &MetricFile<'_>,
+    regions: &[MetricRegion],
+) -> Result<MetricOwnership> {
+    let mut reset_nodes = regions
+        .iter()
+        .filter_map(|region| region.semantic_owner)
+        .collect::<Vec<_>>();
+    reset_nodes.sort_unstable();
+    reset_nodes.dedup();
+    let aggregates = source.analysis.fold_syntax_aggregates(
+        &source.file.key().path,
+        InclusiveSyntaxPolicy::ResetAt(&reset_nodes),
+        |_| OwnedRanges::default(),
+        |ranges, region| ranges.insert(region.byte_range()),
+        OwnedRanges::merge,
+    )?;
+    let file_ranges = aggregates.file_declared_inclusive().clone();
+    let by_owner = reset_nodes
+        .iter()
+        .map(|node| {
+            Ok((
+                *node,
+                aggregates
+                    .node(*node)
+                    .map_err(anyhow::Error::from)?
+                    .declared_inclusive()
+                    .clone(),
+            ))
+        })
+        .collect::<Result<HashMap<_, _>>>()?;
+
+    let mut nloc_by_owner = HashMap::new();
+    let mut comment_lines_by_owner = HashMap::new();
+    let mut file_nloc = 0;
+    let mut file_comment_lines = 0;
+    for line in 0..source.file.line_starts().len() {
+        let start = source.file.line_starts()[line];
+        let end = source
+            .file
+            .line_starts()
+            .get(line + 1)
+            .copied()
+            .unwrap_or_else(|| source.text().len());
+        let line_text = source.text().get(start..end).unwrap_or("");
+        let trimmed = line_text.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let first = start
+            + line_text
+                .find(|character: char| !character.is_whitespace())
+                .unwrap();
+        let is_comment = pack
+            .line_comments()
+            .iter()
+            .any(|token| trimmed.starts_with(token));
+        let owner = by_owner
+            .iter()
+            .filter_map(|(owner, ranges)| {
+                ranges
+                    .first_byte_in(first, end)
+                    .map(|owned_byte| (owned_byte, *owner))
+            })
+            .min()
+            .map(|(_, owner)| owner);
+        match (owner, is_comment) {
+            (Some(owner), true) => *comment_lines_by_owner.entry(owner).or_default() += 1,
+            (Some(owner), false) => *nloc_by_owner.entry(owner).or_default() += 1,
+            (None, true) if file_ranges.contains(first) => file_comment_lines += 1,
+            (None, false) if file_ranges.contains(first) => file_nloc += 1,
+            _ => {}
+        }
+    }
+    let mut tokens_by_owner = HashMap::<NodeId, Vec<Token>>::new();
+    let mut file_tokens = Vec::new();
+    for token in tokenize(source.text(), pack.line_comments()) {
+        if let Some(owner) = by_owner
+            .iter()
+            .find_map(|(owner, ranges)| ranges.contains(token.start_byte).then_some(*owner))
+        {
+            tokens_by_owner.entry(owner).or_default().push(token);
+        } else if file_ranges.contains(token.start_byte) {
+            file_tokens.push(token);
+        }
+    }
+    Ok(MetricOwnership {
+        by_owner,
+        tokens_by_owner,
+        nloc_by_owner,
+        comment_lines_by_owner,
+        file_ranges,
+        file_tokens,
+        file_nloc,
+        file_comment_lines,
+    })
 }
 
 fn collect_regions(
@@ -621,6 +877,7 @@ fn collect_regions(
                 .enclosing_region(node, text)
                 .unwrap_or_else(|| region_from_node(node, text)),
             node: None,
+            semantic_owner: None,
             legacy_node: Some(node_range(node)),
         });
     }
@@ -642,6 +899,7 @@ fn whole_file_region(source: &SourceFile, node: Option<NodeRange>) -> MetricRegi
             end_byte: source.text.len(),
         },
         node: None,
+        semantic_owner: None,
         legacy_node: node,
     }
 }
@@ -695,28 +953,53 @@ fn measure_region(pack: &dyn LangPack, source: &SourceFile, region: MetricRegion
 fn measure_region_owned(
     pack: &dyn LangPack,
     source: &MetricFile<'_>,
+    ownership: &MetricOwnership,
     region: MetricRegion,
 ) -> RegionMetrics {
-    let text = source
-        .text()
-        .get(region.span.start_byte..region.span.end_byte)
-        .unwrap_or("");
-    let tokens = tokenize(text, pack.line_comments());
+    let owner = region
+        .semantic_owner
+        .expect("owned metric region has a semantic owner");
+    let owned = &ownership.by_owner[&owner];
+    let mut tokens = ownership
+        .tokens_by_owner
+        .get(&owner)
+        .cloned()
+        .unwrap_or_default();
+    let mut bytes = Vec::with_capacity(owned.bytes());
+    for (start, end) in &owned.ranges {
+        let text = source.text().get(*start..*end).unwrap_or("");
+        bytes.extend_from_slice(text.as_bytes());
+    }
+    let mut nloc = ownership.nloc_by_owner.get(&owner).copied().unwrap_or(0);
+    let mut comment_lines = ownership
+        .comment_lines_by_owner
+        .get(&owner)
+        .copied()
+        .unwrap_or(0);
+    if region.kind == "file" {
+        tokens.extend(ownership.file_tokens.iter().cloned());
+        for (start, end) in &ownership.file_ranges.ranges {
+            let text = source.text().get(*start..*end).unwrap_or("");
+            bytes.extend_from_slice(text.as_bytes());
+        }
+        nloc += ownership.file_nloc;
+        comment_lines += ownership.file_comment_lines;
+    }
     let halstead = halstead(&tokens, pack);
+    let reset_nodes = ownership.by_owner.keys().copied().collect::<BTreeSet<_>>();
     let ast = region
         .node
-        .map(|node| ast_complexity_owned(node, source))
+        .map(|node| ast_complexity_owned(node, source, &reset_nodes))
         .unwrap_or_default();
-    let nloc = nloc(text, pack.line_comments());
     let cyclomatic = ast.branch_count as f64 + 1.0;
     let maintainability_index = maintainability_index(halstead.volume, cyclomatic, nloc);
     let complexity = complexity_metrics(ast, cyclomatic, nloc, maintainability_index);
-    let expressivity = expressivity(
-        text,
+    let expressivity = expressivity_from_evidence(
         &tokens,
         cyclomatic,
         nloc,
-        pack.line_comments(),
+        comment_lines,
+        byte_entropy_bits_per_bytes(&bytes),
         ast.information,
     );
     let heuristic_burden = heuristic_burden_metrics(
@@ -829,47 +1112,70 @@ fn ast_complexity(node: Node<'_>, pack: &dyn LangPack, text: &str) -> AstStats {
     stats
 }
 
-fn ast_complexity_owned(node: NodeId, source: &MetricFile<'_>) -> AstStats {
-    fn visit(
-        node: NodeId,
-        source: &MetricFile<'_>,
-        nesting: usize,
-        stats: &mut AstStats,
-        kinds: &mut BTreeMap<String, usize>,
-        leaf_tokens: &mut BTreeMap<String, usize>,
-    ) {
-        let view = source.analysis.node(node).expect("node is analysis-owned");
-        let kind = view.raw_kind();
-        stats.node_count += 1;
-        *kinds.entry(kind.to_string()).or_insert(0) += 1;
-        if view.is_leaf() && !kind.contains("comment") {
-            let token = view.text();
-            if !token.trim().is_empty() {
-                *leaf_tokens.entry(token.to_string()).or_insert(0) += 1;
+fn ast_complexity_owned(
+    node: NodeId,
+    source: &MetricFile<'_>,
+    reset_nodes: &BTreeSet<NodeId>,
+) -> AstStats {
+    struct Visitor<'visit, 'analysis> {
+        source: &'visit MetricFile<'analysis>,
+        root: NodeId,
+        reset_nodes: &'visit BTreeSet<NodeId>,
+        stats: AstStats,
+        kinds: BTreeMap<String, usize>,
+        leaf_tokens: BTreeMap<String, usize>,
+    }
+
+    impl Visitor<'_, '_> {
+        fn visit(&mut self, node: NodeId, nesting: usize) {
+            if node != self.root && self.reset_nodes.contains(&node) {
+                return;
+            }
+            let view = self
+                .source
+                .analysis
+                .node(node)
+                .expect("node is analysis-owned");
+            let kind = view.raw_kind();
+            self.stats.node_count += 1;
+            *self.kinds.entry(kind.to_string()).or_insert(0) += 1;
+            if view.is_leaf() && !kind.contains("comment") {
+                let token = view.text();
+                if !token.trim().is_empty() {
+                    *self.leaf_tokens.entry(token.to_string()).or_insert(0) += 1;
+                }
+            }
+            let fact = self.source.fact(node);
+            let branch_contribution = fact.metric_branch_contribution();
+            if branch_contribution > 0 {
+                self.stats.branch_count += branch_contribution;
+                self.stats.cognitive += branch_contribution * (1 + nesting);
+            }
+            if fact.is_metric_flow_break() {
+                self.stats.cognitive += 1;
+            }
+            let next_nesting = nesting + usize::from(fact.is_metric_nesting());
+            self.stats.max_nesting = self.stats.max_nesting.max(next_nesting);
+            for child in view.children() {
+                self.visit(child, next_nesting);
             }
         }
-        let fact = source.fact(node);
-        let branch_contribution = fact.metric_branch_contribution();
-        if branch_contribution > 0 {
-            stats.branch_count += branch_contribution;
-            stats.cognitive += branch_contribution * (1 + nesting);
-        }
-        if fact.is_metric_flow_break() {
-            stats.cognitive += 1;
-        }
-        let next_nesting = nesting + usize::from(fact.is_metric_nesting());
-        stats.max_nesting = stats.max_nesting.max(next_nesting);
-        for child in view.children() {
-            visit(child, source, next_nesting, stats, kinds, leaf_tokens);
-        }
     }
-    let mut stats = AstStats::default();
-    let mut kinds = BTreeMap::new();
-    let mut leaf_tokens = BTreeMap::new();
-    visit(node, source, 0, &mut stats, &mut kinds, &mut leaf_tokens);
-    stats.information =
-        information_stats(&leaf_tokens, normalized_entropy(kinds.values().copied()));
-    stats
+
+    let mut visitor = Visitor {
+        source,
+        root: node,
+        reset_nodes,
+        stats: AstStats::default(),
+        kinds: BTreeMap::new(),
+        leaf_tokens: BTreeMap::new(),
+    };
+    visitor.visit(node, 0);
+    visitor.stats.information = information_stats(
+        &visitor.leaf_tokens,
+        normalized_entropy(visitor.kinds.values().copied()),
+    );
+    visitor.stats
 }
 
 #[derive(Debug, Clone)]
@@ -878,6 +1184,7 @@ struct MetricRegion {
     kind: String,
     span: RegionSpan,
     node: Option<NodeId>,
+    semantic_owner: Option<NodeId>,
     legacy_node: Option<NodeRange>,
 }
 
@@ -907,7 +1214,8 @@ struct InformationStats {
 
 fn tokenize(text: &str, comment_tokens: &[&str]) -> Vec<Token> {
     let mut tokens = Vec::new();
-    for line in text.lines() {
+    let mut line_start = 0;
+    for line in text.split_inclusive('\n') {
         let comment_at = comment_tokens
             .iter()
             .filter_map(|token| line.find(token))
@@ -916,15 +1224,16 @@ fn tokenize(text: &str, comment_tokens: &[&str]) -> Vec<Token> {
             Some(idx) => (&line[..idx], Some(&line[idx..])),
             None => (line, None),
         };
-        tokens.extend(tokenize_code(code, false));
+        tokens.extend(tokenize_code(code, false, line_start));
         if let Some(comment) = comment {
-            tokens.extend(tokenize_code(comment, true));
+            tokens.extend(tokenize_code(comment, true, line_start + code.len()));
         }
+        line_start += line.len();
     }
     tokens
 }
 
-fn tokenize_code(text: &str, is_comment: bool) -> Vec<Token> {
+fn tokenize_code(text: &str, is_comment: bool, base_offset: usize) -> Vec<Token> {
     let mut out = Vec::new();
     let mut iter = text.char_indices().peekable();
     while let Some((start, ch)) = iter.next() {
@@ -933,16 +1242,19 @@ fn tokenize_code(text: &str, is_comment: bool) -> Vec<Token> {
         }
         if ch.is_ascii_alphanumeric() || ch == '_' {
             let end = consume_word(&mut iter, start, ch);
-            out.push(token_from_slice(text, start, end, is_comment));
+            out.push(token_from_slice(text, start, end, is_comment, base_offset));
             continue;
         }
-        if let Some(token) = consume_two_char_operator(text, &mut iter, start, is_comment) {
+        if let Some(token) =
+            consume_two_char_operator(text, &mut iter, start, is_comment, base_offset)
+        {
             out.push(token);
             continue;
         }
         out.push(Token {
             text: ch.to_string(),
             is_comment,
+            start_byte: base_offset + start,
         });
     }
     out
@@ -970,13 +1282,14 @@ fn consume_two_char_operator(
     iter: &mut std::iter::Peekable<std::str::CharIndices<'_>>,
     start: usize,
     is_comment: bool,
+    base_offset: usize,
 ) -> Option<Token> {
     let (idx, next) = iter.peek().copied()?;
     let end = idx + next.len_utf8();
     let two = &text[start..end];
     if is_two_char_operator(two) {
         iter.next();
-        Some(token_from_slice(text, start, end, is_comment))
+        Some(token_from_slice(text, start, end, is_comment, base_offset))
     } else {
         None
     }
@@ -989,10 +1302,17 @@ fn is_two_char_operator(value: &str) -> bool {
     )
 }
 
-fn token_from_slice(text: &str, start: usize, end: usize, is_comment: bool) -> Token {
+fn token_from_slice(
+    text: &str,
+    start: usize,
+    end: usize,
+    is_comment: bool,
+    base_offset: usize,
+) -> Token {
     Token {
         text: text[start..end].to_string(),
         is_comment,
+        start_byte: base_offset + start,
     }
 }
 
@@ -1044,6 +1364,33 @@ fn expressivity(
     comment_tokens: &[&str],
     tree_sitter_information: InformationStats,
 ) -> ExpressivityMetrics {
+    let comment_lines = text
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            comment_tokens
+                .iter()
+                .any(|token| trimmed.starts_with(token))
+        })
+        .count();
+    expressivity_from_evidence(
+        tokens,
+        cyclomatic,
+        nloc,
+        comment_lines,
+        byte_entropy_bits_per_byte(text),
+        tree_sitter_information,
+    )
+}
+
+fn expressivity_from_evidence(
+    tokens: &[Token],
+    cyclomatic: f64,
+    nloc: usize,
+    comment_lines: usize,
+    byte_entropy_bits_per_byte: f64,
+    tree_sitter_information: InformationStats,
+) -> ExpressivityMetrics {
     let code_tokens: Vec<_> = tokens.iter().filter(|token| !token.is_comment).collect();
     let token_counts = code_tokens
         .iter()
@@ -1057,22 +1404,13 @@ fn expressivity(
     } else {
         fallback_information
     };
-    let comment_lines = text
-        .lines()
-        .filter(|line| {
-            let trimmed = line.trim_start();
-            comment_tokens
-                .iter()
-                .any(|token| trimmed.starts_with(token))
-        })
-        .count();
     ExpressivityMetrics {
         tokens: information.tokens,
         vocabulary: information.vocabulary,
         decision_density: ratio(cyclomatic, information.tokens),
         unique_token_ratio: ratio(information.vocabulary as f64, information.tokens),
         comment_to_code_ratio: ratio(comment_lines as f64, nloc),
-        byte_entropy_bits_per_byte: byte_entropy_bits_per_byte(text),
+        byte_entropy_bits_per_byte,
         token_entropy: information.token_entropy,
         structural_entropy: information.structural_entropy,
         information_volume: information.information_volume,
@@ -1585,14 +1923,18 @@ fn normalized_entropy(counts: impl Iterator<Item = usize>) -> f64 {
 }
 
 fn byte_entropy_bits_per_byte(text: &str) -> f64 {
-    if text.is_empty() {
+    byte_entropy_bits_per_bytes(text.as_bytes())
+}
+
+fn byte_entropy_bits_per_bytes(bytes: &[u8]) -> f64 {
+    if bytes.is_empty() {
         return 0.0;
     }
     let mut counts = BTreeMap::new();
-    for byte in text.bytes() {
-        *counts.entry(byte).or_insert(0usize) += 1;
+    for byte in bytes {
+        *counts.entry(*byte).or_insert(0usize) += 1;
     }
-    let len = text.len() as f64;
+    let len = bytes.len() as f64;
     counts
         .values()
         .map(|count| {
@@ -1700,6 +2042,7 @@ mod tests {
     use super::*;
     use deslop_lang::RUST_PACK;
     use deslop_parse::{ProjectAnalysis, ProjectSnapshotBuilder, RepositoryId};
+    use std::path::Path;
 
     #[test]
     fn cyclomatic_counts_known_rust_branches() {
@@ -1905,8 +2248,9 @@ mod tests {
             .unwrap();
         let analysis = ProjectAnalysis::build(snapshot).unwrap();
         let counts_before = analysis.parse_counts();
-        let report = metrics_analysis(&analysis, MetricsConfig::default()).expect("metrics");
-        let repeated = metrics_analysis(&analysis, MetricsConfig::default()).expect("metrics");
+        let report = metrics_analysis(analysis.clone(), MetricsConfig::default()).expect("metrics");
+        let repeated =
+            metrics_analysis(analysis.clone(), MetricsConfig::default()).expect("metrics");
 
         assert_eq!(report.functions.len(), 5);
         assert_eq!(
@@ -1915,8 +2259,384 @@ mod tests {
         );
         assert_eq!(analysis.parse_counts(), counts_before);
         assert_eq!(counts_before.len(), 1);
-        assert_eq!(counts_before.values().next().unwrap().parser_invocations, 1);
+        let count = counts_before.values().next().unwrap();
+        assert_eq!(
+            (
+                count.requested,
+                count.owners,
+                count.parser_invocations,
+                count.reused
+            ),
+            (1, 1, 1, 0)
+        );
         assert_eq!(deslop_parse::parse_source_invocations(), 0);
+
+        let file = analysis.files().next().unwrap();
+        let context = MetricFile::new(&analysis, file).unwrap();
+        let pack = analysis.language_adapter(&file.key().path).unwrap();
+        let regions = metric_regions_owned(pack, &context).unwrap();
+        let ownership = metric_ownership(pack, &context, &regions).unwrap();
+        assert_eq!(ownership.file_ranges.bytes(), 34);
+        assert_eq!(ownership.file_ranges.ranges.len(), 10);
+        assert_eq!(ownership.file_nloc, 1);
+        let expected = [
+            ("traced", 46, 12, 2),
+            ("wrapper", 103, 34, 3),
+            ("Service", 19, 5, 1),
+            ("process", 108, 33, 3),
+            ("normalize", 54, 15, 2),
+        ];
+        for (name, bytes, segments, nloc) in expected {
+            let owner = regions
+                .iter()
+                .find(|region| region.name == name)
+                .and_then(|region| region.semantic_owner)
+                .unwrap();
+            assert_eq!(ownership.by_owner[&owner].bytes(), bytes, "{name} bytes");
+            assert_eq!(
+                ownership.by_owner[&owner].ranges.len(),
+                segments,
+                "{name} segments"
+            );
+            assert_eq!(
+                ownership.nloc_by_owner.get(&owner).copied().unwrap_or(0),
+                nloc,
+                "{name} NLOC"
+            );
+        }
+        let mut partition = ownership
+            .file_ranges
+            .ranges
+            .iter()
+            .copied()
+            .chain(
+                ownership
+                    .by_owner
+                    .values()
+                    .flat_map(|ranges| ranges.ranges.iter().copied()),
+            )
+            .collect::<Vec<_>>();
+        partition.sort_unstable();
+        assert_eq!(partition.len(), 109);
+        assert_eq!(partition.first().unwrap().0, 0);
+        assert_eq!(partition.last().unwrap().1, context.text().len());
+        assert!(partition.windows(2).all(|pair| pair[0].1 == pair[1].0));
+        assert_eq!(
+            ownership.file_ranges.bytes()
+                + ownership
+                    .by_owner
+                    .values()
+                    .map(OwnedRanges::bytes)
+                    .sum::<usize>(),
+            context.text().len()
+        );
+        assert_eq!(
+            ownership.file_nloc + ownership.nloc_by_owner.values().sum::<usize>(),
+            12
+        );
+    }
+
+    #[test]
+    fn metrics_analysis_is_process_identity_independent_and_input_order_invariant() {
+        let root = tempfile::tempdir().unwrap();
+        let repository = RepositoryId::explicit("metrics-determinism-fixture").unwrap();
+        let build = |reverse: bool| {
+            let builder = ProjectSnapshotBuilder::new(root.path(), repository.clone()).unwrap();
+            let builder = if reverse {
+                builder
+                    .with_overlay("b.rs", b"fn beta() { if true {} }\n".to_vec())
+                    .unwrap()
+                    .with_overlay("a.rs", b"fn alpha() {}\n".to_vec())
+                    .unwrap()
+            } else {
+                builder
+                    .with_overlay("a.rs", b"fn alpha() {}\n".to_vec())
+                    .unwrap()
+                    .with_overlay("b.rs", b"fn beta() { if true {} }\n".to_vec())
+                    .unwrap()
+            };
+            ProjectAnalysis::build(builder.build().unwrap()).unwrap()
+        };
+        let first = build(false);
+        let second = build(true);
+        assert_ne!(first.node_ids().next(), second.node_ids().next());
+        assert_eq!(first.id(), second.id());
+        let first_projection = metrics_analysis(first.clone(), MetricsConfig::default()).unwrap();
+        let second_projection = metrics_analysis(second, MetricsConfig::default()).unwrap();
+        assert_eq!(first_projection.id, second_projection.id);
+        assert_eq!(
+            render_json(&first_projection).unwrap(),
+            render_json(&second_projection).unwrap()
+        );
+        assert_ne!(
+            first_projection.id,
+            metrics_analysis(first, MetricsConfig { sigma: 1.0 })
+                .unwrap()
+                .id
+        );
+    }
+
+    #[test]
+    fn same_line_nested_callable_assigns_the_physical_line_once() {
+        let root = tempfile::tempdir().unwrap();
+        let source = "fn outer() { fn inner() { work(); } outer_work(); }\n";
+        let snapshot =
+            ProjectSnapshotBuilder::new(root.path(), RepositoryId::local(root.path()).unwrap())
+                .unwrap()
+                .with_overlay("sample.rs", source.as_bytes().to_vec())
+                .unwrap()
+                .build()
+                .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let report = metrics_analysis(analysis.clone(), MetricsConfig::default()).unwrap();
+        let outer = report
+            .functions
+            .iter()
+            .find(|region| region.name == "outer")
+            .unwrap();
+        let inner = report
+            .functions
+            .iter()
+            .find(|region| region.name == "inner")
+            .unwrap();
+        assert_eq!(outer.complexity.nloc, 1);
+        assert_eq!(inner.complexity.nloc, 0);
+
+        let file = analysis.files().next().unwrap();
+        let context = MetricFile::new(&analysis, file).unwrap();
+        let pack = analysis.language_adapter(&file.key().path).unwrap();
+        let regions = metric_regions_owned(pack, &context).unwrap();
+        let ownership = metric_ownership(pack, &context, &regions).unwrap();
+        assert_eq!(
+            ownership.file_nloc + ownership.nloc_by_owner.values().sum::<usize>(),
+            1
+        );
+        assert_eq!(
+            ownership.file_ranges.bytes()
+                + ownership
+                    .by_owner
+                    .values()
+                    .map(OwnedRanges::bytes)
+                    .sum::<usize>(),
+            source.len()
+        );
+    }
+
+    #[test]
+    fn exclusive_range_tokenization_matches_legacy_intrinsics_for_operator_edges() {
+        let root = tempfile::tempdir().unwrap();
+        let source = "fn target(mut x: i32, y: i32) -> bool {\n    // >= && != += inside a comment\n    let marker = \"// >= && != +=\"; // inline\n    x += 1;\n    x >= y && x != 0\n}\n";
+        let logical = PathBuf::from("sample.rs");
+        let snapshot =
+            ProjectSnapshotBuilder::new(root.path(), RepositoryId::local(root.path()).unwrap())
+                .unwrap()
+                .with_overlay(&logical, source.as_bytes().to_vec())
+                .unwrap()
+                .build()
+                .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let mut owned = metrics_analysis(analysis.clone(), MetricsConfig::default())
+            .unwrap()
+            .report
+            .functions
+            .into_iter()
+            .find(|region| region.name == "target")
+            .unwrap();
+        let mut legacy = metrics_source(&SourceFile::new(logical, source.to_string()))
+            .unwrap()
+            .into_iter()
+            .find(|region| region.name == "target")
+            .unwrap();
+        owned.heuristic_burden.repo_relative = None;
+        legacy.heuristic_burden.repo_relative = None;
+        assert_eq!(
+            serde_json::to_value(&owned).unwrap(),
+            serde_json::to_value(&legacy).unwrap()
+        );
+        assert_eq!(legacy.halstead.distinct_operators, 8);
+        assert_eq!(legacy.halstead.distinct_operands, 18);
+        assert_eq!(legacy.halstead.total_operators, 8);
+        assert_eq!(legacy.halstead.total_operands, 24);
+        assert!((legacy.halstead.volume - 150.41407098051494).abs() < 1e-12);
+        assert!((legacy.halstead.difficulty - 5.333333333333333).abs() < 1e-12);
+        assert!((legacy.halstead.lexical_effort - 802.2083785627462).abs() < 1e-12);
+        assert!((legacy.complexity.maintainability_index - 69.37278807296794).abs() < 1e-12);
+    }
+
+    #[test]
+    fn owned_mixed_snapshot_is_partial_parse_once_and_withholds_project_claims() {
+        let root = tempfile::tempdir().unwrap();
+        let malformed = include_bytes!("../../../tests/fixtures/typescript/malformed.ts");
+        deslop_parse::reset_parse_source_invocations();
+        let snapshot =
+            ProjectSnapshotBuilder::new(root.path(), RepositoryId::local(root.path()).unwrap())
+                .unwrap()
+                .with_overlay("valid.rs", b"fn valid() {}\n".to_vec())
+                .unwrap()
+                .with_overlay("malformed.ts", malformed.to_vec())
+                .unwrap()
+                .with_overlay("malformed.tsx", malformed.to_vec())
+                .unwrap()
+                .build()
+                .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let counts = analysis.parse_counts();
+        assert_eq!(counts.len(), 3);
+        assert!(counts.values().all(|count| {
+            (
+                count.requested,
+                count.owners,
+                count.parser_invocations,
+                count.reused,
+            ) == (1, 1, 1, 0)
+        }));
+        let first = metrics_analysis(analysis.clone(), MetricsConfig::default()).unwrap();
+        let second = metrics_analysis(analysis.clone(), MetricsConfig::default()).unwrap();
+        assert_eq!(first.id, second.id);
+        assert_eq!(render_json(&first).unwrap(), render_json(&second).unwrap());
+        assert_eq!(analysis.parse_counts(), counts);
+        assert_eq!(deslop_parse::parse_source_invocations(), 0);
+        assert_eq!(first.status, AnalysisStatus::Partial);
+        assert_eq!(
+            first
+                .analyses
+                .iter()
+                .map(|file| file.path.as_path())
+                .collect::<Vec<_>>(),
+            [
+                Path::new("malformed.ts"),
+                Path::new("malformed.tsx"),
+                Path::new("valid.rs"),
+            ]
+        );
+        assert!(
+            first
+                .analyses
+                .iter()
+                .filter(|file| file.path != Path::new("valid.rs"))
+                .all(|file| !file.analysis.diagnostics.is_empty())
+        );
+        assert!(
+            first
+                .functions
+                .iter()
+                .all(|region| region.path == Path::new("valid.rs"))
+        );
+        assert!(first.heuristic_burden_distribution.is_none());
+        assert!(first.heuristic_outliers.is_empty());
+        assert!(first.hotspots.is_empty());
+        assert!(
+            first
+                .functions
+                .iter()
+                .all(|region| region.heuristic_burden.repo_relative.is_none())
+        );
+    }
+
+    #[test]
+    fn owned_metrics_preserve_the_pinned_non_nested_rust_vector() {
+        let root = tempfile::tempdir().unwrap();
+        let source = "fn target(x: i32) -> i32 {\n    if x > 0 { x + 1 } else { 0 }\n}\n";
+        let snapshot =
+            ProjectSnapshotBuilder::new(root.path(), RepositoryId::local(root.path()).unwrap())
+                .unwrap()
+                .with_overlay("sample.rs", source.as_bytes().to_vec())
+                .unwrap()
+                .build()
+                .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let report = metrics_analysis(analysis.clone(), MetricsConfig::default()).unwrap();
+        let target = report
+            .functions
+            .iter()
+            .find(|region| region.name == "target")
+            .unwrap();
+        assert_eq!(target.complexity.cyclomatic, 2.0);
+        assert_eq!(target.complexity.cognitive, 1.0);
+        assert_eq!(target.complexity.max_nesting, 1);
+        assert_eq!(target.complexity.nloc, 3);
+        assert!((target.complexity.maintainability_index - 75.31906196282954).abs() < 1e-12);
+        assert_eq!(target.kind, "function_item");
+        assert_eq!(
+            (
+                target.span.start_line,
+                target.span.end_line,
+                target.span.start_byte,
+                target.span.end_byte
+            ),
+            (1, 3, 0, 62)
+        );
+        assert_eq!(target.expressivity.tokens, 24);
+        assert_eq!(target.expressivity.vocabulary, 16);
+        let close = |actual: f64, expected: f64| (actual - expected).abs() < 1e-12;
+        assert!(close(
+            target.expressivity.decision_density,
+            0.08333333333333333
+        ));
+        assert!(close(
+            target.expressivity.unique_token_ratio,
+            0.6666666666666666
+        ));
+        assert_eq!(target.expressivity.comment_to_code_ratio, 0.0);
+        assert!(close(
+            target.expressivity.byte_entropy_bits_per_byte,
+            3.8572107718518542
+        ));
+        assert!(close(target.expressivity.token_entropy, 0.9559837240710141));
+        assert!(close(
+            target.expressivity.structural_entropy,
+            0.9514688243726057
+        ));
+        assert!(close(
+            target.expressivity.information_volume,
+            91.77443751081735
+        ));
+        assert_eq!(
+            (
+                target.halstead.distinct_operators,
+                target.halstead.distinct_operands,
+                target.halstead.total_operators,
+                target.halstead.total_operands
+            ),
+            (5, 11, 6, 19)
+        );
+        assert_eq!(target.halstead.volume, 100.0);
+        assert!(close(target.halstead.difficulty, 4.318181818181818));
+        assert!(close(target.halstead.lexical_effort, 431.8181818181818));
+        assert!((target.heuristic_burden.score - 0.042481082836417695).abs() < 1e-15);
+        assert!(close(
+            target.heuristic_burden.measurement_support,
+            0.5495735607675906
+        ));
+        assert!(close(
+            target.heuristic_burden.size_support,
+            0.2727272727272727
+        ));
+        assert!(close(
+            target.heuristic_burden.complexity_burden,
+            0.1187878787878788
+        ));
+        assert!(close(
+            target.heuristic_burden.information_burden,
+            0.15200119748225197
+        ));
+        assert!(close(
+            target.heuristic_burden.entropy_burden,
+            0.03946259795115525
+        ));
+        assert!(close(
+            target.heuristic_burden.interaction_burden,
+            0.051294372067393734
+        ));
+        assert_eq!(
+            analysis
+                .parse_counts()
+                .values()
+                .next()
+                .unwrap()
+                .parser_invocations,
+            1
+        );
     }
 
     #[test]
@@ -2077,6 +2797,64 @@ mod tests {
     }
 
     #[test]
+    fn owned_typescript_metrics_use_the_snapshot_selected_ts_and_tsx_dialects() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot =
+            ProjectSnapshotBuilder::new(root.path(), RepositoryId::local(root.path()).unwrap())
+                .unwrap()
+                .with_overlay(
+                    "typed.ts",
+                    include_bytes!("../../../tests/fixtures/typescript/typed.ts").to_vec(),
+                )
+                .unwrap()
+                .with_overlay(
+                    "component.tsx",
+                    include_bytes!("../../../tests/fixtures/typescript/component.tsx").to_vec(),
+                )
+                .unwrap()
+                .build()
+                .unwrap();
+        assert_eq!(
+            snapshot
+                .entry(Path::new("typed.ts"))
+                .unwrap()
+                .grammar()
+                .unwrap()
+                .dialect(),
+            "typescript"
+        );
+        assert_eq!(
+            snapshot
+                .entry(Path::new("component.tsx"))
+                .unwrap()
+                .grammar()
+                .unwrap()
+                .dialect(),
+            "tsx"
+        );
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let report = metrics_analysis(analysis.clone(), MetricsConfig::default()).unwrap();
+        let convert = report
+            .functions
+            .iter()
+            .find(|region| region.name == "convert" && region.span.start_line == 13)
+            .unwrap();
+        let identity = report
+            .functions
+            .iter()
+            .find(|region| region.path == Path::new("component.tsx") && region.span.start_line == 9)
+            .unwrap();
+        let view = report
+            .functions
+            .iter()
+            .find(|region| region.name == "View")
+            .unwrap();
+        assert_eq!(convert.complexity.nloc, 3);
+        assert_eq!(identity.complexity.nloc, 1);
+        assert_eq!((view.span.start_line, view.span.end_line), (11, 21));
+    }
+
+    #[test]
     fn clojure_metrics_skip_nested_call_lists() {
         let source = SourceFile::new(
             PathBuf::from("sample.clj"),
@@ -2084,6 +2862,53 @@ mod tests {
         );
         let report = metrics_source(&source).expect("metrics");
         assert_eq!(report.len(), 1);
+    }
+
+    #[test]
+    fn owned_clojure_metric_resets_disambiguate_shared_enclosing_spans() {
+        let root = tempfile::tempdir().unwrap();
+        let source = "(defn outer [x]\n  (map (fn [y] (if y y x)) x))";
+        let snapshot =
+            ProjectSnapshotBuilder::new(root.path(), RepositoryId::local(root.path()).unwrap())
+                .unwrap()
+                .with_overlay("sample.clj", source.as_bytes().to_vec())
+                .unwrap()
+                .build()
+                .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let file = analysis.files().next().unwrap();
+        let context = MetricFile::new(&analysis, file).unwrap();
+        let pack = Registry::default().pack_for_lang(file.grammar().lang());
+        let regions = metric_regions_owned(pack, &context).unwrap();
+        assert_eq!(regions.len(), 2);
+        let owners = regions
+            .iter()
+            .map(|region| region.semantic_owner.unwrap())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(owners.len(), 2);
+        assert!(regions.iter().any(|region| {
+            let node = context.analysis.node(region.node.unwrap()).unwrap();
+            node.span().byte_range() == (0..source.len()) && region.semantic_owner == region.node
+        }));
+        assert!(regions.iter().any(|region| {
+            let node = context.analysis.node(region.node.unwrap()).unwrap();
+            node.span().byte_range() == (23..42) && region.semantic_owner == region.node
+        }));
+        let ownership = metric_ownership(pack, &context, &regions).unwrap();
+        assert_eq!(
+            ownership.file_ranges.bytes()
+                + ownership
+                    .by_owner
+                    .values()
+                    .map(OwnedRanges::bytes)
+                    .sum::<usize>(),
+            source.len()
+        );
+        let report = metrics_analysis(analysis, MetricsConfig::default()).unwrap();
+        let outer = &report.functions[0];
+        let nested = &report.functions[1];
+        assert_eq!(outer.complexity.cyclomatic, 1.0);
+        assert_eq!(nested.complexity.cyclomatic, 2.0);
     }
 
     #[test]

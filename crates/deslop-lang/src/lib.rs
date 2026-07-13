@@ -80,6 +80,11 @@ impl ResolvedGrammar {
 
 pub trait LangPack: Send + Sync {
     fn name(&self) -> &'static str;
+    /// Versioned identity for the semantic hooks implemented by this adapter.
+    /// Implementations must bump this value whenever hook behavior changes.
+    fn adapter_schema(&self) -> &'static str {
+        "deslop-lang-adapter/1"
+    }
     fn lang(&self) -> Lang;
     fn extensions(&self) -> &'static [&'static str];
     fn grammar(&self) -> Option<tree_sitter::Language>;
@@ -159,6 +164,7 @@ pub trait ExternalAnalyzer<Source, Output>: Send + Sync {
     fn analyze(&self, path: &Path, source: &Source) -> Result<ExternalFindings<Output>>;
 }
 
+#[derive(Clone)]
 pub struct Registry {
     packs: Vec<&'static dyn LangPack>,
     generic: &'static dyn LangPack,

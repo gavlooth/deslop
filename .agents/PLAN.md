@@ -1015,6 +1015,16 @@ legacy per-rule/per-region parsing is not an accepted fallback.
 Next checkpoint: primary `scan_analysis` and `metrics_analysis` APIs pass focused numerical contracts,
 and `scan_paths`/`metrics_paths` are thin one-snapshot adapters with no consumer `parse_source` calls.
 
+Checkpoint update (2026-07-13): the primary metrics projection now passes its numerical contracts.
+It owns reset-aware bytes, physical lines, source-wide lexical tokens, and nested AST resets; binds a
+deterministic `ProjectionId` to analysis/config/capability/exact adapter schemas; preserves the pinned
+legacy intrinsic vector; and cleanly downgrades mixed malformed snapshots. The active next track is
+the prepared analyzer context and owned rule migration, followed by the shared planner/presentation
+adapter for both legacy path surfaces. The physical-line rule assigns each nonblank line to the
+earliest semantic metric owner occurring on that line, falling back to File residual only when the
+line contains no metric-owned byte; this preserves prefixed TS/TSX callable NLOC while assigning a
+same-line nested callable line to the outer owner exactly once.
+
 Negative-memory constraints: do not expose borrowed Tree-sitter nodes; duplicate `LangPack` raw-kind
 logic; infer durable identity from reanchors; union nested inclusive metric regions; reread paths after
 snapshot construction; use path-selected language instead of stored grammar; or count an incremental

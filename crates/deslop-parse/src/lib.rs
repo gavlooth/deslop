@@ -45,10 +45,11 @@ pub use query::{
 pub use snapshot::{
     ExclusiveSyntaxKind, ExclusiveSyntaxLookupError, ExclusiveSyntaxOwner, ExclusiveSyntaxRegion,
     ExclusiveSyntaxRegions, FileParseCount, FileRevisionKey, GrammarSelection,
-    NodeExclusiveSyntaxRegions, NodeIds, NodeRangeLookupError, NodeView, ParseLedger, ParsedFile,
-    ProjectAnalysis, ProjectAnalysisId, ProjectSnapshot, ProjectSnapshotBuilder, ProjectSnapshotId,
-    RepositoryId, ScopeEntry, ScopeEntryKind, ScopeSpec, SnapshotEntry, SnapshotEntryKind,
-    SourceRevision, SourceStore, StoredSource, SyntaxOwner, SyntaxPointContext,
+    LanguageAdapterIdentity, NodeExclusiveSyntaxRegions, NodeIds, NodeRangeLookupError, NodeView,
+    ParseLedger, ParsedFile, ProjectAnalysis, ProjectAnalysisId, ProjectSnapshot,
+    ProjectSnapshotBuilder, ProjectSnapshotId, ProjectionId, RepositoryId, ScopeEntry,
+    ScopeEntryKind, ScopeSpec, SnapshotEntry, SnapshotEntryKind, SourceRevision, SourceStore,
+    StoredSource, SyntaxOwner, SyntaxPointContext,
 };
 
 thread_local! {

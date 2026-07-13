@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::{Context, Result, bail};
 use deslop_core::{AnalysisDiagnostic, AnalysisProvenance, Lang};
-use deslop_lang::Registry;
+use deslop_lang::{LangPack, Registry};
 use ignore::WalkBuilder;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -31,6 +31,7 @@ use crate::identity::{
 const SOURCE_REVISION_DOMAIN: &str = "deslop source revision v1";
 const SNAPSHOT_ID_DOMAIN: &str = "deslop project snapshot v1";
 const ANALYSIS_ID_DOMAIN: &str = "deslop project analysis v1";
+const PROJECTION_ID_DOMAIN: &str = "deslop analysis projection v1";
 const LOCAL_REPOSITORY_DOMAIN: &str = "deslop local repository v1";
 const GRAMMAR_SELECTOR: &str = "deslop-grammar-selector/1";
 const PARSER_BUILD: &str = concat!(
@@ -179,13 +180,73 @@ impl GrammarSelection {
     }
 }
 
-fn resolve_grammar(path: &Path) -> Result<(GrammarSelection, tree_sitter::Language)> {
-    let registry = Registry::default();
-    let resolved = registry
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LanguageAdapterIdentity {
+    name: String,
+    schema: String,
+}
+
+impl LanguageAdapterIdentity {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    fn identity_bytes(&self) -> Vec<u8> {
+        format!("{}\0{}", self.name, self.schema).into_bytes()
+    }
+}
+
+#[derive(Clone)]
+struct StoredLangAdapter {
+    pack: &'static dyn LangPack,
+    identity: LanguageAdapterIdentity,
+}
+
+impl fmt::Debug for StoredLangAdapter {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("StoredLangAdapter")
+            .field(&self.identity)
+            .finish()
+    }
+}
+
+fn resolve_grammar(
+    path: &Path,
+    registry: &Registry,
+) -> Result<(GrammarSelection, tree_sitter::Language, StoredLangAdapter)> {
+    let adapter = registry
+        .supported_pack_for_path(path)
+        .ok_or_else(|| anyhow::anyhow!("no language adapter for {}", path.display()))?;
+    let resolved = adapter
         .resolve_grammar(path)
         .ok_or_else(|| anyhow::anyhow!("no grammar artifact for {}", path.display()))?;
     let (descriptor, language) = resolved.into_parts();
-    Ok((GrammarSelection::from_descriptor(descriptor), language))
+    if descriptor.lang() != adapter.lang() {
+        bail!(
+            "language adapter {} selected {:?} but grammar artifact declares {:?} for {}",
+            adapter.name(),
+            adapter.lang(),
+            descriptor.lang(),
+            path.display()
+        );
+    }
+    Ok((
+        GrammarSelection::from_descriptor(descriptor),
+        language,
+        StoredLangAdapter {
+            pack: adapter,
+            identity: LanguageAdapterIdentity {
+                name: adapter.name().to_string(),
+                schema: adapter.adapter_schema().to_string(),
+            },
+        },
+    ))
 }
 
 fn grammar_lang_key(lang: Lang) -> u8 {
@@ -285,6 +346,7 @@ enum EntryAnalysis {
     Source {
         selection: GrammarSelection,
         language: tree_sitter::Language,
+        adapter: StoredLangAdapter,
     },
     AnalysisInput,
 }
@@ -319,6 +381,20 @@ impl SnapshotEntry {
     pub(crate) fn grammar_language(&self) -> Option<&tree_sitter::Language> {
         match &self.analysis {
             EntryAnalysis::Source { language, .. } => Some(language),
+            EntryAnalysis::AnalysisInput => None,
+        }
+    }
+
+    pub fn language_adapter(&self) -> Option<&'static dyn LangPack> {
+        match &self.analysis {
+            EntryAnalysis::Source { adapter, .. } => Some(adapter.pack),
+            EntryAnalysis::AnalysisInput => None,
+        }
+    }
+
+    pub fn language_adapter_identity(&self) -> Option<&LanguageAdapterIdentity> {
+        match &self.analysis {
+            EntryAnalysis::Source { adapter, .. } => Some(&adapter.identity),
             EntryAnalysis::AnalysisInput => None,
         }
     }
@@ -472,6 +548,7 @@ pub struct ProjectSnapshotBuilder {
     overlays: BTreeMap<PathBuf, Vec<u8>>,
     analysis_inputs: BTreeMap<PathBuf, Vec<u8>>,
     store: Arc<SourceStore>,
+    registry: Registry,
 }
 
 impl ProjectSnapshotBuilder {
@@ -493,6 +570,7 @@ impl ProjectSnapshotBuilder {
             overlays: BTreeMap::new(),
             analysis_inputs: BTreeMap::new(),
             store: Arc::new(SourceStore::default()),
+            registry: Registry::default(),
         })
     }
 
@@ -523,6 +601,11 @@ impl ProjectSnapshotBuilder {
 
     pub fn with_store(mut self, store: Arc<SourceStore>) -> Self {
         self.store = store;
+        self
+    }
+
+    pub fn with_registry(mut self, registry: Registry) -> Self {
+        self.registry = registry;
         self
     }
 
@@ -580,7 +663,7 @@ impl ProjectSnapshotBuilder {
         {
             bail!("exact file scope contains a directory");
         }
-        let disk_sources = collect_disk_sources(&self.root, &requested_scope)?;
+        let disk_sources = collect_disk_sources(&self.root, &requested_scope, &self.registry)?;
         let mut inputs = BTreeMap::<PathBuf, (SnapshotEntryKind, Vec<u8>)>::new();
         let mut read_counts = BTreeMap::<PathBuf, usize>::new();
         for (logical, physical) in disk_sources {
@@ -593,7 +676,7 @@ impl ProjectSnapshotBuilder {
             inputs.insert(logical, (SnapshotEntryKind::Source, bytes));
         }
         for (path, bytes) in self.overlays {
-            if !crate::is_supported_source(&path) {
+            if self.registry.supported_pack_for_path(&path).is_none() {
                 bail!("overlay {} is not a supported source", path.display());
             }
             if let Some((kind, _)) = inputs.insert(path.clone(), (SnapshotEntryKind::Source, bytes))
@@ -618,10 +701,11 @@ impl ProjectSnapshotBuilder {
         let mut entries = BTreeMap::new();
         for (path, (kind, bytes)) in inputs {
             let analysis = if kind == SnapshotEntryKind::Source {
-                let (selection, language) = resolve_grammar(&path)?;
+                let (selection, language, adapter) = resolve_grammar(&path, &self.registry)?;
                 EntryAnalysis::Source {
                     selection,
                     language,
+                    adapter,
                 }
             } else {
                 EntryAnalysis::AnalysisInput
@@ -776,6 +860,16 @@ impl ParsedFile {
 pub struct ProjectAnalysisId(String);
 
 impl ProjectAnalysisId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProjectionId(String);
+
+impl ProjectionId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -1188,6 +1282,40 @@ impl ProjectAnalysis {
 
     pub fn file(&self, path: &Path) -> Option<&ParsedFile> {
         self.files.get(path).map(Arc::as_ref)
+    }
+
+    /// Return the exact language adapter selected when this snapshot entry was built.
+    ///
+    /// Selection is path- and dialect-sensitive, so consumers must not reconstruct it
+    /// from the broader [`Lang`] stored in the grammar descriptor.
+    pub fn language_adapter(&self, path: &Path) -> Option<&'static dyn LangPack> {
+        self.snapshot.entry(path)?.language_adapter()
+    }
+
+    /// Derive a deterministic projection identity from the immutable analysis,
+    /// projection policy, declared capabilities, and exact stored adapter schemas.
+    pub fn derive_projection_id(
+        &self,
+        schema: &str,
+        policy: &[u8],
+        capabilities: &[u8],
+    ) -> Result<ProjectionId> {
+        if schema.trim().is_empty() {
+            bail!("projection schema must not be empty");
+        }
+        let mut hasher = domain_hasher(PROJECTION_ID_DOMAIN);
+        hash_part(&mut hasher, self.id.as_str().as_bytes());
+        hash_part(&mut hasher, schema.as_bytes());
+        hash_part(&mut hasher, policy);
+        hash_part(&mut hasher, capabilities);
+        for entry in self.snapshot.entries() {
+            let Some(identity) = entry.language_adapter_identity() else {
+                continue;
+            };
+            hash_part(&mut hasher, &path_bytes(entry.path()));
+            hash_part(&mut hasher, &identity.identity_bytes());
+        }
+        Ok(ProjectionId(format!("pj1_{}", hasher.finalize().to_hex())))
     }
 
     pub(crate) fn file_arc(&self, path: &Path) -> Option<Arc<ParsedFile>> {
@@ -2113,7 +2241,11 @@ fn normalize_scope(
     Ok(collapsed)
 }
 
-fn collect_disk_sources(root: &Path, scope: &[ScopeEntry]) -> Result<BTreeMap<PathBuf, PathBuf>> {
+fn collect_disk_sources(
+    root: &Path,
+    scope: &[ScopeEntry],
+    registry: &Registry,
+) -> Result<BTreeMap<PathBuf, PathBuf>> {
     let mut physical_to_logical = BTreeMap::<PathBuf, PathBuf>::new();
     for scope_entry in scope {
         let logical_scope = &scope_entry.path;
@@ -2123,7 +2255,7 @@ fn collect_disk_sources(root: &Path, scope: &[ScopeEntry]) -> Result<BTreeMap<Pa
             root.join(logical_scope)
         };
         if scope_entry.kind == ScopeEntryKind::File {
-            insert_disk_source(root, &physical_scope, &mut physical_to_logical)?;
+            insert_disk_source(root, &physical_scope, registry, &mut physical_to_logical)?;
             continue;
         }
         let walker = WalkBuilder::new(&physical_scope)
@@ -2159,7 +2291,7 @@ fn collect_disk_sources(root: &Path, scope: &[ScopeEntry]) -> Result<BTreeMap<Pa
                 continue;
             }
             if entry.file_type().is_some_and(|kind| kind.is_file()) {
-                insert_disk_source(root, entry.path(), &mut physical_to_logical)?;
+                insert_disk_source(root, entry.path(), registry, &mut physical_to_logical)?;
             }
         }
     }
@@ -2172,9 +2304,10 @@ fn collect_disk_sources(root: &Path, scope: &[ScopeEntry]) -> Result<BTreeMap<Pa
 fn insert_disk_source(
     root: &Path,
     path: &Path,
+    registry: &Registry,
     out: &mut BTreeMap<PathBuf, PathBuf>,
 ) -> Result<()> {
-    if !crate::is_supported_source(path) {
+    if registry.supported_pack_for_path(path).is_none() {
         return Ok(());
     }
     let physical = path
