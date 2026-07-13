@@ -79,7 +79,7 @@ fn scan_tool_spec() -> Value {
 fn propose_tool_spec() -> Value {
     tool(
         "propose",
-        "Read-only. Return deslop.workorder/3 work orders with exact revision guards and self-contained proposal context for findings that need an agent rewrite (everything except safe-auto edits). No writes, no network.",
+        "Read-only. Return deslop.workorder/3 work orders with exact revision guards and self-contained proposal context for proposal-eligible findings. safe-auto uses deterministic fixes; never-auto remains report-only and never enters a work order or prompt. No writes, no network.",
         ToolBehavior::read_only("Propose rewrite work orders"),
         object_schema(json!({
             "paths": paths_schema(),
@@ -424,7 +424,7 @@ fn proposal_context_schema() -> Value {
         ],
         "properties": {
             "schema": { "const": "deslop.proposal-context/1" },
-            "analyzer_semantics": { "const": "deslop-analyzer/1" },
+            "analyzer_semantics": { "const": "deslop-analyzer/2" },
             "context_id": { "type": "string", "pattern": "^pc1_[0-9a-f]{64}$" },
             "requested_scope": { "type": "array" },
             "analyzer": { "type": "object" },

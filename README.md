@@ -36,7 +36,7 @@ cargo install --path crates/deslop-cli --features mcp   # CLI + MCP server
 | `deslop slop <paths>` | Slop score + per-rule counts |
 | `deslop metrics` | Transparent structural/lexical measurements, experimental heuristic burden, and scan-local triage outliers; never a rewrite gate |
 | `deslop graph <paths>` | Agent-ready `deslop.graph/2` dependency graph for refactor planning (`json`/`dot`) |
-| `deslop propose <paths>` | Work orders for non-safe-auto findings |
+| `deslop propose <paths>` | Work orders for agent-rewrite findings; `safe-auto` is deterministic and `never-auto` is report-only |
 | `deslop fix` | The bundled LLM consumer: propose → rewrite → verify → apply |
 | `deslop fix --diff` | Preview deterministic safe-auto edits as a unified diff without writing |
 | `deslop verify` / `apply` | Verify / atomically apply self-contained `deslop.patch/3` patches |
@@ -49,7 +49,8 @@ cargo install --path crates/deslop-cli --features mcp   # CLI + MCP server
 ## How findings are graded
 
 **Fix-safety lattice** (per finding): `safe-auto` (only this writes in place) · `analyzer-confirmed`
-· `safe-with-precondition` · `risky-suggest` · `llm-only` · `never-auto`.
+· `safe-with-precondition` · `risky-suggest` · `llm-only` · `never-auto` (report-only; never
+included in work orders or prompts).
 
 **Removability verdicts** (the prover, used by `verify`/`apply`): `Removable` · `DeadCandidate` ·
 `UntestedRisky` · `CoverageUnknown` · `Rejected`. By default `apply` writes only `Removable`; widen

@@ -51,6 +51,23 @@ pub enum SafetyClass {
 }
 }
 
+impl SafetyClass {
+    /// Whether a finding may cross the proposal boundary into an agent rewrite work order.
+    ///
+    /// `SafeAuto` is handled by deterministic fixes. `NeverAuto` is evidence only: it must
+    /// remain visible in reports but can never grant an agent, verifier, or apply path rewrite
+    /// authority.
+    pub fn permits_proposal(self) -> bool {
+        matches!(
+            self,
+            Self::AnalyzerConfirmed
+                | Self::SafeWithPrecondition
+                | Self::RiskySuggest
+                | Self::LlmOnly
+        )
+    }
+}
+
 kebab_data_enum! {
 pub enum DetectedBy {
     Text,
@@ -355,6 +372,21 @@ mod analysis_tests {
     }
 }
 
+#[cfg(test)]
+mod safety_tests {
+    use super::SafetyClass;
+
+    #[test]
+    fn proposal_authority_excludes_deterministic_and_report_only_classes() {
+        assert!(!SafetyClass::SafeAuto.permits_proposal());
+        assert!(SafetyClass::AnalyzerConfirmed.permits_proposal());
+        assert!(SafetyClass::SafeWithPrecondition.permits_proposal());
+        assert!(SafetyClass::RiskySuggest.permits_proposal());
+        assert!(SafetyClass::LlmOnly.permits_proposal());
+        assert!(!SafetyClass::NeverAuto.permits_proposal());
+    }
+}
+
 pub fn file_analyses_status(analyses: &[FileAnalysis]) -> AnalysisStatus {
     if analyses.is_empty() {
         return AnalysisStatus::Complete;
@@ -638,7 +670,12 @@ pub mod rules {
         RuleInfo {
             name: "missing-reference",
             safety: "never-auto",
-            default: "propose",
+            default: "review unresolved reference (report only)",
+        },
+        RuleInfo {
+            name: "julia-jet",
+            safety: "never-auto",
+            default: "review correctness diagnostic (report only)",
         },
         RuleInfo {
             name: "single-use-binding",
@@ -769,6 +806,18 @@ pub mod rules {
             assert!(table.starts_with("rule"));
             for rule in RULES {
                 assert!(table.contains(rule.name), "missing {} in table", rule.name);
+            }
+        }
+
+        #[test]
+        fn never_auto_rules_never_advertise_rewrite_authority() {
+            for rule in RULES.iter().filter(|rule| rule.safety == "never-auto") {
+                assert!(
+                    !rule.default.contains("propose") && !rule.default.contains("fix"),
+                    "never-auto rule {} advertises rewrite authority: {}",
+                    rule.name,
+                    rule.default
+                );
             }
         }
     }

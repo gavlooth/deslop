@@ -4,8 +4,12 @@ use std::process::Command;
 
 use deslop_protocol::WorkOrder;
 
+fn deslop() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_deslop"))
+}
+
 fn propose(paths: &[PathBuf]) -> Vec<WorkOrder> {
-    let output = Command::new(env!("CARGO_BIN_EXE_deslop"))
+    let output = deslop()
         .arg("propose")
         .args(paths)
         .output()
@@ -21,6 +25,51 @@ fn propose(paths: &[PathBuf]) -> Vec<WorkOrder> {
         .lines()
         .map(|line| serde_json::from_str::<WorkOrder>(line).expect("work order JSONL"))
         .collect()
+}
+
+#[test]
+fn never_auto_findings_are_reported_but_never_proposed() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    std::fs::write(temp.path().join("settings.toml"), "phantom_knob = 4\n")
+        .expect("write config artifact");
+    std::fs::write(
+        temp.path().join("driver.jl"),
+        concat!(
+            "phantom_knob = get(options, \"phantom-knob\")\n",
+            "println(phantom_knob)\n",
+        ),
+    )
+    .expect("write parser-supported source");
+
+    let scanned = deslop()
+        .args(["scan", "--format", "json"])
+        .arg(temp.path())
+        .output()
+        .expect("scan report-only finding");
+    assert!(
+        scanned.status.success(),
+        "scan failed: {}",
+        String::from_utf8_lossy(&scanned.stderr)
+    );
+    let reports: serde_json::Value = serde_json::from_slice(&scanned.stdout).expect("scan JSON");
+    let findings = reports["reports"]
+        .as_array()
+        .expect("reports")
+        .iter()
+        .flat_map(|file| file["findings"].as_array().expect("findings"));
+    assert!(findings.into_iter().any(|finding| {
+        finding["rule"] == "config-key-unconsumed" && finding["safety"] == "never-auto"
+    }));
+
+    assert!(propose(&[temp.path().to_path_buf()]).is_empty());
+
+    let agent_scan = deslop()
+        .args(["scan", "--format", "agent"])
+        .arg(temp.path())
+        .output()
+        .expect("scan agent output");
+    assert!(agent_scan.status.success());
+    assert!(agent_scan.stdout.is_empty());
 }
 
 fn assert_unique_ids(work_orders: &[WorkOrder]) {
@@ -158,7 +207,7 @@ fn malformed_propose_is_atomic_and_preserves_existing_output() {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/fixtures/typescript/malformed.ts");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_deslop"))
+    let output = deslop()
         .arg("propose")
         .arg(&fixture)
         .arg("--output")

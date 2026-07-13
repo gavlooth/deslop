@@ -135,7 +135,7 @@ fn scan_tool_spec() -> Value {
 fn propose_tool_spec() -> Value {
     tool(
         "propose",
-        "Return deslop.workorder/3 JSONL-compatible work orders with exact revision guards and self-contained proposal context.",
+        "Return deslop.workorder/3 JSONL-compatible work orders for proposal-eligible findings, excluding report-only never-auto evidence, with exact revision guards and self-contained proposal context.",
         object_schema(json!({
             "paths": paths_schema(),
             "config": config_schema("Optional deslop.toml path for [analyzer] propose settings."),
@@ -465,7 +465,7 @@ fn proposal_context_schema() -> Value {
         ],
         "properties": {
             "schema": { "const": "deslop.proposal-context/1" },
-            "analyzer_semantics": { "const": "deslop-analyzer/1" },
+            "analyzer_semantics": { "const": "deslop-analyzer/2" },
             "context_id": { "type": "string", "pattern": "^pc1_[0-9a-f]{64}$" },
             "requested_scope": { "type": "array" },
             "analyzer": { "type": "object" },
@@ -548,17 +548,19 @@ fn fix_mode(args: &Value) -> Result<&str> {
 
 fn fix_prompts_tool(args: &Value) -> Result<Value> {
     let batch = proposed_work_orders(args)?;
-    let next = if batch.status == AnalysisStatus::Complete {
-        "Rewrite each region. Copy revision_guard and proposal_context verbatim into deslop.patch/3 patches { schema:\"deslop.patch/3\", workorder_id, revision_guard, proposal_context, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)."
-    } else {
+    let next = if batch.status != AnalysisStatus::Complete {
         "Analysis is incomplete. Repair every blocked file and rescan; no rewrite is authorized."
+    } else if batch.work_orders.is_empty() {
+        "No proposal-eligible rewrite regions. Report-only findings remain available through scan."
+    } else {
+        "Rewrite each region. Copy revision_guard and proposal_context verbatim into deslop.patch/3 patches { schema:\"deslop.patch/3\", workorder_id, revision_guard, proposal_context, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)."
     };
     let prompts = batch
         .work_orders
         .into_iter()
         .filter(|work_order| work_order.kind == WorkOrderKind::RewriteRegion)
         .map(fix_prompt_entry)
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>>>()?;
     Ok(json!({
         "schema": "deslop.fix/3",
         "status": batch.status,
@@ -738,9 +740,9 @@ fn auto_coverage_config(args: &Value) -> Result<CoverageConfig> {
     }
 }
 
-fn fix_prompt_entry(work_order: WorkOrder) -> Value {
-    let prompt = build_prompt(&work_order);
-    json!({
+fn fix_prompt_entry(work_order: WorkOrder) -> Result<Value> {
+    let prompt = build_prompt(&work_order)?;
+    Ok(json!({
         "workorder_id": work_order.id,
         "path": work_order.path,
         "region": {
@@ -755,7 +757,7 @@ fn fix_prompt_entry(work_order: WorkOrder) -> Value {
         "contract": work_order.contract,
         "findings": work_order.findings,
         "prompt": prompt.text,
-    })
+    }))
 }
 
 struct ProposedWorkOrders {
@@ -1225,6 +1227,48 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("Repair every blocked file")
+        );
+    }
+
+    #[test]
+    fn never_auto_findings_remain_scannable_without_workorders_or_prompts() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(temp.path().join("settings.toml"), "phantom_knob = 4\n")
+            .expect("config artifact");
+        fs::write(
+            temp.path().join("driver.jl"),
+            concat!(
+                "phantom_knob = get(options, \"phantom-knob\")\n",
+                "println(phantom_knob)\n",
+            ),
+        )
+        .expect("Julia source");
+        let args = json!({ "paths": [temp.path()] });
+
+        let scanned = scan_tool(&args).expect("scan");
+        assert!(
+            scanned["reports"]
+                .as_array()
+                .expect("reports")
+                .iter()
+                .any(|report| report["findings"]
+                    .as_array()
+                    .expect("findings")
+                    .iter()
+                    .any(|finding| finding["rule"] == "config-key-unconsumed"
+                        && finding["safety"] == "never-auto"))
+        );
+
+        let proposed = propose_tool(&args).expect("propose");
+        assert!(proposed["workorders"].as_array().unwrap().is_empty());
+
+        let fixed = fix_prompts_tool(&args).expect("fix prompts");
+        assert!(fixed["prompts"].as_array().unwrap().is_empty());
+        assert!(
+            fixed["next"]
+                .as_str()
+                .unwrap()
+                .contains("No proposal-eligible")
         );
     }
 

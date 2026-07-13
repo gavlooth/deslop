@@ -5297,4 +5297,58 @@ mod tests {
         assert!(applied.written.is_empty());
         assert_eq!(fs::read_to_string(source).unwrap(), original);
     }
+
+    #[test]
+    fn never_auto_context_cannot_run_checks_or_write_under_override() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source = temp.path().join("driver.jl");
+        let original = concat!(
+            "phantom_knob = get(options, \"phantom-knob\")\n",
+            "println(phantom_knob)\n",
+        );
+        fs::write(temp.path().join("settings.toml"), "phantom_knob = 4\n")
+            .expect("config artifact");
+        fs::write(&source, original).expect("Julia source");
+        let proposal = propose_work_orders(
+            temp.path(),
+            &[temp.path().to_path_buf()],
+            deslop_analyzer::AnalyzerConfig::default(),
+        )
+        .expect("proposal");
+        assert!(proposal.work_orders.is_empty());
+        assert!(proposal.reports.iter().any(|report| {
+            report.findings.iter().any(|finding| {
+                finding.rule == "config-key-unconsumed"
+                    && finding.safety == deslop_core::SafetyClass::NeverAuto
+            })
+        }));
+        let patch = Patch {
+            schema: "deslop.patch/3".to_string(),
+            workorder_id: "wo3_report_only".to_string(),
+            revision_guard: "rg1_report_only".into(),
+            proposal_context: proposal.context,
+            replacement: "println(\"changed\")\n".to_string(),
+            by: "test".to_string(),
+        };
+        let marker = temp.path().join("check-ran");
+        let mut options = test_options(
+            temp.path(),
+            Some("touch check-ran"),
+            CoverageConfig::Disabled,
+        );
+        options.allow_non_removable = true;
+
+        let verified = verify_patches(std::slice::from_ref(&patch), &options).expect("verify");
+        assert_eq!(verified.results[0].verdict, VerificationVerdict::Rejected);
+        assert!(
+            verified.results[0]
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("unknown workorder"))
+        );
+        let applied = apply_patches(&[patch], &options, false).expect("apply rejects");
+        assert!(applied.written.is_empty());
+        assert!(!marker.exists(), "check command must not run");
+        assert_eq!(fs::read_to_string(source).unwrap(), original);
+    }
 }

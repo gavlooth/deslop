@@ -5,7 +5,7 @@ use deslop_core::{
     AnalysisDiagnostic, AnalysisStatus, FileReport, Finding, SafetyClass, Severity,
     reports_analysis_status, reports_permit_rewrites,
 };
-use deslop_protocol::WorkOrder;
+use deslop_protocol::{WorkOrder, validate_workorder_identity};
 use serde::Serialize;
 use serde_json::json;
 
@@ -82,14 +82,17 @@ pub fn render_json(reports: &[FileReport]) -> Result<String> {
 }
 
 pub fn render_sarif(reports: &[FileReport]) -> Result<String> {
-    let mut rules: BTreeMap<String, SafetyClass> = BTreeMap::new();
+    let mut rules: BTreeMap<String, Vec<SafetyClass>> = BTreeMap::new();
     let mut results = Vec::new();
     for report in reports {
         if !report.analysis.permits_rewrites() {
             for diagnostic in &report.analysis.diagnostics {
-                rules
+                let safeties = rules
                     .entry(format!("deslop/{}", diagnostic.code))
-                    .or_insert(SafetyClass::NeverAuto);
+                    .or_default();
+                if !safeties.contains(&SafetyClass::NeverAuto) {
+                    safeties.push(SafetyClass::NeverAuto);
+                }
             }
             results.extend(
                 report
@@ -100,15 +103,21 @@ pub fn render_sarif(reports: &[FileReport]) -> Result<String> {
             );
         }
         for finding in &report.findings {
-            rules
-                .entry(finding.rule.to_owned())
-                .or_insert(finding.safety);
+            let safeties = rules.entry(finding.rule.to_owned()).or_default();
+            if !safeties.contains(&finding.safety) {
+                safeties.push(finding.safety);
+            }
             results.push(sarif_result(finding));
         }
     }
     let rules = rules
         .into_iter()
-        .map(|(id, safety)| {
+        .map(|(id, safeties)| {
+            let safety = if safeties.len() == 1 {
+                json!(safeties[0])
+            } else {
+                json!("per-finding")
+            };
             json!({
                 "id": id,
                 "shortDescription": { "text": id },
@@ -135,6 +144,7 @@ pub fn render_sarif(reports: &[FileReport]) -> Result<String> {
 pub fn render_agent(work_orders: &[WorkOrder]) -> Result<String> {
     let mut out = String::new();
     for work_order in work_orders {
+        validate_workorder_identity(work_order).map_err(anyhow::Error::msg)?;
         out.push_str(&serde_json::to_string(&work_order)?);
         out.push('\n');
     }
@@ -146,6 +156,10 @@ fn sarif_result(finding: &Finding) -> serde_json::Value {
         "ruleId": finding.rule,
         "level": sarif_level(finding.severity),
         "message": { "text": finding.message },
+        "properties": {
+            "safety": finding.safety,
+            "reportOnly": finding.safety == SafetyClass::NeverAuto
+        },
         "locations": [{
             "physicalLocation": {
                 "artifactLocation": { "uri": finding.path.to_string_lossy() },
@@ -287,6 +301,31 @@ mod tests {
             true
         );
         assert_eq!(render_agent(&[]).expect("empty agent output"), "");
+    }
+
+    #[test]
+    fn sarif_preserves_per_finding_safety_when_one_rule_has_mixed_evidence() {
+        let mut report_only = finding("mixed-rule", Severity::Minor, 2);
+        report_only.safety = SafetyClass::NeverAuto;
+        let proposal_eligible = finding("mixed-rule", Severity::Minor, 4);
+        let reports = [FileReport {
+            path: PathBuf::from("src/sample.clj"),
+            lang: deslop_core::Lang::Clojure,
+            analysis: deslop_core::AnalysisProvenance::complete(),
+            findings: vec![proposal_eligible, report_only],
+        }];
+
+        let value: serde_json::Value =
+            serde_json::from_str(&render_sarif(&reports).expect("sarif")).expect("json");
+        let results = value["runs"][0]["results"].as_array().expect("results");
+        assert_eq!(results[0]["properties"]["safety"], "llm-only");
+        assert_eq!(results[0]["properties"]["reportOnly"], false);
+        assert_eq!(results[1]["properties"]["safety"], "never-auto");
+        assert_eq!(results[1]["properties"]["reportOnly"], true);
+        assert_eq!(
+            value["runs"][0]["tool"]["driver"]["rules"][0]["properties"]["safety"],
+            "per-finding"
+        );
     }
 
     fn assert_json_eq(value: &serde_json::Value, path: &[&str], expected: &str) {

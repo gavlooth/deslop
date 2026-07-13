@@ -5690,3 +5690,84 @@ proposal. Recheck only when M1 introduces ProjectSnapshotId/NodeKey ownership or
 capability observation schema.
 
 **Signature:** Codex (GPT-5), M0.13 integration owner, 2026-07-13.
+
+---
+
+## M0.14 checkpoint — enforce `NeverAuto` as report-only
+
+**Date/time:** 2026-07-13T16:50:27+02:00
+
+**Objective/target:** resolve the safety-lattice contradiction in which SPEC defined `NeverAuto` as
+report-only while proposal generation admitted every class except `SafeAuto`. Preserve findings on
+read-only surfaces while denying all proposal, prompt, characterization, verification, and write
+authority, including mixed-region and override cases.
+
+**Changes:**
+
+- Added the fail-closed `SafetyClass::permits_proposal` allowlist for `AnalyzerConfirmed`,
+  `SafeWithPrecondition`, `RiskySuggest`, and `LlmOnly`. `SafeAuto` stays deterministic and
+  `NeverAuto` stays evidence-only. Canonical rule metadata now labels `missing-reference`,
+  `julia-jet`, and boundary rules report/review-only, with an invariant forbidding proposal/fix
+  defaults for every `never-auto` rule.
+- Proposal generation now quarantines any complete candidate rewrite region whose replacement span
+  overlaps `NeverAuto` evidence. This includes nested evidence and zero-width point diagnostics;
+  disjoint regions remain eligible. WorkOrder identity validation rejects empty or non-proposable
+  findings, and report/slim prompt builders validate before serialization or source egress.
+- Bumped proposal reconstruction semantics from `deslop-analyzer/1` to `/2` in protocol, SPEC, and
+  both MCP schemas. `/1` contexts expire explicitly; wire shapes remain proposal-context/1,
+  workorder/3, patch/3, characterization-test/3, MCP workorders/3/fix/3, and slim/4.
+- CLI `propose` and `scan --format agent`, MCP propose/fix, slim auto/import flows, verifier/apply and
+  characterization inherit the shared policy. MCP complete scans with no eligible regions return an
+  explicit no-proposal next action. Slim prompts now include each eligible finding's safety class.
+- Deterministic fix and LSP regressions prove that even an injected `NeverAuto` finding carrying a
+  syntactically valid edit cannot write or produce a code action. Verifier regression proves
+  `allow_non_removable`, characterization mode, and a check command cannot widen report-only
+  authority: the command is not run and source bytes are unchanged.
+- Read-only JSON continues to carry every finding. SARIF now carries result-level `safety` and
+  `reportOnly`; a rule with mixed per-finding safety is labeled `per-finding` instead of silently
+  taking the first observed class. README, SPEC, TODO, runtime/duplicate MCP descriptions, and tests
+  were updated.
+
+**Commands/checks run:** targeted core/protocol/CLI/MCP/slim/verifier/fix/LSP/report tests; `cargo
+check -p deslop-slim -p deslop-mcp -p deslop-report -p deslop-verify -p deslop-lsp -p deslop-fix`;
+`cargo test --workspace`; `cargo test -p deslop-mcp --features slim-llm -- --test-threads=1`;
+`cargo build --workspace`; `cargo build -p deslop-slim --no-default-features`; `cargo fmt --all
+-- --check`; `cargo clippy --workspace --all-targets --all-features -- -D warnings`; and `git diff
+--check`.
+
+**Verification results:** PASS. Workspace: 288 passing tests plus one intentional ignored performance
+probe and all doc-tests. Feature-enabled MCP: 23 passing tests. Workspace and no-default-features slim
+builds, formatting, whitespace, and all-feature/all-target warnings-denied clippy pass. The supported
+Julia `config-key-unconsumed` fixture numerically proves one `never-auto` scan finding with zero CLI
+proposal/agent records, zero MCP workorders/prompts, zero slim egress regions/model calls/patches, zero
+verifier check-command execution, and zero writes under widening. Protocol tests prove pure, mixed,
+nested, disjoint, zero-width, mutated identity, and legacy-semantics cases.
+
+**Failure modes / invalidated assumptions:** the first E2E used `config-key-unread` on a generic TOML
+artifact; parser provenance already blocked that path before M0.14, so it could not distinguish the
+bug and was replaced with a parse-complete Julia-source finding. Merely filtering `NeverAuto` out of
+a mixed WorkOrder was invalidated because the patch still replaces and exports the entire enclosing
+region; report-only evidence is therefore absorbing for every overlapping target. A negated denylist
+was invalidated as fail-open for future safety variants and replaced by an explicit allowlist. SARIF's
+first-safety-per-rule metadata was invalidated because safety is per finding. One focused Cargo command
+incorrectly passed two test filters and was rejected; the full core suite then passed.
+
+**Current recommendation/checkpoint:** M0.14 is complete. Execute M0.DoD next with one corpus-level,
+numerical demonstration of duplicate-ID count, ambiguous-edge resolution count, grammar selection,
+and partial/capability honesty; do not reopen proposal-policy tuning unless a new safety class or
+subregion/protected-span authority model is introduced.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; targeted local Rust
+reads remained the fallback.
+
+**Dependencies/restart:** rebuild/reinstall CLI, LSP, MCP, and library consumers. Outstanding
+proposal contexts and workorders carrying `deslop-analyzer/1` must be regenerated; wire schema numbers
+did not change. No new third-party dependency was introduced.
+
+**Negative-memory status:** Hindsight should retain that filtering a report-only finding from a
+region does not remove rewrite authority over its bytes; region replacement requires the safety join
+of all overlapping evidence, with `NeverAuto` absorbing. Also retain that unsupported/generic
+provenance fixtures cannot prove a proposal-filter regression. Recheck only when proposals gain
+protected subspans or a safety class is added.
+
+**Signature:** Codex (GPT-5), M0.14 integration owner, 2026-07-13.

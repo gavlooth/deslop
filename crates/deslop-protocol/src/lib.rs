@@ -170,7 +170,7 @@ fn work_order_drafts_for_source(source: &SourceFile, findings: &[Finding]) -> Ve
     let mut grouped: BTreeMap<RewriteRegionKey, Vec<&Finding>> = BTreeMap::new();
     for finding in findings
         .iter()
-        .filter(|finding| finding.safety != SafetyClass::SafeAuto)
+        .filter(|finding| finding.safety.permits_proposal())
     {
         let region = region_for_finding(source, finding);
         grouped
@@ -181,11 +181,24 @@ fn work_order_drafts_for_source(source: &SourceFile, findings: &[Finding]) -> Ve
 
     grouped
         .into_iter()
+        .filter(|(key, _)| {
+            !findings.iter().any(|finding| {
+                finding.safety == SafetyClass::NeverAuto
+                    && spans_overlap(finding.span, region_span(&key.region()))
+            })
+        })
         .map(|(key, mut findings)| {
             sort_grouped_findings(&mut findings);
             work_order_for_findings(key, findings)
         })
         .collect()
+}
+
+fn spans_overlap(left: Span, right: Span) -> bool {
+    if left.start_byte == left.end_byte {
+        return right.start_byte <= left.start_byte && left.start_byte < right.end_byte;
+    }
+    left.start_byte < right.end_byte && right.start_byte < left.end_byte
 }
 
 #[cfg(test)]
@@ -202,7 +215,7 @@ fn work_orders_for_report(source: &SourceFile, report: &FileReport) -> Vec<WorkO
 fn work_orders_from_test_drafts(drafts: Vec<WorkOrderDraft>) -> Vec<WorkOrder> {
     let mut context = ProposalContext {
         schema: "deslop.proposal-context/1".to_string(),
-        analyzer_semantics: "deslop-analyzer/1".to_string(),
+        analyzer_semantics: "deslop-analyzer/2".to_string(),
         context_id: String::new(),
         requested_scope: Vec::new(),
         analyzer: AnalyzerConfig::default().snapshot(),
@@ -257,6 +270,19 @@ pub fn validate_workorder_identity(work_order: &WorkOrder) -> Result<(), String>
         ));
     }
     validate_proposal_context(&work_order.proposal_context)?;
+    if work_order.findings.is_empty() {
+        return Err("workorder must contain at least one proposal-eligible finding".to_string());
+    }
+    if let Some(finding) = work_order
+        .findings
+        .iter()
+        .find(|finding| !finding.safety.permits_proposal())
+    {
+        return Err(format!(
+            "workorder finding `{}` has non-proposable safety class {:?}",
+            finding.rule, finding.safety
+        ));
+    }
     validate_repo_path(&work_order.path, false)?;
     let fingerprint = region_fingerprint(&work_order.path, &work_order.region);
     if work_order.region_fingerprint != fingerprint {
@@ -417,7 +443,7 @@ fn proposal_batch_from_scan(
     let external_capabilities = normalize_external_capabilities(root, scan.external_capabilities)?;
     let mut context = ProposalContext {
         schema: "deslop.proposal-context/1".to_string(),
-        analyzer_semantics: "deslop-analyzer/1".to_string(),
+        analyzer_semantics: "deslop-analyzer/2".to_string(),
         context_id: String::new(),
         requested_scope,
         analyzer,
@@ -440,7 +466,7 @@ fn proposal_batch_from_scan(
 
 pub fn reconstruct_proposal(root: &Path, context: &ProposalContext) -> Result<ProposalBatch> {
     validate_proposal_context(context).map_err(anyhow::Error::msg)?;
-    if context.analyzer_semantics != "deslop-analyzer/1" {
+    if context.analyzer_semantics != "deslop-analyzer/2" {
         bail!(
             "unsupported analyzer semantics `{}`",
             context.analyzer_semantics
@@ -985,7 +1011,7 @@ mod tests {
     }
 
     #[test]
-    fn groups_all_non_safe_findings_in_the_same_enclosing_region() {
+    fn groups_all_proposable_findings_in_the_same_enclosing_region() {
         let source = SourceFile::new(
             PathBuf::from("sample.rs"),
             "fn noisy() {\n    todo!();\n    println!(\"narration\");\n}\n".into(),
@@ -1004,6 +1030,78 @@ mod tests {
         assert_eq!(work_orders[0].findings.len(), 2);
         assert_eq!(work_orders[0].findings[0].rule, "placeholder");
         assert_eq!(work_orders[0].findings[1].rule, "narrating-comment");
+    }
+
+    #[test]
+    fn never_auto_findings_quarantine_their_rewrite_region() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn noisy() {\n    todo!();\n}\n".into(),
+        );
+        let report_only = finding(&source, 2, "config-key-unread", SafetyClass::NeverAuto);
+        let proposable = finding(&source, 2, "placeholder", SafetyClass::LlmOnly);
+
+        assert!(work_orders_for_source(&source, std::slice::from_ref(&report_only)).is_empty());
+
+        assert!(work_orders_for_source(&source, &[report_only, proposable]).is_empty());
+    }
+
+    #[test]
+    fn never_auto_findings_do_not_quarantine_disjoint_rewrite_regions() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn report_only() {\n    todo!();\n}\n\nfn rewrite() {\n    todo!();\n}\n".into(),
+        );
+        let findings = [
+            finding(&source, 2, "missing-reference", SafetyClass::NeverAuto),
+            finding(&source, 6, "placeholder", SafetyClass::LlmOnly),
+        ];
+
+        let work_orders = work_orders_for_source(&source, &findings);
+        assert_eq!(work_orders.len(), 1);
+        assert_eq!(work_orders[0].region.start_line, 5);
+        assert_eq!(work_orders[0].findings[0].rule, "placeholder");
+    }
+
+    #[test]
+    fn nested_never_auto_evidence_quarantines_an_outer_rewrite_region() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn outer() {\n    todo!();\n    fn inner() {\n        todo!();\n    }\n}\n".into(),
+        );
+        let findings = [
+            finding(&source, 2, "outer-placeholder", SafetyClass::LlmOnly),
+            finding(&source, 4, "missing-reference", SafetyClass::NeverAuto),
+        ];
+
+        assert!(work_orders_for_source(&source, &findings).is_empty());
+    }
+
+    #[test]
+    fn identity_validation_rejects_non_proposable_findings() {
+        let source = SourceFile::new(PathBuf::from("sample.rs"), "fn noisy() {}\n".into());
+        let mut work_order = work_orders_for_source(
+            &source,
+            &[finding(&source, 1, "long-method", SafetyClass::LlmOnly)],
+        )
+        .remove(0);
+        work_order.findings[0].safety = SafetyClass::NeverAuto;
+
+        let error = validate_workorder_identity(&work_order).expect_err("report-only workorder");
+        assert!(error.contains("non-proposable safety class NeverAuto"));
+    }
+
+    #[test]
+    fn zero_width_never_auto_evidence_quarantines_its_region() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn noisy() {\n    todo!();\n}\n".into(),
+        );
+        let mut report_only = finding(&source, 2, "missing-reference", SafetyClass::NeverAuto);
+        report_only.span.end_byte = report_only.span.start_byte;
+        let proposable = finding(&source, 2, "placeholder", SafetyClass::LlmOnly);
+
+        assert!(work_orders_for_source(&source, &[report_only, proposable]).is_empty());
     }
 
     #[test]
@@ -1231,6 +1329,14 @@ mod tests {
                 .expect_err("root escape must fail")
                 .contains("root-relative")
         );
+
+        let mut legacy_semantics = batch.context.clone();
+        legacy_semantics.analyzer_semantics = "deslop-analyzer/1".to_string();
+        legacy_semantics.context_id =
+            proposal_context_id(&legacy_semantics).expect("recomputed context id");
+        let error = reconstruct_proposal(temp.path(), &legacy_semantics)
+            .expect_err("legacy proposal semantics must expire");
+        assert!(error.to_string().contains("unsupported analyzer semantics"));
 
         fs::write(peer, "fn peer() -> i32 { 3 }\n").expect("mutate peer");
         let error = reconstruct_proposal(temp.path(), &batch.context)

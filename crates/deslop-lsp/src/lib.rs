@@ -872,6 +872,12 @@ mod tests {
             span: safe.span,
             ..safe.clone()
         };
+        let never_auto = Finding {
+            safety: SafetyClass::NeverAuto,
+            rule: "missing-reference".to_string(),
+            message: "unresolved reference".to_string(),
+            ..safe.clone()
+        };
 
         let safe_actions = code_actions(
             uri(),
@@ -893,6 +899,15 @@ mod tests {
             requested_range(),
         )?;
         assert!(risky_actions.is_empty());
+
+        let report_only_actions = code_actions(
+            uri(),
+            text,
+            &AnalysisProvenance::complete(),
+            &[never_auto],
+            requested_range(),
+        )?;
+        assert!(report_only_actions.is_empty());
         Ok(())
     }
 

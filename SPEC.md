@@ -17,7 +17,7 @@ that come back. Any LLM is a **swappable, external consumer**, never a dependenc
 >
 > Retained from v0.3: the **fix-safety lattice** (§3) and the counterexamples that justify
 > it. Deviation from the original "auto-fix in place": only `safe-auto` writes in place;
-> everything else is propose → verify → apply.
+> agent-rewrite classes use propose → verify → apply, while `never-auto` remains report-only.
 
 ---
 
@@ -101,8 +101,9 @@ Canonical counterexamples that forbid "obvious" auto-fixes:
 - **Julia `1:length(x)`→`eachindex(x)`** is wrong for `OffsetArrays`/ordinal use ⇒
   `safe-with-precondition` (1-based, positional).
 
-Each non-`safe-auto` rule ships a machine-readable **precondition** + **counterexample** +
-**default**, surfaced in `deslop rules` and in every work order.
+Each rule outside the deterministic `safe-auto` class ships a machine-readable **precondition** +
+**counterexample** + **default**, surfaced in `deslop rules`. Proposal-eligible findings carry that
+contract in every work order; `never-auto` findings remain available only through reporting surfaces.
 
 ---
 
@@ -110,11 +111,13 @@ Each non-`safe-auto` rule ships a machine-readable **precondition** + **countere
 
 This is how "the repo proposes to the LLM" works without losing safety.
 
-1. **`deslop propose`** emits **work orders** (§5) for findings that have no `safe-auto`
-   edit — one self-contained unit per region: the region source, the findings inside it
+1. **`deslop propose`** emits **work orders** (§5) only for proposal-eligible findings
+   (`analyzer-confirmed`, `safe-with-precondition`, `risky-suggest`, and `llm-only`) — one
+   self-contained unit per region: the region source, the eligible findings inside it
    (rule, message, safety class, precondition), and an explicit **instruction** +
    **acceptance contract** (`check_cmd`, "must still parse", "must not delete error
-   handling", "must not add public defs"). No model is called.
+   handling", "must not add public defs"). `safe-auto` uses deterministic fixing and `never-auto`
+   is report-only; neither enters a work order or prompt. No model is called.
 2. **Any agent** (external Claude Code/Cursor/Codex session, a CI script, or the optional
    bundled consumer) reads the work orders and returns **patches** in deslop's patch schema
    (§5): exact revision guard + replacement text.
@@ -199,7 +202,7 @@ Stable, versioned, emitted by `--format agent` (JSONL) and over MCP.
   "region_fingerprint": "<trimmed matching identity; never write authority>",
   "revision_guard": "rg1_<byte-length>_<blake3-of-exact-target-identity-and-bytes>",
   "proposal_context": { "schema": "deslop.proposal-context/1",
-    "analyzer_semantics": "deslop-analyzer/1", "context_id": "pc1_<blake3>",
+    "analyzer_semantics": "deslop-analyzer/2", "context_id": "pc1_<blake3>",
     "requested_scope": [], "analyzer": {}, "excluded_fingerprints": [],
     "sources": [], "external_capabilities": [], "workorder_set_digest": "dg1_<blake3>" },
   "findings": [

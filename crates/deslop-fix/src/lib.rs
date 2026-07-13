@@ -247,6 +247,23 @@ mod tests {
     }
 
     #[test]
+    fn never_auto_finding_cannot_write_even_with_a_valid_edit() {
+        let text = "(not (= a b))\n";
+        let source = SourceFile::new(PathBuf::from("sample.clj"), text.into());
+        let mut finding = scan_source(&source)
+            .findings
+            .into_iter()
+            .find(|finding| finding.edit.is_some())
+            .expect("fixable finding");
+        finding.safety = SafetyClass::NeverAuto;
+
+        assert_eq!(
+            apply_findings_to_text(text, &[finding]).expect("report-only no-op"),
+            text
+        );
+    }
+
+    #[test]
     fn renders_safe_auto_diff_without_writing() {
         let diff = unified_file_diff(Path::new("sample.clj"), "(not (= a b))\n", "(not= a b)\n");
         assert!(diff.contains("--- sample.clj"));

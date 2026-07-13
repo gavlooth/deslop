@@ -101,11 +101,15 @@ reports, benchmark records, and work orders.
   IDs plus workorder/3/patch/3/characterization-test/3, MCP workorders/3/fix/3, and slim/4; CLI,
   MCP, slim, characterization, verify, and apply reconstruct without defaults and reject legacy,
   tampered, mixed, peer-stale, capability-stale, scope-mismatched, or root-escaping contexts.
-- [ ] M0.14 Reconcile the `NeverAuto` contract: SPEC says report-only while `/1` currently proposes it;
-  choose one policy, update every consumer, and add an end-to-end regression.
-  **NEXT**
+- [x] M0.14 Reconcile the `NeverAuto` contract as strictly report-only. Evidence: explicit typed
+  proposal allowlist; overlapping, nested, and zero-width `NeverAuto` evidence quarantines the
+  complete rewrite region while disjoint regions remain eligible; WorkOrder/prompt/agent validation,
+  verifier reconstruction, slim, MCP, deterministic fix, and LSP deny rewrite authority; JSON/SARIF
+  retain per-finding safety; supported-Julia boundary E2E proves scan visibility with zero CLI agent,
+  workorder, prompt, model-call, check-command, verification, or write output even under overrides.
 - [ ] M0.DoD Demonstrate zero duplicate work-order IDs, zero falsely resolved ambiguous fixture edges,
   correct grammar selection, and honest partial/capability labels on the M0 corpus.
+  **NEXT**
 
 ## M1 — One parse, one owned syntax snapshot
 

@@ -480,7 +480,7 @@ fn rewrite_patch(
     options: &SlimOptions,
     work_order: &WorkOrder,
 ) -> Result<Patch> {
-    let prompt = build_prompt(work_order);
+    let prompt = build_prompt(work_order)?;
     let replacement = strip_code_fences(&client.rewrite(&prompt)?);
     Ok(Patch {
         schema: "deslop.patch/3".to_string(),
@@ -623,15 +623,17 @@ fn finish_slim_report(
     }
 }
 
-pub fn build_prompt(work_order: &WorkOrder) -> SlimPrompt {
+pub fn build_prompt(work_order: &WorkOrder) -> Result<SlimPrompt> {
+    validate_workorder_identity(work_order).map_err(anyhow::Error::msg)?;
     let findings = work_order
         .findings
         .iter()
         .map(|finding| {
             format!(
-                "- rule: {}\n  severity: {:?}\n  message: {}\n  precondition: {}",
+                "- rule: {}\n  severity: {:?}\n  safety: {:?}\n  message: {}\n  precondition: {}",
                 finding.rule,
                 finding.severity,
+                finding.safety,
                 finding.message,
                 finding.precondition.as_deref().unwrap_or("none")
             )
@@ -646,7 +648,7 @@ pub fn build_prompt(work_order: &WorkOrder) -> SlimPrompt {
         work_order.contract.max_growth_ratio,
         work_order.contract.check_cmd.as_deref().unwrap_or("none")
     );
-    SlimPrompt {
+    Ok(SlimPrompt {
         kind: SlimPromptKind::Rewrite,
         workorder_id: work_order.id.to_owned(),
         text: format!(
@@ -659,11 +661,12 @@ pub fn build_prompt(work_order: &WorkOrder) -> SlimPrompt {
             contract,
             work_order.region.text
         ),
-    }
+    })
 }
 
-pub fn build_characterization_prompt(work_order: &WorkOrder) -> SlimPrompt {
-    SlimPrompt {
+pub fn build_characterization_prompt(work_order: &WorkOrder) -> Result<SlimPrompt> {
+    validate_workorder_identity(work_order).map_err(anyhow::Error::msg)?;
+    Ok(SlimPrompt {
         kind: SlimPromptKind::Characterization,
         workorder_id: work_order.id.to_owned(),
         text: format!(
@@ -674,7 +677,7 @@ pub fn build_characterization_prompt(work_order: &WorkOrder) -> SlimPrompt {
             work_order.region.end_line,
             work_order.region.text
         ),
-    }
+    })
 }
 
 pub fn strip_code_fences(text: &str) -> String {
@@ -785,7 +788,7 @@ fn characterization_test_for_work_order(
     options: &SlimOptions,
     work_order: &WorkOrder,
 ) -> Result<CharacterizationTest> {
-    let prompt = build_characterization_prompt(work_order);
+    let prompt = build_characterization_prompt(work_order)?;
     Ok(CharacterizationTest {
         schema: "deslop.characterization-test/3".to_string(),
         workorder_id: work_order.id.to_owned(),
@@ -1351,15 +1354,16 @@ mod tests {
         }];
         work_order.instruction = "Rewrite without changing behavior.".to_string();
 
-        let prompt = build_prompt(&work_order);
+        let prompt = build_prompt(&work_order)?;
 
         assert_eq!(prompt.kind, SlimPromptKind::Rewrite);
         assert!(prompt.text.contains("fn identity"));
         assert!(prompt.text.contains("unneeded return"));
+        assert!(prompt.text.contains("safety: LlmOnly"));
         assert!(prompt.text.contains("must parse: true"));
         assert!(prompt.text.contains("no new public definitions: true"));
 
-        let characterization = build_characterization_prompt(&work_order);
+        let characterization = build_characterization_prompt(&work_order)?;
         assert_eq!(characterization.kind, SlimPromptKind::Characterization);
         assert!(
             characterization
@@ -1367,6 +1371,24 @@ mod tests {
                 .contains("pins the CURRENT observable behavior")
         );
         assert!(characterization.text.contains("fn identity"));
+        Ok(())
+    }
+
+    #[test]
+    fn prompt_builders_reject_report_only_workorders() -> Result<()> {
+        let fixture = SlimTestFixture::identity()?;
+        let mut work_order = propose_work_orders(&[fixture.source])?.remove(0);
+        work_order.findings[0].safety = deslop_core::SafetyClass::NeverAuto;
+
+        let rewrite_error = build_prompt(&work_order).expect_err("report-only rewrite prompt");
+        assert!(rewrite_error.to_string().contains("non-proposable"));
+        let characterization_error = build_characterization_prompt(&work_order)
+            .expect_err("report-only characterization prompt");
+        assert!(
+            characterization_error
+                .to_string()
+                .contains("non-proposable")
+        );
         Ok(())
     }
 
@@ -1411,6 +1433,46 @@ mod tests {
             self.prompts.borrow_mut().push(prompt.clone());
             Ok("replacement".to_string())
         }
+    }
+
+    #[test]
+    fn never_auto_only_scan_has_zero_egress_and_zero_writes_under_widening() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let source = temp.path().join("driver.jl");
+        let original = concat!(
+            "phantom_knob = get(options, \"phantom-knob\")\n",
+            "println(phantom_knob)\n",
+        );
+        fs::write(temp.path().join("settings.toml"), "phantom_knob = 4\n")?;
+        fs::write(&source, original)?;
+        let options = SlimOptions {
+            root: temp.path().to_path_buf(),
+            paths: vec![temp.path().to_path_buf()],
+            workorders: None,
+            apply: true,
+            characterize: true,
+            allow_unverified: true,
+            coverage: CoverageConfig::Disabled,
+            model: "counting".to_string(),
+            check_cmd: None,
+            backup: false,
+            analyzer: AnalyzerConfig::default(),
+        };
+        let client = CountingClient {
+            prompts: RefCell::new(Vec::new()),
+        };
+
+        assert_eq!(egress_summary(&options)?.region_count, 0);
+        let report = run_slim(&client, options)?;
+
+        assert!(client.prompts.borrow().is_empty());
+        assert!(report.patches.is_empty());
+        assert!(report.verified.results.is_empty());
+        assert!(report.gating.applied.is_empty());
+        assert!(report.gating.held_unproven.is_empty());
+        assert!(report.gating.rejected.is_empty());
+        assert_eq!(fs::read_to_string(source)?, original);
+        Ok(())
     }
 
     #[test]
