@@ -36,6 +36,25 @@ The labelled rule corpus still shows useful analyzer signal: `deslop slop` separ
 sloppy (`0.82` versus `60.32`). The broken surface is specifically the uncalibrated health/
 readability aggregation and the disconnected graph/work-order pipeline, not every rule.
 
+## M0.11 release-gate after-state
+
+Measured 2026-07-13 after M0.1–M0.10. The source tree and supported-language surface grew between
+the audit and this checkpoint, so elapsed time and self-scan totals are observations, not controlled
+performance comparisons. Operation-count and semantic contracts are the authoritative gates.
+
+| Probe | Audit before | M0.11 after | Interpretation |
+|---|---:|---:|---|
+| Clean/sloppy metrics | health `40.38`/`46.14`; 3/4 candidates | `/5`; 30/38 regions; 3/4 triage-only outliers; no health or gating authority | The reversed scalar contract was removed, not retuned. |
+| Clean/sloppy slop | `0.82`/`60.32` | `0.819672131147541`/`60.32388663967611` | Independent labelled-rule signal is preserved exactly. |
+| `metrics crates` | 1,556 regions; `30.50s` | 39 files; 1,745 regions; `48.217533591s`; 8 parses for a 5-region fixture | Reparse amplification remains explicit (`R + 3` on the fixture); M1 owns the one-parse fix. |
+| `graph crates` | 10,872 edges; 4,203 resolved; `0.74s` | 2,134 symbols; 13,392 edges; 0 resolved non-containment edges; `1.769094036s` | Unsound resolution authority is gone; timing reflects a larger tree and is not a speed claim. |
+| `compact_label` | 2 definitions; 10 calls falsely resolved to `builder.rs` | 2 definitions; 10 syntactic calls, each targeting its caller file | Duplicate-name lexical scoping is preserved without a resolved claim. |
+| Typed TypeScript | one fallback file region; graph extraction skipped | `convert` is a function region at lines 13–15; no file fallback; typed graph tests pass | Path-selected TypeScript grammar reaches consumers. |
+| Clojure nested `if`/`when` | cyclomatic `1`; cognitive `0` | line-3 region cyclomatic `3`; cognitive `3`; max nesting `2` | Contextual control-form counting is active. |
+| Rust grouped region | 13 orders; 3 IDs; one region repeated 11 times | 3 unique orders; largest order retains all 11 findings; one slim patch/verification | Findings are merged at the rewrite boundary. |
+| Entire sloppy corpus | 62 orders; 31 IDs; 8 duplicate IDs (historical) | 28 unique orders/targets; all 62 findings retained | Current grouping and overlap/order invariance pass. |
+| Workspace gate | 179 tests | 259 passing; 1 intentional ignored performance probe; 22 MCP `slim-llm` tests | fmt, build, minimal slim build, doc-tests, and warnings-denied clippy also pass. |
+
 ## P0 correctness failures
 
 ### 1. Multi-finding regions produce duplicate work orders

@@ -82,9 +82,13 @@ reports, benchmark records, and work orders.
   current 28 unique work orders conserving all 62 findings under overlapping/reordered inputs;
   exact 2-definition/10-call `compact_label` and 21-file/74-symbol/197-edge corpus graph probes;
   all 11 largest-region findings preserved through slim/verify; ignored measured self-scan probe.
-- [ ] M0.11 Run focused tests, then full fmt/build/test/clippy gates and record measured before/after values. **NEXT**
+- [x] M0.11 Run focused tests, then full fmt/build/test/clippy gates and record measured before/after values.
+  Evidence: focused M0.10 contracts pass; workspace has 259 passing tests plus one intentional ignored
+  performance probe; MCP `slim-llm` has 22; fmt, whitespace, workspace/minimal-slim builds, doc-tests,
+  and warnings-denied clippy pass; `.agents/ALGORITHM_AUDIT.md` records the numerical before/after table.
 - [ ] M0.12 Separate the exact-byte `RevisionGuard` from the trimmed cross-revision baseline fingerprint;
   migrate region/work-order IDs explicitly and reject boundary-whitespace staleness.
+  **NEXT**
 - [ ] M0.13 Persist proposal analyzer config, capability, and source-revision context so verify/apply
   reconstruct the same work-order set instead of silently rescanning with defaults.
 - [ ] M0.14 Reconcile the `NeverAuto` contract: SPEC says report-only while `/1` currently proposes it;

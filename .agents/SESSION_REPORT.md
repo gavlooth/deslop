@@ -5444,3 +5444,73 @@ overlap/order invariance; recheck the snapshot after analyzer rules, packs, regi
 or workorder schema change. Search handles: `M0.10 sloppy corpus 62 findings 31 historical 28 current`.
 
 **Signature:** Codex (GPT-5), M0.10 integration owner, 2026-07-13.
+
+---
+
+## M0.11 checkpoint — exhaustive release gate and measured after-state
+
+**Date/time:** 2026-07-13T15:21:44+02:00
+
+**Objective:** complete M0.11 by running focused algorithm contracts before the full build/test/feature/
+clippy matrix and recording numerical before/after evidence without conflating semantic corrections,
+source-tree growth, and runtime performance.
+
+**Target:** M0.1–M0.10 integrated workspace, default and minimal-feature builds, feature-enabled MCP,
+durable audit/roadmap evidence, and jj checkpoint. `/root` owned final validation and documentation.
+
+**Changes:** no production or test code changed in M0.11. Added the dated M0 release-gate after-state
+table to `.agents/ALGORITHM_AUDIT.md`, completed M0.11 in `.agents/TODO.md`, and marked M0.12 **NEXT**.
+
+**Commands run:** `cargo test -p deslop-metrics`; CLI `algorithm_contracts`, `propose_workorders`, and
+`graph_resolution` suites; focused slim/verify aggregation tests; `cargo fmt --all --check`;
+`git diff --check`; `cargo build --workspace`; `cargo build -p deslop-slim --no-default-features`;
+`cargo test --workspace --quiet`; `cargo test -p deslop-mcp --features slim-llm -- --test-threads=1`;
+`cargo clippy --workspace -- -D warnings`; and live JSON/JQ graph, metrics, slop, and workorder probes.
+
+**Results:** PASS. Focused results: 20 metrics, 1 default algorithm contract with one intentional
+ignored slow probe, 5 workorder, 3 graph, 1 slim aggregation, and 1 verifier aggregation test.
+Workspace: 259 passing tests, one intentional ignored performance probe, and passing doc-tests.
+Feature-enabled MCP: 22 passing tests. Formatting, whitespace, workspace build, minimal-feature slim
+build, and warnings-denied clippy all pass.
+
+The current live after-state is: clean/sloppy metrics `/5`, 30/38 regions, 3/4 triage-only outliers,
+and no health field or gating permission; independent slop scores `0.819672131147541` and
+`60.32388663967611`; 28 unique work orders/targets conserving 62 findings with a largest merged group
+of 11; and a crates graph of 39 files, 2,134 symbols, and 13,392 edges with zero resolved
+non-containment edges. The M0.10 ignored self-scan measured 1,745 metric regions in
+48.217533591s and graph construction in 1.769094036s. The stable operation-count probe remains eight
+`parse_source` calls for five behavioral regions.
+
+**Before/after interpretation:** the original audit had 179 passing tests, 1,556 metric regions in
+30.50s, 10,872 graph edges with 4,203 resolved claims in 0.74s, reversed clean/sloppy health
+`40.38`/`46.14`, and duplicate workorder output. M0 removes the unsound health and graph authority and
+groups workorders, but does not claim a speedup: the source/supported-language surface is larger and
+metrics still reparse per region. Exact before/after values and qualitative TypeScript/Clojure fixes
+are recorded in `.agents/ALGORITHM_AUDIT.md`; M1 owns one-parse performance.
+
+**Failure modes / invalidated assumptions:** no M0.11 gate failed. The interpretation explicitly
+rejects using self-scan wall time or total region/edge counts as a controlled benchmark across a
+changing source tree. Passing a larger test count is evidence of coverage, not proof by itself; the
+operation-count and semantic corpus contracts remain authoritative.
+
+**Current recommendation/checkpoint:** M0.11 is complete. Execute M0.12 next by separating exact-byte
+write authorization from the trimmed cross-revision baseline fingerprint, migrating identifiers
+explicitly, and proving boundary-whitespace changes make stale writes fail closed.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; targeted local Rust reads
+remain the fallback.
+
+**Next actions:** audit every `fingerprint`/`region_fingerprint` producer and consumer before editing;
+define which bytes authorize writes versus which normalized identity supports cross-revision matching;
+then add protocol, verifier, slim, CLI/MCP, and baseline migration regressions as required by the
+user-visible contract.
+
+**Dependencies/restart:** no runtime restart or migration is needed for M0.11 because it changes only
+durable evidence. M0.12 will require an explicit schema/identifier migration decision before rollout.
+
+**Negative-memory status:** the M0.10 historical-31 correction remains active. M0.11 adds the durable
+constraint that source-tree self-scan time and totals cannot be interpreted as before/after performance
+without a controlled fixture; use operation counts and a fixed benchmark corpus instead. Search handles:
+`M0.11 release gate self-scan uncontrolled timing 8 parses 5 regions`.
+
+**Signature:** Codex (GPT-5), M0.11 integration owner, 2026-07-13.
