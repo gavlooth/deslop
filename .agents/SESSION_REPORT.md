@@ -7442,3 +7442,96 @@ lexical authority`. Status: resolved; recheck if a grammar exposes an explicitly
 whose descendants escape its span or source order.
 
 **Signature:** Codex (GPT-5), M2.4 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2.5 active checkpoint — construct, recovery, and dialect policy
+
+**Date/time:** 2026-07-14T01:05:46+02:00
+
+**Objective/target:** define machine-readable, adapter-owned policy for parse recovery, unsupported
+constructs, macros, generated markers, and exact grammar dialect variants, then expose those claims as
+analysis-owned facts without reparsing or path-based grammar reconstruction.
+
+**Changes:** planning only. Selected one versioned aggregate whose five families each preserve explicit
+support and authority. Parse facts will derive only from retained error/missing flags; ordered construct
+rules will match raw kind plus optional exact text; provided dialect declarations must bind the stored
+dialect, grammar id, and grammar version exactly. Production adapters remain unknown until their M2.6-
+M2.10 golden matrices establish real claims.
+
+**Commands/checks run:** M2.5-targeted Hindsight negative-memory search; repository-wide `rg` inventory
+of error flags, macro/generated roles and queries, dialect storage/dispatch, and unsupported surfaces;
+targeted reads of the adapter/capability contracts and M2 architectural plan.
+
+**Results:** ACTIVE / UNVERIFIED. No implementation or capability claim exists in this change yet.
+
+**Invalidated assumptions / negative memory:** no new failed experiment. Existing constraints remain:
+query capture labels are not generated provenance, macro syntax is not macro expansion, a path suffix
+is not stored dialect authority, and parse recovery must remain visible rather than being suppressed.
+
+**Current recommendation/next actions:** implement the strict schema and identity storage first, then
+the retained projection and fixed malformed/dialect fixture, followed by affected and workspace gates.
+
+**Blockers/dependencies/restart:** Serena's active project exposes Python rather than Rust symbols, so
+Rust code work continues through targeted local reads and compiler/test oracles. No functional blocker,
+restart, migration, or new dependency applies.
+
+**Negative-memory status:** no new M2.5 failure recorded; task-targeted Hindsight search returned no
+relevant prior M2.5 invalidation. Local constraints are authoritative for this checkpoint.
+
+**Signature:** Codex (GPT-5), M2.5 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M2.5 terminal checkpoint — construct, recovery, and dialect policy
+
+**Date/time:** 2026-07-14T01:14:19+02:00
+
+**Objective/target:** finish explicit policy and retained facts for parse errors, unsupported
+constructs, macros, generated code, and exact dialect variants without upgrading syntax labels into
+expansion, provenance, or semantic authority.
+
+**Changes:** added strict `deslop.language-construct-policy/1`: parse recovery has explicit
+support/authority/handling; unsupported, macro, and generated sections are total and ordered with
+exact raw-kind/optional-text rules and opaque/surface handling; dialect declarations bind dialect,
+grammar id, and grammar version. Duplicate, shadowed, wildcard, payload-retaining unavailable, missing,
+and reordered contracts fail closed. `LangPack` defaults to all unknown. Snapshot adapter identity now
+validates, stores, exposes, and stably frames the exact policy. Added
+`deslop.construct-policy-projection/1`, which retains `ProjectAnalysis`, stored policy and dialect,
+raw facts, exact text, authority, and handling; grammar flags alone produce error/missing facts and
+adapter rules alone produce construct facts. Provided dialect drift is typed failure. Public re-exports,
+adapter-schema mismatch, missing legacy field, deterministic repeat, policy-only derived identity, and
+no-reparse checks are included. Production packs remain unknown for M2.6-M2.10.
+
+**Commands/checks run:** `cargo test -p deslop-lang`; `cargo test -p deslop-parse`; affected strict
+clippy; format and whitespace checks; then `cargo test --workspace --all-features`; `cargo build
+--workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`;
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`;
+and `git diff --check`.
+
+**Results:** PASS. The malformed custom fixture locks four facts in source order: generated
+`#[generated]` `attribute_item` with surface-syntax handling, opaque `unsafe_block`, opaque
+`macro_invocation`, and syntax-authority `ERROR` text `=` with file-incomplete handling. Exact stored
+dialect is `same-lang/tree-sitter-rust/test`; claimed mismatch fails. The all-unknown policy produces
+zero construct/recovery facts and explicit unknown dialect support. Policy changes preserve raw
+analysis identity, change derived identity, and each source revision invokes its parser once. Every
+workspace gate passes; only the two repository-designated slow instrumentation probes are ignored.
+
+**Invalidated assumptions / negative memory:** no implementation attempt failed. Durable constraint:
+absence of a matching rule is not proof that a construct is semantically absent; unknown and
+unsupported remain explicit. Query-generated labels do not establish generated origin, macro syntax
+does not establish expansion, and paths cannot override stored dialect identity. M2.4 token-owner
+descendant suppression does not apply to construct regions, which may legitimately nest.
+
+**Current recommendation/next actions:** implement M2.6 by declaring only Rust capabilities supported
+by exact golden fixtures, then populate its canonical roles, queries, lexical policy, recovery,
+unsupported/macro/generated rules, and dialect declaration without weakening the frozen schemas.
+
+**Blockers/dependencies/restart:** none. No new dependency, migration, rebuild activation, or service
+restart applies.
+
+**Negative-memory status:** no new failed path required Hindsight negative memory. The terminal policy
+constraints are ready for durable checkpoint memory; search handles: `M2.5 construct policy`, `dialect
+identity exact`, `macro syntax not expansion`, `unknown rule absence`.
+
+**Signature:** Codex (GPT-5), M2.5 integration owner, terminal checkpoint, 2026-07-14.

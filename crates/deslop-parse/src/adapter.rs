@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use deslop_lang::{
-    AdapterCapability, CanonicalRoleSet, CapabilitySupport, LanguageLexicalPolicy,
-    LexicalClassification, RegionClass, RegionSpan, TailPositionClass,
+    AdapterCapability, CanonicalRoleSet, CapabilityAuthority, CapabilitySupport, ConstructHandling,
+    ConstructPolicyKind, LanguageConstructPolicy, LanguageLexicalPolicy, LexicalClassification,
+    ParseRecoveryHandling, RegionClass, RegionSpan, TailPositionClass,
 };
 use tree_sitter::Node;
 
@@ -13,6 +14,7 @@ use crate::{NodeId, ProjectAnalysis, ProjectionId};
 
 pub const CANONICAL_ROLE_PROJECTION_SCHEMA: &str = "deslop.canonical-role-projection/1";
 pub const LEXICAL_TOKEN_PROJECTION_SCHEMA: &str = "deslop.lexical-token-projection/1";
+pub const CONSTRUCT_POLICY_PROJECTION_SCHEMA: &str = "deslop.construct-policy-projection/1";
 
 /// Raw grammar evidence retained alongside a canonical role set.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -234,6 +236,193 @@ impl fmt::Display for LexicalTokenProjectionError {
 impl std::error::Error for LexicalTokenProjectionError {}
 
 impl From<SyntaxAdapterFactsError> for LexicalTokenProjectionError {
+    fn from(error: SyntaxAdapterFactsError) -> Self {
+        Self::Syntax(error)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ConstructPolicyFactKind {
+    ParseError,
+    MissingSyntax,
+    UnsupportedConstruct,
+    Macro,
+    GeneratedCode,
+}
+
+impl ConstructPolicyFactKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ParseError => "parse-error",
+            Self::MissingSyntax => "missing-syntax",
+            Self::UnsupportedConstruct => "unsupported-construct",
+            Self::Macro => "macro",
+            Self::GeneratedCode => "generated-code",
+        }
+    }
+}
+
+impl From<ConstructPolicyKind> for ConstructPolicyFactKind {
+    fn from(kind: ConstructPolicyKind) -> Self {
+        match kind {
+            ConstructPolicyKind::UnsupportedConstruct => Self::UnsupportedConstruct,
+            ConstructPolicyKind::Macro => Self::Macro,
+            ConstructPolicyKind::GeneratedCode => Self::GeneratedCode,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConstructPolicyFact {
+    node: NodeId,
+    raw: RawSyntaxFact,
+    text: Box<str>,
+    kind: ConstructPolicyFactKind,
+    authority: CapabilityAuthority,
+    parse_handling: Option<ParseRecoveryHandling>,
+    construct_handling: Option<ConstructHandling>,
+}
+
+impl ConstructPolicyFact {
+    pub fn node(&self) -> NodeId {
+        self.node
+    }
+
+    pub fn raw(&self) -> &RawSyntaxFact {
+        &self.raw
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn kind(&self) -> ConstructPolicyFactKind {
+        self.kind
+    }
+
+    pub fn authority(&self) -> CapabilityAuthority {
+        self.authority
+    }
+
+    pub fn parse_handling(&self) -> Option<ParseRecoveryHandling> {
+        self.parse_handling
+    }
+
+    pub fn construct_handling(&self) -> Option<ConstructHandling> {
+        self.construct_handling
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DialectPolicyFact {
+    dialect: Box<str>,
+    grammar_id: Box<str>,
+    grammar_version: Box<str>,
+    support: CapabilitySupport,
+    authority: Option<CapabilityAuthority>,
+}
+
+impl DialectPolicyFact {
+    pub fn dialect(&self) -> &str {
+        &self.dialect
+    }
+
+    pub fn grammar_id(&self) -> &str {
+        &self.grammar_id
+    }
+
+    pub fn grammar_version(&self) -> &str {
+        &self.grammar_version
+    }
+
+    pub fn support(&self) -> CapabilitySupport {
+        self.support
+    }
+
+    pub fn authority(&self) -> Option<CapabilityAuthority> {
+        self.authority
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConstructPolicyProjection {
+    id: ProjectionId,
+    analysis: Arc<ProjectAnalysis>,
+    path: PathBuf,
+    policy: LanguageConstructPolicy,
+    dialect: DialectPolicyFact,
+    facts: Box<[ConstructPolicyFact]>,
+}
+
+impl ConstructPolicyProjection {
+    pub fn schema(&self) -> &'static str {
+        CONSTRUCT_POLICY_PROJECTION_SCHEMA
+    }
+
+    pub fn id(&self) -> &ProjectionId {
+        &self.id
+    }
+
+    pub fn analysis(&self) -> &Arc<ProjectAnalysis> {
+        &self.analysis
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn policy(&self) -> &LanguageConstructPolicy {
+        &self.policy
+    }
+
+    pub fn dialect(&self) -> &DialectPolicyFact {
+        &self.dialect
+    }
+
+    pub fn facts(&self) -> &[ConstructPolicyFact] {
+        &self.facts
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConstructPolicyProjectionError {
+    Syntax(SyntaxAdapterFactsError),
+    DialectMismatch {
+        path: PathBuf,
+        dialect: String,
+        grammar_id: String,
+        grammar_version: String,
+    },
+    Identity(String),
+}
+
+impl fmt::Display for ConstructPolicyProjectionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Syntax(error) => error.fmt(formatter),
+            Self::DialectMismatch {
+                path,
+                dialect,
+                grammar_id,
+                grammar_version,
+            } => write!(
+                formatter,
+                "construct policy does not declare stored dialect {dialect}/{grammar_id}/{grammar_version} for {}",
+                path.display()
+            ),
+            Self::Identity(detail) => {
+                write!(
+                    formatter,
+                    "construct policy projection identity failed: {detail}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ConstructPolicyProjectionError {}
+
+impl From<SyntaxAdapterFactsError> for ConstructPolicyProjectionError {
     fn from(error: SyntaxAdapterFactsError) -> Self {
         Self::Syntax(error)
     }
@@ -540,6 +729,125 @@ impl ProjectAnalysis {
         })
     }
 
+    /// Project exact parse-recovery, construct-boundary, and stored-dialect policy facts.
+    ///
+    /// Error and missing facts come from retained grammar flags. Other facts require an exact
+    /// adapter rule. The returned projection retains this analysis and never reparses.
+    pub fn construct_policy_projection(
+        self: &Arc<Self>,
+        path: &Path,
+    ) -> Result<ConstructPolicyProjection, ConstructPolicyProjectionError> {
+        let syntax = self.validated_syntax_nodes(path)?;
+        let entry = self
+            .snapshot()
+            .entry(path)
+            .expect("validated source syntax has a stored snapshot entry");
+        let identity = entry
+            .language_adapter_identity()
+            .expect("validated source syntax has a stored adapter identity");
+        let policy = identity.construct_policy().clone();
+        let grammar = entry
+            .grammar()
+            .expect("validated source syntax has a stored grammar identity");
+        if policy.dialects().support() == CapabilitySupport::Provided
+            && policy
+                .dialects()
+                .declaration(
+                    grammar.dialect(),
+                    grammar.grammar_id(),
+                    grammar.grammar_version(),
+                )
+                .is_none()
+        {
+            return Err(ConstructPolicyProjectionError::DialectMismatch {
+                path: path.to_path_buf(),
+                dialect: grammar.dialect().to_string(),
+                grammar_id: grammar.grammar_id().to_string(),
+                grammar_version: grammar.grammar_version().to_string(),
+            });
+        }
+
+        let id = self
+            .derive_projection_id(
+                CONSTRUCT_POLICY_PROJECTION_SCHEMA,
+                deslop_lang::LANGUAGE_CONSTRUCT_POLICY_SCHEMA.as_bytes(),
+                b"construct-recovery-dialect-policy",
+            )
+            .map_err(|error| ConstructPolicyProjectionError::Identity(error.to_string()))?;
+        let mut facts = Vec::new();
+        for (tree_node, node) in syntax.nodes.into_iter().zip(syntax.ids) {
+            let text = syntax
+                .text
+                .get(tree_node.start_byte()..tree_node.end_byte())
+                .expect("validated syntax spans are UTF-8 boundaries");
+            let view = self
+                .node(node)
+                .expect("validated syntax nodes belong to this analysis");
+            let raw = || RawSyntaxFact {
+                raw_kind: view.raw_kind().into(),
+                raw_kind_id: view.raw_kind_id(),
+                raw_grammar_kind: view.raw_grammar_kind().into(),
+                raw_grammar_kind_id: view.raw_grammar_kind_id(),
+                field: view.field().map(Into::into),
+            };
+
+            let recovery = policy.parse_recovery();
+            if recovery.support() == CapabilitySupport::Provided {
+                let kind = if view.is_error() {
+                    Some(ConstructPolicyFactKind::ParseError)
+                } else if view.is_missing() {
+                    Some(ConstructPolicyFactKind::MissingSyntax)
+                } else {
+                    None
+                };
+                if let Some(kind) = kind {
+                    facts.push(ConstructPolicyFact {
+                        node,
+                        raw: raw(),
+                        text: text.into(),
+                        kind,
+                        authority: recovery
+                            .authority()
+                            .expect("validated provided recovery policy has authority"),
+                        parse_handling: recovery.handling(),
+                        construct_handling: None,
+                    });
+                }
+            }
+
+            for section in policy.constructs() {
+                if let Some(rule) = section.matching_rule(tree_node.kind(), text) {
+                    facts.push(ConstructPolicyFact {
+                        node,
+                        raw: raw(),
+                        text: text.into(),
+                        kind: section.kind().into(),
+                        authority: section
+                            .authority()
+                            .expect("validated provided construct section has authority"),
+                        parse_handling: None,
+                        construct_handling: Some(rule.handling()),
+                    });
+                }
+            }
+        }
+
+        Ok(ConstructPolicyProjection {
+            id,
+            analysis: Arc::clone(self),
+            path: path.to_path_buf(),
+            dialect: DialectPolicyFact {
+                dialect: grammar.dialect().into(),
+                grammar_id: grammar.grammar_id().into(),
+                grammar_version: grammar.grammar_version().into(),
+                support: policy.dialects().support(),
+                authority: policy.dialects().authority(),
+            },
+            policy,
+            facts: facts.into_boxed_slice(),
+        })
+    }
+
     fn validated_syntax_nodes<'analysis>(
         &'analysis self,
         path: &Path,
@@ -641,11 +949,13 @@ mod tests {
     use super::*;
     use deslop_core::Lang;
     use deslop_lang::{
-        AdapterCapability, CanonicalRole, CapabilityAuthority, CapabilityDeclaration, GENERIC_PACK,
-        GrammarDescriptor, IdentifierCasePolicy, LangPack, LanguageLexicalPolicy,
-        LanguageQueryPack, LexicalClassification, LexicalOperatorClass, LexicalRule,
-        LexicalTokenClass, QueryCaptureDeclaration, QueryFamily, QueryFamilyDeclaration, RUST_PACK,
-        Registry,
+        AdapterCapability, CanonicalRole, CapabilityAuthority, CapabilityDeclaration,
+        ConstructHandling, ConstructPolicyKind, ConstructPolicySection, ConstructRule,
+        DialectDeclaration, DialectPolicy, GENERIC_PACK, GrammarDescriptor, IdentifierCasePolicy,
+        LangPack, LanguageConstructPolicy, LanguageLexicalPolicy, LanguageQueryPack,
+        LexicalClassification, LexicalOperatorClass, LexicalRule, LexicalTokenClass,
+        ParseRecoveryHandling, ParseRecoveryPolicy, QueryCaptureDeclaration, QueryFamily,
+        QueryFamilyDeclaration, RUST_PACK, Registry,
     };
 
     use crate::{ProjectSnapshotBuilder, RepositoryId};
@@ -659,9 +969,12 @@ mod tests {
         queries: bool,
         query_capture_mismatch: bool,
         lexical: bool,
+        constructs: bool,
+        construct_dialect_mismatch: bool,
         manifest_adapter_schema: Option<&'static str>,
         query_adapter_schema: Option<&'static str>,
         lexical_adapter_schema: Option<&'static str>,
+        construct_adapter_schema: Option<&'static str>,
     }
 
     impl LangPack for SameLangPack {
@@ -850,6 +1163,68 @@ mod tests {
             .unwrap()
         }
 
+        fn construct_policy(&self) -> LanguageConstructPolicy {
+            let adapter_schema = self
+                .construct_adapter_schema
+                .unwrap_or(self.adapter_schema());
+            if !self.constructs {
+                return LanguageConstructPolicy::unknown(adapter_schema);
+            }
+            LanguageConstructPolicy::new(
+                adapter_schema,
+                ParseRecoveryPolicy::provided(
+                    CapabilityAuthority::Syntax,
+                    ParseRecoveryHandling::FileIncomplete,
+                ),
+                vec![
+                    ConstructPolicySection::provided(
+                        ConstructPolicyKind::UnsupportedConstruct,
+                        CapabilityAuthority::Adapter,
+                        vec![ConstructRule::new(
+                            "unsafe_block",
+                            None,
+                            ConstructHandling::Opaque,
+                        )],
+                    )
+                    .unwrap(),
+                    ConstructPolicySection::provided(
+                        ConstructPolicyKind::Macro,
+                        CapabilityAuthority::Adapter,
+                        vec![ConstructRule::new(
+                            "macro_invocation",
+                            None,
+                            ConstructHandling::Opaque,
+                        )],
+                    )
+                    .unwrap(),
+                    ConstructPolicySection::provided(
+                        ConstructPolicyKind::GeneratedCode,
+                        CapabilityAuthority::Adapter,
+                        vec![ConstructRule::new(
+                            "attribute_item",
+                            Some("#[generated]".to_string()),
+                            ConstructHandling::SurfaceSyntax,
+                        )],
+                    )
+                    .unwrap(),
+                ],
+                DialectPolicy::provided(
+                    CapabilityAuthority::Syntax,
+                    vec![DialectDeclaration::new(
+                        if self.construct_dialect_mismatch {
+                            "wrong-dialect"
+                        } else {
+                            "same-lang"
+                        },
+                        "tree-sitter-rust",
+                        "test",
+                    )],
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        }
+
         fn lang(&self) -> Lang {
             Lang::Rust
         }
@@ -921,9 +1296,12 @@ mod tests {
         queries: false,
         query_capture_mismatch: false,
         lexical: false,
+        constructs: false,
+        construct_dialect_mismatch: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
         lexical_adapter_schema: None,
+        construct_adapter_schema: None,
     };
     static RIGHT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-right",
@@ -934,9 +1312,12 @@ mod tests {
         queries: false,
         query_capture_mismatch: false,
         lexical: false,
+        constructs: false,
+        construct_dialect_mismatch: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
         lexical_adapter_schema: None,
+        construct_adapter_schema: None,
     };
     static ALTERNATE_LEFT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left-alternate",
@@ -947,9 +1328,12 @@ mod tests {
         queries: false,
         query_capture_mismatch: false,
         lexical: false,
+        constructs: false,
+        construct_dialect_mismatch: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
         lexical_adapter_schema: None,
+        construct_adapter_schema: None,
     };
     static CAPABILITY_LEFT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -960,9 +1344,12 @@ mod tests {
         queries: false,
         query_capture_mismatch: false,
         lexical: false,
+        constructs: false,
+        construct_dialect_mismatch: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
         lexical_adapter_schema: None,
+        construct_adapter_schema: None,
     };
     static QUERY_LEFT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -973,9 +1360,12 @@ mod tests {
         queries: true,
         query_capture_mismatch: false,
         lexical: false,
+        constructs: false,
+        construct_dialect_mismatch: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
         lexical_adapter_schema: None,
+        construct_adapter_schema: None,
     };
     static LEXICAL_LEFT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -986,9 +1376,44 @@ mod tests {
         queries: false,
         query_capture_mismatch: false,
         lexical: true,
+        constructs: false,
+        construct_dialect_mismatch: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
         lexical_adapter_schema: None,
+        construct_adapter_schema: None,
+    };
+    static CONSTRUCT_LEFT_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left",
+        schema: "same-lang-left/7",
+        extension: "left",
+        branch: 7,
+        canonical_roles: false,
+        queries: false,
+        query_capture_mismatch: false,
+        lexical: false,
+        constructs: true,
+        construct_dialect_mismatch: false,
+        manifest_adapter_schema: None,
+        query_adapter_schema: None,
+        lexical_adapter_schema: None,
+        construct_adapter_schema: None,
+    };
+    static CONSTRUCT_DIALECT_MISMATCH_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left",
+        schema: "same-lang-left/7",
+        extension: "left",
+        branch: 7,
+        canonical_roles: false,
+        queries: false,
+        query_capture_mismatch: false,
+        lexical: false,
+        constructs: true,
+        construct_dialect_mismatch: true,
+        manifest_adapter_schema: None,
+        query_adapter_schema: None,
+        lexical_adapter_schema: None,
+        construct_adapter_schema: None,
     };
     static BAD_QUERY_CAPTURE_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left-bad-query",
@@ -999,9 +1424,12 @@ mod tests {
         queries: true,
         query_capture_mismatch: true,
         lexical: false,
+        constructs: false,
+        construct_dialect_mismatch: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
         lexical_adapter_schema: None,
+        construct_adapter_schema: None,
     };
     static MISMATCHED_CAPABILITY_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -1012,9 +1440,12 @@ mod tests {
         queries: false,
         query_capture_mismatch: false,
         lexical: false,
+        constructs: false,
+        construct_dialect_mismatch: false,
         manifest_adapter_schema: Some("wrong-adapter/1"),
         query_adapter_schema: None,
         lexical_adapter_schema: None,
+        construct_adapter_schema: None,
     };
     static MISMATCHED_QUERY_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -1025,9 +1456,12 @@ mod tests {
         queries: false,
         query_capture_mismatch: false,
         lexical: false,
+        constructs: false,
+        construct_dialect_mismatch: false,
         manifest_adapter_schema: None,
         query_adapter_schema: Some("wrong-query-adapter/1"),
         lexical_adapter_schema: None,
+        construct_adapter_schema: None,
     };
     static MISMATCHED_LEXICAL_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -1038,9 +1472,28 @@ mod tests {
         queries: false,
         query_capture_mismatch: false,
         lexical: false,
+        constructs: false,
+        construct_dialect_mismatch: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
         lexical_adapter_schema: Some("wrong-lexical-adapter/1"),
+        construct_adapter_schema: None,
+    };
+    static MISMATCHED_CONSTRUCT_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left",
+        schema: "same-lang-left/7",
+        extension: "left",
+        branch: 7,
+        canonical_roles: false,
+        queries: false,
+        query_capture_mismatch: false,
+        lexical: false,
+        constructs: false,
+        construct_dialect_mismatch: false,
+        manifest_adapter_schema: None,
+        query_adapter_schema: None,
+        lexical_adapter_schema: None,
+        construct_adapter_schema: Some("wrong-construct-adapter/1"),
     };
 
     #[test]
@@ -1350,6 +1803,133 @@ mod tests {
     }
 
     #[test]
+    fn construct_projection_retains_recovery_boundaries_and_exact_dialect_without_reparse() {
+        let root = tempfile::tempdir().unwrap();
+        let source = b"#[generated]\nfn sample() { unsafe { vec![1]; } let broken = ; }\n";
+        let build = |adapter: &'static dyn LangPack| {
+            let mut registry = Registry::new(&GENERIC_PACK);
+            registry.register(adapter);
+            let snapshot = ProjectSnapshotBuilder::new(
+                root.path(),
+                RepositoryId::explicit("construct-policy-projection-test").unwrap(),
+            )
+            .unwrap()
+            .with_registry(registry)
+            .with_overlay("constructs.left", source.to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+            ProjectAnalysis::build(snapshot).unwrap()
+        };
+        let unknown = build(&LEFT_PACK);
+        let analysis = build(&CONSTRUCT_LEFT_PACK);
+        assert_eq!(unknown.id(), analysis.id());
+        let path = Path::new("constructs.left");
+
+        let unknown_projection = unknown.construct_policy_projection(path).unwrap();
+        assert_eq!(
+            unknown_projection.dialect().support(),
+            CapabilitySupport::Unknown
+        );
+        assert!(unknown_projection.facts().is_empty());
+
+        let parse_counts = analysis.parse_counts();
+        let projection = analysis.construct_policy_projection(path).unwrap();
+        let repeated = analysis.construct_policy_projection(path).unwrap();
+        assert!(Arc::ptr_eq(projection.analysis(), &analysis));
+        assert_eq!(projection.schema(), CONSTRUCT_POLICY_PROJECTION_SCHEMA);
+        assert_eq!(projection.id(), repeated.id());
+        assert_eq!(projection.facts(), repeated.facts());
+        assert_eq!(analysis.parse_counts(), parse_counts);
+        assert!(
+            parse_counts
+                .values()
+                .all(|count| count.parser_invocations == 1)
+        );
+        assert_ne!(unknown_projection.id(), projection.id());
+        assert_eq!(projection.dialect().dialect(), "same-lang");
+        assert_eq!(projection.dialect().grammar_id(), "tree-sitter-rust");
+        assert_eq!(projection.dialect().grammar_version(), "test");
+        assert_eq!(projection.dialect().support(), CapabilitySupport::Provided);
+        assert_eq!(
+            projection.dialect().authority(),
+            Some(CapabilityAuthority::Syntax)
+        );
+
+        for fact in projection.facts() {
+            let view = analysis.node(fact.node()).unwrap();
+            assert_eq!(fact.text(), view.text());
+            assert_eq!(fact.raw().raw_kind(), view.raw_kind());
+        }
+        assert_eq!(projection.facts().len(), 4);
+        assert_eq!(
+            projection
+                .facts()
+                .iter()
+                .map(|fact| (fact.kind().as_str(), fact.raw().raw_kind(), fact.text()))
+                .collect::<Vec<_>>(),
+            [
+                ("generated-code", "attribute_item", "#[generated]"),
+                (
+                    "unsupported-construct",
+                    "unsafe_block",
+                    "unsafe { vec![1]; }"
+                ),
+                ("macro", "macro_invocation", "vec![1]"),
+                ("parse-error", "ERROR", "="),
+            ]
+        );
+        for fact in &projection.facts()[..3] {
+            assert_eq!(fact.authority(), CapabilityAuthority::Adapter);
+            assert_eq!(fact.parse_handling(), None);
+        }
+        assert_eq!(
+            projection.facts()[0].construct_handling(),
+            Some(ConstructHandling::SurfaceSyntax)
+        );
+        for fact in &projection.facts()[1..3] {
+            assert_eq!(fact.construct_handling(), Some(ConstructHandling::Opaque));
+        }
+        let recovery = &projection.facts()[3];
+        assert_eq!(recovery.authority(), CapabilityAuthority::Syntax);
+        assert_eq!(
+            recovery.parse_handling(),
+            Some(ParseRecoveryHandling::FileIncomplete)
+        );
+        assert_eq!(recovery.construct_handling(), None);
+
+        let mismatch = build(&CONSTRUCT_DIALECT_MISMATCH_PACK);
+        assert_eq!(mismatch.id(), analysis.id());
+        assert!(matches!(
+            mismatch.construct_policy_projection(path).unwrap_err(),
+            ConstructPolicyProjectionError::DialectMismatch {
+                dialect,
+                grammar_id,
+                grammar_version,
+                ..
+            } if dialect == "same-lang"
+                && grammar_id == "tree-sitter-rust"
+                && grammar_version == "test"
+        ));
+
+        let identity = analysis
+            .snapshot()
+            .entry(path)
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap();
+        assert_eq!(identity.construct_policy(), projection.policy());
+        let mut legacy = serde_json::to_value(identity).unwrap();
+        legacy.as_object_mut().unwrap().remove("constructs");
+        assert!(
+            serde_json::from_value::<crate::LanguageAdapterIdentity>(legacy)
+                .unwrap_err()
+                .to_string()
+                .contains("missing field `constructs`")
+        );
+    }
+
+    #[test]
     fn stored_query_pack_compiles_and_executes_all_six_families() {
         let root = tempfile::tempdir().unwrap();
         let source = b"#[generated]\nfn sample(value: i32) {\n    // note\n    if value > 0 { helper(); }\n    vec![value];\n}\n";
@@ -1629,6 +2209,28 @@ mod tests {
                 "lexical policy targets wrong-lexical-adapter/1 but adapter schema is same-lang-left/7"
             ),
             "{error}"
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_construct_policy_for_another_adapter_schema() {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::new(&GENERIC_PACK);
+        registry.register(&MISMATCHED_CONSTRUCT_PACK);
+        let error = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("construct-policy-adapter-schema-mismatch-test").unwrap(),
+        )
+        .unwrap()
+        .with_registry(registry)
+        .with_overlay("mismatch.left", b"fn sample() {}\n".to_vec())
+        .unwrap()
+        .build()
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("construct policy targets wrong-construct-adapter/1")
         );
     }
 }

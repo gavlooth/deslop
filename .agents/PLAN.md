@@ -1456,6 +1456,46 @@ nodes; explicit composite ownership with descendant suppression now preserves ex
 non-overlapping spans. Next checkpoint: begin M2.5 policy contracts for parse errors, unsupported
 constructs, macros, generated code, and dialects.
 
+#### Terminal M2.5 execution plan — construct, recovery, and dialect policy
+
+Resolved hypothesis: parse recovery, unsupported/opaque regions, macro boundaries, generated markers,
+and exact dialect support can be represented as one versioned adapter policy without treating query
+captures as semantic provenance or reconstructing grammar selection from paths.
+
+CONVERGENCE: freeze one exact aggregate wire vector with independently explicit support/authority for
+parse recovery, unsupported constructs, macros, generated code, and dialect variants. Ordered exact
+raw-kind/optional-text rules must reject duplicates and shadowing; unavailable sections must be empty;
+provided dialects must exactly match the stored grammar dialect/id/version. Project a fixed malformed
+custom fixture and numerically lock error/missing, unsupported, macro, and generated facts, exact
+authority/handling, policy-only invalidation, dialect mismatch rejection, and no reparse. If production
+packs stay honest unknown pending M2.6-M2.10 and every workspace gate passes, M2.5 is done.
+
+Implemented approach: add `deslop.language-construct-policy/1` in `deslop-lang`, with a fail-closed parse-
+recovery declaration, three ordered construct-rule sections, and exact dialect declarations. Store and
+validate the policy in `LanguageAdapterIdentity`. Add an analysis-retaining projection over existing
+arena nodes: error/missing facts come only from stored grammar flags; construct facts come only from
+adapter rules; dialect provenance comes only from the stored `GrammarSelection`. Region facts may nest
+but never imply expansion, generated origin beyond their declared evidence, or semantic support.
+
+Validation result: exact JSON and malformed truth table, registry totality, adapter-schema and exact-
+dialect mismatch; malformed custom CST oracle with macro/generated/unsupported regions; deterministic
+repeat, no-reparse, policy-only identity checks, affected strict checks, and full workspace gates pass.
+
+Negative-memory constraints: M2.3 opaque/generated captures are categories, not verified provenance;
+`has_error` is not permission to silently discard recovery nodes; macro invocation syntax does not
+mean expansion is available; path suffixes must not reconstruct dialect; unavailable policy sections
+cannot prove semantic absence; M2.4 composite token ownership does not apply to nesting region facts.
+
+Agent assignment: `/root` owns M2.5 schema, projection, integration, and verification; no concurrent
+file edits are assigned.
+
+Terminal checkpoint (2026-07-14T01:14:19+02:00): M2.5 is complete. The fixed malformed fixture emits
+exactly four facts in source order: generated `attribute_item`, opaque `unsafe_block`, opaque
+`macro_invocation`, and syntax-authority file-incomplete `ERROR`. Exact stored dialect provenance is
+provided, mismatched claimed dialect fails typed, unknown policy emits no construct/recovery facts,
+and each analysis parses once. All workspace gates pass. Next checkpoint: M2.6 Rust adapter and golden
+fixtures using the now-frozen M2.1-M2.5 contracts.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link

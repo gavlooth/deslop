@@ -10,6 +10,7 @@ pub const LANGUAGE_ADAPTER_CAPABILITY_SCHEMA: &str = "deslop.language-adapter-ca
 pub const CANONICAL_ROLE_SCHEMA: &str = "deslop.canonical-roles/1";
 pub const LANGUAGE_QUERY_PACK_SCHEMA: &str = "deslop.language-query-pack/1";
 pub const LANGUAGE_LEXICAL_POLICY_SCHEMA: &str = "deslop.language-lexical-policy/1";
+pub const LANGUAGE_CONSTRUCT_POLICY_SCHEMA: &str = "deslop.language-construct-policy/1";
 
 /// Portable syntactic categories projected by language adapters.
 ///
@@ -1336,6 +1337,534 @@ impl LanguageLexicalPolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ParseRecoveryHandling {
+    FileIncomplete,
+}
+
+impl ParseRecoveryHandling {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::FileIncomplete => "file-incomplete",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParseRecoveryPolicy {
+    support: CapabilitySupport,
+    authority: Option<CapabilityAuthority>,
+    handling: Option<ParseRecoveryHandling>,
+}
+
+impl ParseRecoveryPolicy {
+    pub const fn provided(authority: CapabilityAuthority, handling: ParseRecoveryHandling) -> Self {
+        Self {
+            support: CapabilitySupport::Provided,
+            authority: Some(authority),
+            handling: Some(handling),
+        }
+    }
+
+    pub const fn unsupported() -> Self {
+        Self {
+            support: CapabilitySupport::Unsupported,
+            authority: None,
+            handling: None,
+        }
+    }
+
+    pub const fn unknown() -> Self {
+        Self {
+            support: CapabilitySupport::Unknown,
+            authority: None,
+            handling: None,
+        }
+    }
+
+    pub fn support(&self) -> CapabilitySupport {
+        self.support
+    }
+
+    pub fn authority(&self) -> Option<CapabilityAuthority> {
+        self.authority
+    }
+
+    pub fn handling(&self) -> Option<ParseRecoveryHandling> {
+        self.handling
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        match self.support {
+            CapabilitySupport::Provided if self.authority.is_some() && self.handling.is_some() => {
+                Ok(())
+            }
+            CapabilitySupport::Provided => {
+                Err("provided parse-recovery policy lacks authority or handling".to_string())
+            }
+            CapabilitySupport::Unsupported | CapabilitySupport::Unknown
+                if self.authority.is_none() && self.handling.is_none() =>
+            {
+                Ok(())
+            }
+            CapabilitySupport::Unsupported | CapabilitySupport::Unknown => {
+                Err("unavailable parse-recovery policy retains provided payload".to_string())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConstructPolicyKind {
+    UnsupportedConstruct,
+    Macro,
+    GeneratedCode,
+}
+
+impl ConstructPolicyKind {
+    pub const ALL: [Self; 3] = [Self::UnsupportedConstruct, Self::Macro, Self::GeneratedCode];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsupportedConstruct => "unsupported-construct",
+            Self::Macro => "macro",
+            Self::GeneratedCode => "generated-code",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConstructHandling {
+    Opaque,
+    SurfaceSyntax,
+}
+
+impl ConstructHandling {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Opaque => "opaque",
+            Self::SurfaceSyntax => "surface-syntax",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConstructRule {
+    raw_kind: String,
+    text: Option<String>,
+    handling: ConstructHandling,
+}
+
+impl ConstructRule {
+    pub fn new(
+        raw_kind: impl Into<String>,
+        text: Option<String>,
+        handling: ConstructHandling,
+    ) -> Self {
+        Self {
+            raw_kind: raw_kind.into(),
+            text,
+            handling,
+        }
+    }
+
+    pub fn raw_kind(&self) -> &str {
+        &self.raw_kind
+    }
+
+    pub fn text(&self) -> Option<&str> {
+        self.text.as_deref()
+    }
+
+    pub fn handling(&self) -> ConstructHandling {
+        self.handling
+    }
+
+    fn matches(&self, raw_kind: &str, text: &str) -> bool {
+        self.raw_kind == raw_kind && self.text.as_deref().is_none_or(|expected| expected == text)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConstructPolicySection {
+    kind: ConstructPolicyKind,
+    support: CapabilitySupport,
+    authority: Option<CapabilityAuthority>,
+    rules: Vec<ConstructRule>,
+}
+
+impl ConstructPolicySection {
+    pub fn provided(
+        kind: ConstructPolicyKind,
+        authority: CapabilityAuthority,
+        rules: Vec<ConstructRule>,
+    ) -> Result<Self, String> {
+        let section = Self {
+            kind,
+            support: CapabilitySupport::Provided,
+            authority: Some(authority),
+            rules,
+        };
+        section.validate()?;
+        Ok(section)
+    }
+
+    pub const fn unsupported(kind: ConstructPolicyKind) -> Self {
+        Self {
+            kind,
+            support: CapabilitySupport::Unsupported,
+            authority: None,
+            rules: Vec::new(),
+        }
+    }
+
+    pub const fn unknown(kind: ConstructPolicyKind) -> Self {
+        Self {
+            kind,
+            support: CapabilitySupport::Unknown,
+            authority: None,
+            rules: Vec::new(),
+        }
+    }
+
+    pub fn kind(&self) -> ConstructPolicyKind {
+        self.kind
+    }
+
+    pub fn support(&self) -> CapabilitySupport {
+        self.support
+    }
+
+    pub fn authority(&self) -> Option<CapabilityAuthority> {
+        self.authority
+    }
+
+    pub fn rules(&self) -> &[ConstructRule] {
+        &self.rules
+    }
+
+    pub fn matching_rule(&self, raw_kind: &str, text: &str) -> Option<&ConstructRule> {
+        (self.support == CapabilitySupport::Provided)
+            .then(|| self.rules.iter().find(|rule| rule.matches(raw_kind, text)))
+            .flatten()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        match self.support {
+            CapabilitySupport::Provided => {
+                if self.authority.is_none() || self.rules.is_empty() {
+                    return Err(format!(
+                        "provided {} policy lacks authority or rules",
+                        self.kind.as_str()
+                    ));
+                }
+                let mut keys = std::collections::BTreeSet::new();
+                for (index, rule) in self.rules.iter().enumerate() {
+                    if rule.raw_kind.trim().is_empty()
+                        || rule.raw_kind == "*"
+                        || !keys.insert((&rule.raw_kind, &rule.text))
+                    {
+                        return Err(format!(
+                            "{} rules have an empty, wildcard, or duplicate match key",
+                            self.kind.as_str()
+                        ));
+                    }
+                    if rule.text.is_none()
+                        && self.rules[index + 1..]
+                            .iter()
+                            .any(|later| later.raw_kind == rule.raw_kind)
+                    {
+                        return Err(format!(
+                            "{} kind fallback {} shadows a later exact-text rule",
+                            self.kind.as_str(),
+                            rule.raw_kind
+                        ));
+                    }
+                }
+            }
+            CapabilitySupport::Unsupported | CapabilitySupport::Unknown => {
+                if self.authority.is_some() || !self.rules.is_empty() {
+                    return Err(format!(
+                        "unavailable {} policy retains provided payload",
+                        self.kind.as_str()
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DialectDeclaration {
+    dialect: String,
+    grammar_id: String,
+    grammar_version: String,
+}
+
+impl DialectDeclaration {
+    pub fn new(
+        dialect: impl Into<String>,
+        grammar_id: impl Into<String>,
+        grammar_version: impl Into<String>,
+    ) -> Self {
+        Self {
+            dialect: dialect.into(),
+            grammar_id: grammar_id.into(),
+            grammar_version: grammar_version.into(),
+        }
+    }
+
+    pub fn dialect(&self) -> &str {
+        &self.dialect
+    }
+
+    pub fn grammar_id(&self) -> &str {
+        &self.grammar_id
+    }
+
+    pub fn grammar_version(&self) -> &str {
+        &self.grammar_version
+    }
+
+    pub fn matches(&self, dialect: &str, grammar_id: &str, grammar_version: &str) -> bool {
+        self.dialect == dialect
+            && self.grammar_id == grammar_id
+            && self.grammar_version == grammar_version
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DialectPolicy {
+    support: CapabilitySupport,
+    authority: Option<CapabilityAuthority>,
+    variants: Vec<DialectDeclaration>,
+}
+
+impl DialectPolicy {
+    pub fn provided(
+        authority: CapabilityAuthority,
+        variants: Vec<DialectDeclaration>,
+    ) -> Result<Self, String> {
+        let policy = Self {
+            support: CapabilitySupport::Provided,
+            authority: Some(authority),
+            variants,
+        };
+        policy.validate()?;
+        Ok(policy)
+    }
+
+    pub const fn unsupported() -> Self {
+        Self {
+            support: CapabilitySupport::Unsupported,
+            authority: None,
+            variants: Vec::new(),
+        }
+    }
+
+    pub const fn unknown() -> Self {
+        Self {
+            support: CapabilitySupport::Unknown,
+            authority: None,
+            variants: Vec::new(),
+        }
+    }
+
+    pub fn support(&self) -> CapabilitySupport {
+        self.support
+    }
+
+    pub fn authority(&self) -> Option<CapabilityAuthority> {
+        self.authority
+    }
+
+    pub fn variants(&self) -> &[DialectDeclaration] {
+        &self.variants
+    }
+
+    pub fn declaration(
+        &self,
+        dialect: &str,
+        grammar_id: &str,
+        grammar_version: &str,
+    ) -> Option<&DialectDeclaration> {
+        (self.support == CapabilitySupport::Provided)
+            .then(|| {
+                self.variants
+                    .iter()
+                    .find(|variant| variant.matches(dialect, grammar_id, grammar_version))
+            })
+            .flatten()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        match self.support {
+            CapabilitySupport::Provided => {
+                if self.authority.is_none() || self.variants.is_empty() {
+                    return Err("provided dialect policy lacks authority or variants".to_string());
+                }
+                let mut variants = std::collections::BTreeSet::new();
+                for variant in &self.variants {
+                    if variant.dialect.trim().is_empty()
+                        || variant.grammar_id.trim().is_empty()
+                        || variant.grammar_version.trim().is_empty()
+                        || !variants.insert((
+                            &variant.dialect,
+                            &variant.grammar_id,
+                            &variant.grammar_version,
+                        ))
+                    {
+                        return Err(
+                            "dialect variants have empty or duplicate identities".to_string()
+                        );
+                    }
+                }
+            }
+            CapabilitySupport::Unsupported | CapabilitySupport::Unknown => {
+                if self.authority.is_some() || !self.variants.is_empty() {
+                    return Err("unavailable dialect policy retains provided payload".to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LanguageConstructPolicy {
+    schema: String,
+    adapter_schema: String,
+    parse_recovery: ParseRecoveryPolicy,
+    constructs: Vec<ConstructPolicySection>,
+    dialects: DialectPolicy,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LanguageConstructPolicyWire {
+    schema: String,
+    adapter_schema: String,
+    parse_recovery: ParseRecoveryPolicy,
+    constructs: Vec<ConstructPolicySection>,
+    dialects: DialectPolicy,
+}
+
+impl<'de> Deserialize<'de> for LanguageConstructPolicy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = LanguageConstructPolicyWire::deserialize(deserializer)?;
+        let policy = Self {
+            schema: wire.schema,
+            adapter_schema: wire.adapter_schema,
+            parse_recovery: wire.parse_recovery,
+            constructs: wire.constructs,
+            dialects: wire.dialects,
+        };
+        policy.validate().map_err(D::Error::custom)?;
+        Ok(policy)
+    }
+}
+
+impl LanguageConstructPolicy {
+    pub fn new(
+        adapter_schema: impl Into<String>,
+        parse_recovery: ParseRecoveryPolicy,
+        constructs: Vec<ConstructPolicySection>,
+        dialects: DialectPolicy,
+    ) -> Result<Self, String> {
+        let policy = Self {
+            schema: LANGUAGE_CONSTRUCT_POLICY_SCHEMA.to_string(),
+            adapter_schema: adapter_schema.into(),
+            parse_recovery,
+            constructs,
+            dialects,
+        };
+        policy.validate()?;
+        Ok(policy)
+    }
+
+    pub fn unknown(adapter_schema: impl Into<String>) -> Self {
+        Self::new(
+            adapter_schema,
+            ParseRecoveryPolicy::unknown(),
+            ConstructPolicyKind::ALL
+                .into_iter()
+                .map(ConstructPolicySection::unknown)
+                .collect(),
+            DialectPolicy::unknown(),
+        )
+        .expect("the total unknown construct policy is valid")
+    }
+
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    pub fn adapter_schema(&self) -> &str {
+        &self.adapter_schema
+    }
+
+    pub fn parse_recovery(&self) -> &ParseRecoveryPolicy {
+        &self.parse_recovery
+    }
+
+    pub fn constructs(&self) -> &[ConstructPolicySection] {
+        &self.constructs
+    }
+
+    pub fn construct(&self, kind: ConstructPolicyKind) -> &ConstructPolicySection {
+        let index = ConstructPolicyKind::ALL
+            .iter()
+            .position(|candidate| *candidate == kind)
+            .expect("the construct policy catalog is exhaustive");
+        &self.constructs[index]
+    }
+
+    pub fn dialects(&self) -> &DialectPolicy {
+        &self.dialects
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != LANGUAGE_CONSTRUCT_POLICY_SCHEMA {
+            return Err(format!(
+                "unsupported language construct policy schema {}",
+                self.schema
+            ));
+        }
+        if self.adapter_schema.trim().is_empty() {
+            return Err("construct policy adapter schema must not be empty".to_string());
+        }
+        self.parse_recovery.validate()?;
+        self.dialects.validate()?;
+        if self.constructs.len() != ConstructPolicyKind::ALL.len() {
+            return Err("construct policy catalog is incomplete".to_string());
+        }
+        for (section, expected) in self.constructs.iter().zip(ConstructPolicyKind::ALL) {
+            if section.kind != expected {
+                return Err(format!(
+                    "construct policy catalog is out of order: expected {}, found {}",
+                    expected.as_str(),
+                    section.kind.as_str()
+                ));
+            }
+            section.validate()?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GrammarDescriptor {
     lang: Lang,
@@ -1401,6 +1930,9 @@ pub trait LangPack: Send + Sync {
     }
     fn lexical_policy(&self) -> LanguageLexicalPolicy {
         LanguageLexicalPolicy::unknown(self.adapter_schema())
+    }
+    fn construct_policy(&self) -> LanguageConstructPolicy {
+        LanguageConstructPolicy::unknown(self.adapter_schema())
     }
     fn canonical_roles(&self, _node: Node<'_>, _text: &str) -> CanonicalRoleSet {
         CanonicalRoleSet::default()
@@ -2884,6 +3416,175 @@ mod tests {
     }
 
     #[test]
+    fn construct_policy_is_total_strict_and_wire_pinned() {
+        let policy = LanguageConstructPolicy::new(
+            "deslop-lang-adapter/construct-test-1",
+            ParseRecoveryPolicy::provided(
+                CapabilityAuthority::Syntax,
+                ParseRecoveryHandling::FileIncomplete,
+            ),
+            vec![
+                ConstructPolicySection::provided(
+                    ConstructPolicyKind::UnsupportedConstruct,
+                    CapabilityAuthority::Adapter,
+                    vec![ConstructRule::new(
+                        "unsafe_block",
+                        None,
+                        ConstructHandling::Opaque,
+                    )],
+                )
+                .unwrap(),
+                ConstructPolicySection::provided(
+                    ConstructPolicyKind::Macro,
+                    CapabilityAuthority::Adapter,
+                    vec![ConstructRule::new(
+                        "macro_invocation",
+                        None,
+                        ConstructHandling::Opaque,
+                    )],
+                )
+                .unwrap(),
+                ConstructPolicySection::provided(
+                    ConstructPolicyKind::GeneratedCode,
+                    CapabilityAuthority::Adapter,
+                    vec![ConstructRule::new(
+                        "attribute_item",
+                        Some("#[generated]".to_string()),
+                        ConstructHandling::SurfaceSyntax,
+                    )],
+                )
+                .unwrap(),
+            ],
+            DialectPolicy::provided(
+                CapabilityAuthority::Syntax,
+                vec![DialectDeclaration::new(
+                    "same-lang",
+                    "tree-sitter-rust",
+                    "test",
+                )],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let value = serde_json::to_value(&policy).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "schema": "deslop.language-construct-policy/1",
+                "adapter_schema": "deslop-lang-adapter/construct-test-1",
+                "parse_recovery": {
+                    "support": "provided",
+                    "authority": "syntax",
+                    "handling": "file-incomplete"
+                },
+                "constructs": [
+                    {
+                        "kind": "unsupported-construct",
+                        "support": "provided",
+                        "authority": "adapter",
+                        "rules": [{
+                            "raw_kind": "unsafe_block",
+                            "text": null,
+                            "handling": "opaque"
+                        }]
+                    },
+                    {
+                        "kind": "macro",
+                        "support": "provided",
+                        "authority": "adapter",
+                        "rules": [{
+                            "raw_kind": "macro_invocation",
+                            "text": null,
+                            "handling": "opaque"
+                        }]
+                    },
+                    {
+                        "kind": "generated-code",
+                        "support": "provided",
+                        "authority": "adapter",
+                        "rules": [{
+                            "raw_kind": "attribute_item",
+                            "text": "#[generated]",
+                            "handling": "surface-syntax"
+                        }]
+                    }
+                ],
+                "dialects": {
+                    "support": "provided",
+                    "authority": "syntax",
+                    "variants": [{
+                        "dialect": "same-lang",
+                        "grammar_id": "tree-sitter-rust",
+                        "grammar_version": "test"
+                    }]
+                }
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<LanguageConstructPolicy>(value.clone()).unwrap(),
+            policy
+        );
+        assert!(
+            policy
+                .construct(ConstructPolicyKind::Macro)
+                .matching_rule("macro_invocation", "vec![1]")
+                .is_some()
+        );
+        assert!(
+            policy
+                .construct(ConstructPolicyKind::GeneratedCode)
+                .matching_rule("attribute_item", "#[other]")
+                .is_none()
+        );
+        assert!(
+            policy
+                .dialects()
+                .declaration("same-lang", "tree-sitter-rust", "test")
+                .is_some()
+        );
+
+        let mut incomplete = value.clone();
+        incomplete["constructs"].as_array_mut().unwrap().pop();
+        assert!(serde_json::from_value::<LanguageConstructPolicy>(incomplete).is_err());
+        let mut reordered = value.clone();
+        reordered["constructs"].as_array_mut().unwrap().swap(0, 1);
+        assert!(serde_json::from_value::<LanguageConstructPolicy>(reordered).is_err());
+        let mut unavailable_payload = value;
+        unavailable_payload["constructs"][1]["support"] = serde_json::json!("unknown");
+        assert!(serde_json::from_value::<LanguageConstructPolicy>(unavailable_payload).is_err());
+
+        let shadowed = ConstructPolicySection::provided(
+            ConstructPolicyKind::GeneratedCode,
+            CapabilityAuthority::Adapter,
+            vec![
+                ConstructRule::new("attribute_item", None, ConstructHandling::SurfaceSyntax),
+                ConstructRule::new(
+                    "attribute_item",
+                    Some("#[generated]".to_string()),
+                    ConstructHandling::Opaque,
+                ),
+            ],
+        )
+        .unwrap_err();
+        assert!(shadowed.contains("shadows a later exact-text rule"));
+
+        let unknown = LanguageConstructPolicy::unknown("deslop-lang-adapter/construct-test-1");
+        unknown.validate().unwrap();
+        assert_eq!(
+            unknown.parse_recovery().support(),
+            CapabilitySupport::Unknown
+        );
+        assert_eq!(unknown.dialects().support(), CapabilitySupport::Unknown);
+        assert!(
+            unknown
+                .constructs()
+                .iter()
+                .all(|section| section.support() == CapabilitySupport::Unknown
+                    && section.rules().is_empty())
+        );
+    }
+
+    #[test]
     fn capability_catalog_is_total_tiered_and_wire_pinned() {
         assert_eq!(
             SemanticTier::ALL.map(|tier| {
@@ -3026,6 +3727,20 @@ mod tests {
             assert_eq!(lexical.adapter_schema(), pack.adapter_schema());
             assert_eq!(lexical.support(), CapabilitySupport::Unknown);
             assert!(lexical.rules().is_empty());
+            let constructs = pack.construct_policy();
+            constructs.validate().unwrap();
+            assert_eq!(constructs.adapter_schema(), pack.adapter_schema());
+            assert_eq!(
+                constructs.parse_recovery().support(),
+                CapabilitySupport::Unknown
+            );
+            assert_eq!(constructs.dialects().support(), CapabilitySupport::Unknown);
+            assert!(
+                constructs
+                    .constructs()
+                    .iter()
+                    .all(|section| section.support() == CapabilitySupport::Unknown)
+            );
         }
     }
 }

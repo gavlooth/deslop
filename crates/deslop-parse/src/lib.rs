@@ -9,11 +9,14 @@ use tree_sitter::{Parser, Tree};
 
 pub use deslop_lang::{
     AdapterCapability, CANONICAL_ROLE_SCHEMA, CanonicalRole, CanonicalRoleSet, CapabilityAuthority,
-    CapabilityDeclaration, CapabilitySupport, IdentifierCasePolicy,
-    LANGUAGE_ADAPTER_CAPABILITY_SCHEMA, LANGUAGE_LEXICAL_POLICY_SCHEMA, LANGUAGE_QUERY_PACK_SCHEMA,
-    LanguageAdapterCapabilityManifest, LanguageLexicalPolicy, LanguageQueryPack,
-    LexicalClassification, LexicalOperatorClass, LexicalRule, LexicalTokenClass,
-    QueryCaptureDeclaration, QueryFamily, QueryFamilyDeclaration, RegionSpan, SemanticTier,
+    CapabilityDeclaration, CapabilitySupport, ConstructHandling, ConstructPolicyKind,
+    ConstructPolicySection, ConstructRule, DialectDeclaration, DialectPolicy, IdentifierCasePolicy,
+    LANGUAGE_ADAPTER_CAPABILITY_SCHEMA, LANGUAGE_CONSTRUCT_POLICY_SCHEMA,
+    LANGUAGE_LEXICAL_POLICY_SCHEMA, LANGUAGE_QUERY_PACK_SCHEMA, LanguageAdapterCapabilityManifest,
+    LanguageConstructPolicy, LanguageLexicalPolicy, LanguageQueryPack, LexicalClassification,
+    LexicalOperatorClass, LexicalRule, LexicalTokenClass, ParseRecoveryHandling,
+    ParseRecoveryPolicy, QueryCaptureDeclaration, QueryFamily, QueryFamilyDeclaration, RegionSpan,
+    SemanticTier,
 };
 
 // M1.3 owns the raw arena internally; M1.4 adds owner-validated public node views.
@@ -30,10 +33,11 @@ mod query;
 mod snapshot;
 
 pub use adapter::{
-    CANONICAL_ROLE_PROJECTION_SCHEMA, CanonicalNodeRoles, CanonicalRoleProjection,
-    CanonicalRoleProjectionError, LEXICAL_TOKEN_PROJECTION_SCHEMA, LexicalTokenFact,
-    LexicalTokenProjection, LexicalTokenProjectionError, RawSyntaxFact, SyntaxAdapterFacts,
-    SyntaxAdapterFactsError,
+    CANONICAL_ROLE_PROJECTION_SCHEMA, CONSTRUCT_POLICY_PROJECTION_SCHEMA, CanonicalNodeRoles,
+    CanonicalRoleProjection, CanonicalRoleProjectionError, ConstructPolicyFact,
+    ConstructPolicyFactKind, ConstructPolicyProjection, ConstructPolicyProjectionError,
+    DialectPolicyFact, LEXICAL_TOKEN_PROJECTION_SCHEMA, LexicalTokenFact, LexicalTokenProjection,
+    LexicalTokenProjectionError, RawSyntaxFact, SyntaxAdapterFacts, SyntaxAdapterFactsError,
 };
 pub use aggregation::{
     InclusiveSyntaxPolicy, SyntaxAggregateLookupError, SyntaxAggregateOwner,

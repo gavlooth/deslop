@@ -9,7 +9,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use anyhow::{Context, Result, bail};
 use deslop_core::{AnalysisDiagnostic, AnalysisProvenance, Lang};
 use deslop_lang::{
-    LangPack, LanguageAdapterCapabilityManifest, LanguageLexicalPolicy, LanguageQueryPack, Registry,
+    LangPack, LanguageAdapterCapabilityManifest, LanguageConstructPolicy, LanguageLexicalPolicy,
+    LanguageQueryPack, Registry,
 };
 use ignore::WalkBuilder;
 use serde::de::Error as _;
@@ -226,6 +227,7 @@ pub struct LanguageAdapterIdentity {
     capabilities: LanguageAdapterCapabilityManifest,
     queries: LanguageQueryPack,
     lexical: LanguageLexicalPolicy,
+    constructs: LanguageConstructPolicy,
 }
 
 impl LanguageAdapterIdentity {
@@ -247,6 +249,10 @@ impl LanguageAdapterIdentity {
 
     pub fn lexical_policy(&self) -> &LanguageLexicalPolicy {
         &self.lexical
+    }
+
+    pub fn construct_policy(&self) -> &LanguageConstructPolicy {
+        &self.constructs
     }
 
     fn identity_bytes(&self) -> Vec<u8> {
@@ -341,6 +347,61 @@ impl LanguageAdapterIdentity {
                     .map_or(b"", |operator| operator.as_str().as_bytes()),
             );
         }
+        push_part(&mut bytes, self.constructs.schema().as_bytes());
+        push_part(&mut bytes, self.constructs.adapter_schema().as_bytes());
+        push_part(
+            &mut bytes,
+            self.constructs
+                .parse_recovery()
+                .support()
+                .as_str()
+                .as_bytes(),
+        );
+        push_part(
+            &mut bytes,
+            self.constructs
+                .parse_recovery()
+                .authority()
+                .map_or(b"", |authority| authority.as_str().as_bytes()),
+        );
+        push_part(
+            &mut bytes,
+            self.constructs
+                .parse_recovery()
+                .handling()
+                .map_or(b"", |handling| handling.as_str().as_bytes()),
+        );
+        for section in self.constructs.constructs() {
+            push_part(&mut bytes, section.kind().as_str().as_bytes());
+            push_part(&mut bytes, section.support().as_str().as_bytes());
+            push_part(
+                &mut bytes,
+                section
+                    .authority()
+                    .map_or(b"", |authority| authority.as_str().as_bytes()),
+            );
+            for rule in section.rules() {
+                push_part(&mut bytes, rule.raw_kind().as_bytes());
+                push_part(&mut bytes, rule.text().map_or(b"", str::as_bytes));
+                push_part(&mut bytes, rule.handling().as_str().as_bytes());
+            }
+        }
+        push_part(
+            &mut bytes,
+            self.constructs.dialects().support().as_str().as_bytes(),
+        );
+        push_part(
+            &mut bytes,
+            self.constructs
+                .dialects()
+                .authority()
+                .map_or(b"", |authority| authority.as_str().as_bytes()),
+        );
+        for variant in self.constructs.dialects().variants() {
+            push_part(&mut bytes, variant.dialect().as_bytes());
+            push_part(&mut bytes, variant.grammar_id().as_bytes());
+            push_part(&mut bytes, variant.grammar_version().as_bytes());
+        }
         bytes
     }
 }
@@ -425,6 +486,21 @@ fn resolve_grammar(
             adapter.adapter_schema()
         );
     }
+    let constructs = adapter.construct_policy();
+    constructs.validate().map_err(|error| {
+        anyhow::anyhow!(
+            "invalid construct policy for language adapter {}: {error}",
+            adapter.name()
+        )
+    })?;
+    if constructs.adapter_schema() != adapter.adapter_schema() {
+        bail!(
+            "language adapter {} construct policy targets {} but adapter schema is {}",
+            adapter.name(),
+            constructs.adapter_schema(),
+            adapter.adapter_schema()
+        );
+    }
     Ok((
         GrammarSelection::from_descriptor(descriptor),
         language,
@@ -436,6 +512,7 @@ fn resolve_grammar(
                 capabilities,
                 queries,
                 lexical,
+                constructs,
             },
         },
     ))

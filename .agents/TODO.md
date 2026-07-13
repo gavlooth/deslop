@@ -285,7 +285,16 @@ reports, benchmark records, and work orders.
   The fixed Unicode/comment/operator fixture locks 26 facts and class counts; policy-only changes
   preserve raw analysis identity while changing derived identity. Production packs remain honest
   unknown pending M2.6-M2.10. Exact wire/rejection tests and all workspace gates pass.
-- [ ] M2.5 Define parse-error, unsupported-construct, macro, generated-code, and dialect policies.
+- [x] M2.5 Define parse-error, unsupported-construct, macro, generated-code, and dialect policies.
+  Evidence: `deslop.language-construct-policy/1` makes parse recovery, unsupported constructs,
+  macros, generated code, and dialect variants independently explicit with support, authority,
+  handling, strict ordered rules, and exact dialect/grammar/version identities. The policy is stored
+  and framed in adapter identity. `deslop.construct-policy-projection/1` retains its analysis and
+  emits only grammar error/missing flags or exact adapter-rule facts; it rejects claimed dialect
+  drift and never reparses. A fixed malformed Rust-grammar fixture locks four facts: generated
+  attribute, opaque unsafe block, opaque macro invocation, and file-incomplete `ERROR`; unknown
+  policy emits no construct claims. Policy-only identity, adapter-schema, legacy-wire, and all
+  workspace gates pass. Production packs remain honest unknown pending M2.6-M2.10.
 - [ ] M2.6 Implement/repair the Rust adapter and golden fixtures.
 - [ ] M2.7 Implement/repair JavaScript, TypeScript, and TSX adapters and golden fixtures.
 - [ ] M2.8 Implement/repair Python adapter and golden fixtures.
