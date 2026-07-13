@@ -9,6 +9,15 @@ use tree_sitter::{Parser, Tree};
 
 pub use deslop_lang::RegionSpan;
 
+mod snapshot;
+
+pub use snapshot::{
+    FileParseCount, FileRevisionKey, GrammarSelection, ParseLedger, ParsedFile, ProjectAnalysis,
+    ProjectAnalysisId, ProjectSnapshot, ProjectSnapshotBuilder, ProjectSnapshotId, RepositoryId,
+    ScopeEntry, ScopeEntryKind, ScopeSpec, SnapshotEntry, SnapshotEntryKind, SourceRevision,
+    SourceStore, StoredSource,
+};
+
 thread_local! {
     static PARSE_SOURCE_INVOCATIONS: Cell<usize> = const { Cell::new(0) };
 }

@@ -121,10 +121,16 @@ reports, benchmark records, and work orders.
   Evidence: `docs/adr/0001-project-analysis.md` fixes the immutable source/syntax ownership model,
   identity and wire domains, centralized root/grammar selection, invalidation matrix, consumer
   migration, partial-analysis authority, concurrency, consent, and executable M1 acceptance gates.
-- [ ] M1.2 Implement a revision/content-addressed source store and one parse owner per file revision.
-  **NEXT**
+- [x] M1.2 Implement a revision/content-addressed source store and one parse owner per file revision.
+  Evidence: `deslop-parse` now owns exact `sr1_` source revisions, reusable content-addressed
+  `SourceStore` blobs, typed/default/exact scope snapshots, canonical alias/root-bound read plans,
+  overlay-before-disk semantics, atomic stored grammar resolution, immutable per-file Trees and line
+  indices, `ps1_`/`pa1_` identities, and isolated parse ledgers. Focused tests cover 26 parse cases,
+  one request/owner/invocation for valid/partial revisions, zero invocation for invalid UTF-8,
+  deterministic paths/variants, shared blobs, escapes, and exact-empty scope; full gates pass.
 - [ ] M1.3 Implement the owned node arena with raw kind, field, span, parent/children, named/error flags,
   token/trivia ownership, source slice, and grammar provenance.
+  **NEXT**
 - [ ] M1.4 Define scan-local `NodeId`, serialized revision-bound `NodeKey`, cross-revision baseline
   fingerprint, and exact `RevisionGuard`; test collisions/expiry and prohibit fuzzy write authorization.
 - [ ] M1.5 Build containment and smallest-exclusive-region indices.

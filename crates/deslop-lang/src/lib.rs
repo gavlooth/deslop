@@ -26,6 +26,58 @@ pub enum TailPositionClass {
     Other,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GrammarDescriptor {
+    lang: Lang,
+    dialect: &'static str,
+    grammar_id: &'static str,
+    grammar_version: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedGrammar {
+    descriptor: GrammarDescriptor,
+    language: tree_sitter::Language,
+}
+
+impl GrammarDescriptor {
+    pub const fn new(
+        lang: Lang,
+        dialect: &'static str,
+        grammar_id: &'static str,
+        grammar_version: &'static str,
+    ) -> Self {
+        Self {
+            lang,
+            dialect,
+            grammar_id,
+            grammar_version,
+        }
+    }
+
+    pub fn lang(self) -> Lang {
+        self.lang
+    }
+
+    pub fn dialect(self) -> &'static str {
+        self.dialect
+    }
+
+    pub fn grammar_id(self) -> &'static str {
+        self.grammar_id
+    }
+
+    pub fn grammar_version(self) -> &'static str {
+        self.grammar_version
+    }
+}
+
+impl ResolvedGrammar {
+    pub fn into_parts(self) -> (GrammarDescriptor, tree_sitter::Language) {
+        (self.descriptor, self.language)
+    }
+}
+
 pub trait LangPack: Send + Sync {
     fn name(&self) -> &'static str;
     fn lang(&self) -> Lang;
@@ -33,6 +85,15 @@ pub trait LangPack: Send + Sync {
     fn grammar(&self) -> Option<tree_sitter::Language>;
     fn grammar_for_path(&self, _path: &Path) -> Option<tree_sitter::Language> {
         self.grammar()
+    }
+    fn grammar_descriptor_for_path(&self, _path: &Path) -> Option<GrammarDescriptor> {
+        None
+    }
+    fn resolve_grammar(&self, path: &Path) -> Option<ResolvedGrammar> {
+        Some(ResolvedGrammar {
+            descriptor: self.grammar_descriptor_for_path(path)?,
+            language: self.grammar_for_path(path)?,
+        })
     }
     fn line_comments(&self) -> &'static [&'static str];
     fn metrics_regions(&self) -> &'static [&'static str];
@@ -145,6 +206,12 @@ impl Registry {
     pub fn supported_pack_for_path(&self, path: &Path) -> Option<&'static dyn LangPack> {
         self.packs.iter().copied().find(|pack| pack.detect(path))
     }
+
+    pub fn resolve_grammar(&self, path: &Path) -> Option<ResolvedGrammar> {
+        let pack = self.supported_pack_for_path(path)?;
+        let resolved = pack.resolve_grammar(path)?;
+        (resolved.descriptor.lang == pack.lang()).then_some(resolved)
+    }
 }
 
 impl Default for Registry {
@@ -194,6 +261,10 @@ impl LangPack for GenericPack {
         None
     }
 
+    fn grammar_descriptor_for_path(&self, _path: &Path) -> Option<GrammarDescriptor> {
+        None
+    }
+
     fn line_comments(&self) -> &'static [&'static str] {
         &["#"]
     }
@@ -240,6 +311,15 @@ impl LangPack for ClojurePack {
 
     fn grammar(&self) -> Option<tree_sitter::Language> {
         Some(tree_sitter_clojure::LANGUAGE.into())
+    }
+
+    fn grammar_descriptor_for_path(&self, _path: &Path) -> Option<GrammarDescriptor> {
+        Some(GrammarDescriptor {
+            lang: Lang::Clojure,
+            dialect: "clojure",
+            grammar_id: "tree-sitter-clojure",
+            grammar_version: "0.1.0",
+        })
     }
 
     fn line_comments(&self) -> &'static [&'static str] {
@@ -418,6 +498,15 @@ impl LangPack for JuliaPack {
         Some(tree_sitter_julia::LANGUAGE.into())
     }
 
+    fn grammar_descriptor_for_path(&self, _path: &Path) -> Option<GrammarDescriptor> {
+        Some(GrammarDescriptor {
+            lang: Lang::Julia,
+            dialect: "julia",
+            grammar_id: "tree-sitter-julia",
+            grammar_version: "0.23.1",
+        })
+    }
+
     fn line_comments(&self) -> &'static [&'static str] {
         &["#"]
     }
@@ -508,6 +597,15 @@ impl LangPack for PythonPack {
 
     fn grammar(&self) -> Option<tree_sitter::Language> {
         Some(tree_sitter_python::LANGUAGE.into())
+    }
+
+    fn grammar_descriptor_for_path(&self, _path: &Path) -> Option<GrammarDescriptor> {
+        Some(GrammarDescriptor {
+            lang: Lang::Python,
+            dialect: "python",
+            grammar_id: "tree-sitter-python",
+            grammar_version: "0.25.0",
+        })
     }
 
     fn line_comments(&self) -> &'static [&'static str] {
@@ -618,6 +716,19 @@ impl LangPack for JavaScriptPack {
 
     fn grammar(&self) -> Option<tree_sitter::Language> {
         Some(tree_sitter_javascript::LANGUAGE.into())
+    }
+
+    fn grammar_descriptor_for_path(&self, path: &Path) -> Option<GrammarDescriptor> {
+        Some(GrammarDescriptor {
+            lang: Lang::JavaScript,
+            dialect: if path.extension().and_then(|extension| extension.to_str()) == Some("jsx") {
+                "jsx"
+            } else {
+                "javascript"
+            },
+            grammar_id: "tree-sitter-javascript",
+            grammar_version: "0.25.0",
+        })
     }
 
     fn line_comments(&self) -> &'static [&'static str] {
@@ -750,6 +861,20 @@ impl LangPack for TypeScriptPack {
         }
     }
 
+    fn grammar_descriptor_for_path(&self, path: &Path) -> Option<GrammarDescriptor> {
+        let tsx = path.extension().and_then(|extension| extension.to_str()) == Some("tsx");
+        Some(GrammarDescriptor {
+            lang: Lang::TypeScript,
+            dialect: if tsx { "tsx" } else { "typescript" },
+            grammar_id: if tsx {
+                "tree-sitter-typescript/tsx"
+            } else {
+                "tree-sitter-typescript/typescript"
+            },
+            grammar_version: "0.23.2",
+        })
+    }
+
     fn line_comments(&self) -> &'static [&'static str] {
         &["//"]
     }
@@ -869,6 +994,15 @@ impl LangPack for RustPack {
 
     fn grammar(&self) -> Option<tree_sitter::Language> {
         Some(tree_sitter_rust::LANGUAGE.into())
+    }
+
+    fn grammar_descriptor_for_path(&self, _path: &Path) -> Option<GrammarDescriptor> {
+        Some(GrammarDescriptor {
+            lang: Lang::Rust,
+            dialect: "rust",
+            grammar_id: "tree-sitter-rust",
+            grammar_version: "0.24.2",
+        })
     }
 
     fn line_comments(&self) -> &'static [&'static str] {

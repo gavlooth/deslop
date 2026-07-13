@@ -5904,3 +5904,79 @@ one pinned prepared batch. Recheck only if the M1 identity, concurrency, LSP, or
 explicitly revised.
 
 **Signature:** Codex (GPT-5), M1.1 integration owner, 2026-07-13.
+
+---
+
+## M1.2 checkpoint — content-addressed source snapshot and parse ownership
+
+**Date/time:** 2026-07-13T17:50:57+02:00
+
+**Objective/target:** make the first executable layer of ADR 0001 real without migrating existing
+consumers: exact raw-byte source revisions, reusable content storage, deterministic snapshot scope
+and read ownership, one atomic grammar selection, and one private parse owner per supported file
+revision with request-local numerical accounting.
+
+**Changes:** added `deslop-parse::snapshot` and extended `deslop-lang` with an authoritative
+`Registry::resolve_grammar` that returns inseparable grammar descriptor plus actual Tree-sitter
+language. `SourceStore` interns `Arc<StoredSource>` values by domain-separated `sr1_` raw-byte
+revision and can be shared across snapshot builders. `ProjectSnapshotBuilder` records explicit
+repository authority and invocation base; distinguishes default, requested, and exact-file scopes;
+preserves file/directory kind; collapses aliases/descendants; rejects root escapes and conflicting
+inputs; applies overlays before disk reads; captures non-lossy Unicode logical paths, per-path read
+counts, analysis inputs, and atomic grammar selections; and emits deterministic `ps1_` identities.
+`ProjectAnalysis` owns the immutable snapshot, one private Tree and byte line index per source,
+complete/partial/failed provenance, deterministic `pa1_` identity, and a fresh per-build ledger with
+separate requested/owner/invocation/reuse counts. Invalid UTF-8 retains exact bytes/revision and one
+owner with zero parser calls. Existing `SourceFile`/`parse_source` APIs remain additive and unchanged.
+
+**Commands/checks run:** focused `cargo test -p deslop-lang -p deslop-parse`; focused strict clippy;
+`cargo test --workspace`; `cargo test -p deslop-mcp --features slim-llm -- --test-threads=1`;
+`cargo fmt --all -- --check`; `cargo build --workspace`; `cargo build -p deslop-slim
+--no-default-features`; `cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+`git diff --check`; `jj status`; and `jj diff --stat`. Three read-only agent audits reviewed core
+Tree-sitter ownership, root/scope/integration semantics, and the acceptance matrix while the root
+agent owned all edits and integration.
+
+**Verification results:** PASS. Focused suites: one `deslop-lang` test and 26 `deslop-parse` tests.
+The new matrix locks the `abc` `sr1_` vector and exact byte sensitivity; content dedup without path
+identity collapse; deterministic snapshot/analysis IDs; TS/TSX atomic grammar truth; all supported
+grammar package/version keys; default versus exact-empty scope; invocation-base resolution;
+overlay-before-read; cross-snapshot blob pointer reuse; absolute in-root input normalization;
+conflicting bytes; partial and invalid-UTF-8 owner/invocation counts; explicit and discovered symlink
+escape rejection; in-root alias collapse; and `Send + Sync` ownership. Workspace: 306 passing tests
+plus one intentional ignored performance probe and all doc-tests. MCP slim feature: 23 passing tests.
+Workspace/minimal builds, formatting, whitespace, and strict all-target/all-feature clippy pass.
+
+**Failure modes / invalidated assumptions:** the initial grammar metadata table and later
+`grammar_for_path` call were separate authority decisions; replaced by one `deslop-lang`
+`ResolvedGrammar` stored in the snapshot and consumed without reselection. A builder-local mutable
+store could not reuse blobs across snapshots; replaced with an injectable thread-safe
+`Arc<SourceStore>` returning inseparable revision/bytes objects. One empty vector could not safely
+mean both default-root and zero changed files; replaced by typed default/requested/exact scope.
+Reading disk before applying overlays could observe or fail on bytes outside the snapshot; overlays
+now remove shadowed paths from the read plan. Parallel optional grammar/language fields admitted
+invalid states; replaced by a private source/input enum. Lossy path hashing was invalidated in favor
+of validated Unicode components and canonical slash encoding. Machine-global ignore configuration
+was disabled for snapshot discovery. Early compile/clippy failures (missing `Lang` ordering,
+`tempfile` dev wiring, and two style lints) were corrected before the full gate.
+
+**Current recommendation/checkpoint:** M1.2 is complete. Implement M1.3 by copying the private Tree
+into a deterministic owned arena while preserving all named/anonymous/error/missing nodes, grammar
+field/order relations, raw byte/point/line spans, source slices, and token/trivia ownership. Keep
+`NodeId` and serialized keys out of this pass except for an internal dense arena index needed to wire
+parent/children; M1.4 owns identity authority.
+
+**Blockers:** none. Automatic repository/root policy wrappers remain a consumer-migration concern;
+the foundational builder already captures explicit authority, invocation base, and typed scope
+without forcing legacy callers to migrate. Serena remains Python-symbol-only for this Rust workspace.
+
+**Dependencies/restart:** rebuild Rust consumers to pick up the additive libraries. No service
+restart, external migration, wire-schema change, or new third-party package was introduced;
+`blake3`, `ignore`, and `tempfile` were already workspace dependencies.
+
+**Negative-memory status:** retain that grammar identity and the actual parser language must be one
+resolved object; overlays must shadow before disk reads; exact-empty scope is distinct from default;
+parse ledgers belong to one build; source revision and bytes must be inseparable; and path hashing
+must never be lossy. Recheck when M1.3 stores arena facts or M1.8 adds parse-artifact reuse.
+
+**Signature:** Codex (GPT-5), M1.2 integration owner, 2026-07-13.
