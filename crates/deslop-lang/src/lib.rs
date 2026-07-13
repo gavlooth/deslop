@@ -9,6 +9,7 @@ use tree_sitter::Node;
 pub const LANGUAGE_ADAPTER_CAPABILITY_SCHEMA: &str = "deslop.language-adapter-capabilities/1";
 pub const CANONICAL_ROLE_SCHEMA: &str = "deslop.canonical-roles/1";
 pub const LANGUAGE_QUERY_PACK_SCHEMA: &str = "deslop.language-query-pack/1";
+pub const LANGUAGE_LEXICAL_POLICY_SCHEMA: &str = "deslop.language-lexical-policy/1";
 
 /// Portable syntactic categories projected by language adapters.
 ///
@@ -917,6 +918,424 @@ impl LanguageQueryPack {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LexicalTokenClass {
+    Identifier,
+    Keyword,
+    Literal,
+    Operator,
+    Delimiter,
+    Punctuation,
+    Comment,
+    Error,
+    Other,
+}
+
+impl LexicalTokenClass {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Identifier => "identifier",
+            Self::Keyword => "keyword",
+            Self::Literal => "literal",
+            Self::Operator => "operator",
+            Self::Delimiter => "delimiter",
+            Self::Punctuation => "punctuation",
+            Self::Comment => "comment",
+            Self::Error => "error",
+            Self::Other => "other",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LexicalOperatorClass {
+    Arithmetic,
+    Comparison,
+    Logical,
+    Assignment,
+    Bitwise,
+    MemberAccess,
+    Range,
+    Other,
+}
+
+impl LexicalOperatorClass {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Arithmetic => "arithmetic",
+            Self::Comparison => "comparison",
+            Self::Logical => "logical",
+            Self::Assignment => "assignment",
+            Self::Bitwise => "bitwise",
+            Self::MemberAccess => "member-access",
+            Self::Range => "range",
+            Self::Other => "other",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum IdentifierCasePolicy {
+    Sensitive,
+    Insensitive,
+    Contextual,
+}
+
+impl IdentifierCasePolicy {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Sensitive => "sensitive",
+            Self::Insensitive => "insensitive",
+            Self::Contextual => "contextual",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlockCommentDelimiter {
+    open: String,
+    close: String,
+    nested: bool,
+}
+
+impl BlockCommentDelimiter {
+    pub fn new(open: impl Into<String>, close: impl Into<String>, nested: bool) -> Self {
+        Self {
+            open: open.into(),
+            close: close.into(),
+            nested,
+        }
+    }
+
+    pub fn open(&self) -> &str {
+        &self.open
+    }
+
+    pub fn close(&self) -> &str {
+        &self.close
+    }
+
+    pub fn nested(&self) -> bool {
+        self.nested
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LexicalClassification {
+    token: LexicalTokenClass,
+    operator: Option<LexicalOperatorClass>,
+}
+
+impl LexicalClassification {
+    pub const fn token(token: LexicalTokenClass) -> Self {
+        Self {
+            token,
+            operator: None,
+        }
+    }
+
+    pub const fn operator(operator: LexicalOperatorClass) -> Self {
+        Self {
+            token: LexicalTokenClass::Operator,
+            operator: Some(operator),
+        }
+    }
+
+    pub fn token_class(&self) -> LexicalTokenClass {
+        self.token
+    }
+
+    pub fn operator_class(&self) -> Option<LexicalOperatorClass> {
+        self.operator
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        match (self.token, self.operator) {
+            (LexicalTokenClass::Operator, Some(_))
+            | (
+                LexicalTokenClass::Identifier
+                | LexicalTokenClass::Keyword
+                | LexicalTokenClass::Literal
+                | LexicalTokenClass::Delimiter
+                | LexicalTokenClass::Punctuation
+                | LexicalTokenClass::Comment
+                | LexicalTokenClass::Error
+                | LexicalTokenClass::Other,
+                None,
+            ) => Ok(()),
+            (LexicalTokenClass::Operator, None) => {
+                Err("operator token has no operator class".to_string())
+            }
+            (_, Some(_)) => Err("non-operator token claims an operator class".to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LexicalRule {
+    raw_kind: String,
+    text: Option<String>,
+    classification: LexicalClassification,
+}
+
+impl LexicalRule {
+    pub fn new(
+        raw_kind: impl Into<String>,
+        text: Option<String>,
+        classification: LexicalClassification,
+    ) -> Self {
+        Self {
+            raw_kind: raw_kind.into(),
+            text,
+            classification,
+        }
+    }
+
+    pub fn raw_kind(&self) -> &str {
+        &self.raw_kind
+    }
+
+    pub fn text(&self) -> Option<&str> {
+        self.text.as_deref()
+    }
+
+    pub fn classification(&self) -> &LexicalClassification {
+        &self.classification
+    }
+
+    fn matches(&self, raw_kind: &str, text: &str) -> bool {
+        (self.raw_kind == "*" || self.raw_kind == raw_kind)
+            && self.text.as_deref().is_none_or(|expected| expected == text)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LanguageLexicalPolicy {
+    schema: String,
+    adapter_schema: String,
+    support: CapabilitySupport,
+    authority: Option<CapabilityAuthority>,
+    identifier_case: Option<IdentifierCasePolicy>,
+    unicode_identifiers: Option<bool>,
+    line_comments: Vec<String>,
+    block_comments: Vec<BlockCommentDelimiter>,
+    rules: Vec<LexicalRule>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LanguageLexicalPolicyWire {
+    schema: String,
+    adapter_schema: String,
+    support: CapabilitySupport,
+    authority: Option<CapabilityAuthority>,
+    identifier_case: Option<IdentifierCasePolicy>,
+    unicode_identifiers: Option<bool>,
+    line_comments: Vec<String>,
+    block_comments: Vec<BlockCommentDelimiter>,
+    rules: Vec<LexicalRule>,
+}
+
+impl<'de> Deserialize<'de> for LanguageLexicalPolicy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = LanguageLexicalPolicyWire::deserialize(deserializer)?;
+        let policy = Self {
+            schema: wire.schema,
+            adapter_schema: wire.adapter_schema,
+            support: wire.support,
+            authority: wire.authority,
+            identifier_case: wire.identifier_case,
+            unicode_identifiers: wire.unicode_identifiers,
+            line_comments: wire.line_comments,
+            block_comments: wire.block_comments,
+            rules: wire.rules,
+        };
+        policy.validate().map_err(D::Error::custom)?;
+        Ok(policy)
+    }
+}
+
+impl LanguageLexicalPolicy {
+    pub fn unknown(adapter_schema: impl Into<String>) -> Self {
+        Self {
+            schema: LANGUAGE_LEXICAL_POLICY_SCHEMA.to_string(),
+            adapter_schema: adapter_schema.into(),
+            support: CapabilitySupport::Unknown,
+            authority: None,
+            identifier_case: None,
+            unicode_identifiers: None,
+            line_comments: Vec::new(),
+            block_comments: Vec::new(),
+            rules: Vec::new(),
+        }
+    }
+
+    pub fn unsupported(adapter_schema: impl Into<String>) -> Self {
+        let mut policy = Self::unknown(adapter_schema);
+        policy.support = CapabilitySupport::Unsupported;
+        policy
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn provided(
+        adapter_schema: impl Into<String>,
+        authority: CapabilityAuthority,
+        identifier_case: IdentifierCasePolicy,
+        unicode_identifiers: bool,
+        line_comments: Vec<String>,
+        block_comments: Vec<BlockCommentDelimiter>,
+        rules: Vec<LexicalRule>,
+    ) -> Result<Self, String> {
+        let policy = Self {
+            schema: LANGUAGE_LEXICAL_POLICY_SCHEMA.to_string(),
+            adapter_schema: adapter_schema.into(),
+            support: CapabilitySupport::Provided,
+            authority: Some(authority),
+            identifier_case: Some(identifier_case),
+            unicode_identifiers: Some(unicode_identifiers),
+            line_comments,
+            block_comments,
+            rules,
+        };
+        policy.validate()?;
+        Ok(policy)
+    }
+
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+    pub fn adapter_schema(&self) -> &str {
+        &self.adapter_schema
+    }
+    pub fn support(&self) -> CapabilitySupport {
+        self.support
+    }
+    pub fn authority(&self) -> Option<CapabilityAuthority> {
+        self.authority
+    }
+    pub fn identifier_case(&self) -> Option<IdentifierCasePolicy> {
+        self.identifier_case
+    }
+    pub fn unicode_identifiers(&self) -> Option<bool> {
+        self.unicode_identifiers
+    }
+    pub fn line_comments(&self) -> &[String] {
+        &self.line_comments
+    }
+    pub fn block_comments(&self) -> &[BlockCommentDelimiter] {
+        &self.block_comments
+    }
+    pub fn rules(&self) -> &[LexicalRule] {
+        &self.rules
+    }
+
+    pub fn classify(&self, raw_kind: &str, text: &str) -> Option<&LexicalClassification> {
+        (self.support == CapabilitySupport::Provided)
+            .then(|| self.rules.iter().find(|rule| rule.matches(raw_kind, text)))
+            .flatten()
+            .map(LexicalRule::classification)
+    }
+
+    /// Match only an adapter-declared rule, excluding the required terminal wildcard fallback.
+    pub fn classify_explicit(&self, raw_kind: &str, text: &str) -> Option<&LexicalClassification> {
+        (self.support == CapabilitySupport::Provided)
+            .then(|| {
+                self.rules
+                    .get(..self.rules.len().saturating_sub(1))?
+                    .iter()
+                    .find(|rule| rule.matches(raw_kind, text))
+            })
+            .flatten()
+            .map(LexicalRule::classification)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != LANGUAGE_LEXICAL_POLICY_SCHEMA {
+            return Err(format!(
+                "unsupported language lexical policy schema {}",
+                self.schema
+            ));
+        }
+        if self.adapter_schema.trim().is_empty() {
+            return Err("lexical policy adapter schema must not be empty".to_string());
+        }
+        match self.support {
+            CapabilitySupport::Provided => {
+                if self.authority.is_none()
+                    || self.identifier_case.is_none()
+                    || self.unicode_identifiers.is_none()
+                {
+                    return Err(
+                        "provided lexical policy lacks authority or identifier policy".to_string(),
+                    );
+                }
+                if self
+                    .rules
+                    .last()
+                    .is_none_or(|rule| rule.raw_kind != "*" || rule.text.is_some())
+                {
+                    return Err(
+                        "provided lexical policy lacks a terminal wildcard fallback".to_string()
+                    );
+                }
+                let mut keys = std::collections::BTreeSet::new();
+                for (index, rule) in self.rules.iter().enumerate() {
+                    if rule.raw_kind.trim().is_empty() || !keys.insert((&rule.raw_kind, &rule.text))
+                    {
+                        return Err(
+                            "lexical rules have an empty or duplicate match key".to_string()
+                        );
+                    }
+                    if rule.raw_kind == "*" && index + 1 != self.rules.len() {
+                        return Err("lexical wildcard rule must be terminal".to_string());
+                    }
+                    if rule.text.is_none()
+                        && self.rules[index + 1..]
+                            .iter()
+                            .any(|later| later.raw_kind == rule.raw_kind)
+                    {
+                        return Err(format!(
+                            "lexical kind fallback {} shadows a later exact-text rule",
+                            rule.raw_kind
+                        ));
+                    }
+                    rule.classification.validate()?;
+                }
+                if self.line_comments.iter().any(String::is_empty)
+                    || self
+                        .block_comments
+                        .iter()
+                        .any(|delimiter| delimiter.open.is_empty() || delimiter.close.is_empty())
+                {
+                    return Err("lexical comment delimiters must not be empty".to_string());
+                }
+            }
+            CapabilitySupport::Unsupported | CapabilitySupport::Unknown => {
+                if self.authority.is_some()
+                    || self.identifier_case.is_some()
+                    || self.unicode_identifiers.is_some()
+                    || !self.line_comments.is_empty()
+                    || !self.block_comments.is_empty()
+                    || !self.rules.is_empty()
+                {
+                    return Err("unavailable lexical policy retains provided payload".to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GrammarDescriptor {
     lang: Lang,
@@ -979,6 +1398,9 @@ pub trait LangPack: Send + Sync {
     fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest;
     fn query_pack(&self) -> LanguageQueryPack {
         LanguageQueryPack::unknown(self.adapter_schema())
+    }
+    fn lexical_policy(&self) -> LanguageLexicalPolicy {
+        LanguageLexicalPolicy::unknown(self.adapter_schema())
     }
     fn canonical_roles(&self, _node: Node<'_>, _text: &str) -> CanonicalRoleSet {
         CanonicalRoleSet::default()
@@ -2297,6 +2719,171 @@ mod tests {
     }
 
     #[test]
+    fn lexical_policy_is_total_ordered_and_wire_pinned() {
+        let policy = LanguageLexicalPolicy::provided(
+            "deslop-lang-adapter/lexical-test-1",
+            CapabilityAuthority::Adapter,
+            IdentifierCasePolicy::Sensitive,
+            true,
+            vec!["//".to_string()],
+            vec![BlockCommentDelimiter::new("/*", "*/", true)],
+            vec![
+                LexicalRule::new(
+                    "identifier",
+                    None,
+                    LexicalClassification::token(LexicalTokenClass::Identifier),
+                ),
+                LexicalRule::new(
+                    "==",
+                    Some("==".to_string()),
+                    LexicalClassification::operator(LexicalOperatorClass::Comparison),
+                ),
+                LexicalRule::new(
+                    "line_comment",
+                    None,
+                    LexicalClassification::token(LexicalTokenClass::Comment),
+                ),
+                LexicalRule::new(
+                    "*",
+                    None,
+                    LexicalClassification::token(LexicalTokenClass::Other),
+                ),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            policy.classify("==", "==").unwrap().operator_class(),
+            Some(LexicalOperatorClass::Comparison)
+        );
+        assert_eq!(
+            policy
+                .classify("identifier", "value")
+                .unwrap()
+                .token_class(),
+            LexicalTokenClass::Identifier
+        );
+        assert_eq!(
+            policy.classify("unknown", "?").unwrap().token_class(),
+            LexicalTokenClass::Other
+        );
+        assert!(policy.classify_explicit("unknown", "?").is_none());
+        let value = serde_json::to_value(&policy).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "schema": "deslop.language-lexical-policy/1",
+                "adapter_schema": "deslop-lang-adapter/lexical-test-1",
+                "support": "provided",
+                "authority": "adapter",
+                "identifier_case": "sensitive",
+                "unicode_identifiers": true,
+                "line_comments": ["//"],
+                "block_comments": [{"open": "/*", "close": "*/", "nested": true}],
+                "rules": [
+                    {
+                        "raw_kind": "identifier",
+                        "text": null,
+                        "classification": {"token": "identifier", "operator": null}
+                    },
+                    {
+                        "raw_kind": "==",
+                        "text": "==",
+                        "classification": {"token": "operator", "operator": "comparison"}
+                    },
+                    {
+                        "raw_kind": "line_comment",
+                        "text": null,
+                        "classification": {"token": "comment", "operator": null}
+                    },
+                    {
+                        "raw_kind": "*",
+                        "text": null,
+                        "classification": {"token": "other", "operator": null}
+                    }
+                ]
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<LanguageLexicalPolicy>(value.clone()).unwrap(),
+            policy
+        );
+
+        let mut no_fallback = value.clone();
+        no_fallback["rules"].as_array_mut().unwrap().pop();
+        assert!(serde_json::from_value::<LanguageLexicalPolicy>(no_fallback).is_err());
+        let mut bad_operator = value;
+        bad_operator["rules"][1]["classification"]["operator"] = serde_json::Value::Null;
+        assert!(serde_json::from_value::<LanguageLexicalPolicy>(bad_operator).is_err());
+
+        let nonterminal_wildcard = LanguageLexicalPolicy::provided(
+            "deslop-lang-adapter/lexical-test-1",
+            CapabilityAuthority::Adapter,
+            IdentifierCasePolicy::Sensitive,
+            true,
+            vec![],
+            vec![],
+            vec![
+                LexicalRule::new(
+                    "*",
+                    None,
+                    LexicalClassification::token(LexicalTokenClass::Other),
+                ),
+                LexicalRule::new(
+                    "*",
+                    None,
+                    LexicalClassification::token(LexicalTokenClass::Error),
+                ),
+            ],
+        )
+        .unwrap_err();
+        assert!(nonterminal_wildcard.contains("wildcard rule must be terminal"));
+
+        let shadowed_exact_text = LanguageLexicalPolicy::provided(
+            "deslop-lang-adapter/lexical-test-1",
+            CapabilityAuthority::Adapter,
+            IdentifierCasePolicy::Sensitive,
+            true,
+            vec![],
+            vec![],
+            vec![
+                LexicalRule::new(
+                    "identifier",
+                    None,
+                    LexicalClassification::token(LexicalTokenClass::Identifier),
+                ),
+                LexicalRule::new(
+                    "identifier",
+                    Some("contextual".to_string()),
+                    LexicalClassification::token(LexicalTokenClass::Keyword),
+                ),
+                LexicalRule::new(
+                    "*",
+                    None,
+                    LexicalClassification::token(LexicalTokenClass::Other),
+                ),
+            ],
+        )
+        .unwrap_err();
+        assert!(shadowed_exact_text.contains("shadows a later exact-text rule"));
+
+        for unavailable in [
+            LanguageLexicalPolicy::unknown("deslop-lang-adapter/lexical-test-1"),
+            LanguageLexicalPolicy::unsupported("deslop-lang-adapter/lexical-test-1"),
+        ] {
+            unavailable.validate().unwrap();
+            assert!(unavailable.classify("identifier", "value").is_none());
+            assert!(unavailable.rules().is_empty());
+            assert_eq!(
+                serde_json::from_value::<LanguageLexicalPolicy>(
+                    serde_json::to_value(&unavailable).unwrap()
+                )
+                .unwrap(),
+                unavailable
+            );
+        }
+    }
+
+    #[test]
     fn capability_catalog_is_total_tiered_and_wire_pinned() {
         assert_eq!(
             SemanticTier::ALL.map(|tier| {
@@ -2434,6 +3021,11 @@ mod tests {
                     .iter()
                     .all(|query| query.support() == CapabilitySupport::Unknown)
             );
+            let lexical = pack.lexical_policy();
+            lexical.validate().unwrap();
+            assert_eq!(lexical.adapter_schema(), pack.adapter_schema());
+            assert_eq!(lexical.support(), CapabilitySupport::Unknown);
+            assert!(lexical.rules().is_empty());
         }
     }
 }

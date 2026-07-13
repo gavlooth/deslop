@@ -9,8 +9,10 @@ use tree_sitter::{Parser, Tree};
 
 pub use deslop_lang::{
     AdapterCapability, CANONICAL_ROLE_SCHEMA, CanonicalRole, CanonicalRoleSet, CapabilityAuthority,
-    CapabilityDeclaration, CapabilitySupport, LANGUAGE_ADAPTER_CAPABILITY_SCHEMA,
-    LANGUAGE_QUERY_PACK_SCHEMA, LanguageAdapterCapabilityManifest, LanguageQueryPack,
+    CapabilityDeclaration, CapabilitySupport, IdentifierCasePolicy,
+    LANGUAGE_ADAPTER_CAPABILITY_SCHEMA, LANGUAGE_LEXICAL_POLICY_SCHEMA, LANGUAGE_QUERY_PACK_SCHEMA,
+    LanguageAdapterCapabilityManifest, LanguageLexicalPolicy, LanguageQueryPack,
+    LexicalClassification, LexicalOperatorClass, LexicalRule, LexicalTokenClass,
     QueryCaptureDeclaration, QueryFamily, QueryFamilyDeclaration, RegionSpan, SemanticTier,
 };
 
@@ -29,7 +31,9 @@ mod snapshot;
 
 pub use adapter::{
     CANONICAL_ROLE_PROJECTION_SCHEMA, CanonicalNodeRoles, CanonicalRoleProjection,
-    CanonicalRoleProjectionError, RawSyntaxFact, SyntaxAdapterFacts, SyntaxAdapterFactsError,
+    CanonicalRoleProjectionError, LEXICAL_TOKEN_PROJECTION_SCHEMA, LexicalTokenFact,
+    LexicalTokenProjection, LexicalTokenProjectionError, RawSyntaxFact, SyntaxAdapterFacts,
+    SyntaxAdapterFactsError,
 };
 pub use aggregation::{
     InclusiveSyntaxPolicy, SyntaxAggregateLookupError, SyntaxAggregateOwner,

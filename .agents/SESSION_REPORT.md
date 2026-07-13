@@ -7343,3 +7343,102 @@ unavailable query families, compile against a reselected grammar, omit exact que
 identity, infer semantic absence from no capture, or promote syntax captures to S2/S3 authority.
 
 **Signature:** Codex (GPT-5), M2.3 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2.4 active checkpoint — declarative lexical policy schema
+
+**Date/time:** 2026-07-14T00:52:06+02:00
+
+**Objective/target:** replace text-scanner assumptions with a versioned language policy that can
+classify exact raw grammar leaves and operators while keeping trivia gaps and higher semantic claims
+out of scope.
+
+**Changes:** added the initial `deslop.language-lexical-policy/1` contract: nine token classes, eight
+operator classes, identifier case and Unicode policy, line/block comment delimiters, exact ordered
+raw-kind/optional-text rules, structurally valid token/operator pairs, and a required terminal wildcard
+for total provided classification. `LangPack` defaults to an all-unknown policy. Snapshot adapter
+identity now validates, stores, exposes, and hashes the policy; public types are re-exported. Added a
+focused policy oracle covering identifiers, a multi-character comparison operator, comments, fallback,
+round-trip, missing fallback, and malformed operator classification. Registry adapters remain unknown.
+
+**Commands/checks run:** `cargo check -p deslop-lang`; focused lexical-policy tests; existing parse
+adapter tests; `cargo clippy -p deslop-lang -p deslop-parse --all-features --all-targets -- -D warnings`;
+`cargo fmt --all`; and `git diff --check`.
+
+**Results:** ACTIVE / WORKSPACE-WIDE UNVERIFIED. The implemented schema and affected crates pass all
+focused checks. M2.4 is deliberately not checked: no analysis-owning leaf projection or numerical
+language fixture exists yet, stable enum-string framing must replace temporary debug-formatted lexical
+identity components, policy-only invalidation/mismatch tests remain, and full workspace gates have not
+run for this active change.
+
+**Invalidated assumptions / negative memory:** Halstead operator arrays are partial metric inputs, not
+a token-classification contract. Trivia gaps are byte ownership rather than tokens. Comment substring
+search and independent two-character tokenization cannot be lexical authority when the retained grammar
+already owns exact leaves.
+
+**Current recommendation/next actions:** add an analysis-retaining lexical projection over positive-
+width raw leaves, classify only through the exact stored policy, pin class/operator/comment/Unicode
+counts and no-reparse behavior, stabilize identity encoding, then run affected and workspace gates.
+
+**Blockers/dependencies/restart:** none. Work is incomplete by design at this checkpoint; no service
+restart or migration applies.
+
+**Negative-memory status:** recorded locally. Never mark M2.4 complete from schema tests alone, reuse
+the metrics text tokenizer as authority, classify trivia gaps as tokens, or infer effects/precedence
+from lexical operator classes.
+
+**Signature:** Codex (GPT-5), M2.4 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M2.4 terminal checkpoint — declarative lexical classification
+
+**Date/time:** 2026-07-14T01:03:19+02:00
+
+**Objective/target:** complete a strict language-owned token/operator policy and an analysis-owned,
+parse-once projection without promoting metrics tokenization, trivia gaps, or lexical classes into
+semantic authority.
+
+**Changes:** completed `deslop.language-lexical-policy/1` with stable wire/identity strings, explicit
+unsupported and unknown states, ordered raw-kind/optional-text matching, same-kind shadow rejection,
+and terminal wildcard totality. Completed `deslop.lexical-token-projection/1`: explicitly classified
+composite CST nodes own their exact spans and suppress descendants; all other composites traverse to
+positive-width leaves. The projection retains its `ProjectAnalysis`, raw syntax facts, exact source
+text, stored policy, and framed derived identity. Added exact serialization and malformed-policy
+oracles, adapter-schema mismatch rejection, policy-only derived invalidation, Unicode identifier,
+full line/block comment, literal, multi-character operator, non-overlap, deterministic repeat, and
+no-reparse checks. Production adapters remain explicitly unknown pending M2.6-M2.10.
+
+**Commands/checks run:** `cargo fmt --all`; `cargo test -p deslop-lang`; `cargo test -p deslop-parse
+adapter::tests`; affected strict clippy; `git diff --check`; then `cargo test --workspace
+--all-features`; `cargo build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc
+--workspace --all-features --no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D
+warnings`; `cargo fmt --all -- --check`; and final `git diff --check`.
+
+**Results:** PASS. The numerical fixture emits 26 non-overlapping token owners: 2 comments, 6
+delimiters, 5 identifiers, 3 keywords, 3 literals, 4 operators, 1 other, and 2 punctuation tokens;
+operator subclasses are one each arithmetic, assignment, comparison, and logical. Both full comments
+are preserved and each source revision has exactly one parser invocation. All workspace gates pass;
+only the repository's two explicitly ignored instrumentation/performance probes remain ignored.
+
+**Invalidated assumptions / negative memory:** leaf-only projection is not a valid grammar-token
+boundary because comments and other token-like constructs may be composite CST nodes. The failed
+attempt emitted only `//`, `/*`, and `*/`, losing comment bodies. Required alternative: select only
+adapter-explicit composite rules, claim their full spans, suppress descendants, and otherwise fall
+through to leaves. Never invent substring/comment recovery or classify overlapping parent/child spans.
+Halstead arrays remain metric seeds only; lexical operator classes do not assert precedence, effects,
+or evaluation order.
+
+**Current recommendation/next actions:** start M2.5 by freezing explicit support/authority and policy
+contracts for parse errors, unsupported constructs, macros, generated code, and dialects; retain the
+same adapter-schema, identity, honest-unknown, and analysis-ownership boundaries.
+
+**Blockers/dependencies/restart:** none. No rebuild, reload, migration, or service restart is needed.
+
+**Negative-memory status:** recorded locally and ready for Hindsight consolidation. Search handles:
+`M2.4 leaf-only composite comments`, `lexical token owner descendant suppression`, `Halstead not
+lexical authority`. Status: resolved; recheck if a grammar exposes an explicitly classified composite
+whose descendants escape its span or source order.
+
+**Signature:** Codex (GPT-5), M2.4 integration owner, terminal checkpoint, 2026-07-14.

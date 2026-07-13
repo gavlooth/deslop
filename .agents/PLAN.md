@@ -1417,6 +1417,45 @@ query source/captures belong in exact derived identity and must compile against 
 Agent assignment: `/root` owns M2.3 integration and M2.4 continuation; no concurrent file edits are
 assigned.
 
+#### Terminal M2.4 execution plan — declarative lexical classification
+
+Resolved hypothesis: exact token classification is language-specific and deterministic without a
+second tokenizer when adapters publish an ordered, versioned rule table over raw grammar kind plus
+optional exact token text, with explicit identifier/comment policy and a total fallback. Explicitly
+classified composite grammar nodes own their complete spans; unclaimed composites traverse to leaves.
+
+CONVERGENCE: freeze token/operator vocabularies and one strict lexical-policy wire vector; reject
+provided policies without authority, identifier policy, ordered unique rules, or a terminal wildcard
+fallback; classify a custom retained grammar's positive-width leaves and pin class/operator counts.
+Policy-only changes must preserve raw analysis identity and invalidate derived identity. If whitespace
+gaps remain owned trivia rather than invented tokens, every classified fact retains raw kind/text, and
+production packs remain unknown pending M2.6-M2.10, M2.4 is done.
+
+Implemented approach: define `deslop.language-lexical-policy/1`, token and operator classes, exact ordered
+kind/text rules, case/Unicode identifier behavior, and line/block comment delimiters in `deslop-lang`.
+Store the validated policy in adapter identity. Project non-overlapping positive-width Tree-sitter
+token owners through the stored rule table while retaining the analysis; do not reuse the metrics text
+tokenizer or infer multi-character operators independently of the grammar.
+
+Validation result: exact JSON/malformed truth table, registry totality, adapter-schema mismatch,
+custom raw-text/classification oracle including full composite comments, literals, Unicode identifiers,
+and multi-character operators, no-reparse and identity assertions, and all workspace gates pass.
+
+Negative-memory constraints: current Halstead operator arrays are partial metric seeds, not lexical
+authority; trivia gaps are not tokens; comments come from grammar ownership/policy, not substring
+search; rules classify syntax only and do not imply effects, precedence, or evaluation order.
+
+Agent assignment: `/root` owns M2.4 schema, integration, and verification; no concurrent file edits
+are assigned.
+
+Terminal checkpoint (2026-07-14T01:03:19+02:00): M2.4 is complete. The versioned policy schema,
+stable enum identity framing, strict totality/shadow rejection, stored adapter identity, public
+projection, policy-only invalidation/mismatch checks, and fixed 26-fact numerical fixture all pass.
+The initially attempted leaf-only boundary was invalidated because Rust comments are composite CST
+nodes; explicit composite ownership with descendant suppression now preserves exact full comments and
+non-overlapping spans. Next checkpoint: begin M2.5 policy contracts for parse errors, unsupported
+constructs, macros, generated code, and dialects.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link

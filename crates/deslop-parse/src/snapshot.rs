@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::{Context, Result, bail};
 use deslop_core::{AnalysisDiagnostic, AnalysisProvenance, Lang};
-use deslop_lang::{LangPack, LanguageAdapterCapabilityManifest, LanguageQueryPack, Registry};
+use deslop_lang::{
+    LangPack, LanguageAdapterCapabilityManifest, LanguageLexicalPolicy, LanguageQueryPack, Registry,
+};
 use ignore::WalkBuilder;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -223,6 +225,7 @@ pub struct LanguageAdapterIdentity {
     schema: String,
     capabilities: LanguageAdapterCapabilityManifest,
     queries: LanguageQueryPack,
+    lexical: LanguageLexicalPolicy,
 }
 
 impl LanguageAdapterIdentity {
@@ -240,6 +243,10 @@ impl LanguageAdapterIdentity {
 
     pub fn queries(&self) -> &LanguageQueryPack {
         &self.queries
+    }
+
+    pub fn lexical_policy(&self) -> &LanguageLexicalPolicy {
+        &self.lexical
     }
 
     fn identity_bytes(&self) -> Vec<u8> {
@@ -290,6 +297,49 @@ impl LanguageAdapterIdentity {
                     push_part(&mut bytes, role.as_str().as_bytes());
                 }
             }
+        }
+        push_part(&mut bytes, self.lexical.schema().as_bytes());
+        push_part(&mut bytes, self.lexical.adapter_schema().as_bytes());
+        push_part(&mut bytes, self.lexical.support().as_str().as_bytes());
+        push_part(
+            &mut bytes,
+            self.lexical
+                .authority()
+                .map_or(b"", |authority| authority.as_str().as_bytes()),
+        );
+        push_part(
+            &mut bytes,
+            self.lexical
+                .identifier_case()
+                .map_or(b"", |policy| policy.as_str().as_bytes()),
+        );
+        push_part(
+            &mut bytes,
+            self.lexical
+                .unicode_identifiers()
+                .map_or(b"", |enabled| if enabled { b"true" } else { b"false" }),
+        );
+        for delimiter in self.lexical.line_comments() {
+            push_part(&mut bytes, delimiter.as_bytes());
+        }
+        for delimiter in self.lexical.block_comments() {
+            push_part(&mut bytes, delimiter.open().as_bytes());
+            push_part(&mut bytes, delimiter.close().as_bytes());
+            push_part(&mut bytes, &[u8::from(delimiter.nested())]);
+        }
+        for rule in self.lexical.rules() {
+            push_part(&mut bytes, rule.raw_kind().as_bytes());
+            push_part(&mut bytes, rule.text().map_or(b"", str::as_bytes));
+            push_part(
+                &mut bytes,
+                rule.classification().token_class().as_str().as_bytes(),
+            );
+            push_part(
+                &mut bytes,
+                rule.classification()
+                    .operator_class()
+                    .map_or(b"", |operator| operator.as_str().as_bytes()),
+            );
         }
         bytes
     }
@@ -360,6 +410,21 @@ fn resolve_grammar(
             adapter.adapter_schema()
         );
     }
+    let lexical = adapter.lexical_policy();
+    lexical.validate().map_err(|error| {
+        anyhow::anyhow!(
+            "invalid lexical policy for language adapter {}: {error}",
+            adapter.name()
+        )
+    })?;
+    if lexical.adapter_schema() != adapter.adapter_schema() {
+        bail!(
+            "language adapter {} lexical policy targets {} but adapter schema is {}",
+            adapter.name(),
+            lexical.adapter_schema(),
+            adapter.adapter_schema()
+        );
+    }
     Ok((
         GrammarSelection::from_descriptor(descriptor),
         language,
@@ -370,6 +435,7 @@ fn resolve_grammar(
                 schema: adapter.adapter_schema().to_string(),
                 capabilities,
                 queries,
+                lexical,
             },
         },
     ))

@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use deslop_lang::{
-    AdapterCapability, CanonicalRoleSet, CapabilitySupport, RegionClass, RegionSpan,
-    TailPositionClass,
+    AdapterCapability, CanonicalRoleSet, CapabilitySupport, LanguageLexicalPolicy,
+    LexicalClassification, RegionClass, RegionSpan, TailPositionClass,
 };
 use tree_sitter::Node;
 
@@ -12,6 +12,7 @@ use crate::arena::tree_nodes_preorder;
 use crate::{NodeId, ProjectAnalysis, ProjectionId};
 
 pub const CANONICAL_ROLE_PROJECTION_SCHEMA: &str = "deslop.canonical-role-projection/1";
+pub const LEXICAL_TOKEN_PROJECTION_SCHEMA: &str = "deslop.lexical-token-projection/1";
 
 /// Raw grammar evidence retained alongside a canonical role set.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +134,106 @@ impl fmt::Display for CanonicalRoleProjectionError {
 impl std::error::Error for CanonicalRoleProjectionError {}
 
 impl From<SyntaxAdapterFactsError> for CanonicalRoleProjectionError {
+    fn from(error: SyntaxAdapterFactsError) -> Self {
+        Self::Syntax(error)
+    }
+}
+
+/// One positive-width raw grammar leaf classified by the exact stored lexical policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LexicalTokenFact {
+    node: NodeId,
+    raw: RawSyntaxFact,
+    text: Box<str>,
+    classification: LexicalClassification,
+}
+
+impl LexicalTokenFact {
+    pub fn node(&self) -> NodeId {
+        self.node
+    }
+
+    pub fn raw(&self) -> &RawSyntaxFact {
+        &self.raw
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn classification(&self) -> &LexicalClassification {
+        &self.classification
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LexicalTokenProjection {
+    id: ProjectionId,
+    analysis: Arc<ProjectAnalysis>,
+    path: PathBuf,
+    policy: LanguageLexicalPolicy,
+    facts: Box<[LexicalTokenFact]>,
+}
+
+impl LexicalTokenProjection {
+    pub fn schema(&self) -> &'static str {
+        LEXICAL_TOKEN_PROJECTION_SCHEMA
+    }
+
+    pub fn id(&self) -> &ProjectionId {
+        &self.id
+    }
+
+    pub fn analysis(&self) -> &Arc<ProjectAnalysis> {
+        &self.analysis
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn policy(&self) -> &LanguageLexicalPolicy {
+        &self.policy
+    }
+
+    pub fn facts(&self) -> &[LexicalTokenFact] {
+        &self.facts
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LexicalTokenProjectionError {
+    Syntax(SyntaxAdapterFactsError),
+    PolicyUnavailable {
+        path: PathBuf,
+        support: CapabilitySupport,
+    },
+    Identity(String),
+}
+
+impl fmt::Display for LexicalTokenProjectionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Syntax(error) => error.fmt(formatter),
+            Self::PolicyUnavailable { path, support } => write!(
+                formatter,
+                "lexical classification is {} for {}",
+                support.as_str(),
+                path.display()
+            ),
+            Self::Identity(detail) => {
+                write!(
+                    formatter,
+                    "lexical token projection identity failed: {detail}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for LexicalTokenProjectionError {}
+
+impl From<SyntaxAdapterFactsError> for LexicalTokenProjectionError {
     fn from(error: SyntaxAdapterFactsError) -> Self {
         Self::Syntax(error)
     }
@@ -355,6 +456,90 @@ impl ProjectAnalysis {
         })
     }
 
+    /// Classify non-overlapping, positive-width Tree-sitter token owners with the stored policy.
+    ///
+    /// An explicitly classified composite node owns its complete span and suppresses its
+    /// descendants; every other composite is traversed down to its leaves. Direct-child gaps and
+    /// root-external bytes remain trivia ownership and are deliberately not invented as tokens.
+    /// The returned projection retains this analysis and never reparses.
+    pub fn lexical_token_projection(
+        self: &Arc<Self>,
+        path: &Path,
+    ) -> Result<LexicalTokenProjection, LexicalTokenProjectionError> {
+        let syntax = self.validated_syntax_nodes(path)?;
+        let policy = self
+            .snapshot()
+            .entry(path)
+            .and_then(|entry| entry.language_adapter_identity())
+            .expect("validated source syntax has a stored adapter identity")
+            .lexical_policy()
+            .clone();
+        if policy.support() != CapabilitySupport::Provided {
+            return Err(LexicalTokenProjectionError::PolicyUnavailable {
+                path: path.to_path_buf(),
+                support: policy.support(),
+            });
+        }
+
+        let id = self
+            .derive_projection_id(
+                LEXICAL_TOKEN_PROJECTION_SCHEMA,
+                deslop_lang::LANGUAGE_LEXICAL_POLICY_SCHEMA.as_bytes(),
+                b"lexical-token-classification",
+            )
+            .map_err(|error| LexicalTokenProjectionError::Identity(error.to_string()))?;
+        let mut facts = Vec::new();
+        let mut claimed_end = None;
+        for (tree_node, node) in syntax.nodes.into_iter().zip(syntax.ids) {
+            if tree_node.start_byte() == tree_node.end_byte() {
+                continue;
+            }
+            if let Some(end) = claimed_end {
+                if tree_node.start_byte() < end {
+                    continue;
+                }
+                claimed_end = None;
+            }
+            let text = syntax
+                .text
+                .get(tree_node.start_byte()..tree_node.end_byte())
+                .expect("validated syntax spans are UTF-8 boundaries");
+            let classification = if tree_node.child_count() == 0 {
+                policy
+                    .classify(tree_node.kind(), text)
+                    .expect("a validated provided lexical policy has a terminal fallback")
+            } else if let Some(classification) = policy.classify_explicit(tree_node.kind(), text) {
+                claimed_end = Some(tree_node.end_byte());
+                classification
+            } else {
+                continue;
+            }
+            .clone();
+            let view = self
+                .node(node)
+                .expect("validated syntax nodes belong to this analysis");
+            facts.push(LexicalTokenFact {
+                node,
+                raw: RawSyntaxFact {
+                    raw_kind: view.raw_kind().into(),
+                    raw_kind_id: view.raw_kind_id(),
+                    raw_grammar_kind: view.raw_grammar_kind().into(),
+                    raw_grammar_kind_id: view.raw_grammar_kind_id(),
+                    field: view.field().map(Into::into),
+                },
+                text: text.into(),
+                classification,
+            });
+        }
+        Ok(LexicalTokenProjection {
+            id,
+            analysis: Arc::clone(self),
+            path: path.to_path_buf(),
+            policy,
+            facts: facts.into_boxed_slice(),
+        })
+    }
+
     fn validated_syntax_nodes<'analysis>(
         &'analysis self,
         path: &Path,
@@ -457,8 +642,10 @@ mod tests {
     use deslop_core::Lang;
     use deslop_lang::{
         AdapterCapability, CanonicalRole, CapabilityAuthority, CapabilityDeclaration, GENERIC_PACK,
-        GrammarDescriptor, LangPack, LanguageQueryPack, QueryCaptureDeclaration, QueryFamily,
-        QueryFamilyDeclaration, RUST_PACK, Registry,
+        GrammarDescriptor, IdentifierCasePolicy, LangPack, LanguageLexicalPolicy,
+        LanguageQueryPack, LexicalClassification, LexicalOperatorClass, LexicalRule,
+        LexicalTokenClass, QueryCaptureDeclaration, QueryFamily, QueryFamilyDeclaration, RUST_PACK,
+        Registry,
     };
 
     use crate::{ProjectSnapshotBuilder, RepositoryId};
@@ -471,8 +658,10 @@ mod tests {
         canonical_roles: bool,
         queries: bool,
         query_capture_mismatch: bool,
+        lexical: bool,
         manifest_adapter_schema: Option<&'static str>,
         query_adapter_schema: Option<&'static str>,
+        lexical_adapter_schema: Option<&'static str>,
     }
 
     impl LangPack for SameLangPack {
@@ -602,6 +791,65 @@ mod tests {
             .unwrap()
         }
 
+        fn lexical_policy(&self) -> LanguageLexicalPolicy {
+            let adapter_schema = self.lexical_adapter_schema.unwrap_or(self.adapter_schema());
+            if !self.lexical {
+                return LanguageLexicalPolicy::unknown(adapter_schema);
+            }
+            let token = |raw_kind, class| {
+                LexicalRule::new(raw_kind, None, LexicalClassification::token(class))
+            };
+            LanguageLexicalPolicy::provided(
+                adapter_schema,
+                CapabilityAuthority::Adapter,
+                IdentifierCasePolicy::Sensitive,
+                true,
+                vec!["//".to_string()],
+                vec![deslop_lang::BlockCommentDelimiter::new("/*", "*/", true)],
+                vec![
+                    LexicalRule::new(
+                        "==",
+                        Some("==".to_string()),
+                        LexicalClassification::operator(LexicalOperatorClass::Comparison),
+                    ),
+                    LexicalRule::new(
+                        "=",
+                        Some("=".to_string()),
+                        LexicalClassification::operator(LexicalOperatorClass::Assignment),
+                    ),
+                    LexicalRule::new(
+                        "+",
+                        Some("+".to_string()),
+                        LexicalClassification::operator(LexicalOperatorClass::Arithmetic),
+                    ),
+                    LexicalRule::new(
+                        "&&",
+                        Some("&&".to_string()),
+                        LexicalClassification::operator(LexicalOperatorClass::Logical),
+                    ),
+                    token("identifier", LexicalTokenClass::Identifier),
+                    token("line_comment", LexicalTokenClass::Comment),
+                    token("block_comment", LexicalTokenClass::Comment),
+                    token("integer_literal", LexicalTokenClass::Literal),
+                    token("string_literal", LexicalTokenClass::Literal),
+                    token("true", LexicalTokenClass::Literal),
+                    token("false", LexicalTokenClass::Literal),
+                    token("fn", LexicalTokenClass::Keyword),
+                    token("let", LexicalTokenClass::Keyword),
+                    token("if", LexicalTokenClass::Keyword),
+                    token("(", LexicalTokenClass::Delimiter),
+                    token(")", LexicalTokenClass::Delimiter),
+                    token("{", LexicalTokenClass::Delimiter),
+                    token("}", LexicalTokenClass::Delimiter),
+                    token(";", LexicalTokenClass::Punctuation),
+                    token(",", LexicalTokenClass::Punctuation),
+                    token(":", LexicalTokenClass::Punctuation),
+                    token("*", LexicalTokenClass::Other),
+                ],
+            )
+            .unwrap()
+        }
+
         fn lang(&self) -> Lang {
             Lang::Rust
         }
@@ -672,8 +920,10 @@ mod tests {
         canonical_roles: false,
         queries: false,
         query_capture_mismatch: false,
+        lexical: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
+        lexical_adapter_schema: None,
     };
     static RIGHT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-right",
@@ -683,8 +933,10 @@ mod tests {
         canonical_roles: false,
         queries: false,
         query_capture_mismatch: false,
+        lexical: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
+        lexical_adapter_schema: None,
     };
     static ALTERNATE_LEFT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left-alternate",
@@ -694,8 +946,10 @@ mod tests {
         canonical_roles: false,
         queries: false,
         query_capture_mismatch: false,
+        lexical: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
+        lexical_adapter_schema: None,
     };
     static CAPABILITY_LEFT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -705,8 +959,10 @@ mod tests {
         canonical_roles: true,
         queries: false,
         query_capture_mismatch: false,
+        lexical: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
+        lexical_adapter_schema: None,
     };
     static QUERY_LEFT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -716,8 +972,23 @@ mod tests {
         canonical_roles: false,
         queries: true,
         query_capture_mismatch: false,
+        lexical: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
+        lexical_adapter_schema: None,
+    };
+    static LEXICAL_LEFT_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left",
+        schema: "same-lang-left/7",
+        extension: "left",
+        branch: 7,
+        canonical_roles: false,
+        queries: false,
+        query_capture_mismatch: false,
+        lexical: true,
+        manifest_adapter_schema: None,
+        query_adapter_schema: None,
+        lexical_adapter_schema: None,
     };
     static BAD_QUERY_CAPTURE_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left-bad-query",
@@ -727,8 +998,10 @@ mod tests {
         canonical_roles: false,
         queries: true,
         query_capture_mismatch: true,
+        lexical: false,
         manifest_adapter_schema: None,
         query_adapter_schema: None,
+        lexical_adapter_schema: None,
     };
     static MISMATCHED_CAPABILITY_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -738,8 +1011,10 @@ mod tests {
         canonical_roles: false,
         queries: false,
         query_capture_mismatch: false,
+        lexical: false,
         manifest_adapter_schema: Some("wrong-adapter/1"),
         query_adapter_schema: None,
+        lexical_adapter_schema: None,
     };
     static MISMATCHED_QUERY_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left",
@@ -749,8 +1024,23 @@ mod tests {
         canonical_roles: false,
         queries: false,
         query_capture_mismatch: false,
+        lexical: false,
         manifest_adapter_schema: None,
         query_adapter_schema: Some("wrong-query-adapter/1"),
+        lexical_adapter_schema: None,
+    };
+    static MISMATCHED_LEXICAL_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left",
+        schema: "same-lang-left/7",
+        extension: "left",
+        branch: 7,
+        canonical_roles: false,
+        queries: false,
+        query_capture_mismatch: false,
+        lexical: false,
+        manifest_adapter_schema: None,
+        query_adapter_schema: None,
+        lexical_adapter_schema: Some("wrong-lexical-adapter/1"),
     };
 
     #[test]
@@ -909,6 +1199,153 @@ mod tests {
                 path: PathBuf::from("unknown.rs"),
                 support: CapabilitySupport::Unknown,
             }
+        );
+    }
+
+    #[test]
+    fn lexical_projection_classifies_non_overlapping_token_owners_without_reparse() {
+        let root = tempfile::tempdir().unwrap();
+        let source = b"fn sample(\xCF\x80: i32) {\n    // note\n    let value = \xCF\x80 + 1;\n    /* block */\n    if value == 2 && true {}\n}\n";
+        let build = |adapter: &'static dyn LangPack| {
+            let mut registry = Registry::new(&GENERIC_PACK);
+            registry.register(adapter);
+            let snapshot = ProjectSnapshotBuilder::new(
+                root.path(),
+                RepositoryId::explicit("lexical-token-projection-test").unwrap(),
+            )
+            .unwrap()
+            .with_registry(registry)
+            .with_overlay("tokens.left", source.to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+            ProjectAnalysis::build(snapshot).unwrap()
+        };
+        let unknown = build(&LEFT_PACK);
+        let analysis = build(&LEXICAL_LEFT_PACK);
+        assert_eq!(unknown.id(), analysis.id());
+        let path = Path::new("tokens.left");
+        assert_eq!(
+            unknown.lexical_token_projection(path).unwrap_err(),
+            LexicalTokenProjectionError::PolicyUnavailable {
+                path: path.to_path_buf(),
+                support: CapabilitySupport::Unknown,
+            }
+        );
+
+        let parse_counts = analysis.parse_counts();
+        let projection = analysis.lexical_token_projection(path).unwrap();
+        let repeated = analysis.lexical_token_projection(path).unwrap();
+        assert!(Arc::ptr_eq(projection.analysis(), &analysis));
+        assert_eq!(projection.schema(), LEXICAL_TOKEN_PROJECTION_SCHEMA);
+        assert_eq!(projection.id(), repeated.id());
+        assert_eq!(projection.facts(), repeated.facts());
+        assert_eq!(analysis.parse_counts(), parse_counts);
+        assert!(
+            parse_counts
+                .values()
+                .all(|count| count.parser_invocations == 1)
+        );
+        assert_ne!(
+            unknown
+                .derive_projection_id(
+                    LEXICAL_TOKEN_PROJECTION_SCHEMA,
+                    deslop_lang::LANGUAGE_LEXICAL_POLICY_SCHEMA.as_bytes(),
+                    b"lexical-token-classification",
+                )
+                .unwrap(),
+            projection.id().clone()
+        );
+
+        for fact in projection.facts() {
+            let view = analysis.node(fact.node()).unwrap();
+            assert!(!fact.text().is_empty());
+            assert_eq!(fact.text(), view.text());
+            assert_eq!(fact.raw().raw_kind(), view.raw_kind());
+            assert!(!fact.text().chars().all(char::is_whitespace));
+        }
+        for pair in projection.facts().windows(2) {
+            let left = analysis.node(pair[0].node()).unwrap().span().byte_range();
+            let right = analysis.node(pair[1].node()).unwrap().span().byte_range();
+            assert!(left.end <= right.start, "token-owner spans overlap");
+        }
+        let unicode = projection
+            .facts()
+            .iter()
+            .find(|fact| fact.text() == "π")
+            .unwrap();
+        assert_eq!(
+            unicode.classification().token_class(),
+            LexicalTokenClass::Identifier
+        );
+        let equality = projection
+            .facts()
+            .iter()
+            .find(|fact| fact.text() == "==")
+            .unwrap();
+        assert_eq!(
+            equality.classification().operator_class(),
+            Some(LexicalOperatorClass::Comparison)
+        );
+        assert!(projection.facts().iter().any(|fact| {
+            fact.text() == "// note"
+                && fact.classification().token_class() == LexicalTokenClass::Comment
+        }));
+        assert!(projection.facts().iter().any(|fact| {
+            fact.text() == "/* block */"
+                && fact.classification().token_class() == LexicalTokenClass::Comment
+        }));
+
+        let mut classes = std::collections::BTreeMap::new();
+        for fact in projection.facts() {
+            *classes
+                .entry(fact.classification().token_class().as_str())
+                .or_insert(0_usize) += 1;
+        }
+        assert_eq!(projection.facts().len(), 26);
+        assert_eq!(
+            classes,
+            std::collections::BTreeMap::from([
+                ("comment", 2),
+                ("delimiter", 6),
+                ("identifier", 5),
+                ("keyword", 3),
+                ("literal", 3),
+                ("operator", 4),
+                ("other", 1),
+                ("punctuation", 2),
+            ])
+        );
+        let mut operators = std::collections::BTreeMap::new();
+        for fact in projection.facts() {
+            if let Some(class) = fact.classification().operator_class() {
+                *operators.entry(class.as_str()).or_insert(0_usize) += 1;
+            }
+        }
+        assert_eq!(
+            operators,
+            std::collections::BTreeMap::from([
+                ("arithmetic", 1),
+                ("assignment", 1),
+                ("comparison", 1),
+                ("logical", 1),
+            ])
+        );
+
+        let identity = analysis
+            .snapshot()
+            .entry(path)
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap();
+        assert_eq!(identity.lexical_policy(), projection.policy());
+        let mut legacy = serde_json::to_value(identity).unwrap();
+        legacy.as_object_mut().unwrap().remove("lexical");
+        assert!(
+            serde_json::from_value::<crate::LanguageAdapterIdentity>(legacy)
+                .unwrap_err()
+                .to_string()
+                .contains("missing field `lexical`")
         );
     }
 
@@ -1167,6 +1604,29 @@ mod tests {
         assert!(
             error.to_string().contains(
                 "query pack targets wrong-query-adapter/1 but adapter schema is same-lang-left/7"
+            ),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_lexical_policy_for_another_adapter_schema() {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::new(&GENERIC_PACK);
+        registry.register(&MISMATCHED_LEXICAL_PACK);
+        let error = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("adapter-lexical-mismatch-test").unwrap(),
+        )
+        .unwrap()
+        .with_registry(registry)
+        .with_overlay("sample.left", b"fn sample() {}\n".to_vec())
+        .unwrap()
+        .build()
+        .unwrap_err();
+        assert!(
+            error.to_string().contains(
+                "lexical policy targets wrong-lexical-adapter/1 but adapter schema is same-lang-left/7"
             ),
             "{error}"
         );

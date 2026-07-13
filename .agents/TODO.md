@@ -276,7 +276,15 @@ reports, benchmark records, and work orders.
   drift. A fixed custom pack executes capture counts `[1,1,2,1,1,2]` (8 total) with no reparse;
   query-only changes preserve raw analysis identity and change projection identity. Seven production
   registry packs remain honest all-unknown. Full workspace gates pass.
-- [ ] M2.4 Define operator/token classification and language-specific lexical policies.
+- [x] M2.4 Define operator/token classification and language-specific lexical policies.
+  Evidence: `deslop.language-lexical-policy/1` freezes nine token classes, eight operator classes,
+  case/Unicode identifier behavior, comment delimiters, exact ordered raw-kind/text rules, and a
+  required terminal fallback. The stored policy is adapter-schema checked and identity-framed.
+  `deslop.lexical-token-projection/1` retains the owning analysis, selects explicitly classified
+  composite token owners otherwise leaves, emits non-overlapping exact spans, and never reparses.
+  The fixed Unicode/comment/operator fixture locks 26 facts and class counts; policy-only changes
+  preserve raw analysis identity while changing derived identity. Production packs remain honest
+  unknown pending M2.6-M2.10. Exact wire/rejection tests and all workspace gates pass.
 - [ ] M2.5 Define parse-error, unsupported-construct, macro, generated-code, and dialect policies.
 - [ ] M2.6 Implement/repair the Rust adapter and golden fixtures.
 - [ ] M2.7 Implement/repair JavaScript, TypeScript, and TSX adapters and golden fixtures.
