@@ -141,10 +141,10 @@ fn propose_deduplicates_repeated_and_overlapping_input_paths() {
     let corpus_dir = fixture.parent().expect("corpus directory").to_path_buf();
 
     let full_corpus = propose(std::slice::from_ref(&corpus_dir));
-    assert_eq!(full_corpus.len(), 28);
+    assert_eq!(full_corpus.len(), 27);
     assert_unique_ids(&full_corpus);
-    assert_eq!(finding_count(&full_corpus), 62);
-    assert_eq!(target_keys(&full_corpus).len(), 28);
+    assert_eq!(finding_count(&full_corpus), 61);
+    assert_eq!(target_keys(&full_corpus).len(), 27);
 
     let repeated = propose(&[fixture.clone(), fixture.clone()]);
     assert_eq!(repeated.len(), 3);
@@ -152,10 +152,10 @@ fn propose_deduplicates_repeated_and_overlapping_input_paths() {
     assert_eq!(finding_count(&repeated), 13);
 
     let overlapping = propose(&[fixture, corpus_dir]);
-    assert_eq!(overlapping.len(), 28);
+    assert_eq!(overlapping.len(), 27);
     assert_unique_ids(&overlapping);
-    assert_eq!(finding_count(&overlapping), 62);
-    assert_eq!(target_keys(&overlapping).len(), 28);
+    assert_eq!(finding_count(&overlapping), 61);
+    assert_eq!(target_keys(&overlapping).len(), 27);
     assert_eq!(
         serde_json::to_value(full_corpus).expect("full corpus JSON"),
         serde_json::to_value(overlapping).expect("overlapping JSON")

@@ -1,28 +1,8 @@
 use deslop_core::{DetectedBy, Edit, EditKind, Finding, SafetyClass, Severity, Splice};
-use deslop_lang::{LangPack, Registry as LangRegistry, TailPositionClass};
-use deslop_parse::{SourceFile, parse_source};
+use deslop_lang::TailPositionClass;
 use regex::Regex;
-use tree_sitter::Node;
 
-use crate::{AnalyzerConfig, AnalyzerFile, finding, tokens};
-
-pub(crate) fn findings(source: &SourceFile, config: &AnalyzerConfig) -> Vec<Finding> {
-    let registry = LangRegistry::default();
-    let comments = registry.pack_for_lang(source.lang).line_comments();
-    let mut out = Vec::new();
-    out.extend(blank_runs(source));
-    out.extend(incompleteness(source));
-    out.extend(magic_numbers(source, comments));
-    out.extend(long_methods(
-        source,
-        config.long_method_nloc_for(source.lang),
-    ));
-    out.extend(narrating_comments(source, comments));
-    out.extend(comment_blocks(source, comments));
-    out.extend(needless_tail_returns(source));
-    out.extend(tokens::duplicate_token_sequences(source, config));
-    out
-}
+use crate::{AnalyzerConfig, AnalyzerFile, AnalyzerText, finding, tokens};
 
 pub(crate) fn findings_analysis(file: &AnalyzerFile<'_>, config: &AnalyzerConfig) -> Vec<Finding> {
     let source = file.source();
@@ -42,42 +22,11 @@ pub(crate) fn findings_analysis(file: &AnalyzerFile<'_>, config: &AnalyzerConfig
     out
 }
 
-fn incompleteness(source: &SourceFile) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let stub = Regex::new(
-        r#"(?i)(todo!\s*\(|unimplemented!\s*\(|TODO\s*:?\s*implement|throw\b.*TODO|error\s*\(\s*["']TODO|@assert\s+false|not\s+implemented|\bplaceholder\b)"#,
-    )
-    .expect("valid regex");
-    let masked = string_comment_ranges(source);
-    for (idx, line) in source.lines().iter().enumerate() {
-        let line_start = source.line_start_byte(idx + 1);
-        let has_real_stub = stub
-            .find_iter(line)
-            .any(|m| !byte_in_ranges(line_start + m.start(), &masked));
-        if has_real_stub {
-            out.push(finding(
-                source,
-                idx + 1,
-                idx + 1,
-                "incompleteness",
-                Severity::Major,
-                SafetyClass::LlmOnly,
-                DetectedBy::Text,
-                "placeholder or unimplemented code remains",
-                "replace the stub with real behavior or remove the unreachable path",
-                None,
-                None,
-            ));
-        }
-    }
-    out
-}
-
 fn incompleteness_analysis(file: &AnalyzerFile<'_>) -> Vec<Finding> {
     incompleteness_with_ranges(file.source(), string_comment_ranges_analysis(file))
 }
 
-fn incompleteness_with_ranges(source: &SourceFile, masked: Vec<(usize, usize)>) -> Vec<Finding> {
+fn incompleteness_with_ranges(source: &AnalyzerText, masked: Vec<(usize, usize)>) -> Vec<Finding> {
     let mut out = Vec::new();
     let stub = Regex::new(
         r#"(?i)(todo!\s*\(|unimplemented!\s*\(|TODO\s*:?\s*implement|throw\b.*TODO|error\s*\(\s*["']TODO|@assert\s+false|not\s+implemented|\bplaceholder\b)"#,
@@ -125,71 +74,10 @@ fn string_comment_ranges_analysis(file: &AnalyzerFile<'_>) -> Vec<(usize, usize)
         .collect()
 }
 
-/// Byte ranges of string-literal and comment nodes, so text-based rules can
-/// skip trigger words that appear inside strings/comments (e.g. a log message
-/// or this rule's own pattern definition containing "TODO"). Empty when the
-/// language has no tree-sitter grammar.
-fn string_comment_ranges(source: &SourceFile) -> Vec<(usize, usize)> {
-    let Some(tree) = parse_source(source).ok().flatten() else {
-        return Vec::new();
-    };
-    let mut ranges = Vec::new();
-    collect_string_comment(tree.root_node(), &mut ranges);
-    ranges
-}
-
-fn collect_string_comment(node: Node, ranges: &mut Vec<(usize, usize)>) {
-    let kind = node.kind();
-    if kind.contains("string") || kind.contains("str_lit") || kind.contains("comment") {
-        ranges.push((node.start_byte(), node.end_byte()));
-        return;
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_string_comment(child, ranges);
-    }
-}
-
 fn byte_in_ranges(byte: usize, ranges: &[(usize, usize)]) -> bool {
     ranges
         .iter()
         .any(|&(start, end)| byte >= start && byte < end)
-}
-
-fn magic_numbers(source: &SourceFile, comments: &[&str]) -> Vec<Finding> {
-    let mut out = Vec::new();
-    // Suppress literals that live inside strings/comments (e.g. numbers in a
-    // docstring) or inside a named-constant definition (binding a literal to a
-    // name is the rule's own fix, so flagging it there would be un-actionable).
-    let mut masked = string_comment_ranges(source);
-    masked.extend(constant_definition_ranges(source));
-    for (idx, line) in source.lines().iter().enumerate() {
-        let code = code_before_comment_with_tokens(line, comments);
-        if should_skip_magic_number_line(code) {
-            continue;
-        }
-        if let Some(offset) = first_magic_number(code) {
-            let byte = source.line_start_byte(idx + 1) + offset;
-            if byte_in_ranges(byte, &masked) {
-                continue;
-            }
-            out.push(finding(
-                source,
-                idx + 1,
-                idx + 1,
-                "magic-number",
-                Severity::Minor,
-                SafetyClass::RiskySuggest,
-                DetectedBy::Text,
-                "inline numeric literal should probably be a named constant",
-                "introduce a named constant if the number encodes domain policy",
-                None,
-                None,
-            ));
-            break;
-        }
-    }
-    out
 }
 
 fn magic_numbers_analysis(file: &AnalyzerFile<'_>) -> Vec<Finding> {
@@ -234,37 +122,6 @@ fn magic_numbers_analysis(file: &AnalyzerFile<'_>) -> Vec<Finding> {
         }
     }
     out
-}
-
-/// Byte ranges of named-constant definitions (`const`/`static`, Clojure
-/// `def`/`defonce`, Julia `const`), so the magic-number rule does not flag a
-/// literal that is itself the named constant. Empty when the language has no
-/// tree-sitter grammar.
-fn constant_definition_ranges(source: &SourceFile) -> Vec<(usize, usize)> {
-    let Some(tree) = parse_source(source).ok().flatten() else {
-        return Vec::new();
-    };
-    let registry = LangRegistry::default();
-    let pack = registry.pack_for_lang(source.lang);
-    let mut ranges = Vec::new();
-    collect_constant_regions(tree.root_node(), &source.text, pack, &mut ranges);
-    ranges
-}
-
-fn collect_constant_regions(
-    node: Node,
-    text: &str,
-    pack: &dyn LangPack,
-    ranges: &mut Vec<(usize, usize)>,
-) {
-    if pack.is_constant_definition_region(node, text) {
-        ranges.push((node.start_byte(), node.end_byte()));
-        return;
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_constant_regions(child, text, pack, ranges);
-    }
 }
 
 fn should_skip_magic_number_line(code: &str) -> bool {
@@ -322,23 +179,6 @@ fn is_allowed_small_number(value: &str) -> bool {
     matches!(value, "-1" | "0" | "1" | "2" | "0.0" | "1.0" | "2.0")
 }
 
-fn long_methods(source: &SourceFile, long_method_nloc: usize) -> Vec<Finding> {
-    let registry = LangRegistry::default();
-    let pack = registry.pack_for_lang(source.lang);
-    if pack.metrics_regions().is_empty() {
-        return Vec::new();
-    }
-    let Some(tree) = parse_source(source).ok().flatten() else {
-        return Vec::new();
-    };
-    if tree.root_node().has_error() {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    collect_long_methods(source, tree.root_node(), pack, long_method_nloc, &mut out);
-    out
-}
-
 fn long_methods_analysis(file: &AnalyzerFile<'_>, long_method_nloc: usize) -> Vec<Finding> {
     if file.adapter().metrics_regions().is_empty() {
         return Vec::new();
@@ -377,40 +217,6 @@ fn long_methods_analysis(file: &AnalyzerFile<'_>, long_method_nloc: usize) -> Ve
     out
 }
 
-fn collect_long_methods(
-    source: &SourceFile,
-    node: Node<'_>,
-    pack: &dyn LangPack,
-    long_method_nloc: usize,
-    out: &mut Vec<Finding>,
-) {
-    if pack.is_long_method_region(node, &source.text) {
-        let start_line = node.start_position().row + 1;
-        let end_line = node.end_position().row + 1;
-        let text = source.region_text(start_line, end_line);
-        let nloc = nloc(&text, pack.line_comments());
-        if nloc >= long_method_nloc {
-            out.push(finding(
-                source,
-                start_line,
-                end_line,
-                "long-method",
-                Severity::Major,
-                SafetyClass::LlmOnly,
-                DetectedBy::Complexity,
-                &format!("method has {nloc} non-comment line(s)"),
-                "extract cohesive helpers or reduce unstructured statement bloat",
-                None,
-                None,
-            ));
-        }
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_long_methods(source, child, pack, long_method_nloc, out);
-    }
-}
-
 fn nloc(text: &str, comments: &[&str]) -> usize {
     text.lines()
         .filter(|line| {
@@ -419,25 +225,6 @@ fn nloc(text: &str, comments: &[&str]) -> usize {
                 .is_empty()
         })
         .count()
-}
-
-fn needless_tail_returns(source: &SourceFile) -> Vec<Finding> {
-    let registry = LangRegistry::default();
-    let pack = registry.pack_for_lang(source.lang);
-    if pack.grammar().is_none() {
-        return Vec::new();
-    }
-
-    let Some(tree) = parse_source(source).ok().flatten() else {
-        return Vec::new();
-    };
-    if tree.root_node().has_error() {
-        return Vec::new();
-    }
-
-    let mut out = Vec::new();
-    collect_tail_returns(source, tree.root_node(), pack, &mut out);
-    out
 }
 
 fn needless_tail_returns_analysis(file: &AnalyzerFile<'_>) -> Vec<Finding> {
@@ -500,67 +287,11 @@ fn is_function_tail_return_analysis(file: &AnalyzerFile<'_>, node: deslop_parse:
         .is_some_and(|tail| tail.chars().all(is_tail_padding))
 }
 
-fn collect_tail_returns(
-    source: &SourceFile,
-    node: Node<'_>,
-    pack: &dyn LangPack,
-    out: &mut Vec<Finding>,
-) {
-    if pack.tail_position_class(node, &source.text) == TailPositionClass::Return
-        && is_function_tail_return(source, node, pack)
-    {
-        let start_line = node.start_position().row + 1;
-        let end_line = node.end_position().row + 1;
-        out.push(finding(
-            source,
-            start_line,
-            end_line,
-            "needless-return",
-            Severity::Minor,
-            SafetyClass::SafeWithPrecondition,
-            DetectedBy::Idiom,
-            "tail-position return can usually be an expression",
-            "remove return only after tests/typecheck pass",
-            Some("return is in tail position and control flow remains unchanged"),
-            None,
-        ));
-    }
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_tail_returns(source, child, pack, out);
-    }
-}
-
-fn is_function_tail_return(source: &SourceFile, node: Node<'_>, pack: &dyn LangPack) -> bool {
-    let Some(body) = nearest_function_body(node, pack, &source.text) else {
-        return false;
-    };
-    source
-        .text
-        .get(node.end_byte()..body.end_byte())
-        .is_some_and(|tail| tail.chars().all(is_tail_padding))
-}
-
-fn nearest_function_body<'tree>(
-    mut node: Node<'tree>,
-    pack: &dyn LangPack,
-    text: &str,
-) -> Option<Node<'tree>> {
-    loop {
-        let parent = node.parent()?;
-        if pack.tail_position_class(parent, text) == TailPositionClass::FunctionBody {
-            return Some(parent);
-        }
-        node = parent;
-    }
-}
-
 fn is_tail_padding(ch: char) -> bool {
     ch.is_whitespace() || ch == ';' || ch == '}'
 }
 
-fn blank_runs(source: &SourceFile) -> Vec<Finding> {
+fn blank_runs(source: &AnalyzerText) -> Vec<Finding> {
     let mut out = Vec::new();
     let lines = source.lines();
     let mut run_start: Option<usize> = None;
@@ -585,7 +316,7 @@ fn blank_runs(source: &SourceFile) -> Vec<Finding> {
     out
 }
 
-fn blank_run_finding(source: &SourceFile, start_line: usize, end_line: usize) -> Finding {
+fn blank_run_finding(source: &AnalyzerText, start_line: usize, end_line: usize) -> Finding {
     let start_byte = source.line_start_byte(start_line + 1);
     let end_byte = if end_line < source.lines().len() {
         source.line_start_byte(end_line + 1)
@@ -615,7 +346,7 @@ fn blank_run_finding(source: &SourceFile, start_line: usize, end_line: usize) ->
     )
 }
 
-fn narrating_comments(source: &SourceFile, comments: &[&str]) -> Vec<Finding> {
+fn narrating_comments(source: &AnalyzerText, comments: &[&str]) -> Vec<Finding> {
     let narration = Regex::new(
         r"(?i)^(import|initialize|define|create|loop|iterate|return|set|get|check|increment|call|assign|print|update|add|remove|now|first|then|next|finally|step\s*\d+|handle|store|compute|calculate|convert|build|setup|start|end|begin|this\s+(function|method|block|loop|line|variable|code)|we\s+(now|then|will|need)|let'?s)\b",
     )
@@ -654,7 +385,7 @@ fn narrating_comments(source: &SourceFile, comments: &[&str]) -> Vec<Finding> {
 }
 
 fn full_comment_block_lines(
-    source: &SourceFile,
+    source: &AnalyzerText,
     comments: &[&str],
 ) -> std::collections::BTreeSet<usize> {
     let lines = source.lines();
@@ -678,7 +409,7 @@ fn full_comment_block_lines(
     out
 }
 
-fn comment_blocks(source: &SourceFile, comments: &[&str]) -> Vec<Finding> {
+fn comment_blocks(source: &AnalyzerText, comments: &[&str]) -> Vec<Finding> {
     let mut out = Vec::new();
     let mut run_start: Option<usize> = None;
     let mut seen_code = false;
@@ -709,7 +440,7 @@ fn comment_blocks(source: &SourceFile, comments: &[&str]) -> Vec<Finding> {
     out
 }
 
-fn comment_block_finding(source: &SourceFile, start_line: usize, end_line: usize) -> Finding {
+fn comment_block_finding(source: &AnalyzerText, start_line: usize, end_line: usize) -> Finding {
     finding(
         source,
         start_line,

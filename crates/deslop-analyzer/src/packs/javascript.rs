@@ -1,75 +1,9 @@
-use deslop_core::{DetectedBy, Finding, Lang, SafetyClass, Severity};
-use deslop_lang::Rule;
-use deslop_parse::SourceFile;
+use deslop_core::{DetectedBy, Finding, SafetyClass, Severity};
 use regex::Regex;
 
-use crate::{AnalysisPack, AnalyzerConfig, finding};
+use crate::{AnalyzerText, finding};
 
-pub static JAVASCRIPT_PACK: JavaScriptPack = JavaScriptPack;
-pub static TYPESCRIPT_PACK: TypeScriptPack = TypeScriptPack;
-
-static JAVASCRIPT_RULE: JavaScriptRule = JavaScriptRule;
-static JAVASCRIPT_RULES: [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>; 1] =
-    [&JAVASCRIPT_RULE];
-
-pub struct JavaScriptPack;
-pub struct TypeScriptPack;
-
-struct JavaScriptRule;
-
-impl AnalysisPack for JavaScriptPack {
-    fn name(&self) -> &'static str {
-        "javascript"
-    }
-
-    fn lang(&self) -> Lang {
-        Lang::JavaScript
-    }
-
-    fn rules(&self) -> &'static [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>] {
-        &JAVASCRIPT_RULES
-    }
-
-    fn external_analyzer(
-        &self,
-        _config: &AnalyzerConfig,
-    ) -> Option<Box<dyn deslop_external::ExternalAnalyzer<SourceFile, Finding>>> {
-        None
-    }
-}
-
-impl AnalysisPack for TypeScriptPack {
-    fn name(&self) -> &'static str {
-        "typescript"
-    }
-
-    fn lang(&self) -> Lang {
-        Lang::TypeScript
-    }
-
-    fn rules(&self) -> &'static [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>] {
-        &JAVASCRIPT_RULES
-    }
-
-    fn external_analyzer(
-        &self,
-        _config: &AnalyzerConfig,
-    ) -> Option<Box<dyn deslop_external::ExternalAnalyzer<SourceFile, Finding>>> {
-        None
-    }
-}
-
-impl Rule<SourceFile, AnalyzerConfig, Finding> for JavaScriptRule {
-    fn name(&self) -> &'static str {
-        "javascript"
-    }
-
-    fn check(&self, source: &SourceFile, _config: &AnalyzerConfig) -> Vec<Finding> {
-        javascript_findings(source)
-    }
-}
-
-pub(crate) fn javascript_findings(source: &SourceFile) -> Vec<Finding> {
+pub(crate) fn javascript_findings(source: &AnalyzerText) -> Vec<Finding> {
     let loose_eq = Regex::new(r"(^|[^=!])(?:==|!=)([^=]|$)").expect("regex");
     let var_decl = Regex::new(r"^\s*var\s+").expect("regex");
     let unnecessary_await = Regex::new(r"\breturn\s+await\b").expect("regex");
@@ -111,7 +45,7 @@ pub(crate) fn javascript_findings(source: &SourceFile) -> Vec<Finding> {
 }
 
 fn js_finding(
-    source: &SourceFile,
+    source: &AnalyzerText,
     line: usize,
     rule: &str,
     safety: SafetyClass,

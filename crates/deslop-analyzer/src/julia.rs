@@ -1,10 +1,9 @@
 use deslop_core::{DetectedBy, Finding, SafetyClass, Severity};
-use deslop_parse::SourceFile;
 use regex::Regex;
 
-use crate::finding;
+use crate::{AnalyzerText, finding};
 
-pub(crate) fn findings(source: &SourceFile) -> Vec<Finding> {
+pub(crate) fn findings(source: &AnalyzerText) -> Vec<Finding> {
     let rules = julia_rules();
     let lines = source.lines();
     let mut out = Vec::new();
@@ -51,7 +50,7 @@ impl JuliaRule {
         }
     }
 
-    fn finding(&self, source: &SourceFile, line_no: usize) -> Finding {
+    fn finding(&self, source: &AnalyzerText, line_no: usize) -> Finding {
         finding(
             source,
             line_no,
@@ -91,7 +90,7 @@ fn julia_rules() -> Vec<JuliaRule> {
     ]
 }
 
-fn eachindex_findings(source: &SourceFile, lines: &[&str]) -> Vec<Finding> {
+fn eachindex_findings(source: &AnalyzerText, lines: &[&str]) -> Vec<Finding> {
     let header = Regex::new(r"^\s*for\s+([A-Za-z_]\w*)\s+in\s+1:length\(([^()\n]+)\)\s*(?:#.*)?$")
         .expect("valid regex");
     let mut findings = Vec::new();

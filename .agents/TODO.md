@@ -193,7 +193,16 @@ reports, benchmark records, and work orders.
   partial/empty/invalid UTF-8 files, rename lifecycle, u32/UTF-8 bounds, and predecessor immutability.
   Parse has 66 passing tests; workspace, slim MCP, build, rustdoc, formatting, whitespace, and strict
   all-target/all-feature clippy gates pass.
-- [ ] M1.9 Migrate analyzer and metrics consumers to the shared snapshot. **NEXT**
+- [x] M1.9 Migrate analyzer and metrics consumers to the shared snapshot.
+  Evidence: analyzer and metrics primary, path, and source-compatibility APIs now construct or accept
+  one immutable `ProjectAnalysis`; owned `NodeId`/adapter facts drive all syntax rules, duplication,
+  boundary analysis, nested/reset-aware metrics, and exact dialect dispatch. A shared planner pins
+  source/config bytes, repository identity, discovery, and presentation before projection identity.
+  Static production guards reject legacy parse/read/pack-reselection calls, source adapters record
+  zero legacy parser invocations, and complete files retain exact cold ledger `1/1/1/0`. Partial
+  sources and invalid UTF-8 withhold project-negative claims. Unpinned live external analyzers are
+  capability-reported unavailable. Workspace tests, strict all-target/all-feature clippy, build,
+  rustdoc, formatting, and whitespace gates pass.
 - [ ] M1.10 Migrate graph, evaluator, LSP, MCP/protocol, and slim consumers.
 - [ ] M1.11 Instrument parse counts, ownership invariants, deterministic node order, latency, and memory.
   Measure and compact M1.4's repeated per-node `FileRevisionKey`/field-path storage, allocating

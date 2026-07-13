@@ -79,6 +79,70 @@ pub struct ProjectSnapshotPlanner {
 }
 
 impl ProjectSnapshotPlanner {
+    pub fn build_single_source_overlay(
+        invocation_base: impl AsRef<Path>,
+        display_path: impl AsRef<Path>,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<SnapshotBuild> {
+        let invocation_base = invocation_base.as_ref().canonicalize().with_context(|| {
+            format!(
+                "failed to resolve invocation base {}",
+                invocation_base.as_ref().display()
+            )
+        })?;
+        let display_path = display_path.as_ref();
+        let physical = if display_path.is_absolute() {
+            display_path.to_path_buf()
+        } else {
+            invocation_base.join(display_path)
+        };
+        let mut existing = physical.parent().ok_or_else(|| {
+            anyhow::anyhow!("source path {} has no parent", display_path.display())
+        })?;
+        while !existing.is_dir() {
+            existing = existing.parent().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "source path {} has no existing directory ancestor",
+                    display_path.display()
+                )
+            })?;
+        }
+        let existing_root = existing
+            .canonicalize()
+            .with_context(|| format!("failed to resolve source ancestor {}", existing.display()))?;
+        let authority_root =
+            nearest_repository_root(&existing_root).unwrap_or(existing_root.clone());
+        let existing_prefix = existing_root
+            .strip_prefix(&authority_root)
+            .with_context(|| {
+                format!(
+                    "source ancestor {} is outside authority root {}",
+                    existing_root.display(),
+                    authority_root.display()
+                )
+            })?;
+        let unresolved_suffix = physical.strip_prefix(existing).with_context(|| {
+            format!(
+                "source {} is not below its existing ancestor {}",
+                display_path.display(),
+                existing.display()
+            )
+        })?;
+        let logical = normalized_logical(&existing_prefix.join(unresolved_suffix))?;
+        let mut planner = Self::resolve(ProjectSnapshotRequest {
+            invocation_base,
+            root: RootSpec::Explicit(authority_root),
+            repository: RepositorySpec::Auto,
+            scope: ScopeSpec::ExactLogicalFiles(vec![logical.clone()]),
+            discovery: DiscoveryPolicy::Canonical,
+        })?;
+        planner.add_source_overlay(&logical, bytes)?;
+        let display = normalized_display(display_path);
+        let mut built = planner.build()?;
+        built.presentation.paths.insert(logical, display);
+        Ok(built)
+    }
+
     pub fn resolve(mut request: ProjectSnapshotRequest) -> Result<Self> {
         request.invocation_base = request.invocation_base.canonicalize().with_context(|| {
             format!(
@@ -660,5 +724,30 @@ mod tests {
             RepositoryId::vcs(Some("https://example.com/org/repo"), &["cccc".to_string()]).unwrap();
         assert_eq!(first, reordered);
         assert_ne!(first, different);
+    }
+
+    #[test]
+    fn single_source_overlay_uses_owned_snapshot_without_live_file() {
+        let root = tempfile::tempdir().unwrap();
+        let display = PathBuf::from("virtual/nested/sample.rs");
+        let built = ProjectSnapshotPlanner::build_single_source_overlay(
+            root.path(),
+            &display,
+            b"fn sample() {}\n".to_vec(),
+        )
+        .unwrap();
+        assert!(built.snapshot.read_counts().is_empty());
+        assert_eq!(built.snapshot.entries().count(), 1);
+        let entry = built.snapshot.entries().next().unwrap();
+        assert_eq!(built.presentation.display_path(entry.path()), display);
+        let analysis = crate::ProjectAnalysis::build(built.snapshot).unwrap();
+        assert!(analysis.parse_counts().values().all(|count| {
+            (
+                count.requested,
+                count.owners,
+                count.parser_invocations,
+                count.reused,
+            ) == (1, 1, 1, 0)
+        }));
     }
 }

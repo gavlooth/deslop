@@ -5,15 +5,13 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use deslop_core::{AnalysisStatus, FileAnalysis, Lang, Span, file_analyses_status};
-use deslop_lang::{LangPack, RegionClass, RegionSpan, Registry};
+use deslop_lang::{LangPack, RegionClass, RegionSpan};
 use deslop_parse::{
     DiscoveryPolicy, InclusiveSyntaxPolicy, NodeId, ParsedFile, ProjectAnalysis,
     ProjectSnapshotPlanner, ProjectSnapshotRequest, ProjectionId, RepositorySpec, RootSpec,
     ScopeSpec, SnapshotPresentationMap, SourceFile, SyntaxAdapterFacts,
-    analysis_provenance_or_failed, parse_source,
 };
 use serde::Serialize;
-use tree_sitter::Node;
 
 #[derive(Debug, Clone, Copy)]
 pub struct MetricsConfig {
@@ -346,16 +344,24 @@ fn metrics_file(analysis: &ProjectAnalysis, file: &ParsedFile) -> Result<Vec<Reg
 }
 
 pub fn metrics_source(source: &SourceFile) -> Result<Vec<RegionMetrics>> {
-    if !analysis_provenance_or_failed(source).permits_rewrites() {
+    let built = ProjectSnapshotPlanner::build_single_source_overlay(
+        std::env::current_dir().context("resolve metrics source invocation base")?,
+        &source.path,
+        source.text.as_bytes().to_vec(),
+    )?;
+    let analysis = ProjectAnalysis::build(built.snapshot)?;
+    let Some(file) = analysis.files().next() else {
+        return Ok(Vec::new());
+    };
+    if !file.provenance().permits_rewrites() {
         return Ok(Vec::new());
     }
-    let registry = Registry::default();
-    let pack = registry.pack_for_lang(source.lang);
-    let regions = metric_regions(pack, source)?;
-    Ok(regions
-        .into_iter()
-        .map(|region| measure_region(pack, source, region))
-        .collect())
+    let mut metrics = metrics_file(&analysis, file)?;
+    let display = built.presentation.display_path(&file.key().path);
+    for region in &mut metrics {
+        region.path = display.to_path_buf();
+    }
+    Ok(metrics)
 }
 
 pub fn render_text(report: &MetricsReport, hotspots_only: bool) -> String {
@@ -505,25 +511,6 @@ pub fn halstead_for_text(pack: &dyn LangPack, text: &str) -> HalsteadMetrics {
     halstead(&tokenize(text, pack.line_comments()), pack)
 }
 
-fn metric_regions(pack: &dyn LangPack, source: &SourceFile) -> Result<Vec<MetricRegion>> {
-    let Some(tree) = parse_source(source)? else {
-        return Ok(vec![whole_file_region(source, None)]);
-    };
-    if tree.root_node().has_error() {
-        return Ok(vec![whole_file_region(source, None)]);
-    }
-    let root_range = Some(node_range(tree.root_node()));
-    if pack.metrics_regions().is_empty() {
-        return Ok(vec![whole_file_region(source, root_range)]);
-    }
-    let mut regions = Vec::new();
-    collect_regions(tree.root_node(), pack, &source.text, &mut regions);
-    if regions.is_empty() {
-        regions.push(whole_file_region(source, root_range));
-    }
-    Ok(regions)
-}
-
 fn metric_regions_owned(pack: &dyn LangPack, source: &MetricFile<'_>) -> Result<Vec<MetricRegion>> {
     let root = source
         .analysis
@@ -571,7 +558,6 @@ fn collect_regions_owned(
                 .unwrap_or_else(|| region_from_view(view.span(), source.text().len())),
             node: Some(node),
             semantic_owner: None,
-            legacy_node: None,
         });
     }
     for child in view.children() {
@@ -591,7 +577,6 @@ fn whole_file_region_owned(source: &MetricFile<'_>, node: Option<NodeId>) -> Met
         },
         node,
         semantic_owner: node,
-        legacy_node: None,
     }
 }
 
@@ -801,96 +786,6 @@ fn metric_ownership(
     })
 }
 
-fn collect_regions(
-    node: Node<'_>,
-    pack: &dyn LangPack,
-    text: &str,
-    regions: &mut Vec<MetricRegion>,
-) {
-    let declared_region = pack.metrics_regions().contains(&node.kind());
-    let semantic_region =
-        node.kind() != "list_lit" || pack.region_class(node, text) != RegionClass::Other;
-    if declared_region && semantic_region {
-        regions.push(MetricRegion {
-            name: region_name(node, text),
-            kind: node.kind().to_string(),
-            span: pack
-                .enclosing_region(node, text)
-                .unwrap_or_else(|| region_from_node(node, text)),
-            node: None,
-            semantic_owner: None,
-            legacy_node: Some(node_range(node)),
-        });
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_regions(child, pack, text, regions);
-    }
-}
-
-fn whole_file_region(source: &SourceFile, node: Option<NodeRange>) -> MetricRegion {
-    let end_line = source.lines().len().max(1);
-    MetricRegion {
-        name: "file".to_string(),
-        kind: "file".to_string(),
-        span: RegionSpan {
-            start_line: 1,
-            end_line,
-            start_byte: 0,
-            end_byte: source.text.len(),
-        },
-        node: None,
-        semantic_owner: None,
-        legacy_node: node,
-    }
-}
-
-fn node_range(node: Node<'_>) -> NodeRange {
-    NodeRange {
-        start_byte: node.start_byte(),
-        end_byte: node.end_byte(),
-    }
-}
-
-fn measure_region(pack: &dyn LangPack, source: &SourceFile, region: MetricRegion) -> RegionMetrics {
-    let text = source
-        .text
-        .get(region.span.start_byte..region.span.end_byte)
-        .unwrap_or("");
-    let tokens = tokenize(text, pack.line_comments());
-    let halstead = halstead(&tokens, pack);
-    let ast = ast_stats_for_region(pack, source, region.legacy_node);
-    let nloc = nloc(text, pack.line_comments());
-    let cyclomatic = ast.branch_count as f64 + 1.0;
-    let maintainability_index = maintainability_index(halstead.volume, cyclomatic, nloc);
-    let complexity = complexity_metrics(ast, cyclomatic, nloc, maintainability_index);
-    let expressivity = expressivity(
-        text,
-        &tokens,
-        cyclomatic,
-        nloc,
-        pack.line_comments(),
-        ast.information,
-    );
-    let heuristic_burden = heuristic_burden_metrics(
-        &complexity,
-        &expressivity,
-        ast.node_count,
-        region.legacy_node.is_some(),
-    );
-    RegionMetrics {
-        path: source.path.clone(),
-        lang: source.lang,
-        name: region.name,
-        kind: region.kind,
-        span: span_from_region(region.span),
-        complexity,
-        expressivity,
-        halstead,
-        heuristic_burden,
-    }
-}
-
 fn measure_region_owned(
     pack: &dyn LangPack,
     source: &MetricFile<'_>,
@@ -962,21 +857,6 @@ fn measure_region_owned(
     }
 }
 
-fn ast_stats_for_region(
-    pack: &dyn LangPack,
-    source: &SourceFile,
-    node: Option<NodeRange>,
-) -> AstStats {
-    node.and_then(|range| {
-        parse_source(source).ok().flatten().and_then(|tree| {
-            tree.root_node()
-                .descendant_for_byte_range(range.start_byte, range.end_byte)
-                .map(|node| ast_complexity(node, pack, &source.text))
-        })
-    })
-    .unwrap_or_default()
-}
-
 fn span_from_region(span: RegionSpan) -> Span {
     Span::new(
         span.start_line,
@@ -999,58 +879,6 @@ fn complexity_metrics(
         nloc,
         maintainability_index,
     }
-}
-
-fn ast_complexity(node: Node<'_>, pack: &dyn LangPack, text: &str) -> AstStats {
-    fn visit(
-        node: Node<'_>,
-        pack: &dyn LangPack,
-        text: &str,
-        nesting: usize,
-        stats: &mut AstStats,
-        kinds: &mut BTreeMap<String, usize>,
-        leaf_tokens: &mut BTreeMap<String, usize>,
-    ) {
-        let kind = node.kind();
-        stats.node_count += 1;
-        *kinds.entry(kind.to_string()).or_insert(0) += 1;
-        if node.child_count() == 0 && !kind.contains("comment") {
-            let token = node.utf8_text(text.as_bytes()).unwrap_or(kind);
-            if !token.trim().is_empty() {
-                *leaf_tokens.entry(token.to_string()).or_insert(0) += 1;
-            }
-        }
-        let branch_contribution = pack.metric_branch_contribution(node, text);
-        let is_nesting = pack.is_metric_nesting(node, text);
-        if branch_contribution > 0 {
-            stats.branch_count += branch_contribution;
-            stats.cognitive += branch_contribution * (1 + nesting);
-        }
-        if pack.is_metric_flow_break(node, text) {
-            stats.cognitive += 1;
-        }
-        let next_nesting = if is_nesting { nesting + 1 } else { nesting };
-        stats.max_nesting = stats.max_nesting.max(next_nesting);
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            visit(child, pack, text, next_nesting, stats, kinds, leaf_tokens);
-        }
-    }
-    let mut stats = AstStats::default();
-    let mut kinds = BTreeMap::new();
-    let mut leaf_tokens = BTreeMap::new();
-    visit(
-        node,
-        pack,
-        text,
-        0,
-        &mut stats,
-        &mut kinds,
-        &mut leaf_tokens,
-    );
-    stats.information =
-        information_stats(&leaf_tokens, normalized_entropy(kinds.values().copied()));
-    stats
 }
 
 fn ast_complexity_owned(
@@ -1126,13 +954,6 @@ struct MetricRegion {
     span: RegionSpan,
     node: Option<NodeId>,
     semantic_owner: Option<NodeId>,
-    legacy_node: Option<NodeRange>,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct NodeRange {
-    start_byte: usize,
-    end_byte: usize,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1297,33 +1118,6 @@ fn halstead(tokens: &[Token], pack: &dyn LangPack) -> HalsteadMetrics {
     }
 }
 
-fn expressivity(
-    text: &str,
-    tokens: &[Token],
-    cyclomatic: f64,
-    nloc: usize,
-    comment_tokens: &[&str],
-    tree_sitter_information: InformationStats,
-) -> ExpressivityMetrics {
-    let comment_lines = text
-        .lines()
-        .filter(|line| {
-            let trimmed = line.trim_start();
-            comment_tokens
-                .iter()
-                .any(|token| trimmed.starts_with(token))
-        })
-        .count();
-    expressivity_from_evidence(
-        tokens,
-        cyclomatic,
-        nloc,
-        comment_lines,
-        byte_entropy_bits_per_byte(text),
-        tree_sitter_information,
-    )
-}
-
 fn expressivity_from_evidence(
     tokens: &[Token],
     cyclomatic: f64,
@@ -1426,18 +1220,6 @@ fn saturating(value: f64, half_saturation: f64) -> f64 {
     } else {
         value / (value + half_saturation)
     }
-}
-
-fn nloc(text: &str, comment_tokens: &[&str]) -> usize {
-    text.lines()
-        .filter(|line| {
-            let trimmed = line.trim();
-            !trimmed.is_empty()
-                && !comment_tokens
-                    .iter()
-                    .any(|token| trimmed.starts_with(token))
-        })
-        .count()
 }
 
 fn maintainability_index(volume: f64, cyclomatic: f64, nloc: usize) -> f64 {
@@ -1863,10 +1645,6 @@ fn normalized_entropy(counts: impl Iterator<Item = usize>) -> f64 {
     (shannon_entropy(counts.iter().copied()) / (counts.len() as f64).log2()).clamp(0.0, 1.0)
 }
 
-fn byte_entropy_bits_per_byte(text: &str) -> f64 {
-    byte_entropy_bits_per_bytes(text.as_bytes())
-}
-
 fn byte_entropy_bits_per_bytes(bytes: &[u8]) -> f64 {
     if bytes.is_empty() {
         return 0.0;
@@ -1893,21 +1671,6 @@ fn ratio(numerator: f64, denominator: usize) -> f64 {
     }
 }
 
-fn region_from_node(node: Node<'_>, text: &str) -> RegionSpan {
-    let start_position = node.start_position();
-    let end_position = node.end_position();
-    let mut end_line = end_position.row + 1;
-    if end_position.column == 0 && end_line > start_position.row + 1 {
-        end_line -= 1;
-    }
-    RegionSpan {
-        start_line: start_position.row + 1,
-        end_line,
-        start_byte: node.start_byte(),
-        end_byte: node.end_byte().min(text.len()),
-    }
-}
-
 fn region_from_view(span: deslop_parse::SyntaxSpan, text_len: usize) -> RegionSpan {
     let start = span.start_point();
     let end = span.end_point();
@@ -1921,25 +1684,6 @@ fn region_from_view(span: deslop_parse::SyntaxSpan, text_len: usize) -> RegionSp
         start_byte: span.start_byte(),
         end_byte: span.end_byte().min(text_len),
     }
-}
-
-fn region_name(node: Node<'_>, text: &str) -> String {
-    if let Some(name) = node.child_by_field_name("name") {
-        return name
-            .utf8_text(text.as_bytes())
-            .unwrap_or(node.kind())
-            .to_string();
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind().contains("identifier") {
-            return child
-                .utf8_text(text.as_bytes())
-                .unwrap_or(node.kind())
-                .to_string();
-        }
-    }
-    node.kind().to_string()
 }
 
 fn region_name_owned(node: NodeId, source: &MetricFile<'_>) -> String {
@@ -1995,6 +1739,24 @@ mod tests {
         let report = metrics_source(&source).expect("metrics");
         let function = report.iter().find(|region| region.name == "f").expect("f");
         assert_eq!(function.complexity.cyclomatic, 4.0);
+    }
+
+    #[test]
+    fn source_compatibility_adapter_is_snapshot_owned_and_deterministic() {
+        let source = SourceFile::new(
+            PathBuf::from("compat.rs"),
+            "fn answer() -> i32 { 42 }\n".to_string(),
+        );
+        deslop_parse::reset_parse_source_invocations();
+
+        let first = metrics_source(&source).expect("first metrics");
+        let second = metrics_source(&source).expect("second metrics");
+
+        assert_eq!(
+            serde_json::to_value(&first).unwrap(),
+            serde_json::to_value(&second).unwrap()
+        );
+        assert_eq!(deslop_parse::parse_source_invocations(), 0);
     }
 
     #[test]
@@ -2061,8 +1823,8 @@ mod tests {
 
     #[test]
     fn byte_entropy_uses_bits_per_byte_and_not_a_compression_label() {
-        assert_close(byte_entropy_bits_per_byte("aaaa"), 0.0);
-        assert_close(byte_entropy_bits_per_byte("ab"), 1.0);
+        assert_close(byte_entropy_bits_per_bytes(b"aaaa"), 0.0);
+        assert_close(byte_entropy_bits_per_bytes(b"ab"), 1.0);
 
         let source = SourceFile::new(
             PathBuf::from("sample.rs"),
@@ -2819,7 +2581,9 @@ mod tests {
         let analysis = ProjectAnalysis::build(snapshot).unwrap();
         let file = analysis.files().next().unwrap();
         let context = MetricFile::new(&analysis, file).unwrap();
-        let pack = Registry::default().pack_for_lang(file.grammar().lang());
+        let pack = analysis
+            .language_adapter(&file.key().path)
+            .expect("snapshot stores the exact Clojure adapter");
         let regions = metric_regions_owned(pack, &context).unwrap();
         assert_eq!(regions.len(), 2);
         let owners = regions

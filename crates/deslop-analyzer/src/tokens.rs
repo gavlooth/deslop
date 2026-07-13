@@ -1,11 +1,10 @@
 use deslop_core::{DetectedBy, Finding, Lang, SafetyClass, Severity};
-use deslop_lang::{LangPack, RegionClass, Registry as LangRegistry};
-use deslop_parse::{NodeId, SourceFile, parse_source};
+use deslop_lang::{LangPack, RegionClass};
+use deslop_parse::NodeId;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tree_sitter::Node;
 
-use crate::{AnalyzerConfig, AnalyzerFile, finding};
+use crate::{AnalyzerConfig, AnalyzerFile, AnalyzerText, TextSource, finding};
 
 #[derive(Debug, Clone)]
 struct Token {
@@ -36,40 +35,6 @@ struct MaskRange {
     start_byte: usize,
     end_byte: usize,
     kind: MaskKind,
-}
-
-pub(crate) fn duplicate_token_sequences(
-    source: &SourceFile,
-    config: &AnalyzerConfig,
-) -> Vec<Finding> {
-    let min_tokens = config.min_duplication_tokens;
-    let min_meaningful_tokens = config.min_meaningful_tokens;
-    let tokens = tokenize(source);
-    if min_tokens == 0 || tokens.len() < min_tokens * 2 {
-        return Vec::new();
-    }
-    let rust_tree = rust_tree(source);
-    let mut out = Vec::new();
-    let mut reported_until = 0;
-    for i in 0..=(tokens.len() - min_tokens) {
-        for j in (i + min_tokens)..=(tokens.len() - min_tokens) {
-            if j < reported_until {
-                continue;
-            }
-            let Some(match_info) =
-                duplicate_match(&tokens, i, j, min_tokens, min_meaningful_tokens)
-            else {
-                continue;
-            };
-            if non_removable_rust_match(source, &rust_tree, match_info.left, match_info.right) {
-                continue;
-            }
-            out.push(duplicate_finding(source, &tokens, match_info));
-            reported_until = j + min_tokens;
-            break;
-        }
-    }
-    out
 }
 
 pub(crate) fn duplicate_token_sequences_analysis(
@@ -183,7 +148,7 @@ struct CrossFileWindow {
 }
 
 impl CrossFileWindow {
-    fn new(source_index: usize, path: PathBuf, source: &SourceFile, tokens: &[Token]) -> Self {
+    fn new(source_index: usize, path: PathBuf, source: &AnalyzerText, tokens: &[Token]) -> Self {
         Self {
             source_index,
             path,
@@ -199,7 +164,7 @@ fn token_key(tokens: &[Token], field: impl Fn(&Token) -> &str) -> Vec<String> {
         .collect()
 }
 
-fn already_reported_cross_file(out: &[Finding], source: &SourceFile, window: &[Token]) -> bool {
+fn already_reported_cross_file(out: &[Finding], source: &AnalyzerText, window: &[Token]) -> bool {
     let start_line = source.line_for_byte(window[0].start_byte);
     let end_line = source.line_for_byte(window[window.len() - 1].end_byte);
     out.iter().any(|finding| {
@@ -211,7 +176,7 @@ fn already_reported_cross_file(out: &[Finding], source: &SourceFile, window: &[T
 }
 
 fn cross_file_finding(
-    source: &SourceFile,
+    source: &AnalyzerText,
     tokens: &[Token],
     start: usize,
     len: usize,
@@ -283,19 +248,8 @@ fn duplicate_rule(left: &[Token], right: &[Token]) -> Option<&'static str> {
     }
 }
 
-fn non_removable_rust_match(
-    source: &SourceFile,
-    rust_tree: &Option<tree_sitter::Tree>,
-    left: &[Token],
-    right: &[Token],
-) -> bool {
-    rust_tree
-        .as_ref()
-        .is_some_and(|tree| non_removable_rust_mapping_rhyme(source, tree.root_node(), left, right))
-}
-
 fn duplicate_finding(
-    source: &SourceFile,
+    source: &impl TextSource,
     tokens: &[Token],
     match_info: DuplicateMatch<'_>,
 ) -> Finding {
@@ -321,14 +275,6 @@ fn duplicate_finding(
     )
 }
 
-fn tokenize(source: &SourceFile) -> Vec<Token> {
-    let registry = LangRegistry::default();
-    let pack = registry.pack_for_lang(source.lang);
-    let segments = behavioral_segments(source, pack);
-    let masks = token_masks(source, pack);
-    tokenize_with(source, pack, &segments, &masks)
-}
-
 fn tokenize_analysis(file: &AnalyzerFile<'_>) -> Vec<Token> {
     let segments = behavioral_segments_analysis(file);
     let masks = token_masks_analysis(file);
@@ -336,19 +282,20 @@ fn tokenize_analysis(file: &AnalyzerFile<'_>) -> Vec<Token> {
 }
 
 fn tokenize_with(
-    source: &SourceFile,
+    source: &impl TextSource,
     pack: &dyn LangPack,
     segments: &[Segment],
     masks: &[MaskRange],
 ) -> Vec<Token> {
     let mut out = Vec::new();
-    let mut iter = source.text.char_indices().peekable();
+    let text = source.text();
+    let mut iter = text.char_indices().peekable();
     while let Some((start, ch)) = iter.next() {
         if ch.is_whitespace() {
             continue;
         }
         if let Some(mask) = mask_for_byte(masks, start) {
-            push_masked_token(&mut out, &source.text, segments, mask, start);
+            push_masked_token(&mut out, text, segments, mask, start);
             skip_until_byte(&mut iter, mask.end_byte);
             continue;
         }
@@ -357,10 +304,10 @@ fn tokenize_with(
             continue;
         }
         let Some(segment) = segment_for_byte(segments, start) else {
-            skip_token(&source.text, &mut iter, start, ch);
+            skip_token(text, &mut iter, start, ch);
             continue;
         };
-        out.push(next_token(&source.text, &mut iter, start, ch, segment.id));
+        out.push(next_token(text, &mut iter, start, ch, segment.id));
     }
     out
 }
@@ -546,43 +493,11 @@ fn skip_until_byte(iter: &mut CharIter<'_>, end: usize) {
     }
 }
 
-fn starts_line_comment(source: &SourceFile, start: usize, pack: &dyn LangPack) -> bool {
-    let text = &source.text[start..];
+fn starts_line_comment(source: &impl TextSource, start: usize, pack: &dyn LangPack) -> bool {
+    let text = &source.text()[start..];
     pack.line_comments()
         .iter()
         .any(|token| text.starts_with(token))
-}
-
-fn behavioral_segments(source: &SourceFile, pack: &dyn LangPack) -> Vec<Segment> {
-    if pack.grammar().is_none() {
-        return vec![Segment {
-            id: 0,
-            start_byte: 0,
-            end_byte: source.text.len(),
-        }];
-    }
-
-    let Some(tree) = parse_source(source).ok().flatten() else {
-        return vec![Segment {
-            id: 0,
-            start_byte: 0,
-            end_byte: source.text.len(),
-        }];
-    };
-    if tree.root_node().has_error() {
-        return Vec::new();
-    }
-
-    let mut segments = Vec::new();
-    collect_behavioral_segments(tree.root_node(), &source.text, pack, false, &mut segments);
-    segments
-        .into_iter()
-        .enumerate()
-        .map(|(id, mut segment)| {
-            segment.id = id;
-            segment
-        })
-        .collect()
 }
 
 fn behavioral_segments_analysis(file: &AnalyzerFile<'_>) -> Vec<Segment> {
@@ -599,19 +514,6 @@ fn behavioral_segments_analysis(file: &AnalyzerFile<'_>) -> Vec<Segment> {
             segment
         })
         .collect()
-}
-
-fn token_masks(source: &SourceFile, pack: &dyn LangPack) -> Vec<MaskRange> {
-    let Some(tree) = parse_source(source).ok().flatten() else {
-        return Vec::new();
-    };
-    if tree.root_node().has_error() {
-        return Vec::new();
-    }
-    let mut masks = Vec::new();
-    collect_token_masks(tree.root_node(), &source.text, pack, &mut masks);
-    masks.sort_by_key(|mask| (mask.start_byte, mask.end_byte));
-    masks
 }
 
 fn token_masks_analysis(file: &AnalyzerFile<'_>) -> Vec<MaskRange> {
@@ -649,72 +551,6 @@ fn collect_token_masks_analysis(file: &AnalyzerFile<'_>, node: NodeId, masks: &m
     }
     for child in view.children() {
         collect_token_masks_analysis(file, child, masks);
-    }
-}
-
-fn collect_token_masks(
-    node: Node<'_>,
-    text: &str,
-    pack: &dyn LangPack,
-    masks: &mut Vec<MaskRange>,
-) {
-    if let Some(kind) = token_mask_kind(node, text, pack) {
-        masks.push(MaskRange {
-            start_byte: node.start_byte(),
-            end_byte: node.end_byte().min(text.len()),
-            kind,
-        });
-        return;
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_token_masks(child, text, pack, masks);
-    }
-}
-
-fn token_mask_kind(node: Node<'_>, text: &str, pack: &dyn LangPack) -> Option<MaskKind> {
-    let kind = node.kind();
-    if kind.contains("comment") {
-        return Some(MaskKind::Comment);
-    }
-    if pack.is_duplication_data_region(node, text) {
-        return Some(MaskKind::Data);
-    }
-    if kind.contains("string") || kind.contains("str_lit") {
-        return Some(MaskKind::String);
-    }
-    None
-}
-
-fn collect_behavioral_segments(
-    node: Node<'_>,
-    text: &str,
-    pack: &dyn LangPack,
-    in_body: bool,
-    segments: &mut Vec<Segment>,
-) {
-    match pack.region_class(node, text) {
-        RegionClass::Declaration if !pack.is_behavioral_container(node, text) => return,
-        RegionClass::Behavioral if !in_body => {
-            segments.push(Segment {
-                id: 0,
-                start_byte: node.start_byte(),
-                end_byte: node.end_byte().min(text.len()),
-            });
-            return;
-        }
-        RegionClass::Behavioral | RegionClass::Declaration | RegionClass::Other => {}
-    }
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_behavioral_segments(
-            child,
-            text,
-            pack,
-            in_body || pack.region_class(node, text) == RegionClass::Behavioral,
-            segments,
-        );
     }
 }
 
@@ -768,28 +604,6 @@ fn token_windows_match(left: &[Token], right: &[Token], field: impl Fn(&Token) -
     left.iter()
         .zip(right)
         .all(|(left, right)| field(left) == field(right))
-}
-
-fn rust_tree(source: &SourceFile) -> Option<tree_sitter::Tree> {
-    (source.lang == Lang::Rust)
-        .then(|| parse_source(source).ok().flatten())?
-        .filter(|tree| !tree.root_node().has_error())
-}
-
-fn non_removable_rust_mapping_rhyme(
-    source: &SourceFile,
-    root: Node<'_>,
-    left: &[Token],
-    right: &[Token],
-) -> bool {
-    let Some((left_start, left_end)) = token_window_range(left) else {
-        return false;
-    };
-    let Some((right_start, right_end)) = token_window_range(right) else {
-        return false;
-    };
-    is_in_pure_path_mapping_context(source, root, left_start, left_end)
-        && is_in_pure_path_mapping_context(source, root, right_start, right_end)
 }
 
 fn non_removable_rust_match_analysis(
@@ -931,107 +745,6 @@ fn is_path_like_value_analysis(file: &AnalyzerFile<'_>, node: NodeId) -> bool {
 
 fn token_window_range(tokens: &[Token]) -> Option<(usize, usize)> {
     Some((tokens.first()?.start_byte, tokens.last()?.end_byte))
-}
-
-fn smallest_enclosing_node<'tree>(
-    node: Node<'tree>,
-    start_byte: usize,
-    end_byte: usize,
-    kind: &str,
-) -> Option<Node<'tree>> {
-    if !node_contains_range(node, start_byte, end_byte) {
-        return None;
-    }
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor).filter(|child| child.is_named()) {
-        if let Some(enclosing) = smallest_enclosing_node(child, start_byte, end_byte, kind) {
-            return Some(enclosing);
-        }
-    }
-
-    (node.kind() == kind).then_some(node)
-}
-
-fn node_contains_range(node: Node<'_>, start_byte: usize, end_byte: usize) -> bool {
-    node.start_byte() <= start_byte && end_byte <= node.end_byte()
-}
-
-fn is_in_pure_path_mapping_context(
-    source: &SourceFile,
-    root: Node<'_>,
-    start_byte: usize,
-    end_byte: usize,
-) -> bool {
-    if smallest_enclosing_node(root, start_byte, end_byte, "match_expression")
-        .is_some_and(|node| is_pure_path_mapping_match(source, node))
-    {
-        return true;
-    }
-
-    ["function_item", "impl_item"].into_iter().any(|kind| {
-        smallest_enclosing_node(root, start_byte, end_byte, kind)
-            .is_some_and(|node| contains_pure_path_mapping_match(source, node))
-    })
-}
-
-fn contains_pure_path_mapping_match(source: &SourceFile, node: Node<'_>) -> bool {
-    if node.kind() == "match_expression" && is_pure_path_mapping_match(source, node) {
-        return true;
-    }
-    let mut cursor = node.walk();
-    node.children(&mut cursor)
-        .filter(|child| child.is_named())
-        .any(|child| contains_pure_path_mapping_match(source, child))
-}
-
-fn is_pure_path_mapping_match(source: &SourceFile, match_node: Node<'_>) -> bool {
-    let Some(body) = match_node.child_by_field_name("body") else {
-        return false;
-    };
-    let mut cursor = body.walk();
-    let arms: Vec<_> = body
-        .children(&mut cursor)
-        .filter(|child| child.kind() == "match_arm")
-        .collect();
-    arms.len() >= 2
-        && arms
-            .into_iter()
-            .all(|arm| is_pure_path_mapping_arm(source, arm))
-}
-
-fn is_pure_path_mapping_arm(source: &SourceFile, arm: Node<'_>) -> bool {
-    let Some(pattern) = arm.child_by_field_name("pattern") else {
-        return false;
-    };
-    let Some(value) = arm.child_by_field_name("value") else {
-        return false;
-    };
-    is_path_like_pattern(source, pattern) && is_path_like_value(value)
-}
-
-fn is_path_like_pattern(source: &SourceFile, node: Node<'_>) -> bool {
-    match node.kind() {
-        "identifier" | "scoped_identifier" => true,
-        "match_pattern" => {
-            if node.child_by_field_name("condition").is_some() {
-                return false;
-            }
-            let mut cursor = node.walk();
-            let mut children = node.children(&mut cursor).filter(|child| child.is_named());
-            let Some(child) = children.next() else {
-                return false;
-            };
-            children.next().is_none() && is_path_like_pattern(source, child)
-        }
-        _ => node
-            .utf8_text(source.text.as_bytes())
-            .is_ok_and(|text| text.contains("::") && !text.contains([' ', '\n', '\t'])),
-    }
-}
-
-fn is_path_like_value(node: Node<'_>) -> bool {
-    matches!(node.kind(), "identifier" | "scoped_identifier")
 }
 
 fn disjoint_ranges(left: &[Token], right: &[Token]) -> bool {

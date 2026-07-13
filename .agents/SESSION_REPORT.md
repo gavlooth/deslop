@@ -6799,3 +6799,61 @@ forgeable completeness flag, rebase display paths after projection, run boundary
 projects, reconstruct per-pass adapter facts, or analyze live artifact bytes.
 
 **Signature:** Codex (GPT-5), M1.9 integration owner, planner/prepared checkpoint, 2026-07-13.
+
+---
+
+## M1.9 terminal checkpoint — analyzer and metrics snapshot migration complete
+
+**Date/time:** 2026-07-13T22:46:19+02:00
+
+**Objective/target:** finish the analyzer/metrics migration with no reparsable consumer bridge,
+prove compatibility entry points delegate through one owned snapshot, resolve the grammarless test
+adapter honestly, and pass workspace-wide acceptance gates.
+
+**Changes:** replaced analyzer-held `SourceFile` values with non-reparsable `AnalyzerText` views and
+removed the obsolete `AnalysisPack`/rule shim plus every legacy analyzer/token/Rust/metrics parse
+pipeline. Analyzer and metrics `SourceFile` compatibility APIs now build an exact single-source
+overlay snapshot, construct one `ProjectAnalysis`, and delegate to owned consumers. Added a planner
+helper for virtual sources with zero disk reads and exact caller presentation, including the path
+preservation needed by suppression globs. Added production-wide static guards against `parse_source`,
+live reads, and pack reselection, plus deterministic zero-legacy-counter compatibility tests.
+
+Removed the test-only grammarless `.testpack` analyzer shim. Snapshot publication now rejects a
+registered adapter without a grammar artifact with an exact diagnostic. Honest grammarless text
+analysis is scoped to M2.1's versioned capability contract; it cannot bypass `ProjectAnalysis`.
+Updated proposal corpus contracts to encode that live, unpinned clj-kondo output is unavailable:
+five capability entries remain visible, while the two live `unused-namespace` claims and one live
+`redundant-do` claim no longer enter work orders.
+
+**Commands/checks run:** focused single-overlay/no-grammar/static-guard/source-compatibility tests;
+`cargo test -p deslop-parse -p deslop-analyzer -p deslop-metrics`; `cargo test --workspace`;
+`cargo clippy --workspace --all-targets --all-features -- -D warnings`;
+`cargo build --workspace --all-targets --all-features`; `cargo doc --workspace --no-deps`;
+`cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. Parse passes 74/74, analyzer 67/67, and metrics 28/28. The full workspace passes
+with one deliberately ignored slow performance probe; strict clippy, build, rustdoc, formatting, and
+whitespace checks pass. Cold owned parse ledgers remain `1/1/1/0`, repeated consumers do not change
+them, compatibility adapters record zero legacy parse invocations, and all primary production files
+pass the static snapshot-bypass guard.
+
+**Invalidated assumptions / negative memory:** installed external tools are not revision evidence;
+workspace goldens must not depend on live clj-kondo availability. A grammarless `LangPack` does not
+have sufficient identity or syntax authority to enter `ProjectAnalysis`. Keeping dead legacy rules
+behind a public pack trait still preserves a reparsing route and is not an acceptable migration.
+Presentation candidates cannot choose lexicographically over an explicit source API display path,
+because that changes suppression and proposal identity.
+
+**Current recommendation/next actions:** begin M1.10 by inventorying graph, evaluator, LSP,
+MCP/protocol, and slim parse/read/reselection surfaces, then migrate them through the same planner and
+owned projection boundary. Keep external execution unavailable until a revision-isolated prepared
+plan exists. M2.1 must define `TextSource` capability semantics before grammarless adapters return.
+
+**Blockers:** none for M1.9. No service restart, cache clear, or data migration is required; Rust
+consumers require a rebuild, already covered by the workspace build gate.
+
+**Negative-memory status:** recorded locally; Hindsight consolidation follows. Never restore legacy
+consumer parsing, live external findings, grammarless generic-grammar fallback, or post-hoc display
+path rebasing.
+
+**Signature:** Codex (GPT-5), M1.9 integration owner, terminal checkpoint, 2026-07-13.

@@ -413,35 +413,6 @@ fn tp_corpus_behavioral_duplicates_still_flagged() {
 }
 
 #[test]
-fn registry_discovers_registered_test_pack_through_scan_without_core_matches() {
-    let mut lang_registry = LangRegistry::new(&deslop_lang::GENERIC_PACK);
-    lang_registry.register(&crate::test_pack::TEST_LANG_PACK);
-    let mut analyzer_registry = AnalyzerRegistry::new();
-    analyzer_registry.register(&crate::test_pack::TEST_ANALYSIS_PACK);
-
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let path = tmp.path().join("demo.testpack");
-    std::fs::write(&path, "# return value\nanything\n").expect("write fixture");
-    assert_eq!(lang_registry.pack_for_path(&path).lang(), Lang::Generic);
-    assert!(
-        deslop_parse::parse_tree(Lang::Generic, "anything\n")
-            .expect("parse fallback")
-            .is_none()
-    );
-
-    let report = scan_file_with_registries(
-        &path,
-        &lang_registry,
-        &analyzer_registry,
-        AnalyzerConfig::default(),
-    )
-    .expect("scan");
-    assert_eq!(report.lang, Lang::Generic);
-    assert!(has_rule(&report, "test-pack-rule"));
-    assert!(has_rule(&report, "narrating-comment"));
-}
-
-#[test]
 fn rust_idiom_detected_and_fix_withheld_without_check_cmd() {
     let source = source("sample.rs", "fn f() -> i32 {\n    return 1;\n}\n");
     let report = scan_source(&source);
@@ -651,18 +622,13 @@ fn scan_paths_reports_cross_file_duplicates() {
 
 #[test]
 fn julia_external_is_config_gated_pack_local() {
+    assert!(julia_external_analyzer(&AnalyzerConfig::default()).is_none());
     assert!(
-        JULIA_PACK
-            .external_analyzer(&AnalyzerConfig::default())
-            .is_none()
-    );
-    assert!(
-        JULIA_PACK
-            .external_analyzer(&AnalyzerConfig {
-                julia_external: JuliaExternal::StaticLint,
-                ..AnalyzerConfig::default()
-            })
-            .is_some()
+        julia_external_analyzer(&AnalyzerConfig {
+            julia_external: JuliaExternal::StaticLint,
+            ..AnalyzerConfig::default()
+        })
+        .is_some()
     );
 }
 
@@ -750,7 +716,10 @@ fn suppression_global_ignore_path_skips_matching_files_only() {
         &blank_source("vendor/sample.py"),
         config_with(suppression.clone()),
     );
-    assert!(!has_rule(&ignored, "consecutive-blank-lines"));
+    assert!(
+        !has_rule(&ignored, "consecutive-blank-lines"),
+        "{ignored:#?}"
+    );
 
     let kept = scan_source_with_config(&blank_source("src/sample.py"), config_with(suppression));
     assert!(has_rule(&kept, "consecutive-blank-lines"));
@@ -766,7 +735,10 @@ fn suppression_per_rule_ignore_path_is_scoped_to_that_rule() {
         &blank_source("ignored/sample.py"),
         config_with(suppression.clone()),
     );
-    assert!(!has_rule(&ignored, "consecutive-blank-lines"));
+    assert!(
+        !has_rule(&ignored, "consecutive-blank-lines"),
+        "{ignored:#?}"
+    );
 
     let kept = scan_source_with_config(&blank_source("src/sample.py"), config_with(suppression));
     assert!(has_rule(&kept, "consecutive-blank-lines"));
@@ -1050,6 +1022,64 @@ fn invalid_utf8_boundary_artifact_downgrades_without_negative_claims() {
             .flat_map(|report| &report.findings)
             .all(|finding| !finding.rule.starts_with("config-key-"))
     );
+}
+
+#[test]
+fn primary_analyzer_and_metrics_surfaces_have_static_ownership_guards() {
+    fn between<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+        let start = source.find(start).expect("guard start marker");
+        let end = source[start..].find(end).expect("guard end marker") + start;
+        &source[start..end]
+    }
+
+    let analyzer = include_str!("lib.rs");
+    let view = between(analyzer, "pub struct AnalyzerFile", "impl Suppression");
+    let metrics = include_str!("../../deslop-metrics/src/lib.rs");
+    let metrics = between(metrics, "use std::collections", "#[cfg(test)]");
+
+    for (name, source) in [
+        ("analyzer", analyzer),
+        ("agnostic analyzer", include_str!("agnostic.rs")),
+        ("boundary analyzer", include_str!("boundary.rs")),
+        ("clojure analyzer", include_str!("clojure.rs")),
+        ("julia analyzer", include_str!("julia.rs")),
+        ("javascript analyzer", include_str!("packs/javascript.rs")),
+        ("python analyzer", include_str!("packs/python.rs")),
+        ("rust analyzer", include_str!("packs/rust.rs")),
+        ("token analyzer", include_str!("tokens.rs")),
+        ("metrics", metrics),
+    ] {
+        for forbidden in [
+            "parse_source",
+            "SourceFile::read",
+            "read_to_string",
+            "pack_for_path",
+            "supported_pack_for_path",
+            "pack_for_lang",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "{name} reintroduced forbidden snapshot-bypass operation {forbidden}"
+            );
+        }
+    }
+    assert!(!view.contains("source: SourceFile"));
+    assert!(!view.contains("-> &SourceFile"));
+}
+
+#[test]
+fn source_compatibility_adapter_is_snapshot_owned_and_deterministic() {
+    let source = source("compat.rs", "fn answer() -> i32 { 42 }\n");
+    deslop_parse::reset_parse_source_invocations();
+
+    let first = scan_source(&source);
+    let second = scan_source(&source);
+
+    assert_eq!(
+        serde_json::to_value(&first).unwrap(),
+        serde_json::to_value(&second).unwrap()
+    );
+    assert_eq!(deslop_parse::parse_source_invocations(), 0);
 }
 
 #[test]

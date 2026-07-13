@@ -40,11 +40,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use deslop_core::{DetectedBy, FileReport, Finding, Lang, SafetyClass, Severity};
-use deslop_parse::{NodeId, SourceFile};
+use deslop_parse::NodeId;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::{AnalyzerConfig, AnalyzerFile, finding};
+use crate::{AnalyzerConfig, AnalyzerFile, AnalyzerText, finding};
 
 /// Tuning for the boundary pass. All fields have working defaults; everything here is
 /// surfaced through `[analyzer.boundary]` so behavior is config-governed, never silent.
@@ -181,7 +181,7 @@ struct KeyEvidence {
 pub(crate) fn add_config_boundary_analysis(
     reports: &mut Vec<FileReport>,
     code_files: &[AnalyzerFile<'_>],
-    artifact_sources: &[SourceFile],
+    artifact_sources: &[AnalyzerText],
     config: &AnalyzerConfig,
 ) -> Result<()> {
     let boundary = &config.boundary;
@@ -463,7 +463,7 @@ fn is_config_artifact(path: &Path) -> bool {
 /// Extract `(line, key)` pairs from a config artifact with cheap line-based parsing.
 /// Deterministic and dependency-free; tolerant of partially invalid files (a broken line
 /// yields no key rather than an error).
-fn artifact_keys(source: &SourceFile) -> Vec<(usize, String)> {
+fn artifact_keys(source: &AnalyzerText) -> Vec<(usize, String)> {
     let ext = source
         .path
         .extension()

@@ -2648,9 +2648,81 @@ mod tests {
     use crate::aggregation::SyntaxAggregateLookupError;
     use crate::arena::{RAW_ARENA_SCHEMA, SyntaxSegmentKind, SyntaxSegmentOwner};
     use deslop_core::{AnalysisStatus, Span, revision_guard};
+    use deslop_lang::RegionSpan;
+
+    struct NoGrammarTestPack;
+
+    static NO_GRAMMAR_TEST_PACK: NoGrammarTestPack = NoGrammarTestPack;
+
+    impl LangPack for NoGrammarTestPack {
+        fn name(&self) -> &'static str {
+            "no-grammar-test"
+        }
+
+        fn lang(&self) -> Lang {
+            Lang::Generic
+        }
+
+        fn extensions(&self) -> &'static [&'static str] {
+            &["testpack"]
+        }
+
+        fn grammar(&self) -> Option<tree_sitter::Language> {
+            None
+        }
+
+        fn line_comments(&self) -> &'static [&'static str] {
+            &["#"]
+        }
+
+        fn metrics_regions(&self) -> &'static [&'static str] {
+            &[]
+        }
+
+        fn metrics_branches(&self) -> &'static [&'static str] {
+            &[]
+        }
+
+        fn metrics_nesting(&self) -> &'static [&'static str] {
+            &[]
+        }
+
+        fn metrics_flow_breaks(&self) -> &'static [&'static str] {
+            &[]
+        }
+
+        fn halstead_operator_tokens(&self) -> &'static [&'static str] {
+            &[]
+        }
+
+        fn enclosing_region(
+            &self,
+            _node: tree_sitter::Node<'_>,
+            _text: &str,
+        ) -> Option<RegionSpan> {
+            None
+        }
+    }
 
     fn repository() -> RepositoryId {
         RepositoryId::explicit("test-repository").unwrap()
+    }
+
+    #[test]
+    fn registered_adapter_without_grammar_is_rejected_before_snapshot_publication() {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::new(&deslop_lang::GENERIC_PACK);
+        registry.register(&NO_GRAMMAR_TEST_PACK);
+        crate::reset_parse_source_invocations();
+        let error = ProjectSnapshotBuilder::new(root.path(), repository())
+            .unwrap()
+            .with_registry(registry)
+            .with_overlay("demo.testpack", b"anything\n".to_vec())
+            .unwrap()
+            .build()
+            .expect_err("grammarless source adapters are not an owned syntax capability");
+        assert_eq!(error.to_string(), "no grammar artifact for demo.testpack");
+        assert_eq!(crate::parse_source_invocations(), 0);
     }
 
     fn node_by_kind<'analysis>(

@@ -1048,6 +1048,23 @@ changes projection identity. The active terminal work is removal of the reparsab
 `SourceFile` bridge, static primary-surface no-parse/no-read guards, and an explicit no-grammar text
 source contract or documented M2 invalidation before checking M1.9.
 
+M1.9 terminal update (2026-07-13): DONE. The reparsable analyzer bridge and all legacy analyzer/
+metrics parse pipelines were removed. `AnalyzerText` exposes pinned text/line operations but cannot
+enter `parse_source`; path and `SourceFile` compatibility calls build a single overlay snapshot and
+delegate to the owned projection. File-wide static guards reject `parse_source`, live reads, and
+path/`Lang` pack reselection across analyzer and metrics production. Source compatibility tests are
+deterministic with a zero legacy parse counter, and the shared planner preserves the caller's exact
+display path so suppression semantics remain stable across invocation working directories. The full
+workspace test, strict clippy, build, rustdoc, format, and whitespace gates pass. Proposal corpus
+goldens now encode the authoritative external boundary: unpinned live clj-kondo results are reported
+unavailable and cannot create revision claims.
+
+Scoped M2 invalidation: the deleted no-grammar `.testpack` analyzer shim was test-only and had no
+honest syntax identity. Until M2.1 versions `TextSource` capability/adapter identity and explicitly
+defines report-only analyzer support plus metrics exclusion, registered adapters without a grammar
+artifact fail before snapshot publication. Do not restore grammarless analysis by bypassing
+`ProjectAnalysis` or by synthesizing a generic grammar.
+
 Negative-memory constraints: do not expose borrowed Tree-sitter nodes; duplicate `LangPack` raw-kind
 logic; infer durable identity from reanchors; union nested inclusive metric regions; reread paths after
 snapshot construction; use path-selected language instead of stored grammar; or count an incremental

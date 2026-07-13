@@ -4,18 +4,15 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use deslop_core::{
-    AnalysisDiagnostic, AnalysisProvenance, AnalysisStatus, DetectedBy, Edit, FileReport, Finding,
-    Lang, SafetyClass, Severity, Span, baseline_fingerprint, reports_permit_rewrites,
+    AnalysisDiagnostic, AnalysisProvenance, DetectedBy, Edit, FileReport, Finding, Lang,
+    SafetyClass, Severity, Span, baseline_fingerprint, reports_permit_rewrites,
 };
 use deslop_external::{CljKondoAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait, JuliaAnalyzer};
-#[cfg(test)]
-use deslop_lang::Registry as LangRegistry;
-use deslop_lang::{LangPack, Rule};
+use deslop_lang::LangPack;
 use deslop_parse::{
     DiscoveryPolicy, NodeId, ParsedFile, ProjectAnalysis, ProjectSnapshotPlanner,
     ProjectSnapshotRequest, ProjectionId, RepositorySpec, RootSpec, ScopeSpec,
-    SnapshotPresentationMap, SourceFile, SyntaxAdapterFacts, analysis_provenance_or_failed,
-    parse_source,
+    SnapshotPresentationMap, SourceFile, SyntaxAdapterFacts,
 };
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
@@ -27,8 +24,6 @@ mod julia;
 mod packs;
 
 pub use boundary::BoundaryConfig;
-#[cfg(test)]
-mod test_pack;
 #[cfg(test)]
 mod tests;
 mod tokens;
@@ -207,6 +202,132 @@ pub struct PreparedAnalyzerAnalysis {
     presentation: SnapshotPresentationMap,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct AnalyzerText {
+    pub(crate) path: PathBuf,
+    pub(crate) lang: Lang,
+    pub(crate) text: String,
+    line_starts: Vec<usize>,
+}
+
+impl AnalyzerText {
+    fn new(path: PathBuf, text: String, lang: Lang) -> Self {
+        let mut line_starts = vec![0];
+        line_starts.extend(
+            text.bytes()
+                .enumerate()
+                .filter_map(|(index, byte)| (byte == b'\n').then_some(index + 1)),
+        );
+        Self {
+            path,
+            lang,
+            text,
+            line_starts,
+        }
+    }
+
+    pub(crate) fn lines(&self) -> Vec<&str> {
+        self.text.lines().collect()
+    }
+
+    pub(crate) fn line_start_byte(&self, one_based_line: usize) -> usize {
+        self.line_starts
+            .get(one_based_line.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.text.len())
+    }
+
+    pub(crate) fn line_end_byte(&self, one_based_line: usize) -> usize {
+        self.line_starts
+            .get(one_based_line)
+            .copied()
+            .map(|index| index.saturating_sub(1))
+            .unwrap_or(self.text.len())
+    }
+
+    pub(crate) fn region_text(&self, start_line: usize, end_line: usize) -> String {
+        let start = self.line_start_byte(start_line);
+        let end = self
+            .line_starts
+            .get(end_line)
+            .copied()
+            .unwrap_or(self.text.len());
+        self.text.get(start..end).unwrap_or("").to_string()
+    }
+
+    pub(crate) fn line_for_byte(&self, byte: usize) -> usize {
+        match self.line_starts.binary_search(&byte) {
+            Ok(index) => index + 1,
+            Err(index) => index,
+        }
+        .max(1)
+    }
+}
+
+pub(crate) trait TextSource {
+    fn path(&self) -> &Path;
+    fn text(&self) -> &str;
+    fn line_start_byte(&self, one_based_line: usize) -> usize;
+    fn line_end_byte(&self, one_based_line: usize) -> usize;
+    fn region_text(&self, start_line: usize, end_line: usize) -> String;
+    fn line_for_byte(&self, byte: usize) -> usize;
+    fn lines(&self) -> Vec<&str> {
+        self.text().lines().collect()
+    }
+}
+
+impl TextSource for AnalyzerText {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn text(&self) -> &str {
+        &self.text
+    }
+
+    fn line_start_byte(&self, one_based_line: usize) -> usize {
+        self.line_start_byte(one_based_line)
+    }
+
+    fn line_end_byte(&self, one_based_line: usize) -> usize {
+        self.line_end_byte(one_based_line)
+    }
+
+    fn region_text(&self, start_line: usize, end_line: usize) -> String {
+        self.region_text(start_line, end_line)
+    }
+
+    fn line_for_byte(&self, byte: usize) -> usize {
+        self.line_for_byte(byte)
+    }
+}
+
+impl TextSource for SourceFile {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn text(&self) -> &str {
+        &self.text
+    }
+
+    fn line_start_byte(&self, one_based_line: usize) -> usize {
+        self.line_start_byte(one_based_line)
+    }
+
+    fn line_end_byte(&self, one_based_line: usize) -> usize {
+        self.line_end_byte(one_based_line)
+    }
+
+    fn region_text(&self, start_line: usize, end_line: usize) -> String {
+        self.region_text(start_line, end_line)
+    }
+
+    fn line_for_byte(&self, byte: usize) -> usize {
+        self.line_for_byte(byte)
+    }
+}
+
 impl PreparedAnalyzerAnalysis {
     fn new(
         analysis: Arc<ProjectAnalysis>,
@@ -248,7 +369,7 @@ impl PreparedAnalyzerAnalysis {
 pub struct AnalyzerFile<'analysis> {
     pub analysis: &'analysis ProjectAnalysis,
     pub file: &'analysis ParsedFile,
-    source: SourceFile,
+    source: AnalyzerText,
     adapter: &'static dyn LangPack,
     facts: Box<[SyntaxAdapterFacts]>,
     facts_by_node: HashMap<NodeId, usize>,
@@ -282,18 +403,14 @@ impl<'analysis> AnalyzerFile<'analysis> {
         Ok(Self {
             analysis,
             file,
-            source: SourceFile::new_with_lang(
-                display_path,
-                text.to_string(),
-                file.grammar().lang(),
-            ),
+            source: AnalyzerText::new(display_path, text.to_string(), file.grammar().lang()),
             adapter,
             facts,
             facts_by_node,
         })
     }
 
-    pub fn source(&self) -> &SourceFile {
+    pub(crate) fn source(&self) -> &AnalyzerText {
         &self.source
     }
 
@@ -596,139 +713,6 @@ impl AnalyzerConfigSnapshot {
     }
 }
 
-pub trait AnalysisPack: Send + Sync {
-    fn name(&self) -> &'static str;
-    fn lang(&self) -> Lang;
-    fn rules(&self) -> &'static [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>];
-    fn external_analyzer(
-        &self,
-        config: &AnalyzerConfig,
-    ) -> Option<Box<dyn ExternalAnalyzerTrait<SourceFile, Finding>>>;
-}
-
-pub struct AnalyzerRegistry {
-    packs: Vec<&'static dyn AnalysisPack>,
-}
-
-impl AnalyzerRegistry {
-    pub fn new() -> Self {
-        Self { packs: Vec::new() }
-    }
-
-    pub fn with_default_packs() -> Self {
-        let mut registry = Self::new();
-        registry.register(&CLOJURE_PACK);
-        registry.register(&JULIA_PACK);
-        registry.register(&packs::python::PYTHON_PACK);
-        registry.register(&packs::javascript::JAVASCRIPT_PACK);
-        registry.register(&packs::javascript::TYPESCRIPT_PACK);
-        registry.register(&packs::rust::RUST_PACK);
-        registry
-    }
-
-    pub fn register(&mut self, pack: &'static dyn AnalysisPack) {
-        self.packs.push(pack);
-    }
-
-    pub fn pack_for_lang(&self, lang: Lang) -> Option<&'static dyn AnalysisPack> {
-        self.packs.iter().copied().find(|pack| pack.lang() == lang)
-    }
-}
-
-impl Default for AnalyzerRegistry {
-    fn default() -> Self {
-        Self::with_default_packs()
-    }
-}
-
-struct FunctionRule {
-    name: &'static str,
-    check_fn: fn(&SourceFile, &AnalyzerConfig) -> Vec<Finding>,
-}
-
-impl Rule<SourceFile, AnalyzerConfig, Finding> for FunctionRule {
-    fn name(&self) -> &'static str {
-        self.name
-    }
-
-    fn check(&self, source: &SourceFile, config: &AnalyzerConfig) -> Vec<Finding> {
-        (self.check_fn)(source, config)
-    }
-}
-
-static AGNOSTIC_RULE: FunctionRule = FunctionRule {
-    name: "agnostic",
-    check_fn: agnostic_findings,
-};
-static CLOJURE_RULE: FunctionRule = FunctionRule {
-    name: "clojure",
-    check_fn: clojure_findings_rule,
-};
-static JULIA_RULE: FunctionRule = FunctionRule {
-    name: "julia",
-    check_fn: julia_findings_rule,
-};
-
-static AGNOSTIC_RULES: [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>; 1] =
-    [&AGNOSTIC_RULE];
-static CLOJURE_RULES: [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>; 1] = [&CLOJURE_RULE];
-static JULIA_RULES: [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>; 1] = [&JULIA_RULE];
-
-struct AgnosticPack;
-struct ClojurePack;
-struct JuliaPack;
-
-static AGNOSTIC_PACK: AgnosticPack = AgnosticPack;
-static CLOJURE_PACK: ClojurePack = ClojurePack;
-static JULIA_PACK: JuliaPack = JuliaPack;
-
-macro_rules! analysis_pack {
-    ($type:ty, $name:literal, $lang:expr, $rules:ident, $external:expr) => {
-        impl AnalysisPack for $type {
-            fn name(&self) -> &'static str {
-                $name
-            }
-
-            fn lang(&self) -> Lang {
-                $lang
-            }
-
-            fn rules(&self) -> &'static [&'static dyn Rule<SourceFile, AnalyzerConfig, Finding>] {
-                &$rules
-            }
-
-            fn external_analyzer(
-                &self,
-                config: &AnalyzerConfig,
-            ) -> Option<Box<dyn ExternalAnalyzerTrait<SourceFile, Finding>>> {
-                $external(config)
-            }
-        }
-    };
-}
-
-analysis_pack!(
-    AgnosticPack,
-    "agnostic",
-    Lang::Generic,
-    AGNOSTIC_RULES,
-    |_| None
-);
-analysis_pack!(
-    ClojurePack,
-    "clojure",
-    Lang::Clojure,
-    CLOJURE_RULES,
-    clojure_external_analyzer
-);
-analysis_pack!(
-    JuliaPack,
-    "julia",
-    Lang::Julia,
-    JULIA_RULES,
-    julia_external_analyzer
-);
-
 fn julia_external_analyzer(
     config: &AnalyzerConfig,
 ) -> Option<Box<dyn ExternalAnalyzerTrait<SourceFile, Finding>>> {
@@ -959,11 +943,7 @@ fn scan_owned_analysis(
                 }
             };
             input_contents.insert(path.clone(), text.to_string());
-            artifacts.push(SourceFile::new_with_lang(
-                path,
-                text.to_string(),
-                Lang::Generic,
-            ));
+            artifacts.push(AnalyzerText::new(path, text.to_string(), Lang::Generic));
         }
         if reports_permit_rewrites(&reports) {
             boundary::add_config_boundary_analysis(
@@ -1009,7 +989,7 @@ fn record_unavailable_external(
     let external = match file.adapter().name() {
         "clojure" => clojure_external_analyzer(config),
         "julia" => julia_external_analyzer(config),
-        "rust" => packs::rust::RUST_PACK.external_analyzer(config),
+        "rust" => packs::rust::external_analyzer(config),
         _ => None,
     };
     if let Some(external) = external {
@@ -1098,34 +1078,6 @@ pub fn scan_file_with_config(path: &Path, config: AnalyzerConfig) -> Result<File
         .unwrap_or_else(|| empty_report(path, Lang::Generic)))
 }
 
-#[cfg(test)]
-fn scan_file_with_pack(
-    path: &Path,
-    pack: &'static dyn AnalysisPack,
-    config: AnalyzerConfig,
-) -> Result<FileReport> {
-    let text = std::fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
-    let source = SourceFile::new_with_lang(path.to_path_buf(), text, pack.lang());
-    Ok(scan_source_with_pack(&source, pack, &config))
-}
-
-#[cfg(test)]
-fn scan_file_with_registries(
-    path: &Path,
-    lang_registry: &LangRegistry,
-    analyzer_registry: &AnalyzerRegistry,
-    config: AnalyzerConfig,
-) -> Result<FileReport> {
-    let Some(lang_pack) = lang_registry.supported_pack_for_path(path) else {
-        return Ok(empty_report(path, Lang::Generic));
-    };
-    let Some(pack) = analyzer_registry.pack_for_lang(lang_pack.lang()) else {
-        return Ok(empty_report(path, lang_pack.lang()));
-    };
-    scan_file_with_pack(path, pack, config)
-}
-
 fn empty_report(path: &Path, lang: Lang) -> FileReport {
     FileReport {
         path: path.to_path_buf(),
@@ -1144,74 +1096,48 @@ pub fn scan_source(source: &SourceFile) -> FileReport {
 }
 
 pub fn scan_source_with_config(source: &SourceFile, config: AnalyzerConfig) -> FileReport {
-    let registry = AnalyzerRegistry::default();
-    let Some(pack) = registry.pack_for_lang(source.lang) else {
-        return FileReport {
-            path: source.path.to_path_buf(),
-            lang: source.lang,
-            analysis: source_analysis_provenance(source),
-            findings: Vec::new(),
-        };
-    };
-    scan_source_with_pack(source, pack, &config)
-}
-
-fn scan_source_with_pack(
-    source: &SourceFile,
-    pack: &'static dyn AnalysisPack,
-    config: &AnalyzerConfig,
-) -> FileReport {
-    let analysis = source_analysis_provenance(source);
-    if analysis.status == AnalysisStatus::Unsupported {
-        let mut findings = Vec::new();
-        findings.extend(run_rules(&AGNOSTIC_PACK, source, config));
-        findings.extend(run_rules(pack, source, config));
-        for finding in &mut findings {
-            finding.safety = SafetyClass::NeverAuto;
-            finding.edit = None;
-            finding.precondition = Some(
-                "report-only text evidence; install a parser adapter before proposing rewrites"
-                    .to_string(),
-            );
-        }
-        config.suppression.retain(&mut findings);
-        sort_findings(&mut findings);
-        return FileReport {
-            path: source.path.to_path_buf(),
-            lang: source.lang,
+    let result = (|| -> Result<FileReport> {
+        let built = ProjectSnapshotPlanner::build_single_source_overlay(
+            std::env::current_dir().context("resolve source scan invocation base")?,
+            &source.path,
+            source.text.as_bytes().to_vec(),
+        )?;
+        let analysis = ProjectAnalysis::build(built.snapshot)?;
+        let report_sources = analysis
+            .files()
+            .map(|file| file.key().path.clone())
+            .collect();
+        let prepared = PreparedAnalyzerAnalysis::new(
             analysis,
-            findings,
-        };
-    }
-    if !analysis.permits_rewrites() {
-        return FileReport {
-            path: source.path.to_path_buf(),
-            lang: source.lang,
-            analysis,
-            findings: Vec::new(),
-        };
-    }
-    let mut findings = Vec::new();
-    findings.extend(run_rules(&AGNOSTIC_PACK, source, config));
-    findings.extend(run_rules(pack, source, config));
-    config.suppression.retain(&mut findings);
-    apply_inline_suppression(source, &mut findings);
-    sort_findings(&mut findings);
-    FileReport {
+            AnalyzerInputManifest {
+                report_sources,
+                boundary_artifacts: Vec::new(),
+                boundary_coverage: BoundaryCoverage::Unavailable {
+                    reason: "single-source compatibility scan has no project boundary".to_string(),
+                },
+                external_unavailable_reason:
+                    "no revision-isolated external execution plan was prepared".to_string(),
+            },
+            built.presentation,
+        )?;
+        let mut config = config;
+        config.boundary.enabled = false;
+        Ok(scan_prepared_analysis(prepared, config)?
+            .reports
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| empty_report(&source.path, source.lang)))
+    })();
+    result.unwrap_or_else(|error| FileReport {
         path: source.path.to_path_buf(),
         lang: source.lang,
-        analysis,
-        findings,
-    }
-}
-
-fn source_analysis_provenance(source: &SourceFile) -> AnalysisProvenance {
-    analysis_provenance_or_failed(source)
-}
-
-fn apply_inline_suppression(source: &SourceFile, findings: &mut Vec<Finding>) {
-    let directives = inline_suppression_lines(source);
-    findings.retain(|finding| !is_inline_suppressed(finding, &directives));
+        analysis: AnalysisProvenance::failed(vec![AnalysisDiagnostic {
+            code: "source-snapshot-failed".to_string(),
+            message: error.to_string(),
+            span: None,
+        }]),
+        findings: Vec::new(),
+    })
 }
 
 fn apply_inline_suppression_analysis(file: &AnalyzerFile<'_>, findings: &mut Vec<Finding>) {
@@ -1273,18 +1199,6 @@ impl InlineSuppressions {
     }
 }
 
-fn inline_suppression_lines(source: &SourceFile) -> InlineSuppressions {
-    let mut directives = InlineSuppressions::default();
-    let Some(tree) = parse_source(source).ok().flatten() else {
-        return directives;
-    };
-    if tree.root_node().has_error() {
-        return directives;
-    }
-    collect_comment_directives(tree.root_node(), source, &mut directives);
-    directives
-}
-
 fn inline_suppression_lines_analysis(file: &AnalyzerFile<'_>) -> InlineSuppressions {
     let mut directives = InlineSuppressions::default();
     let Some(root) = file.node_ids().next() else {
@@ -1328,32 +1242,6 @@ fn collect_comment_directives_analysis(
     }
 }
 
-fn collect_comment_directives(
-    node: tree_sitter::Node<'_>,
-    source: &SourceFile,
-    directives: &mut InlineSuppressions,
-) {
-    if node.kind().contains("comment") {
-        if let Some(comment_text) = source.text.get(node.start_byte()..node.end_byte()) {
-            let line = source.line_for_byte(node.start_byte());
-            for (line_offset, line_text) in comment_text.lines().enumerate() {
-                if let Some((next_line, rule_names)) = inline_ignore_rules_for_line(line_text) {
-                    if next_line {
-                        directives.add_next_line(line + line_offset, &rule_names);
-                    } else {
-                        directives.add_same_line(line + line_offset, &rule_names);
-                    }
-                }
-            }
-        }
-        return;
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_comment_directives(child, source, directives);
-    }
-}
-
 fn inline_ignore_rules_for_line(text: &str) -> Option<(bool, Vec<String>)> {
     let marker = text.find("deslop:ignore")?;
     let rest = &text[marker + "deslop:ignore".len()..];
@@ -1379,29 +1267,6 @@ fn inline_ignore_rules_for_line(text: &str) -> Option<(bool, Vec<String>)> {
     }
 }
 
-fn run_rules(
-    pack: &dyn AnalysisPack,
-    source: &SourceFile,
-    config: &AnalyzerConfig,
-) -> Vec<Finding> {
-    pack.rules()
-        .iter()
-        .flat_map(|rule| rule.check(source, config))
-        .collect()
-}
-
-fn agnostic_findings(source: &SourceFile, config: &AnalyzerConfig) -> Vec<Finding> {
-    agnostic::findings(source, config)
-}
-
-fn clojure_findings_rule(source: &SourceFile, _config: &AnalyzerConfig) -> Vec<Finding> {
-    clojure::findings(source)
-}
-
-fn julia_findings_rule(source: &SourceFile, _config: &AnalyzerConfig) -> Vec<Finding> {
-    julia::findings(source)
-}
-
 fn sort_findings(findings: &mut [Finding]) {
     findings.sort_by(|a, b| {
         a.path
@@ -1413,7 +1278,7 @@ fn sort_findings(findings: &mut [Finding]) {
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn finding(
-    source: &SourceFile,
+    source: &impl TextSource,
     start_line: usize,
     end_line: usize,
     rule: &str,
@@ -1430,7 +1295,7 @@ pub(crate) fn finding(
     let span = Span::new(start_line, end_line, start_byte, end_byte);
     let text = source.region_text(start_line, end_line);
     Finding {
-        path: source.path.to_path_buf(),
+        path: source.path().to_path_buf(),
         span,
         rule: rule.to_string(),
         severity,
@@ -1440,6 +1305,6 @@ pub(crate) fn finding(
         suggestion: suggestion.to_string(),
         precondition: precondition.map(str::to_string),
         edit,
-        fingerprint: baseline_fingerprint(&source.path, rule, span, &text),
+        fingerprint: baseline_fingerprint(source.path(), rule, span, &text),
     }
 }

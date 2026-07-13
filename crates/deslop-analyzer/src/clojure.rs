@@ -1,10 +1,9 @@
 use deslop_core::{DetectedBy, Edit, EditKind, Finding, SafetyClass, Severity, Splice};
-use deslop_parse::SourceFile;
 use regex::Regex;
 
-use crate::finding;
+use crate::{AnalyzerText, finding};
 
-pub(crate) fn findings(source: &SourceFile) -> Vec<Finding> {
+pub(crate) fn findings(source: &AnalyzerText) -> Vec<Finding> {
     let mut out = Vec::new();
     let rules = [
         SimpleRule {
@@ -47,7 +46,7 @@ struct SimpleRule {
     suggestion: &'static str,
 }
 
-fn simple_safe_rule(source: &SourceFile, rule: SimpleRule) -> Vec<Finding> {
+fn simple_safe_rule(source: &AnalyzerText, rule: SimpleRule) -> Vec<Finding> {
     let regex = Regex::new(rule.pattern).expect("valid regex");
     findings_from_captures(source, &regex, |line_no, caps, matched| {
         let edit = safe_auto_edit(source, line_no, matched, (rule.replacement)(caps));
@@ -68,7 +67,7 @@ fn simple_safe_rule(source: &SourceFile, rule: SimpleRule) -> Vec<Finding> {
 }
 
 fn findings_from_captures(
-    source: &SourceFile,
+    source: &AnalyzerText,
     regex: &Regex,
     mut build: impl FnMut(usize, &regex::Captures<'_>, regex::Match<'_>) -> Option<Finding>,
 ) -> Vec<Finding> {
@@ -85,7 +84,7 @@ fn findings_from_captures(
     out
 }
 
-fn redundant_do(source: &SourceFile) -> Vec<Finding> {
+fn redundant_do(source: &AnalyzerText) -> Vec<Finding> {
     let regex =
         Regex::new(r"\((when(?:-not)?)\s+([^()\n]+?)\s+\(do\s+(.+?)\)\)").expect("valid regex");
     findings_from_captures(source, &regex, |line_no, caps, matched| {
@@ -99,7 +98,7 @@ fn redundant_do(source: &SourceFile) -> Vec<Finding> {
     })
 }
 
-fn precondition_rules(source: &SourceFile) -> Vec<Finding> {
+fn precondition_rules(source: &AnalyzerText) -> Vec<Finding> {
     let rules = [
         PreconditionRule::new(
             r"\(=\s+\(count\s+([^()]+?)\)\s+0\)",
@@ -131,7 +130,7 @@ fn precondition_rules(source: &SourceFile) -> Vec<Finding> {
     out
 }
 
-fn single_use_let(source: &SourceFile) -> Vec<Finding> {
+fn single_use_let(source: &AnalyzerText) -> Vec<Finding> {
     let regex = Regex::new(r"\(let\s+\[\s*([A-Za-z_][\w\-?!*+./<>=]*)\s+([^\]\n]+)\]\s+([^)]+)\)")
         .expect("valid regex");
     let mut out = Vec::new();
@@ -181,7 +180,7 @@ impl PreconditionRule {
         }
     }
 
-    fn finding(&self, source: &SourceFile, line_no: usize) -> Finding {
+    fn finding(&self, source: &AnalyzerText, line_no: usize) -> Finding {
         finding(
             source,
             line_no,
@@ -198,7 +197,7 @@ impl PreconditionRule {
     }
 }
 
-fn code_lines(source: &SourceFile) -> Vec<(usize, String)> {
+fn code_lines(source: &AnalyzerText) -> Vec<(usize, String)> {
     source
         .lines()
         .iter()
@@ -208,7 +207,7 @@ fn code_lines(source: &SourceFile) -> Vec<(usize, String)> {
 }
 
 fn safe_auto_edit(
-    source: &SourceFile,
+    source: &AnalyzerText,
     line_no: usize,
     matched: regex::Match<'_>,
     replacement: String,
@@ -225,7 +224,7 @@ fn safe_auto_edit(
     }
 }
 
-fn redundant_do_finding(source: &SourceFile, line_no: usize, edit: Edit) -> Finding {
+fn redundant_do_finding(source: &AnalyzerText, line_no: usize, edit: Edit) -> Finding {
     finding(
         source,
         line_no,

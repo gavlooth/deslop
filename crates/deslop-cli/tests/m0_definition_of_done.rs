@@ -35,10 +35,25 @@ fn m0_corpus_definition_of_done_is_numerically_locked() {
         .iter()
         .map(|work_order| work_order.findings.len())
         .sum::<usize>();
-    assert_eq!(work_orders.len(), 30);
-    assert_eq!(unique_ids.len(), 30, "duplicate workorder IDs");
-    assert_eq!(unique_targets.len(), 30, "duplicate rewrite targets");
-    assert_eq!(grouped_findings, 65);
+    assert_eq!(work_orders.len(), 28);
+    assert_eq!(unique_ids.len(), 28, "duplicate workorder IDs");
+    assert_eq!(unique_targets.len(), 28, "duplicate rewrite targets");
+    assert_eq!(grouped_findings, 62);
+    let corpus_capabilities = &work_orders[0].proposal_context.external_capabilities;
+    assert_eq!(
+        corpus_capabilities
+            .iter()
+            .filter(|capability| capability.analyzer == "clj-kondo")
+            .count(),
+        5
+    );
+    assert!(
+        corpus_capabilities
+            .iter()
+            .filter(|capability| capability.analyzer == "clj-kondo")
+            .all(|capability| !capability.available),
+        "unpinned live external output must not enter a proposal"
+    );
 
     let corpus_graph = graph(&corpus);
     let corpus_edges = corpus_graph["edges"].as_array().expect("corpus edges");
@@ -266,7 +281,8 @@ fn m0_corpus_definition_of_done_is_numerically_locked() {
     );
 
     eprintln!(
-        "M0 DoD: workorders=30 unique_ids=30 unique_targets=30 grouped_findings=65; \
+        "M0 DoD: workorders=28 unique_ids=28 unique_targets=28 grouped_findings=62; \
+         clj_kondo=5_unavailable; \
          corpus_graph=21_files/74_symbols/197_edges/123_syntactic/0_false_resolved; \
          ambiguity=1_edge/0_false_resolved; compact_label=2_defs/10_calls/0_resolved; \
          grammars=3_complete; malformed=2_partial/0_metric_regions/0_graph_symbols; \
