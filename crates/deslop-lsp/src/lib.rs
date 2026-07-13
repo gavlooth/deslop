@@ -13,7 +13,10 @@ use deslop_core::{
     AnalysisDiagnostic, AnalysisProvenance, FileReport, Finding, SafetyClass, Severity,
 };
 use deslop_fix::apply_findings_to_text;
-use deslop_parse::{ProjectAnalysis, ProjectSnapshotPlanner, SnapshotPresentationMap};
+use deslop_parse::{
+    DiscoveryPolicy, ProjectAnalysis, ProjectSnapshotPlanner, ProjectSnapshotRequest,
+    RepositorySpec, RootSpec, ScopeSpec, SnapshotPresentationMap,
+};
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
@@ -33,11 +36,10 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone)]
 struct DocumentState {
+    uri: Uri,
     text: String,
     findings: Vec<Finding>,
     analysis: AnalysisProvenance,
-    project_analysis: Arc<ProjectAnalysis>,
-    presentation: SnapshotPresentationMap,
     logical_path: PathBuf,
     path: PathBuf,
     version: Option<i32>,
@@ -45,10 +47,12 @@ struct DocumentState {
 
 #[derive(Debug, Default)]
 struct LspState {
-    documents: BTreeMap<Uri, DocumentState>,
+    documents: BTreeMap<String, DocumentState>,
     workspace_root: Option<PathBuf>,
     config_path: Option<PathBuf>,
     analyzer_config: AnalyzerConfig,
+    workspace_analysis: Option<Arc<ProjectAnalysis>>,
+    workspace_presentation: SnapshotPresentationMap,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -106,21 +110,21 @@ struct LspAnalyzerLangConfig {
 impl LspState {
     fn open(&mut self, uri: Uri, path: PathBuf, text: String, version: Option<i32>) -> Result<()> {
         self.refresh_config_for_path(&path).ok();
-        let analyzed = analyze_document(&path, &text, &self.analyzer_config, None)?;
-        self.documents.insert(
-            uri,
+        let mut documents = self.documents.clone();
+        let key = uri.as_str().to_string();
+        documents.insert(
+            key,
             DocumentState {
+                uri,
                 text,
                 path,
-                findings: analyzed.report.findings,
-                analysis: analyzed.report.analysis,
-                project_analysis: analyzed.analysis,
-                presentation: analyzed.presentation,
-                logical_path: analyzed.logical_path,
+                findings: Vec::new(),
+                analysis: AnalysisProvenance::default(),
+                logical_path: PathBuf::new(),
                 version,
             },
         );
-        Ok(())
+        self.rebuild_workspace(documents)
     }
 
     fn change(
@@ -131,36 +135,19 @@ impl LspState {
     ) -> Result<()> {
         let text = self
             .documents
-            .get(&uri)
+            .get(uri.as_str())
             .map(|document| document.text.to_owned())
-            .unwrap_or_default();
-        let text = apply_text_document_changes(&text, changes)?;
-        let path = self
-            .documents
-            .get(&uri)
-            .map(|document| document.path.to_owned())
             .ok_or_else(|| anyhow::anyhow!("document not open: {:?}", uri))?;
+        let text = apply_text_document_changes(&text, changes)?;
+        let path = self.documents[uri.as_str()].path.to_owned();
         self.refresh_config_for_path(&path).ok();
-        let previous = Arc::clone(&self.documents[&uri].project_analysis);
-        let previous_logical = self.documents[&uri].logical_path.clone();
-        let analyzed = analyze_document(&path, &text, &self.analyzer_config, Some(&previous))?;
-        if analyzed.logical_path != previous_logical {
-            bail!("LSP document logical path changed across an incremental revision");
-        }
-        self.documents.insert(
-            uri,
-            DocumentState {
-                text,
-                path,
-                findings: analyzed.report.findings,
-                analysis: analyzed.report.analysis,
-                project_analysis: analyzed.analysis,
-                presentation: analyzed.presentation,
-                logical_path: analyzed.logical_path,
-                version,
-            },
-        );
-        Ok(())
+        let mut documents = self.documents.clone();
+        let document = documents
+            .get_mut(uri.as_str())
+            .expect("open document remains present in candidate workspace");
+        document.text = text;
+        document.version = version;
+        self.rebuild_workspace(documents)
     }
 
     fn save(&mut self, uri: &Uri, text: Option<String>) -> Result<()> {
@@ -171,33 +158,61 @@ impl LspState {
                 text,
             }];
             self.change(uri.clone(), changes, None)?;
-        } else if let Some((path, analysis, presentation)) =
-            self.documents.get(uri).map(|document| {
-                (
-                    document.path.to_owned(),
-                    Arc::clone(&document.project_analysis),
-                    document.presentation.clone(),
-                )
-            })
+        } else if let Some(path) = self
+            .documents
+            .get(uri.as_str())
+            .map(|document| document.path.to_owned())
         {
             self.refresh_config_for_path(&path).ok();
+            let analysis = self
+                .workspace_analysis
+                .as_ref()
+                .map(Arc::clone)
+                .ok_or_else(|| anyhow::anyhow!("open documents have no workspace analysis"))?;
             let config = document_analyzer_config(&self.analyzer_config);
-            let projection = scan_analysis_with_presentation(analysis, &presentation, config)?;
-            if let Some(document) = self.documents.get_mut(uri) {
-                let report = projection
-                    .reports
-                    .into_iter()
-                    .find(|report| report.path == path)
-                    .ok_or_else(|| anyhow::anyhow!("analyzer returned no LSP report"))?;
-                document.findings = report.findings;
-                document.analysis = report.analysis;
-            }
+            let projection =
+                scan_analysis_with_presentation(analysis, &self.workspace_presentation, config)?;
+            apply_reports(&mut self.documents, projection.reports)?;
         }
         Ok(())
     }
 
-    fn close(&mut self, uri: &Uri) {
-        self.documents.remove(uri);
+    fn close(&mut self, uri: &Uri) -> Result<()> {
+        let mut documents = self.documents.clone();
+        documents.remove(uri.as_str());
+        if documents.is_empty() {
+            self.documents.clear();
+            self.workspace_analysis = None;
+            self.workspace_presentation = SnapshotPresentationMap::default();
+            return Ok(());
+        }
+        self.rebuild_workspace(documents)
+    }
+
+    fn rebuild_workspace(&mut self, mut documents: BTreeMap<String, DocumentState>) -> Result<()> {
+        let analyzed = analyze_workspace(
+            &documents,
+            self.workspace_root.as_deref(),
+            &self.analyzer_config,
+            self.workspace_analysis.as_ref(),
+        )?;
+        apply_reports(&mut documents, analyzed.reports)?;
+        for document in documents.values_mut() {
+            document.logical_path = analyzed
+                .logical_paths
+                .get(&document.path)
+                .cloned()
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "workspace analysis omitted logical path for {}",
+                        document.path.display()
+                    )
+                })?;
+        }
+        self.documents = documents;
+        self.workspace_analysis = Some(analyzed.analysis);
+        self.workspace_presentation = analyzed.presentation;
+        Ok(())
     }
 
     fn refresh_config_for_path(&mut self, path: &Path) -> Result<()> {
@@ -274,7 +289,7 @@ fn handle_request(connection: &Connection, state: &LspState, request: Request) -
             serde_json::from_value(request.params).context("invalid code action params")?;
         let actions = state
             .documents
-            .get(&params.text_document.uri)
+            .get(params.text_document.uri.as_str())
             .map(|document| {
                 code_actions(
                     params.text_document.uri.clone(),
@@ -350,7 +365,7 @@ fn handle_did_open(
         params.text_document.text,
         Some(params.text_document.version),
     )?;
-    publish_document_diagnostics(connection, &uri, state)
+    publish_all_document_diagnostics(connection, state)
 }
 
 fn handle_did_change(
@@ -364,7 +379,7 @@ fn handle_did_change(
         params.content_changes,
         Some(params.text_document.version),
     )?;
-    publish_document_diagnostics(connection, &uri, state)
+    publish_all_document_diagnostics(connection, state)
 }
 
 fn handle_did_save(
@@ -379,7 +394,7 @@ fn handle_did_save(
         state.refresh_config_for_path(&uri_to_path(&uri))?;
     }
     state.save(&uri, params.text)?;
-    publish_document_diagnostics(connection, &uri, state)
+    publish_all_document_diagnostics(connection, state)
 }
 
 fn handle_did_close(
@@ -387,8 +402,10 @@ fn handle_did_close(
     state: &mut LspState,
     params: DidCloseTextDocumentParams,
 ) -> Result<()> {
-    state.close(&params.text_document.uri);
-    publish_diagnostics(connection, params.text_document.uri, Vec::new(), None)
+    let uri = params.text_document.uri;
+    state.close(&uri)?;
+    publish_diagnostics(connection, uri, Vec::new(), None)?;
+    publish_all_document_diagnostics(connection, state)
 }
 
 fn publish_document_diagnostics(
@@ -396,12 +413,19 @@ fn publish_document_diagnostics(
     uri: &Uri,
     state: &LspState,
 ) -> Result<()> {
-    let Some(document) = state.documents.get(uri) else {
+    let Some(document) = state.documents.get(uri.as_str()) else {
         return Ok(());
     };
     let diagnostics =
         diagnostics_for_analysis(&document.text, &document.analysis, &document.findings);
     publish_diagnostics(connection, uri.clone(), diagnostics, document.version)
+}
+
+fn publish_all_document_diagnostics(connection: &Connection, state: &LspState) -> Result<()> {
+    for document in state.documents.values() {
+        publish_document_diagnostics(connection, &document.uri, state)?;
+    }
+    Ok(())
 }
 
 fn publish_diagnostics(
@@ -418,51 +442,133 @@ fn publish_diagnostics(
     Ok(())
 }
 
-struct AnalyzedDocument {
+struct AnalyzedWorkspace {
     analysis: Arc<ProjectAnalysis>,
     presentation: SnapshotPresentationMap,
-    logical_path: PathBuf,
-    report: FileReport,
+    logical_paths: BTreeMap<PathBuf, PathBuf>,
+    reports: Vec<FileReport>,
 }
 
-fn analyze_document(
-    path: &Path,
-    text: &str,
+fn analyze_workspace(
+    documents: &BTreeMap<String, DocumentState>,
+    configured_root: Option<&Path>,
     config: &AnalyzerConfig,
     previous: Option<&Arc<ProjectAnalysis>>,
-) -> Result<AnalyzedDocument> {
-    let built = ProjectSnapshotPlanner::build_single_source_overlay(
-        std::env::current_dir().context("resolve LSP invocation base")?,
-        path,
-        text.as_bytes().to_vec(),
-    )?;
-    let logical_path = built
-        .snapshot
-        .entries()
+) -> Result<AnalyzedWorkspace> {
+    let invocation_base = std::env::current_dir().context("resolve LSP invocation base")?;
+    let first = documents
+        .values()
         .next()
-        .ok_or_else(|| anyhow::anyhow!("LSP overlay snapshot is empty"))?
-        .path()
-        .to_path_buf();
+        .ok_or_else(|| anyhow::anyhow!("cannot analyze an empty LSP workspace"))?;
+    let (root, repository) = if let Some(previous) = previous {
+        (
+            previous.snapshot().root().to_path_buf(),
+            RepositorySpec::Explicit(previous.snapshot().repository().clone()),
+        )
+    } else if let Some(root) = configured_root {
+        (
+            root.canonicalize()
+                .with_context(|| format!("resolve LSP workspace root {}", root.display()))?,
+            RepositorySpec::Auto,
+        )
+    } else {
+        let seed = ProjectSnapshotPlanner::build_single_source_overlay(
+            &invocation_base,
+            &first.path,
+            first.text.as_bytes().to_vec(),
+        )?;
+        (
+            seed.snapshot.root().to_path_buf(),
+            RepositorySpec::Explicit(seed.snapshot.repository().clone()),
+        )
+    };
+    let mut logical_paths = BTreeMap::new();
+    let mut presentations = Vec::with_capacity(documents.len());
+    for document in documents.values() {
+        let physical = if document.path.is_absolute() {
+            document.path.clone()
+        } else {
+            invocation_base.join(&document.path)
+        };
+        let logical = physical
+            .strip_prefix(&root)
+            .with_context(|| {
+                format!(
+                    "LSP document {} is outside workspace root {}",
+                    document.path.display(),
+                    root.display()
+                )
+            })?
+            .to_path_buf();
+        if logical_paths
+            .insert(document.path.clone(), logical.clone())
+            .is_some()
+        {
+            bail!(
+                "LSP workspace contains duplicate path {}",
+                document.path.display()
+            );
+        }
+        presentations.push((logical, document.path.clone()));
+    }
+    let presentation = SnapshotPresentationMap::from_entries(presentations)?;
+    let scope = ScopeSpec::ExactLogicalFiles(logical_paths.values().cloned().collect());
+    let mut planner = ProjectSnapshotPlanner::resolve(ProjectSnapshotRequest {
+        invocation_base,
+        root: RootSpec::Explicit(root),
+        repository,
+        scope,
+        discovery: DiscoveryPolicy::Canonical,
+    })?;
+    for document in documents.values() {
+        planner.add_source_overlay(
+            &logical_paths[&document.path],
+            document.text.as_bytes().to_vec(),
+        )?;
+    }
+    let built = planner.build()?;
     let analysis = match previous {
         Some(previous) => previous.successor(built.snapshot)?.into_current(),
         None => ProjectAnalysis::build(built.snapshot)?,
     };
     let projection = scan_analysis_with_presentation(
         Arc::clone(&analysis),
-        &built.presentation,
+        &presentation,
         document_analyzer_config(config),
     )?;
-    let report = projection
-        .reports
-        .into_iter()
-        .find(|report| report.path == path)
-        .ok_or_else(|| anyhow::anyhow!("analyzer returned no LSP report for {}", path.display()))?;
-    Ok(AnalyzedDocument {
+    Ok(AnalyzedWorkspace {
         analysis,
-        presentation: built.presentation,
-        logical_path,
-        report,
+        presentation,
+        logical_paths,
+        reports: projection.reports,
     })
+}
+
+fn apply_reports(
+    documents: &mut BTreeMap<String, DocumentState>,
+    reports: Vec<FileReport>,
+) -> Result<()> {
+    let mut reports = reports
+        .into_iter()
+        .map(|report| (report.path.clone(), report))
+        .collect::<BTreeMap<_, _>>();
+    for document in documents.values_mut() {
+        let report = reports.remove(&document.path).ok_or_else(|| {
+            anyhow::anyhow!(
+                "analyzer returned no LSP report for {}",
+                document.path.display()
+            )
+        })?;
+        document.findings = report.findings;
+        document.analysis = report.analysis;
+    }
+    if let Some(path) = reports.keys().next() {
+        bail!(
+            "analyzer returned unexpected LSP report for {}",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 fn document_analyzer_config(config: &AnalyzerConfig) -> AnalyzerConfig {
@@ -473,8 +579,27 @@ fn document_analyzer_config(config: &AnalyzerConfig) -> AnalyzerConfig {
 
 #[cfg(test)]
 fn analyze_text_with_config(path: &Path, text: &str, config: &AnalyzerConfig) -> FileReport {
-    analyze_document(path, text, config, None)
-        .map(|analyzed| analyzed.report)
+    let uri = "file:///test-buffer".parse::<Uri>().expect("test URI");
+    let documents = BTreeMap::from([(
+        uri.as_str().to_string(),
+        DocumentState {
+            uri,
+            text: text.to_string(),
+            findings: Vec::new(),
+            analysis: AnalysisProvenance::default(),
+            logical_path: PathBuf::new(),
+            path: path.to_path_buf(),
+            version: None,
+        },
+    )]);
+    analyze_workspace(&documents, None, config, None)
+        .and_then(|analyzed| {
+            analyzed
+                .reports
+                .into_iter()
+                .find(|report| report.path == path)
+                .ok_or_else(|| anyhow::anyhow!("missing test document report"))
+        })
         .unwrap_or_else(|error| FileReport {
             path: path.to_path_buf(),
             lang: deslop_core::Lang::Generic,
@@ -1078,7 +1203,12 @@ mod tests {
         deslop_parse::reset_parse_source_invocations();
 
         state.open(uri.clone(), path, "(not (= a b))\n".to_string(), Some(1))?;
-        let first = Arc::clone(&state.documents[&uri].project_analysis);
+        let first = Arc::clone(
+            state
+                .workspace_analysis
+                .as_ref()
+                .expect("workspace analysis after open"),
+        );
         let first_id = first.id().clone();
         assert_eq!(first.parse_counts().len(), 1);
         assert!(first.parse_counts().values().all(|count| {
@@ -1099,7 +1229,12 @@ mod tests {
             }],
             Some(2),
         )?;
-        let second = Arc::clone(&state.documents[&uri].project_analysis);
+        let second = Arc::clone(
+            state
+                .workspace_analysis
+                .as_ref()
+                .expect("workspace analysis after change"),
+        );
         assert_ne!(second.id(), &first_id);
         assert_eq!(second.parse_counts().len(), 1);
         assert!(second.parse_counts().values().all(|count| {
@@ -1115,9 +1250,99 @@ mod tests {
         let second_id = second.id().clone();
         let second_counts = second.parse_counts();
         state.save(&uri, None)?;
-        let saved = &state.documents[&uri].project_analysis;
+        let saved = state
+            .workspace_analysis
+            .as_ref()
+            .expect("workspace analysis after save");
         assert_eq!(saved.id(), &second_id);
         assert_eq!(saved.parse_counts(), second_counts);
+        assert_eq!(deslop_parse::parse_source_invocations(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn dirty_documents_share_one_workspace_overlay_generation() -> Result<()> {
+        let root = std::env::current_dir()?;
+        let first_path = root.join(".lsp-owned-test/first.rs");
+        let second_path = root.join(".lsp-owned-test/second.rs");
+        let first_uri = Uri::from_str(&format!("file://{}", first_path.display()))?;
+        let second_uri = Uri::from_str(&format!("file://{}", second_path.display()))?;
+        let mut state = LspState {
+            workspace_root: Some(root),
+            ..LspState::default()
+        };
+        deslop_parse::reset_parse_source_invocations();
+
+        state.open(
+            first_uri.clone(),
+            first_path.clone(),
+            "fn first() { let value = 1; }\n".to_string(),
+            Some(1),
+        )?;
+        let first_generation = Arc::clone(
+            state
+                .workspace_analysis
+                .as_ref()
+                .expect("first workspace generation"),
+        );
+        assert_eq!(first_generation.parse_counts().len(), 1);
+
+        state.open(
+            second_uri.clone(),
+            second_path.clone(),
+            "fn second() { let value = 2; }\n".to_string(),
+            Some(1),
+        )?;
+        let second_generation = Arc::clone(
+            state
+                .workspace_analysis
+                .as_ref()
+                .expect("second workspace generation"),
+        );
+        assert_ne!(first_generation.id(), second_generation.id());
+        assert_eq!(second_generation.parse_counts().len(), 2);
+        assert_eq!(
+            second_generation
+                .parse_counts()
+                .values()
+                .map(|count| count.parser_invocations)
+                .sum::<usize>(),
+            1
+        );
+        for document in state.documents.values() {
+            assert!(second_generation.file(&document.logical_path).is_some());
+        }
+
+        state.change(
+            first_uri.clone(),
+            vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "fn first() { let value = 3; }\n".to_string(),
+            }],
+            Some(2),
+        )?;
+        let third_generation = Arc::clone(
+            state
+                .workspace_analysis
+                .as_ref()
+                .expect("third workspace generation"),
+        );
+        assert_ne!(second_generation.id(), third_generation.id());
+        assert_eq!(third_generation.parse_counts().len(), 2);
+        assert_eq!(
+            third_generation
+                .parse_counts()
+                .values()
+                .map(|count| (count.parser_invocations, count.reused))
+                .collect::<Vec<_>>(),
+            [(1, 0), (0, 1)]
+        );
+        for document in state.documents.values() {
+            assert!(third_generation.file(&document.logical_path).is_some());
+        }
+        assert_eq!(first_generation.parse_counts().len(), 1);
+        assert_eq!(second_generation.parse_counts().len(), 2);
         assert_eq!(deslop_parse::parse_source_invocations(), 0);
         Ok(())
     }

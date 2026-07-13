@@ -207,8 +207,9 @@ reports, benchmark records, and work orders.
   Evidence: graph, analyzer/protocol, evaluator, and LSP now consume retained
   `Arc<ProjectAnalysis>` values plus pinned presentation/source maps. Graph traversal is entirely
   `NodeId`/`NodeView` based; proposal grouping uses owned containment and adapter facts; evaluator
-  batches its corpus into one snapshot; and LSP open/change/save retains immutable analyses, builds
-  incremental successors, and reuses the current revision on save. MCP and slim delegate through
+  batches its corpus into one snapshot; and LSP open/change/close builds one workspace-wide overlay
+  generation shared by every dirty document, while save without text reuses the current revision.
+  MCP and slim delegate through
   those migrated path/proposal APIs, with remaining reads limited to explicit config, JSONL,
   provider, apply, or stale-state I/O. Static guards reject production parse/read/reselection,
   repeated consumers preserve cold `1/1/1/0` ledgers, and LSP revisions record zero legacy parser

@@ -1129,15 +1129,21 @@ is LSP document-state ownership and incremental successor analysis; MCP and slim
 the migrated protocol/analyzer surfaces, while their remaining reads are explicit config, JSONL,
 apply, or stale-state recheck I/O rather than analysis inputs.
 
-LSP/terminal checkpoint update (2026-07-13): DONE. `DocumentState` retains its immutable
-`ProjectAnalysis`, presentation map, and logical path. Open builds one overlay analysis; change builds
-an immutable successor from the previous revision; save with text follows the successor path, while
-save without text reruns policy projection over the retained analysis without parsing. The LSP's
-single-document policy explicitly disables project-boundary claims because an open buffer has no
-complete boundary manifest. A lifecycle oracle proves distinct revision identities, exact cold
-`1/1/1/0` ledgers, predecessor immutability, save-time ledger stability, and zero legacy parser calls.
-The cross-consumer audit and all-feature workspace test/build/rustdoc/clippy/format/whitespace gates
-pass. M1.10 is complete.
+LSP/terminal checkpoint update (2026-07-13, superseded by the correction below): the first terminal
+implementation retained one immutable analysis per `DocumentState`. Its single-document lifecycle
+oracle passed, but startup negative memory correctly identified that separate dirty-document
+snapshots can mix workspace revision authority.
+
+LSP workspace correction (2026-07-13): DONE. `LspState` now owns one `ProjectAnalysis` and
+presentation map for every open document. Open/change/close rebuild one exact-logical overlay
+generation through the shared planner and an immutable successor; unchanged dirty documents are
+ledger-reused, the changed document parses exactly once, every document logical path resolves in the
+same analysis, and all open-document diagnostics refresh after workspace changes. Save with text
+follows the same successor path; save without text reruns policy over the retained generation. The
+LSP policy still disables project-boundary claims because open buffers are not a complete artifact
+manifest. Single- and two-document lifecycle oracles prove revision identity, predecessor
+immutability, exact parse/reuse counts, and zero legacy parser calls. The all-feature workspace gate
+passes after the correction. M1.10 is complete on the stronger workspace ownership contract.
 
 Negative-memory constraints: do not expose Tree-sitter nodes from `deslop-parse`; reuse M1.9 source
 compatibility calls once per downstream rule; reread files after a projection exists; select adapters

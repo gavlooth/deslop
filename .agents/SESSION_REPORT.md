@@ -7008,3 +7008,50 @@ per-change fresh LSP analysis, document-level boundary authority, save-time sour
 consumer-specific parsing/pack selection.
 
 **Signature:** Codex (GPT-5), M1.10 integration owner, terminal checkpoint, 2026-07-13.
+
+---
+
+## M1.10 corrective checkpoint — one LSP workspace overlay generation
+
+**Date/time:** 2026-07-13T23:22:06+02:00
+
+**Objective/target:** correct the terminal LSP migration after the M1.11 memory audit surfaced M1.1's
+active constraint that separate dirty-document snapshots mix workspace revision authority.
+
+**Changes:** moved retained `ProjectAnalysis` and presentation ownership from each `DocumentState` to
+`LspState`. Every open document is now an exact-logical overlay in one planner-built workspace
+snapshot. Open, change, and close build immutable successors atomically; unchanged documents are
+reused and changed documents parse once. Save without replacement text reruns analyzer policy over
+the same retained generation. Reports are applied back to every open document, and open/change/save/
+close publish diagnostics for all buffers because cross-file findings can change. URI map keys are
+stable strings rather than the interior-mutable protocol URI type. Added a two-dirty-document oracle.
+
+**Commands/checks run:** focused LSP tests; strict LSP/analyzer all-target/all-feature clippy;
+`cargo test --workspace --all-features`; `cargo build --workspace --all-targets --all-features`;
+warnings-denied all-feature workspace rustdoc; strict workspace all-target/all-feature clippy;
+formatting; and whitespace checks.
+
+**Results:** PASS. LSP passes 11/11. Adding a second dirty document produces one two-file successor
+with one newly parsed file and one reused file. Editing one of two documents produces one parser
+invocation plus one reuse in the same generation; both logical paths resolve in that analysis, both
+predecessors remain immutable, and the legacy parse counter stays zero. The all-feature workspace
+suite passes with one intentionally ignored slow probe; build, rustdoc, clippy, format, and whitespace
+also pass.
+
+**Invalidated assumptions / negative memory:** preserving old file-local LSP behavior was not enough
+to satisfy snapshot ownership. Per-document `ProjectAnalysis` values are invalid when multiple dirty
+buffers may participate in cross-file analysis. Publishing only the changed buffer is also invalid
+once analyzer reports share a workspace generation. The earlier M1.10 memory statement that
+`DocumentState` should retain its own analysis is superseded by this checkpoint.
+
+**Current recommendation/next actions:** resume M1.11 inventory against the workspace-corrected
+analysis boundary and build the single cold/repeated/incremental instrumentation matrix.
+
+**Blockers/dependencies/restart:** none. No dependency, service restart, cache clear, or migration.
+Rebuild the LSP binary; the workspace build already verified it.
+
+**Negative-memory status:** corrective negative memory recorded locally; Hindsight correction follows.
+Never restore one snapshot per dirty document or publish only one buffer after a workspace generation
+changes.
+
+**Signature:** Codex (GPT-5), M1.10 integration owner, workspace correction, 2026-07-13.
