@@ -2977,6 +2977,10 @@ mod tests {
             "metric-test"
         }
 
+        fn capability_manifest(&self) -> deslop_lang::LanguageAdapterCapabilityManifest {
+            deslop_lang::LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
+        }
+
         fn lang(&self) -> Lang {
             Lang::Generic
         }

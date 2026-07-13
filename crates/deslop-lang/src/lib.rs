@@ -2,7 +2,11 @@ use std::path::Path;
 
 use anyhow::Result;
 use deslop_core::Lang;
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize};
 use tree_sitter::Node;
+
+pub const LANGUAGE_ADAPTER_CAPABILITY_SCHEMA: &str = "deslop.language-adapter-capabilities/1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RegionSpan {
@@ -24,6 +28,388 @@ pub enum TailPositionClass {
     Return,
     FunctionBody,
     Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum SemanticTier {
+    #[serde(rename = "S0")]
+    S0,
+    #[serde(rename = "S1")]
+    S1,
+    #[serde(rename = "S2")]
+    S2,
+    #[serde(rename = "S3")]
+    S3,
+    #[serde(rename = "S4")]
+    S4,
+}
+
+impl SemanticTier {
+    pub const ALL: [Self; 5] = [Self::S0, Self::S1, Self::S2, Self::S3, Self::S4];
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AdapterCapability {
+    GrammarSelection,
+    LosslessSyntax,
+    CanonicalRoles,
+    SourceSpans,
+    Tokens,
+    Comments,
+    Regions,
+    LocalMetrics,
+    CloneNormalization,
+    SyntacticRecipes,
+    LexicalScopes,
+    NameResolution,
+    ControlFlow,
+    DefUse,
+    Effects,
+    LocalPdg,
+    ImportsExports,
+    CallGraph,
+    DependencyGraph,
+    Sdg,
+    ApiImpact,
+    CompilerTypeEvidence,
+    TargetedDynamicVerification,
+}
+
+impl AdapterCapability {
+    pub const ALL: [Self; 23] = [
+        Self::GrammarSelection,
+        Self::LosslessSyntax,
+        Self::CanonicalRoles,
+        Self::SourceSpans,
+        Self::Tokens,
+        Self::Comments,
+        Self::Regions,
+        Self::LocalMetrics,
+        Self::CloneNormalization,
+        Self::SyntacticRecipes,
+        Self::LexicalScopes,
+        Self::NameResolution,
+        Self::ControlFlow,
+        Self::DefUse,
+        Self::Effects,
+        Self::LocalPdg,
+        Self::ImportsExports,
+        Self::CallGraph,
+        Self::DependencyGraph,
+        Self::Sdg,
+        Self::ApiImpact,
+        Self::CompilerTypeEvidence,
+        Self::TargetedDynamicVerification,
+    ];
+
+    pub const fn tier(self) -> SemanticTier {
+        match self {
+            Self::GrammarSelection
+            | Self::LosslessSyntax
+            | Self::CanonicalRoles
+            | Self::SourceSpans
+            | Self::Tokens
+            | Self::Comments => SemanticTier::S0,
+            Self::Regions
+            | Self::LocalMetrics
+            | Self::CloneNormalization
+            | Self::SyntacticRecipes => SemanticTier::S1,
+            Self::LexicalScopes
+            | Self::NameResolution
+            | Self::ControlFlow
+            | Self::DefUse
+            | Self::Effects
+            | Self::LocalPdg => SemanticTier::S2,
+            Self::ImportsExports
+            | Self::CallGraph
+            | Self::DependencyGraph
+            | Self::Sdg
+            | Self::ApiImpact => SemanticTier::S3,
+            Self::CompilerTypeEvidence | Self::TargetedDynamicVerification => SemanticTier::S4,
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::GrammarSelection => "grammar-selection",
+            Self::LosslessSyntax => "lossless-syntax",
+            Self::CanonicalRoles => "canonical-roles",
+            Self::SourceSpans => "source-spans",
+            Self::Tokens => "tokens",
+            Self::Comments => "comments",
+            Self::Regions => "regions",
+            Self::LocalMetrics => "local-metrics",
+            Self::CloneNormalization => "clone-normalization",
+            Self::SyntacticRecipes => "syntactic-recipes",
+            Self::LexicalScopes => "lexical-scopes",
+            Self::NameResolution => "name-resolution",
+            Self::ControlFlow => "control-flow",
+            Self::DefUse => "def-use",
+            Self::Effects => "effects",
+            Self::LocalPdg => "local-pdg",
+            Self::ImportsExports => "imports-exports",
+            Self::CallGraph => "call-graph",
+            Self::DependencyGraph => "dependency-graph",
+            Self::Sdg => "sdg",
+            Self::ApiImpact => "api-impact",
+            Self::CompilerTypeEvidence => "compiler-type-evidence",
+            Self::TargetedDynamicVerification => "targeted-dynamic-verification",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CapabilitySupport {
+    Provided,
+    Unsupported,
+    Unknown,
+}
+
+impl CapabilitySupport {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Provided => "provided",
+            Self::Unsupported => "unsupported",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CapabilityAuthority {
+    Syntax,
+    Adapter,
+    Compiler,
+    RuntimeVerification,
+}
+
+impl CapabilityAuthority {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Syntax => "syntax",
+            Self::Adapter => "adapter",
+            Self::Compiler => "compiler",
+            Self::RuntimeVerification => "runtime-verification",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityDeclaration {
+    capability: AdapterCapability,
+    support: CapabilitySupport,
+    authority: Option<CapabilityAuthority>,
+}
+
+impl CapabilityDeclaration {
+    pub const fn provided(capability: AdapterCapability, authority: CapabilityAuthority) -> Self {
+        Self {
+            capability,
+            support: CapabilitySupport::Provided,
+            authority: Some(authority),
+        }
+    }
+
+    pub const fn unsupported(capability: AdapterCapability) -> Self {
+        Self {
+            capability,
+            support: CapabilitySupport::Unsupported,
+            authority: None,
+        }
+    }
+
+    pub const fn unknown(capability: AdapterCapability) -> Self {
+        Self {
+            capability,
+            support: CapabilitySupport::Unknown,
+            authority: None,
+        }
+    }
+
+    pub fn capability(&self) -> AdapterCapability {
+        self.capability
+    }
+
+    pub fn support(&self) -> CapabilitySupport {
+        self.support
+    }
+
+    pub fn authority(&self) -> Option<CapabilityAuthority> {
+        self.authority
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LanguageAdapterCapabilityManifest {
+    schema: String,
+    adapter_schema: String,
+    capabilities: Vec<CapabilityDeclaration>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LanguageAdapterCapabilityManifestWire {
+    schema: String,
+    adapter_schema: String,
+    capabilities: Vec<CapabilityDeclaration>,
+}
+
+impl<'de> Deserialize<'de> for LanguageAdapterCapabilityManifest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = LanguageAdapterCapabilityManifestWire::deserialize(deserializer)?;
+        let manifest = Self {
+            schema: wire.schema,
+            adapter_schema: wire.adapter_schema,
+            capabilities: wire.capabilities,
+        };
+        manifest.validate().map_err(D::Error::custom)?;
+        Ok(manifest)
+    }
+}
+
+impl LanguageAdapterCapabilityManifest {
+    pub fn new(
+        adapter_schema: impl Into<String>,
+        capabilities: Vec<CapabilityDeclaration>,
+    ) -> Result<Self, String> {
+        let manifest = Self {
+            schema: LANGUAGE_ADAPTER_CAPABILITY_SCHEMA.to_string(),
+            adapter_schema: adapter_schema.into(),
+            capabilities,
+        };
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
+    pub fn unknown(adapter_schema: impl Into<String>) -> Self {
+        Self::new(
+            adapter_schema,
+            AdapterCapability::ALL
+                .into_iter()
+                .map(CapabilityDeclaration::unknown)
+                .collect(),
+        )
+        .expect("the total unknown manifest is valid")
+    }
+
+    pub fn current_syntax(adapter_schema: impl Into<String>) -> Self {
+        Self::new(
+            adapter_schema,
+            AdapterCapability::ALL
+                .into_iter()
+                .map(|capability| match capability {
+                    AdapterCapability::GrammarSelection
+                    | AdapterCapability::LosslessSyntax
+                    | AdapterCapability::SourceSpans
+                    | AdapterCapability::Tokens => {
+                        CapabilityDeclaration::provided(capability, CapabilityAuthority::Syntax)
+                    }
+                    AdapterCapability::Comments
+                    | AdapterCapability::Regions
+                    | AdapterCapability::LocalMetrics
+                    | AdapterCapability::CloneNormalization
+                    | AdapterCapability::SyntacticRecipes => {
+                        CapabilityDeclaration::provided(capability, CapabilityAuthority::Adapter)
+                    }
+                    _ => CapabilityDeclaration::unknown(capability),
+                })
+                .collect(),
+        )
+        .expect("the current syntax manifest is valid")
+    }
+
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    pub fn adapter_schema(&self) -> &str {
+        &self.adapter_schema
+    }
+
+    pub fn capabilities(&self) -> &[CapabilityDeclaration] {
+        &self.capabilities
+    }
+
+    pub fn declaration(&self, capability: AdapterCapability) -> &CapabilityDeclaration {
+        let index = AdapterCapability::ALL
+            .iter()
+            .position(|candidate| *candidate == capability)
+            .expect("the capability catalog is exhaustive");
+        &self.capabilities[index]
+    }
+
+    pub fn with_declaration(mut self, declaration: CapabilityDeclaration) -> Result<Self, String> {
+        let index = AdapterCapability::ALL
+            .iter()
+            .position(|capability| *capability == declaration.capability)
+            .expect("the capability catalog is exhaustive");
+        self.capabilities[index] = declaration;
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub fn highest_complete_tier(&self) -> Option<SemanticTier> {
+        SemanticTier::ALL
+            .into_iter()
+            .take_while(|tier| {
+                self.capabilities.iter().all(|declaration| {
+                    declaration.capability.tier() > *tier
+                        || declaration.support == CapabilitySupport::Provided
+                })
+            })
+            .last()
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != LANGUAGE_ADAPTER_CAPABILITY_SCHEMA {
+            return Err(format!(
+                "unsupported adapter capability schema {}",
+                self.schema
+            ));
+        }
+        if self.adapter_schema.trim().is_empty() {
+            return Err("adapter schema must not be empty".to_string());
+        }
+        if self.capabilities.len() != AdapterCapability::ALL.len() {
+            return Err(format!(
+                "adapter capability manifest has {} declarations; expected {}",
+                self.capabilities.len(),
+                AdapterCapability::ALL.len()
+            ));
+        }
+        for (expected, declaration) in AdapterCapability::ALL.iter().zip(&self.capabilities) {
+            if declaration.capability != *expected {
+                return Err(format!(
+                    "adapter capability declaration order is not total at {expected:?}"
+                ));
+            }
+            match (declaration.support, declaration.authority) {
+                (CapabilitySupport::Provided, Some(_))
+                | (CapabilitySupport::Unsupported | CapabilitySupport::Unknown, None) => {}
+                (CapabilitySupport::Provided, None) => {
+                    return Err(format!(
+                        "provided capability {:?} has no authority",
+                        declaration.capability
+                    ));
+                }
+                (CapabilitySupport::Unsupported | CapabilitySupport::Unknown, Some(_)) => {
+                    return Err(format!(
+                        "unavailable capability {:?} claims authority",
+                        declaration.capability
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +471,7 @@ pub trait LangPack: Send + Sync {
     fn adapter_schema(&self) -> &'static str {
         "deslop-lang-adapter/1"
     }
+    fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest;
     fn lang(&self) -> Lang;
     fn extensions(&self) -> &'static [&'static str];
     fn grammar(&self) -> Option<tree_sitter::Language>;
@@ -255,6 +642,10 @@ impl LangPack for GenericPack {
         "generic"
     }
 
+    fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
+        LanguageAdapterCapabilityManifest::unknown(self.adapter_schema())
+    }
+
     fn lang(&self) -> Lang {
         Lang::Generic
     }
@@ -305,6 +696,10 @@ impl LangPack for GenericPack {
 impl LangPack for ClojurePack {
     fn name(&self) -> &'static str {
         "clojure"
+    }
+
+    fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
+        LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
     }
 
     fn lang(&self) -> Lang {
@@ -492,6 +887,10 @@ impl LangPack for JuliaPack {
         "julia"
     }
 
+    fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
+        LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
+    }
+
     fn lang(&self) -> Lang {
         Lang::Julia
     }
@@ -591,6 +990,10 @@ impl LangPack for JuliaPack {
 impl LangPack for PythonPack {
     fn name(&self) -> &'static str {
         "python"
+    }
+
+    fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
+        LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
     }
 
     fn lang(&self) -> Lang {
@@ -710,6 +1113,10 @@ fn python_definition_kind(node: Node<'_>) -> Option<&str> {
 impl LangPack for JavaScriptPack {
     fn name(&self) -> &'static str {
         "javascript"
+    }
+
+    fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
+        LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
     }
 
     fn lang(&self) -> Lang {
@@ -845,6 +1252,10 @@ impl LangPack for JavaScriptPack {
 impl LangPack for TypeScriptPack {
     fn name(&self) -> &'static str {
         "typescript"
+    }
+
+    fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
+        LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
     }
 
     fn lang(&self) -> Lang {
@@ -988,6 +1399,10 @@ impl LangPack for TypeScriptPack {
 impl LangPack for RustPack {
     fn name(&self) -> &'static str {
         "rust"
+    }
+
+    fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
+        LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
     }
 
     fn lang(&self) -> Lang {
@@ -1230,5 +1645,136 @@ mod tests {
             registry.pack_for_path(Path::new("sample.tsx")).lang(),
             Lang::TypeScript
         );
+    }
+
+    #[test]
+    fn capability_catalog_is_total_tiered_and_wire_pinned() {
+        assert_eq!(
+            SemanticTier::ALL.map(|tier| {
+                AdapterCapability::ALL
+                    .iter()
+                    .filter(|capability| capability.tier() == tier)
+                    .count()
+            }),
+            [6, 4, 6, 5, 2]
+        );
+        let manifest =
+            LanguageAdapterCapabilityManifest::current_syntax("deslop-lang-adapter/test-1");
+        assert_eq!(manifest.schema(), LANGUAGE_ADAPTER_CAPABILITY_SCHEMA);
+        assert_eq!(manifest.highest_complete_tier(), None);
+        assert_eq!(
+            manifest.declaration(AdapterCapability::GrammarSelection),
+            &CapabilityDeclaration::provided(
+                AdapterCapability::GrammarSelection,
+                CapabilityAuthority::Syntax
+            )
+        );
+        assert_eq!(
+            manifest.declaration(AdapterCapability::CanonicalRoles),
+            &CapabilityDeclaration::unknown(AdapterCapability::CanonicalRoles)
+        );
+        assert_eq!(
+            serde_json::to_value(&manifest).unwrap(),
+            serde_json::json!({
+                "schema": "deslop.language-adapter-capabilities/1",
+                "adapter_schema": "deslop-lang-adapter/test-1",
+                "capabilities": [
+                    {"capability":"grammar-selection","support":"provided","authority":"syntax"},
+                    {"capability":"lossless-syntax","support":"provided","authority":"syntax"},
+                    {"capability":"canonical-roles","support":"unknown","authority":null},
+                    {"capability":"source-spans","support":"provided","authority":"syntax"},
+                    {"capability":"tokens","support":"provided","authority":"syntax"},
+                    {"capability":"comments","support":"provided","authority":"adapter"},
+                    {"capability":"regions","support":"provided","authority":"adapter"},
+                    {"capability":"local-metrics","support":"provided","authority":"adapter"},
+                    {"capability":"clone-normalization","support":"provided","authority":"adapter"},
+                    {"capability":"syntactic-recipes","support":"provided","authority":"adapter"},
+                    {"capability":"lexical-scopes","support":"unknown","authority":null},
+                    {"capability":"name-resolution","support":"unknown","authority":null},
+                    {"capability":"control-flow","support":"unknown","authority":null},
+                    {"capability":"def-use","support":"unknown","authority":null},
+                    {"capability":"effects","support":"unknown","authority":null},
+                    {"capability":"local-pdg","support":"unknown","authority":null},
+                    {"capability":"imports-exports","support":"unknown","authority":null},
+                    {"capability":"call-graph","support":"unknown","authority":null},
+                    {"capability":"dependency-graph","support":"unknown","authority":null},
+                    {"capability":"sdg","support":"unknown","authority":null},
+                    {"capability":"api-impact","support":"unknown","authority":null},
+                    {"capability":"compiler-type-evidence","support":"unknown","authority":null},
+                    {"capability":"targeted-dynamic-verification","support":"unknown","authority":null}
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn complete_tier_is_derived_and_manifest_validation_rejects_gaps() {
+        let complete_through = |tier| {
+            LanguageAdapterCapabilityManifest::new(
+                "deslop-lang-adapter/tier-test",
+                AdapterCapability::ALL
+                    .into_iter()
+                    .map(|capability| {
+                        if capability.tier() <= tier {
+                            CapabilityDeclaration::provided(
+                                capability,
+                                CapabilityAuthority::Adapter,
+                            )
+                        } else {
+                            CapabilityDeclaration::unknown(capability)
+                        }
+                    })
+                    .collect(),
+            )
+            .unwrap()
+        };
+        for tier in SemanticTier::ALL {
+            assert_eq!(complete_through(tier).highest_complete_tier(), Some(tier));
+        }
+
+        let manifest = complete_through(SemanticTier::S0);
+        let mut missing = serde_json::to_value(&manifest).unwrap();
+        missing["capabilities"].as_array_mut().unwrap().pop();
+        assert!(
+            serde_json::from_value::<LanguageAdapterCapabilityManifest>(missing)
+                .unwrap_err()
+                .to_string()
+                .contains("expected 23")
+        );
+
+        let mut authority = serde_json::to_value(&manifest).unwrap();
+        authority["capabilities"][0]["authority"] = serde_json::Value::Null;
+        assert!(
+            serde_json::from_value::<LanguageAdapterCapabilityManifest>(authority)
+                .unwrap_err()
+                .to_string()
+                .contains("no authority")
+        );
+
+        let mut reordered = serde_json::to_value(&manifest).unwrap();
+        reordered["capabilities"].as_array_mut().unwrap().swap(0, 1);
+        assert!(
+            serde_json::from_value::<LanguageAdapterCapabilityManifest>(reordered)
+                .unwrap_err()
+                .to_string()
+                .contains("not total")
+        );
+    }
+
+    #[test]
+    fn every_registered_pack_has_a_valid_honest_manifest() {
+        let registry = Registry::default();
+        for pack in registry
+            .packs
+            .iter()
+            .copied()
+            .chain(std::iter::once(registry.generic))
+        {
+            let manifest = pack.capability_manifest();
+            manifest.validate().unwrap();
+            assert_eq!(manifest.adapter_schema(), pack.adapter_schema());
+            assert_eq!(manifest.capabilities().len(), 23);
+            assert_eq!(manifest.highest_complete_tier(), None);
+        }
     }
 }

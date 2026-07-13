@@ -236,7 +236,10 @@ fn tree_node_field(node: Node<'_>) -> Option<String> {
 mod tests {
     use super::*;
     use deslop_core::Lang;
-    use deslop_lang::{GENERIC_PACK, GrammarDescriptor, LangPack, RUST_PACK, Registry};
+    use deslop_lang::{
+        AdapterCapability, CapabilityAuthority, CapabilityDeclaration, GENERIC_PACK,
+        GrammarDescriptor, LangPack, RUST_PACK, Registry,
+    };
 
     use crate::{ProjectSnapshotBuilder, RepositoryId};
 
@@ -245,6 +248,8 @@ mod tests {
         schema: &'static str,
         extension: &'static str,
         branch: usize,
+        canonical_roles: bool,
+        manifest_adapter_schema: Option<&'static str>,
     }
 
     impl LangPack for SameLangPack {
@@ -254,6 +259,23 @@ mod tests {
 
         fn adapter_schema(&self) -> &'static str {
             self.schema
+        }
+
+        fn capability_manifest(&self) -> deslop_lang::LanguageAdapterCapabilityManifest {
+            let manifest = deslop_lang::LanguageAdapterCapabilityManifest::current_syntax(
+                self.manifest_adapter_schema
+                    .unwrap_or(self.adapter_schema()),
+            );
+            if self.canonical_roles {
+                manifest
+                    .with_declaration(CapabilityDeclaration::provided(
+                        AdapterCapability::CanonicalRoles,
+                        CapabilityAuthority::Adapter,
+                    ))
+                    .unwrap()
+            } else {
+                manifest
+            }
         }
 
         fn lang(&self) -> Lang {
@@ -323,18 +345,40 @@ mod tests {
         schema: "same-lang-left/7",
         extension: "left",
         branch: 7,
+        canonical_roles: false,
+        manifest_adapter_schema: None,
     };
     static RIGHT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-right",
         schema: "same-lang-right/11",
         extension: "right",
         branch: 11,
+        canonical_roles: false,
+        manifest_adapter_schema: None,
     };
     static ALTERNATE_LEFT_PACK: SameLangPack = SameLangPack {
         name: "same-lang-left-alternate",
         schema: "same-lang-left/8",
         extension: "left",
         branch: 8,
+        canonical_roles: false,
+        manifest_adapter_schema: None,
+    };
+    static CAPABILITY_LEFT_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left",
+        schema: "same-lang-left/7",
+        extension: "left",
+        branch: 7,
+        canonical_roles: true,
+        manifest_adapter_schema: None,
+    };
+    static MISMATCHED_CAPABILITY_PACK: SameLangPack = SameLangPack {
+        name: "same-lang-left",
+        schema: "same-lang-left/7",
+        extension: "left",
+        branch: 7,
+        canonical_roles: false,
+        manifest_adapter_schema: Some("wrong-adapter/1"),
     };
 
     #[test]
@@ -401,6 +445,91 @@ mod tests {
             alternate
                 .derive_projection_id("test-projection/1", b"policy", b"capability")
                 .unwrap()
+        );
+    }
+
+    #[test]
+    fn projection_identity_changes_when_only_adapter_capabilities_change() {
+        let root = tempfile::tempdir().unwrap();
+        let build = |adapter: &'static dyn LangPack| {
+            let mut registry = Registry::new(&GENERIC_PACK);
+            registry.register(adapter);
+            let snapshot = ProjectSnapshotBuilder::new(
+                root.path(),
+                RepositoryId::explicit("adapter-capability-identity-test").unwrap(),
+            )
+            .unwrap()
+            .with_registry(registry)
+            .with_overlay("sample.left", b"fn sample() {}\n".to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+            ProjectAnalysis::build(snapshot).unwrap()
+        };
+        let unknown = build(&LEFT_PACK);
+        let provided = build(&CAPABILITY_LEFT_PACK);
+        assert_eq!(unknown.id(), provided.id());
+        let unknown_identity = unknown
+            .snapshot()
+            .entry(Path::new("sample.left"))
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap();
+        let provided_identity = provided
+            .snapshot()
+            .entry(Path::new("sample.left"))
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap();
+        assert_eq!(unknown_identity.name(), provided_identity.name());
+        assert_eq!(unknown_identity.schema(), provided_identity.schema());
+        assert_eq!(
+            unknown_identity.capabilities().highest_complete_tier(),
+            None
+        );
+        assert_eq!(
+            provided_identity.capabilities().highest_complete_tier(),
+            Some(deslop_lang::SemanticTier::S1)
+        );
+        assert_ne!(
+            unknown
+                .derive_projection_id("test-projection/1", b"policy", b"capability")
+                .unwrap(),
+            provided
+                .derive_projection_id("test-projection/1", b"policy", b"capability")
+                .unwrap()
+        );
+
+        let mut legacy = serde_json::to_value(unknown_identity).unwrap();
+        legacy.as_object_mut().unwrap().remove("capabilities");
+        assert!(
+            serde_json::from_value::<crate::LanguageAdapterIdentity>(legacy)
+                .unwrap_err()
+                .to_string()
+                .contains("missing field `capabilities`")
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_capability_manifest_for_another_adapter_schema() {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::new(&GENERIC_PACK);
+        registry.register(&MISMATCHED_CAPABILITY_PACK);
+        let error = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("adapter-capability-mismatch-test").unwrap(),
+        )
+        .unwrap()
+        .with_registry(registry)
+        .with_overlay("sample.left", b"fn sample() {}\n".to_vec())
+        .unwrap()
+        .build()
+        .unwrap_err();
+        assert!(
+            error.to_string().contains(
+                "capability manifest targets wrong-adapter/1 but adapter schema is same-lang-left/7"
+            ),
+            "{error}"
         );
     }
 }

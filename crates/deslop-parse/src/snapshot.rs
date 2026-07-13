@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::{Context, Result, bail};
 use deslop_core::{AnalysisDiagnostic, AnalysisProvenance, Lang};
-use deslop_lang::{LangPack, Registry};
+use deslop_lang::{LangPack, LanguageAdapterCapabilityManifest, Registry};
 use ignore::WalkBuilder;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -221,6 +221,7 @@ impl GrammarSelection {
 pub struct LanguageAdapterIdentity {
     name: String,
     schema: String,
+    capabilities: LanguageAdapterCapabilityManifest,
 }
 
 impl LanguageAdapterIdentity {
@@ -232,8 +233,30 @@ impl LanguageAdapterIdentity {
         &self.schema
     }
 
+    pub fn capabilities(&self) -> &LanguageAdapterCapabilityManifest {
+        &self.capabilities
+    }
+
     fn identity_bytes(&self) -> Vec<u8> {
-        format!("{}\0{}", self.name, self.schema).into_bytes()
+        let mut bytes = format!(
+            "{}\0{}\0{}\0{}\0",
+            self.name,
+            self.schema,
+            self.capabilities.schema(),
+            self.capabilities.adapter_schema()
+        )
+        .into_bytes();
+        for declaration in self.capabilities.capabilities() {
+            bytes.extend_from_slice(declaration.capability().as_str().as_bytes());
+            bytes.push(0);
+            bytes.extend_from_slice(declaration.support().as_str().as_bytes());
+            bytes.push(0);
+            if let Some(authority) = declaration.authority() {
+                bytes.extend_from_slice(authority.as_str().as_bytes());
+            }
+            bytes.push(0);
+        }
+        bytes
     }
 }
 
@@ -272,6 +295,21 @@ fn resolve_grammar(
             path.display()
         );
     }
+    let capabilities = adapter.capability_manifest();
+    capabilities.validate().map_err(|error| {
+        anyhow::anyhow!(
+            "invalid capability manifest for language adapter {}: {error}",
+            adapter.name()
+        )
+    })?;
+    if capabilities.adapter_schema() != adapter.adapter_schema() {
+        bail!(
+            "language adapter {} capability manifest targets {} but adapter schema is {}",
+            adapter.name(),
+            capabilities.adapter_schema(),
+            adapter.adapter_schema()
+        );
+    }
     Ok((
         GrammarSelection::from_descriptor(descriptor),
         language,
@@ -280,6 +318,7 @@ fn resolve_grammar(
             identity: LanguageAdapterIdentity {
                 name: adapter.name().to_string(),
                 schema: adapter.adapter_schema().to_string(),
+                capabilities,
             },
         },
     ))
@@ -395,7 +434,7 @@ enum EntryAnalysis {
     Source {
         selection: GrammarSelection,
         language: tree_sitter::Language,
-        adapter: StoredLangAdapter,
+        adapter: Box<StoredLangAdapter>,
     },
     AnalysisInput,
 }
@@ -809,7 +848,7 @@ impl ProjectSnapshotBuilder {
                 EntryAnalysis::Source {
                     selection,
                     language,
-                    adapter,
+                    adapter: Box::new(adapter),
                 }
             } else {
                 EntryAnalysis::AnalysisInput
@@ -2994,6 +3033,10 @@ mod tests {
     impl LangPack for NoGrammarTestPack {
         fn name(&self) -> &'static str {
             "no-grammar-test"
+        }
+
+        fn capability_manifest(&self) -> deslop_lang::LanguageAdapterCapabilityManifest {
+            deslop_lang::LanguageAdapterCapabilityManifest::unknown(self.adapter_schema())
         }
 
         fn lang(&self) -> Lang {

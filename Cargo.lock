@@ -394,6 +394,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "deslop-core",
+ "serde",
+ "serde_json",
  "tree-sitter",
  "tree-sitter-clojure",
  "tree-sitter-javascript",

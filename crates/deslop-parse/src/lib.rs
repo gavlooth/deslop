@@ -7,7 +7,11 @@ use deslop_core::{AnalysisDiagnostic, AnalysisProvenance, Lang, Span};
 use deslop_lang::{LangPack, Registry, detect_lang};
 use tree_sitter::{Parser, Tree};
 
-pub use deslop_lang::RegionSpan;
+pub use deslop_lang::{
+    AdapterCapability, CapabilityAuthority, CapabilityDeclaration, CapabilitySupport,
+    LANGUAGE_ADAPTER_CAPABILITY_SCHEMA, LanguageAdapterCapabilityManifest, RegionSpan,
+    SemanticTier,
+};
 
 // M1.3 owns the raw arena internally; M1.4 adds owner-validated public node views.
 mod adapter;

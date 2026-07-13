@@ -1256,6 +1256,61 @@ Implement capability manifests, grammar variants, query packs, canonical roles, 
 parse-error policy, and golden fixture matrices for every supported language. Unsupported semantics become
 machine-readable unknowns. This unlocks honest cross-language algorithms at `S0`/`S1`.
 
+#### M2.1 terminal checkpoint — versioned total capability manifests
+
+Active hypothesis: a single ordered capability catalog can version S0-S4 without prematurely claiming
+tiers. Each manifest declares every catalog entry as provided, unsupported, or unknown with its evidence
+authority; the highest complete tier is derived from the declarations and therefore cannot drift from
+the granular facts.
+
+CONVERGENCE: freeze one exact JSON vector covering every S0-S4 capability, validate totality,
+uniqueness, schema/adapter-schema compatibility, and support/authority consistency, then bind that
+manifest into `LanguageAdapterIdentity` and projection invalidation. A missing/duplicate declaration,
+provided capability without authority, authority on unknown/unsupported capability, or claimed tier
+with a lower-tier gap is a terminal schema failure. One manifest/schema change must change stored
+adapter identity and derived projection identity while leaving raw snapshot/analysis identity stable,
+as ADR 0001 requires. If these pass for all registered packs and custom test packs, M2.1 is done;
+do not branch into role/query/operator implementation belonging to M2.2-M2.5.
+
+Current approach: define serde-owned `SemanticTier`, granular `AdapterCapability`, support and
+authority enums, declarations, and `LanguageAdapterCapabilityManifest` in `deslop-lang`. Make the
+catalog exhaustive and let manifests compute `highest_complete_tier`. Require `LangPack` to return a
+validated manifest. Production packs initially report only capabilities genuinely implemented by the
+current raw syntax/region hooks; canonical roles remain unknown, so no pack falsely claims complete
+S0 before M2.2. Store the exact manifest alongside name/schema in each snapshot adapter identity.
+
+Validation path: lang schema truth table and pinned JSON; parse snapshot rejection for malformed
+manifests; snapshot/projection identity invalidation when only a capability declaration changes;
+registered-pack matrix; then affected tests/clippy and workspace-wide gates.
+
+Next checkpoint: every registered adapter publishes one valid total manifest, exact wire schema and
+catalog order are pinned, current complete-tier claims are numerically honest, and capability-only
+changes invalidate derived identities.
+
+Negative-memory constraints: do not encode TSX as a new public `Lang`; grammar dialect remains stored
+grammar provenance. Do not put M2 roles into `NodeKey/1`. Do not use a default manifest that silently
+upgrades third-party/test packs. Do not equate existing syntactic graph heuristics with S2/S3 semantic
+authority, or syntax/parse success with verified change S4.
+
+Terminal result: PASS. `deslop.language-adapter-capabilities/1` freezes 23 ordered capabilities with
+exact S0-S4 counts `6/4/6/5/2`. Each declaration is provided, unsupported, or unknown; only provided
+facts carry syntax, adapter, compiler, or runtime-verification authority. Validation rejects wrong
+schema/adapter schema, missing or reordered catalog entries, and inconsistent authority. All seven
+registered packs publish valid manifests and currently derive no complete tier because canonical
+roles remain unknown. A capability-only adapter change preserves raw analysis identity and changes
+the stored adapter/projection identity. Exact JSON, tier derivation, registry, snapshot rejection,
+and identity tests plus every workspace gate pass.
+
+Next checkpoint: begin M2.2 by defining a versioned canonical-role vocabulary that supplements rather
+than replaces every raw grammar kind and field, and prove all supported adapters retain both views.
+
+Negative-memory constraints carried forward: TSX remains grammar provenance rather than `Lang`; roles
+must not enter `NodeKey/1`; syntactic graph heuristics remain below S2/S3 authority; and no pack may
+claim canonical-role support until a total fixture-backed mapping exists.
+
+Agent assignment: `/root` owns M2.1 integration and M2.2 continuation; no concurrent file edits are
+assigned.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link

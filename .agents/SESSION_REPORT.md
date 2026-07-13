@@ -7177,3 +7177,58 @@ handles, serialize `NodeId`, or split delegated proposal consumers into new pars
 
 **Signature:** Codex (GPT-5), M1 definition-of-done integration owner, terminal checkpoint,
 2026-07-14.
+
+---
+
+## M2.1 terminal checkpoint — versioned total adapter capabilities
+
+**Date/time:** 2026-07-14T00:27:24+02:00
+
+**Objective/target:** version one honest S0-S4 capability contract, make every adapter declaration
+total and machine-validatable, and bind exact capabilities into derived identity without changing raw
+source/snapshot analysis identity.
+
+**Changes:** added `deslop.language-adapter-capabilities/1`, ordered `SemanticTier` and 23-member
+`AdapterCapability` catalogs, explicit provided/unsupported/unknown support, four evidence-authority
+classes, total declarations, validation, and derived highest-complete-tier logic in `deslop-lang`.
+`LangPack` now supplies a capability manifest. Snapshot adapter identities retain the exact validated
+manifest, reject adapter-schema mismatches, and include its stable wire values in derived projection
+identity. Production syntax packs declare only their existing raw syntax, token/comment, region,
+metric, normalization, and recipe surfaces; canonical roles remain unknown. Added an exact JSON vector,
+tier truth table, malformed-manifest rejection, complete registry matrix, strict legacy identity
+rejection, and capability-only identity invalidation test. Boxed the enlarged stored adapter enum arm
+to keep the snapshot entry representation balanced under strict clippy.
+
+**Commands/checks run:** focused `deslop-lang` and parse adapter tests; affected strict clippy;
+`cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`;
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`;
+`cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. The wire catalog has 23 entries with exact S0-S4 counts `6/4/6/5/2`. All seven
+registry packs validate with all 23 declarations and honestly derive no complete tier until M2.2
+provides canonical roles. Missing and reordered declarations, a provided fact without authority,
+authority on an unavailable fact, wrong manifest schema, and mismatched adapter schema fail closed.
+A custom capability-only change from unknown to adapter-provided canonical roles advances the complete
+tier through S1 because all existing S1 facts are provided, leaves raw analysis identity unchanged,
+and changes the derived projection identity. Exact JSON and all workspace gates pass.
+
+**Invalidated assumptions / negative memory:** a pack name and adapter schema alone are insufficient
+derived identity once capabilities can change. A default manifest must not silently upgrade test or
+third-party packs. Existing syntax and region hooks do not imply canonical roles, existing syntactic
+graph output is not S2/S3 semantic authority, TSX remains stored grammar provenance rather than a new
+public language, and canonical roles must not enter the raw `NodeKey/1` identity.
+
+**Current recommendation/next actions:** implement M2.2 as a versioned canonical-role view alongside
+raw grammar kind and field data. Require fixture-backed total mappings before changing production
+packs from unknown to provided canonical-role support.
+
+**Blockers/dependencies/restart:** none. No new external dependency, service restart, cache clear, or
+migration is required. Rust consumers must rebuild for the required `LangPack::capability_manifest`
+method and expanded serialized adapter identity; workspace build already verifies internal consumers.
+
+**Negative-memory status:** recorded locally; Hindsight consolidation follows. Never infer a complete
+tier from partial syntax, omit unavailable declarations, decouple capabilities from projection
+identity, add `Lang::Tsx`, or put canonical roles into `NodeKey/1`.
+
+**Signature:** Codex (GPT-5), M2.1 integration owner, terminal checkpoint, 2026-07-14.

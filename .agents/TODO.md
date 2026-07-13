@@ -251,7 +251,15 @@ reports, benchmark records, and work orders.
 
 ## M2 — Language-adapter contract
 
-- [ ] M2.1 Version the adapter/capability schema for `S0` through `S4`.
+- [x] M2.1 Version the adapter/capability schema for `S0` through `S4`.
+  Evidence: `deslop.language-adapter-capabilities/1` pins one ordered 23-entry catalog across
+  `S0..S4` with exact tier counts `6/4/6/5/2`; every declaration is total and explicitly
+  `provided`, `unsupported`, or `unknown`, with authority required only for provided facts.
+  All seven registry packs publish valid manifests and honestly derive no complete tier until
+  canonical roles exist. Malformed totals/order/authority and adapter-schema mismatches fail closed;
+  a capability-only change preserves raw analysis identity but changes stored adapter/projection
+  identity. Exact JSON, tier truth-table, registry, snapshot, and identity tests pass together with
+  all-feature workspace tests, build, warning-denied rustdoc, strict clippy, format, and whitespace.
 - [ ] M2.2 Define canonical roles and retain raw grammar kinds/fields alongside them.
 - [ ] M2.3 Define query packs for declarations, references, scopes, control, comments, and opaque/generated code.
 - [ ] M2.4 Define operator/token classification and language-specific lexical policies.
