@@ -10,7 +10,7 @@ use deslop_core::{
     AnalysisProvenance, FileReport, Finding, Lang, RevisionGuard, SafetyClass, Severity, Span,
     baseline_fingerprint, revision_guard,
 };
-use deslop_parse::{SourceFile, analysis_provenance_or_failed};
+use deslop_parse::{ProjectAnalysis, SourceFile, SyntaxOwner};
 use serde::{Deserialize, Serialize};
 
 macro_rules! protocol_struct {
@@ -155,24 +155,34 @@ pub struct CharacterizationTest {
 }
 }
 
-fn work_order_drafts_for_report(source: &SourceFile, report: &FileReport) -> Vec<WorkOrderDraft> {
+fn work_order_drafts_for_report(
+    source: &SourceFile,
+    report: &FileReport,
+    analysis: &ProjectAnalysis,
+    logical_path: &Path,
+) -> Vec<WorkOrderDraft> {
     if source.path != report.path
         || source.lang != report.lang
         || !report.analysis.permits_rewrites()
-        || !analysis_provenance_or_failed(source).permits_rewrites()
     {
         return Vec::new();
     }
-    work_order_drafts_for_source(source, &report.findings)
+    work_order_drafts_for_source(source, &report.findings, |finding| {
+        owned_enclosing_region(analysis, logical_path, finding)
+    })
 }
 
-fn work_order_drafts_for_source(source: &SourceFile, findings: &[Finding]) -> Vec<WorkOrderDraft> {
+fn work_order_drafts_for_source(
+    source: &SourceFile,
+    findings: &[Finding],
+    mut enclosing_region: impl FnMut(&Finding) -> Option<(usize, usize)>,
+) -> Vec<WorkOrderDraft> {
     let mut grouped: BTreeMap<RewriteRegionKey, Vec<&Finding>> = BTreeMap::new();
     for finding in findings
         .iter()
         .filter(|finding| finding.safety.permits_proposal())
     {
-        let region = region_for_finding(source, finding);
+        let region = region_for_finding(source, finding, enclosing_region(finding));
         grouped
             .entry(RewriteRegionKey::new(&source.path, region))
             .or_default()
@@ -203,12 +213,22 @@ fn spans_overlap(left: Span, right: Span) -> bool {
 
 #[cfg(test)]
 fn work_orders_for_source(source: &SourceFile, findings: &[Finding]) -> Vec<WorkOrder> {
-    work_orders_from_test_drafts(work_order_drafts_for_source(source, findings))
+    work_orders_from_test_drafts(work_order_drafts_for_source(source, findings, |finding| {
+        let region =
+            source.enclosing_region_for_span(finding.span.start_line, finding.span.end_line);
+        Some((region.start_line, region.end_line))
+    }))
 }
 
 #[cfg(test)]
 fn work_orders_for_report(source: &SourceFile, report: &FileReport) -> Vec<WorkOrder> {
-    work_orders_from_test_drafts(work_order_drafts_for_report(source, report))
+    if source.path != report.path
+        || source.lang != report.lang
+        || !report.analysis.permits_rewrites()
+    {
+        return Vec::new();
+    }
+    work_orders_for_source(source, &report.findings)
 }
 
 #[cfg(test)]
@@ -426,8 +446,29 @@ fn proposal_batch_from_scan(
     }
     let mut drafts = Vec::new();
     for report in &scan.reports {
-        let source = SourceFile::read(&report.path)?;
-        drafts.extend(work_order_drafts_for_report(&source, report));
+        let text = scan.input_contents.get(&report.path).ok_or_else(|| {
+            anyhow::anyhow!(
+                "pinned proposal source unavailable for {}",
+                report.path.display()
+            )
+        })?;
+        let logical_path = scan
+            .presentation
+            .entries()
+            .find_map(|(logical, display)| (display == report.path).then_some(logical))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "proposal presentation has no logical path for {}",
+                    report.path.display()
+                )
+            })?;
+        let source = SourceFile::new_with_lang(report.path.clone(), text.clone(), report.lang);
+        drafts.extend(work_order_drafts_for_report(
+            &source,
+            report,
+            &scan.analysis,
+            logical_path,
+        ));
     }
     for draft in &mut drafts {
         draft.normalize_path(root)?;
@@ -604,11 +645,6 @@ fn proposal_sources(root: &Path, scan: &ScanContext) -> Result<Vec<ProposalSourc
     let mut sources = Vec::new();
     for (path, text) in &scan.input_contents {
         let relative = normalized_repo_path(root, path)?;
-        let current = std::fs::read_to_string(path)
-            .with_context(|| format!("failed to recheck proposal input {}", path.display()))?;
-        if current != *text {
-            bail!("proposal input changed during analysis: {}", path.display());
-        }
         let (lang, analysis) = analyses
             .get(&relative)
             .cloned()
@@ -752,16 +788,40 @@ impl RewriteRegionKey {
     }
 }
 
-fn region_for_finding(source: &SourceFile, finding: &Finding) -> Region {
-    let region_span =
-        source.enclosing_region_for_span(finding.span.start_line, finding.span.end_line);
-    let start_byte = source.line_start_byte(region_span.start_line);
-    let end_byte = source
-        .line_start_byte(region_span.end_line + 1)
-        .min(source.text.len());
+fn owned_enclosing_region(
+    analysis: &ProjectAnalysis,
+    logical_path: &Path,
+    finding: &Finding,
+) -> Option<(usize, usize)> {
+    let start = finding.span.start_byte;
+    let end = finding.span.end_byte.max(start.saturating_add(1));
+    let owner = analysis
+        .smallest_containing_named_syntax(logical_path, start..end)
+        .ok()?;
+    let SyntaxOwner::Node(node) = owner else {
+        return None;
+    };
+    analysis
+        .syntax_adapter_facts(logical_path)
+        .ok()?
+        .iter()
+        .find(|fact| fact.node() == node.id())?
+        .enclosing_region()
+        .map(|region| (region.start_line, region.end_line))
+}
+
+fn region_for_finding(
+    source: &SourceFile,
+    finding: &Finding,
+    enclosing_region: Option<(usize, usize)>,
+) -> Region {
+    let (start_line, end_line) =
+        enclosing_region.unwrap_or((finding.span.start_line, finding.span.end_line));
+    let start_byte = source.line_start_byte(start_line);
+    let end_byte = source.line_start_byte(end_line + 1).min(source.text.len());
     Region {
-        start_line: region_span.start_line,
-        end_line: region_span.end_line,
+        start_line,
+        end_line,
         start_byte,
         end_byte,
         text: source
@@ -917,6 +977,56 @@ mod tests {
             edit: None,
             fingerprint: format!("finding-{line}-{rule}"),
         }
+    }
+
+    #[test]
+    fn proposal_production_uses_retained_analysis_and_pinned_sources() {
+        let source = include_str!("lib.rs");
+        let start = source.find("pub fn propose_work_orders(").unwrap();
+        let end = source[start..]
+            .find("fn normalize_external_capabilities(")
+            .unwrap()
+            + start;
+        let production = &source[start..end];
+        for forbidden in [
+            "parse_source",
+            "analysis_provenance_or_failed",
+            "SourceFile::read",
+            "read_to_string",
+            "enclosing_region_for_span",
+            "pack_for_path",
+            "pack_for_lang",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "proposal production reintroduced {forbidden}"
+            );
+        }
+
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("sample.rs");
+        fs::write(&path, "fn sample() { todo!(); }\n").unwrap();
+        deslop_parse::reset_parse_source_invocations();
+
+        let first = propose_work_orders(
+            root.path(),
+            std::slice::from_ref(&path),
+            AnalyzerConfig::default(),
+        )
+        .unwrap();
+        let second = propose_work_orders(
+            root.path(),
+            std::slice::from_ref(&path),
+            AnalyzerConfig::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            serde_json::to_value(&first.work_orders).unwrap(),
+            serde_json::to_value(&second.work_orders).unwrap()
+        );
+        assert_eq!(first.work_orders.len(), 1);
+        assert_eq!(deslop_parse::parse_source_invocations(), 0);
     }
 
     #[test]

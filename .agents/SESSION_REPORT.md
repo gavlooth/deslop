@@ -6902,3 +6902,48 @@ service restart or migration is required; rebuild Rust consumers.
 walker/parser, borrowed syntax nodes, or display-path adapter selection.
 
 **Signature:** Codex (GPT-5), M1.10 integration owner, graph checkpoint, 2026-07-13.
+
+---
+
+## M1.10 protocol/evaluator checkpoint — pinned proposal consumers
+
+**Date/time:** 2026-07-13T23:01:57+02:00
+
+**Objective/target:** eliminate protocol's post-analysis source reread/reparse and evaluator's
+per-case compatibility scans while preserving proposal identities, corpus scoring, MCP, and slim.
+
+**Changes:** retained `Arc<ProjectAnalysis>` and `SnapshotPresentationMap` in analyzer `ScanContext`
+and `AnalyzerProjection`. Protocol now builds proposal text views from `ScanContext::input_contents`,
+inverts the retained presentation map to logical paths, finds the smallest owned containing node,
+and uses its stored `SyntaxAdapterFacts::enclosing_region`. Proposal source revision guards derive
+from pinned bytes. Removed `SourceFile::read`, post-scan `read_to_string`, provenance parsing, and
+production `enclosing_region_for_span` use. Evaluator now sends all manifest cases through one
+`scan_paths_with_config` call and scores retained reports, instead of one `scan_file` snapshot per
+case. MCP and slim continue to delegate through these migrated surfaces.
+
+**Commands/checks run:** analyzer/protocol/evaluator unit suites; proposal static guard and repeated
+zero-legacy-counter test; evaluator baseline zero-legacy test; strict analyzer/protocol/evaluator
+clippy; MCP and slim suites; CLI proposal and M0 definition-of-done tests; format and whitespace.
+
+**Results:** PASS. Analyzer 67/67, protocol 18/18, evaluator 3/3, MCP 20/20, slim 22/22, proposal
+CLI 6/6, and M0 numeric contract pass. Repeated proposals are byte-identical and record zero legacy
+parser calls. Existing grouping, nested callable, TSX, stale/tampered context, and baseline behavior
+remain unchanged.
+
+**Invalidated assumptions / negative memory:** rereading after analysis is not a stronger proposal
+contract; it mixes a second live revision with snapshot findings. The snapshot bytes are proposal
+authority, and later revision guards reject stale apply/reconstruction. `SourceFile` may remain a
+text/line helper only when constructed from pinned contents; its parse-backed region method is not
+an acceptable production consumer. Evaluator batching is required to prove one project parse ledger.
+
+**Current recommendation/next actions:** make LSP `DocumentState` retain its analysis/logical path and
+build successor analyses on document changes, then run the final M1.10 cross-consumer guard and full
+workspace gates.
+
+**Blockers/dependencies/restart:** none. `deslop-eval` adds only a test dependency on existing
+`deslop-parse` for the legacy-counter assertion. Rebuild Rust consumers; no service restart.
+
+**Negative-memory status:** recorded locally; Hindsight consolidation follows. Never reintroduce
+post-scan proposal reads, provenance reparsing, or one-snapshot-per-eval-case loops.
+
+**Signature:** Codex (GPT-5), M1.10 integration owner, protocol/evaluator checkpoint, 2026-07-13.

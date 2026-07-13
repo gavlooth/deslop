@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use deslop_analyzer::scan_file;
+use deslop_analyzer::{AnalyzerConfig, scan_paths_with_config};
 use deslop_core::{FileReport, Finding};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -266,10 +266,26 @@ fn safe_feedback_filename(value: &str) -> String {
 fn run_eval_with_manifest(corpus_root: &Path, manifest: &EvalManifest) -> Result<EvalReport> {
     let mut rule_counts = BTreeMap::<String, RuleScore>::new();
     let mut summary = empty_corpus_summary(manifest);
+    let case_paths = manifest
+        .cases
+        .iter()
+        .map(|case| corpus_root.join(&case.path))
+        .collect::<Vec<_>>();
+    let reports = scan_paths_with_config(&case_paths, AnalyzerConfig::default())?
+        .into_iter()
+        .map(|report| (report.path.clone(), report))
+        .collect::<BTreeMap<_, _>>();
 
     for case in &manifest.cases {
         record_case_summary(case, &mut summary, &mut rule_counts);
-        scan_and_score_case(corpus_root, case, &mut rule_counts)?;
+        let path = corpus_root.join(&case.path);
+        let report = reports.get(&path).ok_or_else(|| {
+            anyhow::anyhow!(
+                "analyzer returned no report for corpus case {}",
+                case.path.display()
+            )
+        })?;
+        score_case(case, report, &mut rule_counts);
     }
 
     let rules = finalized_rule_scores(rule_counts);
@@ -327,17 +343,6 @@ fn record_case_summary(
         }
         ensure_rule_score(rule_counts, &expectation.rule);
     }
-}
-
-fn scan_and_score_case(
-    corpus_root: &Path,
-    case: &CorpusCase,
-    rule_counts: &mut BTreeMap<String, RuleScore>,
-) -> Result<()> {
-    let report = scan_file(&corpus_root.join(&case.path))
-        .with_context(|| format!("failed to scan corpus case {}", case.path.display()))?;
-    score_case(case, &report, rule_counts);
-    Ok(())
 }
 
 fn score_case(
@@ -489,9 +494,15 @@ mod tests {
     #[test]
     fn eval_corpus_matches_quality_baseline() {
         let root = corpus_root();
+        deslop_parse::reset_parse_source_invocations();
         let report = run_eval(&root).expect("eval report");
         let baseline = read_baseline(&root).expect("baseline");
         assert_baseline(&report, &baseline).expect("baseline ratchet");
+        assert_eq!(deslop_parse::parse_source_invocations(), 0);
+        let production = include_str!("lib.rs").split("#[cfg(test)]").next().unwrap();
+        assert!(!production.contains("scan_file("));
+        assert!(!production.contains("parse_source"));
+        assert!(!production.contains("SourceFile::read"));
     }
 
     #[test]

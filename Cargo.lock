@@ -345,6 +345,7 @@ dependencies = [
  "anyhow",
  "deslop-analyzer",
  "deslop-core",
+ "deslop-parse",
  "serde",
  "serde_json",
  "tempfile",

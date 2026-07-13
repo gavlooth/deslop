@@ -158,6 +158,8 @@ pub struct ExternalCapability {
 /// Full scan result needed to reproduce proposal membership without hidden defaults.
 #[derive(Debug, Clone)]
 pub struct ScanContext {
+    pub analysis: Arc<ProjectAnalysis>,
+    pub presentation: SnapshotPresentationMap,
     pub reports: Vec<FileReport>,
     pub input_contents: BTreeMap<PathBuf, String>,
     pub external_capabilities: Vec<ExternalCapability>,
@@ -173,6 +175,7 @@ const PREPARED_ANALYZER_CAPABILITIES: &[u8] =
 pub struct AnalyzerProjection {
     pub id: ProjectionId,
     pub analysis: Arc<ProjectAnalysis>,
+    pub presentation: SnapshotPresentationMap,
     pub config: AnalyzerConfigSnapshot,
     pub reports: Vec<FileReport>,
     pub input_contents: BTreeMap<PathBuf, String>,
@@ -965,9 +968,18 @@ fn scan_owned_analysis(
             .cmp(&right.path)
             .then(left.analyzer.cmp(&right.analyzer))
     });
+    let projection_presentation =
+        presentation
+            .cloned()
+            .unwrap_or(SnapshotPresentationMap::from_entries(
+                analyzer_files
+                    .iter()
+                    .map(|file| (file.file.key().path.clone(), file.file.key().path.clone())),
+            )?);
     Ok(AnalyzerProjection {
         id,
         analysis,
+        presentation: projection_presentation,
         config: config_snapshot,
         reports,
         input_contents,
@@ -1061,6 +1073,8 @@ pub fn scan_paths_with_context(paths: &[PathBuf], config: AnalyzerConfig) -> Res
     )?;
     let projection = scan_prepared_analysis(prepared, config)?;
     Ok(ScanContext {
+        analysis: projection.analysis,
+        presentation: projection.presentation,
         reports: projection.reports,
         input_contents: projection.input_contents,
         external_capabilities: projection.external_capabilities,

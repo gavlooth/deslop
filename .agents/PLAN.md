@@ -1116,6 +1116,19 @@ cold `1/1/1/0` ledgers and records zero legacy parser calls. The active next che
 proposal grouping from analyzer-retained analysis/presentation/pinned text, without source rereads or
 `SourceFile::enclosing_region_for_span` reparses.
 
+Protocol/evaluator checkpoint update (2026-07-13): DONE. Analyzer `ScanContext` now retains its
+`Arc<ProjectAnalysis>` and presentation map. Protocol proposal grouping constructs text helpers only
+from pinned input contents, resolves enclosing rewrite regions through owned containment plus stored
+`SyntaxAdapterFacts`, and derives proposal revision guards from pinned bytes; it performs no
+post-scan source reread, provenance parse, or enclosing-region reparse. A static production guard and
+repeat-proposal test record zero legacy parser calls. Evaluator batches every manifest case into one
+analyzer snapshot rather than invoking a file compatibility scan per case; the quality baseline and
+zero-legacy counter pass. Protocol 18/18, analyzer 67/67, evaluator 3/3, MCP 20/20, slim 22/22,
+proposal CLI, M0 numeric, strict clippy, format, and whitespace checks pass. The active next checkpoint
+is LSP document-state ownership and incremental successor analysis; MCP and slim already delegate to
+the migrated protocol/analyzer surfaces, while their remaining reads are explicit config, JSONL,
+apply, or stale-state recheck I/O rather than analysis inputs.
+
 Negative-memory constraints: do not expose Tree-sitter nodes from `deslop-parse`; reuse M1.9 source
 compatibility calls once per downstream rule; reread files after a projection exists; select adapters
 from display paths; let proposal grouping reparse merely to find enclosing regions; or call live
