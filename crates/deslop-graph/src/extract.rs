@@ -1,15 +1,12 @@
 use std::collections::BTreeSet;
 
-use deslop_core::{Lang, Span};
-use deslop_parse::SourceFile;
-use tree_sitter::Node;
-
-use crate::builder::GraphBuilder;
+use crate::builder::{GraphBuilder, GraphFile, OwnedNode as Node};
 use crate::types::{GraphEdgeKind, GraphNodeKind, Owner, SymbolDef};
+use deslop_core::{Lang, Span};
 
 pub(crate) fn extract_source(
     builder: &mut GraphBuilder,
-    source: &SourceFile,
+    source: &GraphFile<'_>,
     root: Node<'_>,
     file_id: String,
 ) {
@@ -28,7 +25,7 @@ pub(crate) fn extract_source(
 
 struct SourceExtractor<'a> {
     builder: &'a mut GraphBuilder,
-    source: &'a SourceFile,
+    source: &'a GraphFile<'a>,
     owners: Vec<Owner>,
 }
 
@@ -92,7 +89,7 @@ impl SourceExtractor<'_> {
     }
 }
 
-fn opaque_binding_names(lang: Lang, node: Node<'_>, source: &SourceFile) -> Vec<String> {
+fn opaque_binding_names(lang: Lang, node: Node<'_>, source: &GraphFile<'_>) -> Vec<String> {
     if is_import_binding_node(lang, node, source) {
         return import_binding_names(lang, node_text(source, node));
     }
@@ -163,7 +160,7 @@ fn opaque_binding_names(lang: Lang, node: Node<'_>, source: &SourceFile) -> Vec<
     Vec::new()
 }
 
-fn clojure_binding_names(node: Node<'_>, source: &SourceFile) -> Option<Vec<String>> {
+fn clojure_binding_names(node: Node<'_>, source: &GraphFile<'_>) -> Option<Vec<String>> {
     let parent = node.parent()?;
     if parent.kind() != "list_lit" {
         return None;
@@ -186,7 +183,7 @@ fn clojure_binding_names(node: Node<'_>, source: &SourceFile) -> Option<Vec<Stri
     )
 }
 
-fn is_import_binding_node(lang: Lang, node: Node<'_>, source: &SourceFile) -> bool {
+fn is_import_binding_node(lang: Lang, node: Node<'_>, source: &GraphFile<'_>) -> bool {
     is_import_node(lang, node.kind())
         && (lang != Lang::Clojure || import_label(lang, node, source).is_some())
 }
@@ -210,13 +207,13 @@ fn is_parameter_container(lang: Lang, kind: &str) -> bool {
     }
 }
 
-fn pattern_names(node: Node<'_>, source: &SourceFile) -> Vec<String> {
+fn pattern_names(node: Node<'_>, source: &GraphFile<'_>) -> Vec<String> {
     let mut names = BTreeSet::new();
     collect_pattern_names(node, source, &mut names);
     names.into_iter().collect()
 }
 
-fn collect_pattern_names(node: Node<'_>, source: &SourceFile, names: &mut BTreeSet<String>) {
+fn collect_pattern_names(node: Node<'_>, source: &GraphFile<'_>, names: &mut BTreeSet<String>) {
     if matches!(node.kind(), "identifier" | "identifier_lit" | "symbol") {
         let name = node_text(source, node).trim().to_string();
         if !name.is_empty() && name != "_" {
@@ -323,7 +320,12 @@ fn simple_path_component(token: &str) -> String {
         .to_string()
 }
 
-fn symbol_def(lang: Lang, node: Node<'_>, source: &SourceFile, owner: &Owner) -> Option<SymbolDef> {
+fn symbol_def(
+    lang: Lang,
+    node: Node<'_>,
+    source: &GraphFile<'_>,
+    owner: &Owner,
+) -> Option<SymbolDef> {
     match lang {
         Lang::Rust => rust_symbol_def(node, source, owner),
         Lang::Python => python_symbol_def(node, source, owner),
@@ -334,7 +336,7 @@ fn symbol_def(lang: Lang, node: Node<'_>, source: &SourceFile, owner: &Owner) ->
     }
 }
 
-fn rust_symbol_def(node: Node<'_>, source: &SourceFile, owner: &Owner) -> Option<SymbolDef> {
+fn rust_symbol_def(node: Node<'_>, source: &GraphFile<'_>, owner: &Owner) -> Option<SymbolDef> {
     let kind = match node.kind() {
         "function_item" if matches!(owner.kind, GraphNodeKind::Struct | GraphNodeKind::Trait) => {
             GraphNodeKind::Method
@@ -360,7 +362,7 @@ fn rust_symbol_def(node: Node<'_>, source: &SourceFile, owner: &Owner) -> Option
     Some(SymbolDef { kind, name })
 }
 
-fn python_symbol_def(node: Node<'_>, source: &SourceFile, owner: &Owner) -> Option<SymbolDef> {
+fn python_symbol_def(node: Node<'_>, source: &GraphFile<'_>, owner: &Owner) -> Option<SymbolDef> {
     let kind = match node.kind() {
         "function_definition" if owner.kind == GraphNodeKind::Class => GraphNodeKind::Method,
         "function_definition" => GraphNodeKind::Function,
@@ -373,7 +375,7 @@ fn python_symbol_def(node: Node<'_>, source: &SourceFile, owner: &Owner) -> Opti
     })
 }
 
-fn js_symbol_def(node: Node<'_>, source: &SourceFile, owner: &Owner) -> Option<SymbolDef> {
+fn js_symbol_def(node: Node<'_>, source: &GraphFile<'_>, owner: &Owner) -> Option<SymbolDef> {
     let kind = match node.kind() {
         "function_declaration" => GraphNodeKind::Function,
         "method_definition" => GraphNodeKind::Method,
@@ -392,7 +394,7 @@ fn js_symbol_def(node: Node<'_>, source: &SourceFile, owner: &Owner) -> Option<S
     })
 }
 
-fn variable_function_def(node: Node<'_>, source: &SourceFile) -> Option<SymbolDef> {
+fn variable_function_def(node: Node<'_>, source: &GraphFile<'_>) -> Option<SymbolDef> {
     let text = node_text(source, node);
     if !(text.contains("=>") || text.contains("function")) {
         return None;
@@ -403,7 +405,7 @@ fn variable_function_def(node: Node<'_>, source: &SourceFile) -> Option<SymbolDe
     })
 }
 
-fn julia_symbol_def(node: Node<'_>, source: &SourceFile) -> Option<SymbolDef> {
+fn julia_symbol_def(node: Node<'_>, source: &GraphFile<'_>) -> Option<SymbolDef> {
     let kind = match node.kind() {
         "function_definition" => GraphNodeKind::Function,
         "struct_definition" => GraphNodeKind::Struct,
@@ -415,7 +417,7 @@ fn julia_symbol_def(node: Node<'_>, source: &SourceFile) -> Option<SymbolDef> {
     Some(SymbolDef { kind, name })
 }
 
-fn clojure_symbol_def(node: Node<'_>, source: &SourceFile) -> Option<SymbolDef> {
+fn clojure_symbol_def(node: Node<'_>, source: &GraphFile<'_>) -> Option<SymbolDef> {
     if node.kind() != "list_lit" {
         return None;
     }
@@ -433,7 +435,7 @@ fn clojure_symbol_def(node: Node<'_>, source: &SourceFile) -> Option<SymbolDef> 
     Some(SymbolDef { kind, name })
 }
 
-fn import_label(lang: Lang, node: Node<'_>, source: &SourceFile) -> Option<String> {
+fn import_label(lang: Lang, node: Node<'_>, source: &GraphFile<'_>) -> Option<String> {
     match lang {
         Lang::Rust if matches!(node.kind(), "use_declaration" | "extern_crate_declaration") => {
             Some(strip_keywords(
@@ -472,7 +474,7 @@ fn import_label(lang: Lang, node: Node<'_>, source: &SourceFile) -> Option<Strin
     }
 }
 
-fn call_label(lang: Lang, node: Node<'_>, source: &SourceFile) -> Option<String> {
+fn call_label(lang: Lang, node: Node<'_>, source: &GraphFile<'_>) -> Option<String> {
     match lang {
         Lang::Rust if node.kind() == "call_expression" => call_function_label(node, source),
         Lang::Rust if node.kind() == "macro_invocation" => {
@@ -492,7 +494,7 @@ fn call_label(lang: Lang, node: Node<'_>, source: &SourceFile) -> Option<String>
     }
 }
 
-fn inheritance_labels(lang: Lang, node: Node<'_>, source: &SourceFile) -> Vec<String> {
+fn inheritance_labels(lang: Lang, node: Node<'_>, source: &GraphFile<'_>) -> Vec<String> {
     match lang {
         Lang::Python if node.kind() == "class_definition" => node
             .child_by_field_name("superclasses")
@@ -517,13 +519,13 @@ fn inheritance_labels(lang: Lang, node: Node<'_>, source: &SourceFile) -> Vec<St
     }
 }
 
-fn call_function_label(node: Node<'_>, source: &SourceFile) -> Option<String> {
+fn call_function_label(node: Node<'_>, source: &GraphFile<'_>) -> Option<String> {
     node.child_by_field_name("function")
         .map(|child| compact_label(node_text(source, child)))
         .filter(|label| !label.is_empty())
 }
 
-fn clojure_call_label(node: Node<'_>, source: &SourceFile) -> Option<String> {
+fn clojure_call_label(node: Node<'_>, source: &GraphFile<'_>) -> Option<String> {
     let tokens = clojure_tokens(node_text(source, node));
     let head = tokens.first()?.as_str();
     if clojure_non_call_heads().contains(head) {
@@ -571,13 +573,13 @@ fn clojure_non_call_heads() -> &'static BTreeSet<&'static str> {
     })
 }
 
-fn name_field(node: Node<'_>, source: &SourceFile) -> Option<String> {
+fn name_field(node: Node<'_>, source: &GraphFile<'_>) -> Option<String> {
     node.child_by_field_name("name")
         .map(|child| compact_label(node_text(source, child)))
         .filter(|name| !name.is_empty())
 }
 
-fn first_identifier(node: Node<'_>, source: &SourceFile) -> Option<String> {
+fn first_identifier(node: Node<'_>, source: &GraphFile<'_>) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
         if identifier_kind(child.kind()) {
@@ -593,7 +595,7 @@ fn first_identifier(node: Node<'_>, source: &SourceFile) -> Option<String> {
     None
 }
 
-fn first_string_literal(node: Node<'_>, source: &SourceFile) -> Option<String> {
+fn first_string_literal(node: Node<'_>, source: &GraphFile<'_>) -> Option<String> {
     const QUOTE_BYTE_WIDTH: usize = 1;
 
     let text = node_text(source, node);
@@ -627,11 +629,11 @@ fn language_keyword(value: &str) -> bool {
     )
 }
 
-fn node_text<'a>(source: &'a SourceFile, node: Node<'_>) -> &'a str {
+fn node_text<'a>(source: &'a GraphFile<'_>, node: Node<'_>) -> &'a str {
     source.text.get(node.byte_range()).unwrap_or("")
 }
 
-pub(crate) fn span_for_node(source: &SourceFile, node: Node<'_>) -> Span {
+pub(crate) fn span_for_node(source: &GraphFile<'_>, node: Node<'_>) -> Span {
     let start = node.start_byte();
     let end = node.end_byte();
     let end_line_byte = end.saturating_sub(1).max(start);
@@ -643,7 +645,7 @@ pub(crate) fn span_for_node(source: &SourceFile, node: Node<'_>) -> Span {
     )
 }
 
-pub(crate) fn signature_for_node(source: &SourceFile, node: Node<'_>) -> Option<String> {
+pub(crate) fn signature_for_node(source: &GraphFile<'_>, node: Node<'_>) -> Option<String> {
     const SIGNATURE_MAX_CHARS: usize = 160;
     const ELLIPSIS_CHARS: usize = 3;
 

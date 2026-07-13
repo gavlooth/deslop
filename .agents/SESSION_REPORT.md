@@ -6857,3 +6857,48 @@ consumer parsing, live external findings, grammarless generic-grammar fallback, 
 path rebasing.
 
 **Signature:** Codex (GPT-5), M1.9 integration owner, terminal checkpoint, 2026-07-13.
+
+---
+
+## M1.10 graph checkpoint — owned downstream projection
+
+**Date/time:** 2026-07-13T22:55:32+02:00
+
+**Objective/target:** migrate graph construction from per-file reads, pack reselection, legacy parses,
+and borrowed Tree-sitter nodes to the shared immutable project analysis with exact output parity.
+
+**Changes:** added `GraphProjection` and `graph_analysis(Arc<ProjectAnalysis>, GraphConfig)`, binding
+config and presentation to a derived projection ID. Rebuilt `graph_paths` as a shared-planner adapter.
+Introduced graph-local `GraphFile`/`OwnedNode` facades over pinned text, `ParsedFile`, `NodeId`, and
+`NodeView`; all extraction, symbol, binding, import, inheritance, and call traversal now uses them.
+Exact stored grammar language drives module identity. Removed graph's direct `deslop-lang`, `ignore`,
+and `tree-sitter` dependencies. Tightened `NodeView::raw_kind`'s returned lifetime to the retained
+analysis, allowing downstream views to borrow stored kind strings without exposing parser nodes.
+
+**Commands/checks run:** `cargo test -p deslop-graph`; graph owned-ledger/static-guard tests;
+`cargo clippy -p deslop-graph -p deslop-parse --all-targets -- -D warnings`;
+`cargo test -p deslop-cli --test graph_resolution`; and
+`cargo test -p deslop-cli --test m0_definition_of_done`.
+
+**Results:** PASS. Graph passes 24/24 and strict clippy. The CLI ambiguity/import probes and exact M0
+21-file/74-symbol/197-edge/123-syntactic vector pass. Repeated graph projections over two files keep
+identical IDs/JSON, unchanged cold ledgers of `1/1/1/0` per revision, and zero legacy parser calls.
+Static production guards reject legacy parse/read/reselection and `tree_sitter::Node`.
+
+**Invalidated assumptions / negative memory:** retaining a graph-specific borrowed-node extractor is
+not harmless merely because the output is owned; it reparses and loses the snapshot's exact grammar
+authority. Rediscovering supported files with graph's own walker also creates a second scope/read
+policy. Graph raw-kind logic remains a future M2 adapter concern, but its execution authority now
+comes only from the stored analysis.
+
+**Current recommendation/next actions:** retain analysis and presentation in analyzer `ScanContext`,
+then make protocol proposal grouping use pinned text and owned enclosing-region facts rather than
+`SourceFile::read`, `analysis_provenance_or_failed`, or `enclosing_region_for_span`.
+
+**Blockers/dependencies/restart:** none. Cargo lock removed three now-unused graph dependencies. No
+service restart or migration is required; rebuild Rust consumers.
+
+**Negative-memory status:** recorded locally; Hindsight consolidation follows. Never restore a graph
+walker/parser, borrowed syntax nodes, or display-path adapter selection.
+
+**Signature:** Codex (GPT-5), M1.10 integration owner, graph checkpoint, 2026-07-13.

@@ -2043,7 +2043,7 @@ impl ProjectAnalysis {
 }
 
 impl<'analysis> NodeView<'analysis> {
-    fn raw(&self) -> &crate::arena::SyntaxNode {
+    fn raw(&self) -> &'analysis crate::arena::SyntaxNode {
         self.arena
             .node(self.local)
             .expect("node view local index belongs to its arena")
@@ -2088,7 +2088,7 @@ impl<'analysis> NodeView<'analysis> {
         self.file.grammar()
     }
 
-    pub fn raw_kind(&self) -> &str {
+    pub fn raw_kind(&self) -> &'analysis str {
         self.raw().raw_kind()
     }
 

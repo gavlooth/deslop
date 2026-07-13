@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::ops::Range;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use deslop_core::{AnalysisProvenance, FileAnalysis, Lang, Span, file_analyses_status};
-use deslop_lang::Registry;
-use deslop_parse::{SourceFile, parse_source};
+use deslop_core::{FileAnalysis, Lang, Span, file_analyses_status};
+use deslop_parse::{NodeId, ParsedFile, ProjectAnalysis};
 
 use crate::extract::{extract_source, signature_for_node, span_for_node};
 use crate::ids::{external_id, file_id, import_keys, module_keys, simple_name, symbol_id};
@@ -12,6 +12,133 @@ use crate::types::{
     DependencyGraph, GraphConfidence, GraphConfig, GraphEdge, GraphEdgeKind, GraphNode,
     GraphNodeKind, GraphNotice, GraphSummary, Owner, PendingEdge, SCHEMA, SymbolDef,
 };
+
+pub(crate) struct GraphFile<'analysis> {
+    pub(crate) analysis: &'analysis ProjectAnalysis,
+    pub(crate) file: &'analysis ParsedFile,
+    pub(crate) path: PathBuf,
+    pub(crate) lang: Lang,
+    pub(crate) text: &'analysis str,
+    line_starts: Vec<usize>,
+}
+
+impl<'analysis> GraphFile<'analysis> {
+    pub(crate) fn new(
+        analysis: &'analysis ProjectAnalysis,
+        file: &'analysis ParsedFile,
+        path: PathBuf,
+    ) -> Self {
+        let text = file.text().unwrap_or("");
+        let mut line_starts = vec![0];
+        line_starts.extend(
+            text.bytes()
+                .enumerate()
+                .filter_map(|(index, byte)| (byte == b'\n').then_some(index + 1)),
+        );
+        Self {
+            analysis,
+            file,
+            path,
+            lang: file.grammar().lang(),
+            text,
+            line_starts,
+        }
+    }
+
+    pub(crate) fn root(&self) -> Option<OwnedNode<'analysis>> {
+        self.analysis
+            .file_node_ids(&self.file.key().path)
+            .and_then(|mut nodes| nodes.next())
+            .map(|id| OwnedNode {
+                analysis: self.analysis,
+                id,
+            })
+    }
+
+    pub(crate) fn lines(&self) -> Vec<&str> {
+        self.text.lines().collect()
+    }
+
+    pub(crate) fn line_for_byte(&self, byte: usize) -> usize {
+        self.line_starts
+            .partition_point(|start| *start <= byte)
+            .max(1)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct OwnedNode<'analysis> {
+    analysis: &'analysis ProjectAnalysis,
+    id: NodeId,
+}
+
+pub(crate) struct OwnedCursor;
+
+impl<'analysis> OwnedNode<'analysis> {
+    fn view(self) -> deslop_parse::NodeView<'analysis> {
+        self.analysis
+            .node(self.id)
+            .expect("graph node belongs to its analysis")
+    }
+
+    pub(crate) fn kind(self) -> &'analysis str {
+        self.view().raw_kind()
+    }
+
+    pub(crate) fn byte_range(self) -> Range<usize> {
+        self.view().span().byte_range()
+    }
+
+    pub(crate) fn start_byte(self) -> usize {
+        self.view().span().start_byte()
+    }
+
+    pub(crate) fn end_byte(self) -> usize {
+        self.view().span().end_byte()
+    }
+
+    pub(crate) fn parent(self) -> Option<Self> {
+        self.view().parent().map(|id| Self {
+            analysis: self.analysis,
+            id,
+        })
+    }
+
+    pub(crate) fn child_by_field_name(self, field: &str) -> Option<Self> {
+        self.view().children().into_iter().find_map(|id| {
+            self.analysis
+                .node(id)
+                .is_ok_and(|child| child.field() == Some(field))
+                .then_some(Self {
+                    analysis: self.analysis,
+                    id,
+                })
+        })
+    }
+
+    pub(crate) fn named_child(self, index: usize) -> Option<Self> {
+        self.named_children(&mut OwnedCursor).nth(index)
+    }
+
+    pub(crate) fn walk(self) -> OwnedCursor {
+        OwnedCursor
+    }
+
+    pub(crate) fn named_children(
+        self,
+        _cursor: &mut OwnedCursor,
+    ) -> impl Iterator<Item = Self> + 'analysis {
+        self.view().children().into_iter().filter_map(move |id| {
+            self.analysis
+                .node(id)
+                .is_ok_and(|child| child.is_named())
+                .then_some(Self {
+                    analysis: self.analysis,
+                    id,
+                })
+        })
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct GraphBuilder {
@@ -62,21 +189,15 @@ impl GraphBuilder {
         self.config.include_calls
     }
 
-    pub(crate) fn index_file_path(&mut self, path: &Path, registry: &Registry) {
-        let pack = registry.pack_for_path(path);
+    pub(crate) fn index_file_path(&mut self, path: &Path, lang: Lang) {
         let file_id = file_id(path);
-        for key in module_keys(path, pack.lang()) {
+        for key in module_keys(path, lang) {
             push_candidate(&mut self.files_by_module_key, key, &file_id);
         }
     }
 
-    pub(crate) fn add_source(
-        &mut self,
-        source: &SourceFile,
-        analysis: AnalysisProvenance,
-        registry: &Registry,
-    ) -> Result<()> {
-        let pack = registry.pack_for_lang(source.lang);
+    pub(crate) fn add_source(&mut self, source: &GraphFile<'_>) -> Result<()> {
+        let analysis = source.file.provenance().clone();
         let file_id = self.add_file_node(source);
         self.analyses.push(FileAnalysis {
             path: source.path.clone(),
@@ -92,27 +213,20 @@ impl GraphBuilder {
             }
             return Ok(());
         }
-        let Some(tree) = parse_source(source)? else {
+        let Some(root) = source.root() else {
             self.notices.push(GraphNotice {
                 path: source.path.clone(),
-                message: format!("{} has no tree-sitter grammar", pack.name()),
-            });
-            return Ok(());
-        };
-        if tree.root_node().has_error() {
-            self.notices.push(GraphNotice {
-                path: source.path.clone(),
-                message: "tree-sitter reported ERROR nodes; graph extraction skipped for this file"
+                message: "owned syntax root unavailable; graph extraction skipped for this file"
                     .to_string(),
             });
             return Ok(());
-        }
+        };
 
-        extract_source(self, source, tree.root_node(), file_id);
+        extract_source(self, source, root, file_id);
         Ok(())
     }
 
-    fn add_file_node(&mut self, source: &SourceFile) -> String {
+    fn add_file_node(&mut self, source: &GraphFile<'_>) -> String {
         let id = file_id(&source.path);
         self.nodes.entry(id.clone()).or_insert_with(|| GraphNode {
             id: id.clone(),
@@ -134,9 +248,9 @@ impl GraphBuilder {
 
     pub(crate) fn add_symbol_node(
         &mut self,
-        source: &SourceFile,
+        source: &GraphFile<'_>,
         owner: &Owner,
-        node: tree_sitter::Node<'_>,
+        node: OwnedNode<'_>,
         def: SymbolDef,
     ) -> Owner {
         let span = span_for_node(source, node);
@@ -155,7 +269,7 @@ impl GraphBuilder {
 
     fn insert_symbol_node(
         &mut self,
-        source: &SourceFile,
+        source: &GraphFile<'_>,
         id: &str,
         def: &SymbolDef,
         qualified_name: &str,
@@ -178,7 +292,7 @@ impl GraphBuilder {
 
     fn index_symbol(
         &mut self,
-        source: &SourceFile,
+        source: &GraphFile<'_>,
         owner: &Owner,
         id: &str,
         name: &str,
@@ -226,8 +340,8 @@ impl GraphBuilder {
         &mut self,
         kind: GraphEdgeKind,
         from: &Owner,
-        source: &SourceFile,
-        node: tree_sitter::Node<'_>,
+        source: &GraphFile<'_>,
+        node: OwnedNode<'_>,
         label: String,
     ) {
         let label = compact_label(&label);

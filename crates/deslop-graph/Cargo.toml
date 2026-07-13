@@ -8,12 +8,9 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 deslop-core.workspace = true
-deslop-lang.workspace = true
 deslop-parse.workspace = true
-ignore.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tree-sitter.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

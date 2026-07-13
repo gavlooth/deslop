@@ -1075,6 +1075,55 @@ Agent assignments: `/root` integration and final verification; `core_surface_aud
 `contract_test_audit` metrics numerical contracts; `integration_surface_audit` orchestration and
 compatibility boundary. All agent tracks are read-only.
 
+#### Active M1.10 execution plan — downstream shared-analysis consumers
+
+Active hypothesis: one planner-owned `ProjectAnalysis` plus explicit presentation/source maps can
+serve graph extraction, proposal grouping, evaluation, LSP document analysis, MCP dispatch, and slim
+reconstruction without any downstream parse, reread, or language-pack reselection.
+
+CONVERGENCE: the terminal decision is whether every named consumer can operate from a retained
+analysis and pinned bytes while preserving its current numerical/JSON/LSP contracts. One static
+consumer guard plus a workspace parse-ledger matrix collapses the decision tree: pass means all named
+surfaces are migrated; any remaining parse/read/reselection identifies the exact owning adapter that
+must be redesigned, never a fallback to serial compatibility calls.
+
+Current approach: migrate graph first because it still owns borrowed Tree nodes and path/`Lang` pack
+selection. Add an owned graph projection over `Arc<ProjectAnalysis>`, port extraction to
+`NodeId`/`NodeView`, and make `graph_paths` a shared-planner adapter. Then retain analysis and
+presentation in `ScanContext` so protocol proposal grouping uses pinned text plus owned enclosing
+regions instead of rereading and reparsing. Evaluator and MCP delegate through those projections.
+LSP document state builds overlay successors and analyzes the retained revision; slim reconstruction
+uses proposal-pinned sources and contexts, with file reads limited to explicit load/apply/recheck I/O.
+
+Validation path: preserve the 21-file/74-symbol/197-edge/123-syntactic graph vector and all ambiguity
+probes; preserve proposal IDs/targets and stale-input rejection; prove LSP UTF-16 diagnostics and
+incremental edits over owned successor analyses; prove repeated graph/analyzer/proposal consumers do
+not change parse ledgers; add production guards for `parse_source`, `SourceFile::read`, live source
+`read_to_string`, and path/`Lang` pack selection in the migrated surfaces; finish with full workspace
+tests, strict clippy, build, rustdoc, format, and whitespace gates.
+
+Next checkpoint: graph has an owned projection and one-snapshot path adapter with exact numerical
+parity, zero legacy parser calls, and no borrowed Tree-sitter nodes in graph production.
+
+Graph checkpoint update (2026-07-13): DONE. `GraphProjection` binds config and presentation to the
+owned `ProjectAnalysis`; `graph_paths` is now a one-planner/one-analysis compatibility adapter.
+Extraction traverses a graph-local facade over `NodeId`/`NodeView`, exact stored grammar language,
+and pinned text. Graph production no longer depends on `deslop-lang`, `ignore`, or `tree-sitter`, and
+a static guard bans borrowed nodes, legacy parse/read, and path/`Lang` pack selection. The 24 graph
+tests, strict graph/parse clippy, CLI graph-resolution probes, and the exact
+21-file/74-symbol/197-edge/123-syntactic M0 vector pass. A repeated two-file owned projection retains
+cold `1/1/1/0` ledgers and records zero legacy parser calls. The active next checkpoint is protocol
+proposal grouping from analyzer-retained analysis/presentation/pinned text, without source rereads or
+`SourceFile::enclosing_region_for_span` reparses.
+
+Negative-memory constraints: do not expose Tree-sitter nodes from `deslop-parse`; reuse M1.9 source
+compatibility calls once per downstream rule; reread files after a projection exists; select adapters
+from display paths; let proposal grouping reparse merely to find enclosing regions; or call live
+external tools without a prepared revision-isolated plan.
+
+Agent assignment: `/root` remains integration, implementation, and verification owner for this
+checkpoint; prior M1.9 audit agents are complete and no files are concurrently edited.
+
 ### M2 — Language-adapter contract
 
 Implement capability manifests, grammar variants, query packs, canonical roles, operator/token policy,

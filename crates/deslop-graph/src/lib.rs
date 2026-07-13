@@ -1,10 +1,11 @@
-use std::collections::BTreeMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use deslop_lang::Registry;
-use deslop_parse::{SourceFile, analysis_provenance_or_failed};
-use ignore::WalkBuilder;
+use deslop_parse::{
+    DiscoveryPolicy, ProjectAnalysis, ProjectSnapshotPlanner, ProjectSnapshotRequest, ProjectionId,
+    RepositorySpec, RootSpec, ScopeSpec, SnapshotPresentationMap,
+};
 
 mod builder;
 mod extract;
@@ -18,104 +19,90 @@ pub use types::{
     GraphNodeKind, GraphNotice, GraphSummary,
 };
 
+const GRAPH_PROJECTION_SCHEMA: &str = "deslop.graph.projection/1";
+const GRAPH_CAPABILITIES: &[u8] = b"graph=deslop.graph-owned/1";
+
+#[derive(Debug)]
+pub struct GraphProjection {
+    pub id: ProjectionId,
+    pub analysis: Arc<ProjectAnalysis>,
+    pub graph: DependencyGraph,
+}
+
+impl std::ops::Deref for GraphProjection {
+    type Target = DependencyGraph;
+
+    fn deref(&self) -> &Self::Target {
+        &self.graph
+    }
+}
+
 pub fn graph_paths(paths: &[PathBuf], config: GraphConfig) -> Result<DependencyGraph> {
-    let registry = Registry::default();
-    let paths = deduplicate_supported_paths(collect_supported_paths(paths, &registry)?);
-
-    let sources = paths
-        .iter()
-        .map(SourceFile::read)
-        .collect::<Result<Vec<_>>>()?;
-    let analyses = sources
-        .iter()
-        .map(analysis_provenance_or_failed)
-        .collect::<Vec<_>>();
-
-    let mut builder = builder::GraphBuilder::new(config);
-    for (source, analysis) in sources.iter().zip(&analyses) {
-        if analysis.permits_rewrites() {
-            builder.index_file_path(&source.path, &registry);
-        }
-    }
-
-    for (source, analysis) in sources.iter().zip(analyses) {
-        builder.add_source(source, analysis, &registry)?;
-    }
-
-    Ok(builder.finish())
-}
-
-fn deduplicate_supported_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    let mut unique: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
-    for path in paths {
-        let path = normalized_display_path(&path);
-        let identity = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-        unique
-            .entry(identity)
-            .and_modify(|existing| {
-                if path_precedes(&path, existing) {
-                    *existing = path.to_path_buf();
-                }
-            })
-            .or_insert(path);
-    }
-    unique.into_values().collect()
-}
-
-fn normalized_display_path(path: &Path) -> PathBuf {
-    path.components()
-        .filter(|component| !matches!(component, Component::CurDir))
-        .collect()
-}
-
-fn path_precedes(candidate: &Path, current: &Path) -> bool {
-    match (candidate.is_absolute(), current.is_absolute()) {
-        (false, true) => true,
-        (true, false) => false,
-        _ => candidate < current,
-    }
-}
-
-fn collect_supported_paths(paths: &[PathBuf], registry: &Registry) -> Result<Vec<PathBuf>> {
-    let roots = if paths.is_empty() {
+    let paths = if paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
         paths.to_vec()
     };
-    let mut out = Vec::new();
-    for path in roots {
-        collect_supported_path(&mut out, &path, registry)?;
-    }
-    Ok(out)
+    let planner = ProjectSnapshotPlanner::resolve(ProjectSnapshotRequest {
+        invocation_base: std::env::current_dir().context("resolve graph invocation base")?,
+        root: RootSpec::Auto,
+        repository: RepositorySpec::Auto,
+        scope: ScopeSpec::Requested(paths),
+        discovery: DiscoveryPolicy::LegacyRespectIgnore,
+    })?;
+    let built = planner.build()?;
+    let analysis = ProjectAnalysis::build(built.snapshot)?;
+    Ok(graph_owned_analysis(analysis, built.presentation, config)?.graph)
 }
 
-fn collect_supported_path(out: &mut Vec<PathBuf>, path: &Path, registry: &Registry) -> Result<()> {
-    if path.is_file() {
-        if registry.supported_pack_for_path(path).is_some() {
-            out.push(path.to_path_buf());
-        }
-        return Ok(());
-    }
+pub fn graph_analysis(
+    analysis: Arc<ProjectAnalysis>,
+    config: GraphConfig,
+) -> Result<GraphProjection> {
+    let presentation = SnapshotPresentationMap::from_entries(
+        analysis
+            .files()
+            .map(|file| (file.key().path.clone(), file.key().path.clone())),
+    )?;
+    graph_owned_analysis(analysis, presentation, config)
+}
 
-    let walker = WalkBuilder::new(path)
-        .hidden(false)
-        .filter_entry(|entry| {
-            let name = entry.file_name().to_string_lossy();
-            !matches!(name.as_ref(), ".git" | ".jj" | "target" | "__pycache__")
+fn graph_owned_analysis(
+    analysis: Arc<ProjectAnalysis>,
+    presentation: SnapshotPresentationMap,
+    config: GraphConfig,
+) -> Result<GraphProjection> {
+    let presentation_entries = presentation
+        .entries()
+        .map(|(logical, display)| (logical.to_path_buf(), display.to_path_buf()))
+        .collect::<Vec<_>>();
+    let policy = serde_json::to_vec(&(config.include_calls, presentation_entries))?;
+    let id = analysis.derive_projection_id(GRAPH_PROJECTION_SCHEMA, &policy, GRAPH_CAPABILITIES)?;
+    let files = analysis
+        .files()
+        .map(|file| {
+            builder::GraphFile::new(
+                &analysis,
+                file,
+                presentation.display_path(&file.key().path).to_path_buf(),
+            )
         })
-        .build();
-
-    for entry in walker {
-        let entry = entry.with_context(|| format!("failed to walk {}", path.display()))?;
-        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
-            continue;
-        }
-        let path = entry.into_path();
-        if registry.supported_pack_for_path(&path).is_some() {
-            out.push(path);
-        }
+        .collect::<Vec<_>>();
+    let mut builder = builder::GraphBuilder::new(config);
+    for file in files
+        .iter()
+        .filter(|file| file.file.provenance().permits_rewrites())
+    {
+        builder.index_file_path(&file.path, file.lang);
     }
-    Ok(())
+    for file in &files {
+        builder.add_source(file)?;
+    }
+    Ok(GraphProjection {
+        id,
+        analysis,
+        graph: builder.finish(),
+    })
 }
 
 #[cfg(test)]
@@ -125,6 +112,72 @@ mod tests {
     use super::*;
     use crate::types::SCHEMA;
     use deslop_core::{Lang, Span};
+    use deslop_parse::{ProjectSnapshotBuilder, RepositoryId};
+
+    #[test]
+    fn graph_production_has_static_snapshot_ownership_guards() {
+        let lib = include_str!("lib.rs");
+        let production = lib.split("#[cfg(test)]").next().expect("production prefix");
+        for (name, source) in [
+            ("graph entry", production),
+            ("graph builder", include_str!("builder.rs")),
+            ("graph extractor", include_str!("extract.rs")),
+        ] {
+            for forbidden in [
+                "parse_source",
+                "SourceFile::read",
+                "read_to_string",
+                "pack_for_path",
+                "supported_pack_for_path",
+                "pack_for_lang",
+                "tree_sitter::Node",
+            ] {
+                assert!(
+                    !source.contains(forbidden),
+                    "{name} reintroduced forbidden graph operation {forbidden}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn graph_analysis_reuses_one_owned_parse_per_revision() {
+        let root = tempfile::tempdir().expect("tempdir");
+        deslop_parse::reset_parse_source_invocations();
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("owned-graph-matrix").unwrap(),
+        )
+        .unwrap()
+        .with_overlay(
+            "lib.rs",
+            b"mod util; fn run() { util::helper(); }\n".to_vec(),
+        )
+        .unwrap()
+        .with_overlay("util.rs", b"pub fn helper() {}\n".to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let counts = analysis.parse_counts();
+
+        let first = graph_analysis(analysis.clone(), GraphConfig::default()).unwrap();
+        let second = graph_analysis(analysis.clone(), GraphConfig::default()).unwrap();
+
+        assert_eq!(first.id, second.id);
+        assert_eq!(render_json(&first).unwrap(), render_json(&second).unwrap());
+        assert_eq!(analysis.parse_counts(), counts);
+        assert_eq!(counts.len(), 2);
+        assert!(counts.values().all(|count| {
+            (
+                count.requested,
+                count.owners,
+                count.parser_invocations,
+                count.reused,
+            ) == (1, 1, 1, 0)
+        }));
+        assert_eq!(deslop_parse::parse_source_invocations(), 0);
+    }
 
     #[test]
     fn malformed_source_keeps_file_identity_without_graph_authority() {

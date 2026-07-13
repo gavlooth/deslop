@@ -380,13 +380,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "deslop-core",
- "deslop-lang",
  "deslop-parse",
- "ignore",
  "serde",
  "serde_json",
  "tempfile",
- "tree-sitter",
 ]
 
 [[package]]
