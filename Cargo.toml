@@ -27,6 +27,7 @@ repository = "https://example.invalid/deslop"
 
 [workspace.dependencies]
 anyhow = "1"
+blake3 = "1"
 clap = { version = "4.5", features = ["derive"] }
 ignore = "0.4"
 globset = "0.4"

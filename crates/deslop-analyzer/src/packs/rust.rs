@@ -1,4 +1,4 @@
-use deslop_core::{DetectedBy, Finding, Lang, SafetyClass, Severity, Span, fingerprint};
+use deslop_core::{DetectedBy, Finding, Lang, SafetyClass, Severity, Span, baseline_fingerprint};
 use deslop_external::{ClippyAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait};
 use deslop_parse::{SourceFile, parse_source};
 use regex::Regex;
@@ -325,6 +325,6 @@ fn finding(
         suggestion: suggestion.to_string(),
         precondition: precondition.map(str::to_string),
         edit: None,
-        fingerprint: fingerprint(&source.path, rule, span, &text),
+        fingerprint: baseline_fingerprint(&source.path, rule, span, &text),
     }
 }

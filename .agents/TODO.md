@@ -86,11 +86,16 @@ reports, benchmark records, and work orders.
   Evidence: focused M0.10 contracts pass; workspace has 259 passing tests plus one intentional ignored
   performance probe; MCP `slim-llm` has 22; fmt, whitespace, workspace/minimal-slim builds, doc-tests,
   and warnings-denied clippy pass; `.agents/ALGORITHM_AUDIT.md` records the numerical before/after table.
-- [ ] M0.12 Separate the exact-byte `RevisionGuard` from the trimmed cross-revision baseline fingerprint;
-  migrate region/work-order IDs explicitly and reject boundary-whitespace staleness.
-  **NEXT**
+- [x] M0.12 Separate the exact-byte `RevisionGuard` from the trimmed cross-revision baseline fingerprint;
+  migrate region/work-order IDs explicitly and reject boundary-whitespace staleness. Evidence:
+  byte-for-byte-compatible baseline identity plus typed domain-separated BLAKE3 `rg1_` guard;
+  `wo2_`/workorder/2/patch/2/characterization-test/2, MCP workorders/2/fix/2, and slim/3 migration
+  with no legacy write alias; exact line/byte regions; six boundary whitespace/newline mutations
+  preserve matching identity but expire the guard; verifier, characterization, slim pre-egress,
+  MCP, and CLI reject; apply writes zero and rechecks exact bytes immediately before replacement.
 - [ ] M0.13 Persist proposal analyzer config, capability, and source-revision context so verify/apply
   reconstruct the same work-order set instead of silently rescanning with defaults.
+  **NEXT**
 - [ ] M0.14 Reconcile the `NeverAuto` contract: SPEC says report-only while `/1` currently proposes it;
   choose one policy, update every consumer, and add an end-to-end regression.
 - [ ] M0.DoD Demonstrate zero duplicate work-order IDs, zero falsely resolved ambiguous fixture edges,

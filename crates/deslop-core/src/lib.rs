@@ -99,6 +99,38 @@ pub struct Span {
     pub end_byte: usize,
 }
 
+/// Exact proposal-time target identity used only to reject stale writes.
+///
+/// Unlike [`baseline_fingerprint`], this value hashes the raw bytes without trimming. It is
+/// intentionally a distinct type so normalized finding identity cannot be passed as write authority.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct RevisionGuard(String);
+
+impl RevisionGuard {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for RevisionGuard {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RevisionGuard {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Display for RevisionGuard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 impl Span {
     pub fn new(start_line: usize, end_line: usize, start_byte: usize, end_byte: usize) -> Self {
         Self {
@@ -348,7 +380,11 @@ pub fn file_analyses_status(analyses: &[FileAnalysis]) -> AnalysisStatus {
     AnalysisStatus::Partial
 }
 
-pub fn fingerprint(path: &Path, rule: &str, span: Span, text: &str) -> String {
+/// Best-effort finding identity for baseline matching across revisions.
+///
+/// This preserves the original `deslop.baseline/1` algorithm, including outer-whitespace trimming.
+/// It must never be used to authorize a write.
+pub fn baseline_fingerprint(path: &Path, rule: &str, span: Span, text: &str) -> String {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     let normalized_path = normalize_path(path);
     let start_line = span.start_line.to_string();
@@ -370,11 +406,76 @@ pub fn fingerprint(path: &Path, rule: &str, span: Span, text: &str) -> String {
     format!("{hash:016x}")
 }
 
+/// Build a collision-resistant guard over the exact target bytes and their source identity.
+pub fn revision_guard(path: &Path, span: Span, exact_text: &str) -> RevisionGuard {
+    const CONTEXT: &str = "deslop 2026-07-13 revision guard v1";
+    let mut hasher = blake3::Hasher::new_derive_key(CONTEXT);
+    let mut update = |part: &[u8]| {
+        hasher.update(&(part.len() as u64).to_le_bytes());
+        hasher.update(part);
+    };
+    let normalized_path = normalize_path(path);
+    update(normalized_path.as_bytes());
+    update(&span.start_line.to_le_bytes());
+    update(&span.end_line.to_le_bytes());
+    update(&span.start_byte.to_le_bytes());
+    update(&span.end_byte.to_le_bytes());
+    update(exact_text.as_bytes());
+    RevisionGuard(format!("rg1_{}_{}", exact_text.len(), hasher.finalize()))
+}
+
 fn normalize_path(path: &Path) -> String {
     path.to_string_lossy()
         .replace('\\', "/")
         .trim_start_matches("./")
         .to_string()
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+
+    #[test]
+    fn baseline_identity_trims_outer_whitespace_but_revision_guard_does_not() {
+        let path = Path::new("./src/sample.rs");
+        let span = Span::new(4, 4, 20, 31);
+        let original = "value();\n";
+        let baseline = baseline_fingerprint(path, "rule", span, original);
+        let guard = revision_guard(path, span, original);
+
+        for changed in [
+            " value();\n",
+            "\tvalue();\n",
+            "value(); \n",
+            "value();\t\n",
+            "value();",
+            "value();\r\n",
+            "\u{2003}value();\n",
+        ] {
+            assert_eq!(
+                baseline_fingerprint(path, "rule", span, changed),
+                baseline,
+                "baseline identity should survive outer whitespace: {changed:?}"
+            );
+            assert_ne!(
+                revision_guard(path, span, changed),
+                guard,
+                "revision guard must bind exact bytes: {changed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn revision_guard_is_domain_separated_from_baseline_identity() {
+        let path = Path::new("src/sample.rs");
+        let span = Span::new(1, 1, 0, 9);
+        let baseline = baseline_fingerprint(path, "region", span, "value();\n");
+        let guard = revision_guard(path, span, "value();\n");
+
+        assert!(guard.as_str().starts_with("rg1_9_"));
+        assert_ne!(guard.as_str(), baseline);
+        assert_eq!(guard, revision_guard(path, span, "value();\n"));
+    }
 }
 
 /// The single canonical registry of every rule deslop can emit.

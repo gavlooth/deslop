@@ -117,7 +117,7 @@ This is how "the repo proposes to the LLM" works without losing safety.
    handling", "must not add public defs"). No model is called.
 2. **Any agent** (external Claude Code/Cursor/Codex session, a CI script, or the optional
    bundled consumer) reads the work orders and returns **patches** in deslop's patch schema
-   (§5): region fingerprint + replacement text.
+   (§5): exact revision guard + replacement text.
 3. **`deslop verify`** ingests patches and runs the **deterministic gate** — re-parse
    (tree-sitter/balance), the `--check-cmd` (tests/typecheck/clj-kondo re-lint), the
    defensive-code guard, and the size/scope guards — reporting pass/fail per patch. Writes
@@ -190,11 +190,14 @@ Stable, versioned, emitted by `--format agent` (JSONL) and over MCP.
 
 ```jsonc
 // WORK ORDER  (deslop propose / scan --format agent)
-{ "schema": "deslop.workorder/1",
+{ "schema": "deslop.workorder/2",
   "kind": "rewrite-region | needs-characterization-test",
-  "id": "wo_<fingerprint>",
+  "id": "wo2_<region-fingerprint>",
   "path": "src/core.clj",
-  "region": { "start_line": 40, "end_line": 71, "text": "<exact region source>" },
+  "region": { "start_line": 40, "end_line": 71,
+              "start_byte": 812, "end_byte": 1449, "text": "<exact region source>" },
+  "region_fingerprint": "<trimmed matching identity; never write authority>",
+  "revision_guard": "rg1_<byte-length>_<blake3-of-exact-target-identity-and-bytes>",
   "findings": [
     { "rule": "duplicate-block", "severity": "major", "safety": "llm-only",
       "message": "lines 44-58 duplicate src/io.clj:12-26",
@@ -206,16 +209,16 @@ Stable, versioned, emitted by `--format agent` (JSONL) and over MCP.
                 "check_cmd": "clojure -M:test" } }
 
 // PATCH  (input to deslop verify / apply)
-{ "schema": "deslop.patch/1",
-  "workorder_id": "wo_<fingerprint>",
-  "region_fingerprint": "<fingerprint>",   // must match current bytes or verify rejects
+{ "schema": "deslop.patch/2",
+  "workorder_id": "wo2_<region-fingerprint>",
+  "revision_guard": "<copy verbatim from workorder/2>",
   "replacement": "<rewritten region source>",
   "by": "claude-code | cursor | codex | deslop-slim | human" }
 
 // CHARACTERIZATION TEST  (input to deslop verify-characterization and optional verify/apply gate)
-{ "schema": "deslop.characterization-test/1",
-  "workorder_id": "wo_<fingerprint>",
-  "region_fingerprint": "<fingerprint>",
+{ "schema": "deslop.characterization-test/2",
+  "workorder_id": "wo2_<region-fingerprint>",
+  "revision_guard": "<copy verbatim from workorder/2>",
   "test_path": "tests/characterization_test.clj",
   "test_text": "<test source written by an external agent>",
   "by": "claude-code | cursor | codex | human" }
@@ -227,8 +230,14 @@ Stable, versioned, emitted by `--format agent` (JSONL) and over MCP.
   current unmodified code.
 - Same surface is exposed as **MCP** tools (`propose`, `fix`, `verify`, `apply`) so an
   in-loop agent calls deslop directly (§9). The MCP `fix` tool is agent-as-consumer: it
-  returns prompts and fingerprints, never a server-side LLM result.
-- `region_fingerprint` mismatch ⇒ the file changed under the patch ⇒ reject (no stale write).
+  returns prompts and revision guards, never a server-side LLM result.
+- `region_fingerprint` is the existing trimmed best-effort identity used for matching and the
+  `wo2_` correlation ID. It may survive outer-whitespace changes and can never authorize a write.
+- `revision_guard` is domain-separated BLAKE3 over normalized path, exact line/byte range, byte
+  length, and untrimmed target bytes. A mismatch rejects verification, characterization, and apply;
+  apply rechecks the exact expected region immediately before writing.
+- Legacy workorder/1, patch/1, and characterization-test/1 inputs are rejected and must be
+  regenerated; their normalized fingerprint cannot be safely reinterpreted as exact authority.
 
 ---
 
@@ -247,8 +256,9 @@ pub struct Finding {
     pub message: String, pub suggestion: String,
     pub precondition: Option<&'static str>,
     pub edit: Option<Edit>,        // Some only for safe-auto / analyzer-confirmed
-    pub fingerprint: u64,          // stable: rule + norm-path + span-shape + node-text
+    pub fingerprint: String,       // baseline/feedback identity: norm-path + rule + lines + trimmed text
 }
+pub struct RevisionGuard(String);  // write authority only: rg1_<len>_<BLAKE3 exact target digest>
 pub struct Edit { pub splices: Vec<Splice>, pub kind: EditKind }   // ropey, fmt-preserving
 pub enum Lang { Clojure, Julia, Python, JavaScript, TypeScript, Rust, Generic }
 ```
@@ -411,7 +421,7 @@ deslop rules                                                   # class, precondi
   verification before edits.
 - **`fix`**: the bundled `deslop-slim` consumer. It proposes work orders from `--paths` or
   reads JSONL from `--workorders`, builds prompts, asks a swappable `LlmClient`, converts
-  rewrites into `deslop.patch/1`, verifies them, and prints a dry-run JSON report unless
+  rewrites into `deslop.patch/2`, verifies them, and prints a dry-run JSON report unless
   `--apply` is passed. Default `--apply` writes only `removable` verifier verdicts;
   `coverage-unknown`, `untested-risky`, and `dead-candidate` are reported as held-unproven
   unless `--allow-unverified` is explicit. With `--characterize`, slim asks the same
@@ -497,29 +507,29 @@ feature-gated stdio MCP server (`--features mcp`) and is network-free: it only r
 deterministic analyzer, protocol serializer, metrics engine, and `deslop-verify` gate.
 It implements the core JSON-RPC MCP methods needed by coding agents:
 `initialize`, `tools/list`, and `tools/call`. Tool payloads reuse the existing
-`deslop.findings/2`, `deslop.workorder/1`, `deslop.fix/1`, `deslop.patch/1`,
-`deslop.characterization-test/1`, `deslop.verify/1`, `deslop.apply/1`, and
+`deslop.findings/2`, `deslop.workorder/2`, `deslop.fix/2`, `deslop.patch/2`,
+`deslop.characterization-test/2`, `deslop.verify/1`, `deslop.apply/1`, and
 `deslop.metrics/5`/`deslop.graph/2` schemas. The `fix` tool scans/proposes work orders, reuses
 `deslop_slim::build_prompt`, and returns prompt entries containing `workorder_id`, `path`,
-line range, `region_fingerprint`, contract, findings, and prompt text. The caller rewrites
-the region and submits `deslop.patch/1` patches through `apply`, so the existing
+exact line/byte range, matching-only `region_fingerprint`, `revision_guard`, contract, findings,
+and prompt text. The caller rewrites the region and submits `deslop.patch/2` patches through `apply`, so the existing
 verify-gated removable-only default remains the write boundary. MCP `verify` and `apply`
 accept `coverage` as either the original boolean (`true` = `auto`, `false`/absent =
 `disabled`) or a shared parser mode string such as `lcov:<path>`, so agents can reach
 `removable` verdicts from recorded coverage without CLI-only affordances.
 
 The MCP `fix` tool has two modes. `mode="prompts"` is the default and is always available:
-it returns the agent-as-consumer `deslop.fix/1` prompt payload described above. `mode="auto"`
+it returns the agent-as-consumer `deslop.fix/2` prompt payload described above. `mode="auto"`
 is opt-in server-run LLM execution: it constructs a `deslop-slim` client from
 `provider`/`model`/`base_url` or a recorded `mock` response, runs `run_slim`, and returns the
-`deslop.slim/2` report. Auto mode is compiled only with the `deslop-mcp` `slim-llm` cargo
+`deslop.slim/3` report. Auto mode is compiled only with the `deslop-mcp` `slim-llm` cargo
 feature, which enables `deslop-slim/anthropic` and `deslop-slim/openai`; default MCP builds
 keep `slim-llm` off and return a clear feature-required error for `mode="auto"`.
 
 `deslop-slim` exists to prove the loop and to serve users with no agent harness. The runtime
 loop is: propose/load work orders → build a constrained prompt from instruction, exact region
 text, findings, and contract → `LlmClient::rewrite` → strip markdown fences → emit
-`deslop.patch/1` with `by = deslop-slim/<model>` → `verify_patches` → default dry-run report
+`deslop.patch/2` with `by = deslop-slim/<model>` → `verify_patches` → default dry-run report
 or `apply_patches` when `--apply` is explicit. Its report separates patches into `applied`,
 `held_unproven`, and `rejected`; held patches include a suggestion to pass coverage, add
 characterization tests, or explicitly use `--allow-unverified`. `SlimPrompt.kind` labels
@@ -585,7 +595,8 @@ default features disabled for prompt construction. `slim` is isolated and only i
 
 ## 12. Baseline, output, config, safety, deps
 - **Baseline/ratchet** (M1): `baseline write`; `scan --baseline` fails CI only on new
-  `fingerprint`s. Gates reporting/CI only — **never weakens `fix`/`apply`**.
+  normalized `fingerprint`s. Gates reporting/CI only — **never weakens `fix`/`apply`** and never
+  substitutes for an exact `revision_guard`.
 - **Output:** text (shows `class`+`detected_by`), JSON, SARIF 2.1.0, **agent JSONL** (§5).
 - **CI/pre-commit packaging:** root `action.yml` installs the local CLI, optionally writes
   `deslop.sarif` with `scan --format sarif`, and gates with `scan --fail-on`; the example
@@ -600,8 +611,8 @@ default features disabled for prompt construction. `slim` is isolated and only i
   `[analyzer] min_duplication_tokens/long_method_nloc/min_meaningful_tokens`.
   API keys are env-only. Inline `deslop-ignore` remains deferred.
 - **Safety:** `verify` owns the gate; `*.deslop.bak` + `undo`; `git`/`jj` dirty check;
-  atomic temp+rename; `region_fingerprint` guards against stale patches.
-- **Deps:** `clap`, `ignore`, `tree-sitter`+grammars, `regex`, `serde`/`toml`/
+  atomic temp+rename; exact `revision_guard` validation before verification and again before write.
+- **Deps:** `clap`, `ignore`, `tree-sitter`+grammars, `regex`, `blake3`, `serde`/`toml`/
   `serde_json`, `anyhow`/`thiserror`; `lsp-server`/`lsp-types` are isolated to
   `deslop-lsp` for synchronous JSON-RPC/LSP types; `ureq` is used only by `deslop-slim`
   HTTP provider features as a minimal synchronous HTTP client.
@@ -614,7 +625,7 @@ Golden fixtures + `.expected.json`; **fix round-trip** (gone, still parses, idem
 property tests** (`safe-auto` ⇒ AST-equivalent on a corpus; `safe-with-precondition` ⇒ fix
 **withheld** without `--check-cmd`); **protocol round-trip** (work order → patch → verify);
 **verify-gate tests** (a patch deleting a `try/catch` is **rejected** by the defensive
-guard; a stale `region_fingerprint` is rejected); clj-kondo/clippy/Julia external
+guard; a stale `revision_guard` is rejected, including boundary-only whitespace); clj-kondo/clippy/Julia external
 present/absent fixture/degrade tests; plugin registry dispatch; Rust CST region
 extraction; `slim` deterministic prompt/client/e2e tests with no network/API key, including
 default hold of `coverage-unknown`, `--allow-unverified` opt-in apply, rejected rewrites
@@ -637,11 +648,11 @@ An ignored self-scan probe records metric/graph structure and elapsed time at ch
 the tests themselves change the scanned source tree, its totals and wall time are informational and
 not fixed pass/fail thresholds.
 MCP tests cover `tools/list` schemas, `tools/call scan`, `fix` prompt generation,
-default-build `fix mode=auto` feature-required errors, propose→verify round-trip, stale
-`region_fingerprint` rejection, MCP coverage bool back-compat/defaults, bad coverage-mode
+default-build `fix mode=auto` feature-required errors, propose→verify round-trip, stale exact
+`revision_guard` rejection and zero-write apply, MCP coverage bool back-compat/defaults, bad coverage-mode
 errors, LCOV mode-string `apply` upgrading a covered patch to `removable`, and an
 initialize/list/scan stdio transcript. With `deslop-mcp/slim-llm`, a deterministic mock
-auto-mode test proves a covered `deslop.slim/2` rewrite writes and a rejected rewrite does
+auto-mode test proves a covered `deslop.slim/3` rewrite writes and a rejected rewrite does
 not.
 LSP tests cover precise UTF-16 diagnostic ranges including non-ASCII text, safety-lattice
 code-action gating, `source.fixAll` for all safe findings in a file, no fix-all for riskier

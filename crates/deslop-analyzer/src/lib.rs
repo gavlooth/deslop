@@ -7,7 +7,7 @@ use std::thread;
 use anyhow::{Context, Result, bail};
 use deslop_core::{
     AnalysisDiagnostic, AnalysisProvenance, AnalysisStatus, DetectedBy, Edit, FileReport, Finding,
-    Lang, SafetyClass, Severity, Span, fingerprint, reports_permit_rewrites,
+    Lang, SafetyClass, Severity, Span, baseline_fingerprint, reports_permit_rewrites,
 };
 use deslop_external::{
     CljKondoAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait, ExternalFindings, JuliaAnalyzer,
@@ -975,6 +975,6 @@ pub(crate) fn finding(
         suggestion: suggestion.to_string(),
         precondition: precondition.map(str::to_string),
         edit,
-        fingerprint: fingerprint(&source.path, rule, span, &text),
+        fingerprint: baseline_fingerprint(&source.path, rule, span, &text),
     }
 }

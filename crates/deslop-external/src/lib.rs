@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use deslop_core::{
-    DetectedBy, Edit, EditKind, Finding, SafetyClass, Severity, Span, Splice, fingerprint,
+    DetectedBy, Edit, EditKind, Finding, SafetyClass, Severity, Span, Splice, baseline_fingerprint,
 };
 pub use deslop_lang::{ExternalAnalyzer, ExternalFindings};
 use deslop_parse::SourceFile;
@@ -725,7 +725,7 @@ fn make_finding_with_safety(
         suggestion: suggestion.to_string(),
         precondition: None,
         edit,
-        fingerprint: fingerprint(&source.path, rule, span, &text),
+        fingerprint: baseline_fingerprint(&source.path, rule, span, &text),
     }
 }
 

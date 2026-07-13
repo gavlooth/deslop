@@ -14,7 +14,7 @@ use deslop_mutate::{generate_mutants, supports_lang as supports_mutation_lang};
 use deslop_parse::{SourceFile, source_parses_without_errors};
 use deslop_protocol::{
     CharacterizationTest, Patch, WorkOrder, characterization_work_order_for,
-    work_orders_for_report, workorder_region_fingerprint,
+    validate_workorder_identity, work_orders_for_report, workorder_revision_guard,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -226,6 +226,7 @@ struct PreparedPatch {
     path: PathBuf,
     replacement: String,
     range: std::ops::Range<usize>,
+    expected_region: String,
     verdict: VerificationVerdict,
     reasons: Vec<String>,
 }
@@ -264,7 +265,7 @@ pub fn load_characterization_tests(path: &Path) -> Result<Vec<CharacterizationTe
 }
 
 pub fn parse_patches_jsonl(text: &str) -> Result<Vec<Patch>> {
-    let patches = parse_jsonl_records(text, "patch", "deslop.patch/1", |patch: &Patch| {
+    let patches = parse_jsonl_records(text, "patch", "deslop.patch/2", |patch: &Patch| {
         patch.schema.as_str()
     })?;
     ensure_unique_patch_ids(&patches)?;
@@ -275,7 +276,7 @@ pub fn parse_characterization_tests_jsonl(text: &str) -> Result<Vec<Characteriza
     parse_jsonl_records(
         text,
         "characterization test",
-        "deslop.characterization-test/1",
+        "deslop.characterization-test/2",
         |test: &CharacterizationTest| test.schema.as_str(),
     )
 }
@@ -295,7 +296,20 @@ where
         if line.is_empty() {
             continue;
         }
-        let record: T = serde_json::from_str(line)
+        let value: serde_json::Value = serde_json::from_str(line)
+            .with_context(|| format!("failed to parse {label} JSONL line {}", idx + 1))?;
+        let wire_schema = value
+            .get("schema")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("<missing>");
+        if wire_schema != expected_schema {
+            bail!(
+                "line {} has unsupported schema `{}`; regenerate as `{expected_schema}`",
+                idx + 1,
+                wire_schema
+            );
+        }
+        let record: T = serde_json::from_value(value)
             .with_context(|| format!("failed to parse {label} JSONL line {}", idx + 1))?;
         let actual_schema = schema(&record);
         if actual_schema != expected_schema {
@@ -333,6 +347,7 @@ pub fn verify_characterization_tests(
     tests: &[CharacterizationTest],
     options: &VerifyOptions,
 ) -> Result<CharacterizationReport> {
+    validate_characterization_test_schemas(tests)?;
     let work_orders = current_work_orders_for_options(options)?;
     let mut results = Vec::new();
     for test in tests {
@@ -349,6 +364,8 @@ pub fn verify_characterization_tests(
 }
 
 pub fn verify_patches(patches: &[Patch], options: &VerifyOptions) -> Result<VerifyReport> {
+    validate_patch_schemas(patches)?;
+    validate_characterization_test_schemas(&options.characterization_tests)?;
     ensure_unique_patch_ids(patches)?;
     let mut run = verification_run(options)?;
     let mut results = Vec::new();
@@ -373,6 +390,8 @@ pub fn apply_patches(
     options: &VerifyOptions,
     backup: bool,
 ) -> Result<ApplyReport> {
+    validate_patch_schemas(patches)?;
+    validate_characterization_test_schemas(&options.characterization_tests)?;
     ensure_unique_patch_ids(patches)?;
     let mut run = verification_run(options)?;
     let mut results = Vec::new();
@@ -418,6 +437,32 @@ fn ensure_unique_patch_ids(patches: &[Patch]) -> Result<()> {
                 idx + 1,
                 patch.workorder_id,
                 first_record
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_patch_schemas(patches: &[Patch]) -> Result<()> {
+    for (idx, patch) in patches.iter().enumerate() {
+        if patch.schema != "deslop.patch/2" {
+            bail!(
+                "patch record {} has unsupported schema `{}`; legacy patches use a normalized fingerprint and must be regenerated as deslop.patch/2",
+                idx + 1,
+                patch.schema
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_characterization_test_schemas(tests: &[CharacterizationTest]) -> Result<()> {
+    for (idx, test) in tests.iter().enumerate() {
+        if test.schema != "deslop.characterization-test/2" {
+            bail!(
+                "characterization test record {} has unsupported schema `{}`; regenerate it as deslop.characterization-test/2",
+                idx + 1,
+                test.schema
             );
         }
     }
@@ -601,16 +646,15 @@ fn unknown_mutation_assessment() -> MutationAssessment {
 }
 
 fn reject_unknown_workorder(patch: &Patch) -> PatchVerification {
-    reject(patch, None, "stale region_fingerprint or unknown workorder")
+    reject(patch, None, "stale revision_guard or unknown workorder")
 }
 
 fn reject_stale_fingerprint(patch: &Patch, work_order: &WorkOrder) -> Option<PatchVerification> {
-    let expected_fingerprint = workorder_region_fingerprint(work_order);
-    (patch.region_fingerprint != expected_fingerprint).then(|| {
+    (patch.revision_guard != *workorder_revision_guard(work_order)).then(|| {
         reject(
             patch,
             Some(work_order.path.to_path_buf()),
-            "stale region_fingerprint",
+            "stale revision_guard",
         )
     })
 }
@@ -620,9 +664,10 @@ fn reject_stale_region_bytes(
     work_order: &WorkOrder,
     source: &SourceFile,
 ) -> Option<PatchVerification> {
-    let current_region =
-        source.region_text(work_order.region.start_line, work_order.region.end_line);
-    (current_region != work_order.region.text).then(|| {
+    let current_region = source
+        .text
+        .get(work_order.region.start_byte..work_order.region.end_byte);
+    (current_region != Some(work_order.region.text.as_str())).then(|| {
         reject(
             patch,
             Some(work_order.path.to_path_buf()),
@@ -715,11 +760,11 @@ fn verify_one_characterization_test(
     let Some(work_order) = work_orders.get(&test.workorder_id) else {
         return Ok(reject_characterization(test, None, "unknown workorder"));
     };
-    if test.region_fingerprint != workorder_region_fingerprint(work_order) {
+    if test.revision_guard != *workorder_revision_guard(work_order) {
         return Ok(reject_characterization(
             test,
             Some(work_order.path.to_path_buf()),
-            "stale region_fingerprint",
+            "stale revision_guard",
         ));
     }
     let Some(command) = selected_check_cmd(options, work_order) else {
@@ -772,8 +817,8 @@ fn run_characterization_gate(
     };
     let mut all_passed = true;
     for test in tests {
-        if test.region_fingerprint != workorder_region_fingerprint(work_order) {
-            reasons.push("characterization gate rejected stale region_fingerprint".to_string());
+        if test.revision_guard != *workorder_revision_guard(work_order) {
+            reasons.push("characterization gate rejected stale revision_guard".to_string());
             all_passed = false;
             continue;
         }
@@ -829,6 +874,7 @@ fn prepared_outcome(
             path: work_order.path.to_path_buf(),
             replacement: patch.replacement.to_owned(),
             range,
+            expected_region: work_order.region.text.to_owned(),
             verdict,
             reasons,
         })
@@ -3058,6 +3104,7 @@ fn current_work_orders_for_paths(paths: &[PathBuf]) -> Result<BTreeMap<String, W
     for report in reports {
         let source = SourceFile::read(&report.path)?;
         for work_order in work_orders_for_report(&source, &report) {
+            validate_workorder_identity(&work_order).map_err(anyhow::Error::msg)?;
             let id = work_order.id.to_owned();
             if let Some(existing) = out.insert(id.to_owned(), work_order) {
                 bail!(
@@ -3086,10 +3133,8 @@ fn region_byte_range(
     source: &SourceFile,
     work_order: &WorkOrder,
 ) -> Result<std::ops::Range<usize>> {
-    let start = source.line_start_byte(work_order.region.start_line);
-    let end = source
-        .line_start_byte(work_order.region.end_line + 1)
-        .min(source.text.len());
+    let start = work_order.region.start_byte;
+    let end = work_order.region.end_byte;
     if start > end || end > source.text.len() {
         bail!("invalid workorder region for {}", work_order.path.display());
     }
@@ -3442,6 +3487,14 @@ fn write_prepared_patches_to_file(
         if patch.range.end > next_start {
             bail!("overlapping patches for {}", path.display());
         }
+        if original.get(patch.range.clone()) != Some(patch.expected_region.as_str()) {
+            bail!(
+                "stale revision_guard before write for {} bytes {}..{}",
+                path.display(),
+                patch.range.start,
+                patch.range.end
+            );
+        }
         text.replace_range(patch.range.start..patch.range.end, &patch.replacement);
         next_start = patch.range.start;
     }
@@ -3498,7 +3551,8 @@ fn relative_to_root(root: &Path, path: &Path) -> Result<PathBuf> {
 mod tests {
     use super::*;
     use deslop_protocol::{
-        CharacterizationTest, Patch, Region, WorkOrderKind, workorder_region_fingerprint,
+        CharacterizationTest, Patch, Region, WorkOrderKind, region_fingerprint,
+        region_revision_guard, workorder_revision_guard,
     };
     use std::sync::{
         Arc, Barrier,
@@ -3583,9 +3637,9 @@ mod tests {
 
     fn patch_for(work_order: &WorkOrder, replacement: &str) -> Patch {
         Patch {
-            schema: "deslop.patch/1".to_string(),
+            schema: "deslop.patch/2".to_string(),
             workorder_id: work_order.id.to_owned(),
-            region_fingerprint: workorder_region_fingerprint(work_order),
+            revision_guard: workorder_revision_guard(work_order).clone(),
             replacement: replacement.to_string(),
             by: "test".to_string(),
         }
@@ -3597,9 +3651,9 @@ mod tests {
         test_text: &str,
     ) -> CharacterizationTest {
         CharacterizationTest {
-            schema: "deslop.characterization-test/1".to_string(),
+            schema: "deslop.characterization-test/2".to_string(),
             workorder_id: work_order.id.to_owned(),
-            region_fingerprint: workorder_region_fingerprint(work_order),
+            revision_guard: workorder_revision_guard(work_order).clone(),
             test_path: PathBuf::from(test_path),
             test_text: test_text.to_string(),
             by: "test".to_string(),
@@ -3759,16 +3813,29 @@ mod tests {
         start_line: usize,
         end_line: usize,
     ) -> WorkOrder {
+        let start_byte = source.line_start_byte(start_line);
+        let end_byte = source.line_start_byte(end_line + 1).min(source.text.len());
+        let region = Region {
+            start_line,
+            end_line,
+            start_byte,
+            end_byte,
+            text: source
+                .text
+                .get(start_byte..end_byte)
+                .unwrap_or("")
+                .to_string(),
+        };
+        let region_fingerprint = region_fingerprint(&source.path, &region);
+        let revision_guard = region_revision_guard(&source.path, &region);
         WorkOrder {
-            schema: "deslop.workorder/1".to_string(),
+            schema: "deslop.workorder/2".to_string(),
             kind: WorkOrderKind::RewriteRegion,
             id: id.into(),
             path: source.path.to_path_buf(),
-            region: Region {
-                start_line,
-                end_line,
-                text: source.region_text(start_line, end_line),
-            },
+            region,
+            region_fingerprint,
+            revision_guard,
             findings: Vec::new(),
             instruction: "test".to_string(),
             contract: deslop_protocol::Contract::default(),
@@ -4038,13 +4105,119 @@ mod tests {
     }
 
     #[test]
-    fn stale_region_fingerprint_is_rejected() {
+    fn stale_revision_guard_is_rejected() {
         let fixture = clojure_fixture("(= (count xs) 0)\n");
         let mut patch = patch_for(&fixture.work_order, "(= (count xs) 0)\n");
-        patch.region_fingerprint = "stale".to_string();
+        patch.revision_guard = "stale".into();
         let report = verify_single(fixture.temp.path(), patch);
         assert_eq!(report.passed_count(), 0);
         assert!(report.results[0].reasons[0].contains("stale"));
+    }
+
+    #[test]
+    fn boundary_whitespace_expires_revision_guard_and_never_writes() {
+        for changed in [
+            " (= (count xs) 0)\n",
+            "\t(= (count xs) 0)\n",
+            "(= (count xs) 0) \n",
+            "(= (count xs) 0)\t\n",
+            "(= (count xs) 0)",
+            "(= (count xs) 0)\r\n",
+        ] {
+            let fixture = clojure_fixture("(= (count xs) 0)\n");
+            let patch = patch_for(&fixture.work_order, "(empty? xs)\n");
+            fs::write(fixture.temp.path().join("sample.clj"), changed).expect("mutate source");
+            let current = only_work_order(fixture.temp.path());
+            assert_eq!(current.id, fixture.work_order.id, "{changed:?}");
+            assert_eq!(
+                current.region_fingerprint, fixture.work_order.region_fingerprint,
+                "{changed:?}"
+            );
+            assert_ne!(current.revision_guard, fixture.work_order.revision_guard);
+
+            let mut options =
+                test_options(fixture.temp.path(), Some("true"), CoverageConfig::Disabled);
+            options.allow_non_removable = true;
+            let verified = verify_patches(std::slice::from_ref(&patch), &options).expect("verify");
+            assert_eq!(verified.results[0].verdict, VerificationVerdict::Rejected);
+            assert_eq!(verified.results[0].reasons, ["stale revision_guard"]);
+            let applied = apply_patches(&[patch], &options, false).expect("apply report");
+            assert!(applied.written.is_empty());
+            assert_eq!(
+                fs::read_to_string(fixture.temp.path().join("sample.clj")).unwrap(),
+                changed
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_write_schemas_are_rejected_before_analysis() {
+        let fixture = clojure_fixture("(= (count xs) 0)\n");
+        let mut patch = patch_for(&fixture.work_order, "(empty? xs)\n");
+        patch.schema = "deslop.patch/1".to_string();
+        let options = test_options(fixture.temp.path(), Some("true"), CoverageConfig::Disabled);
+
+        let verify_error = verify_patches(std::slice::from_ref(&patch), &options)
+            .expect_err("legacy verify input must fail");
+        assert!(verify_error.to_string().contains("must be regenerated"));
+        let apply_error =
+            apply_patches(&[patch], &options, false).expect_err("legacy apply input must fail");
+        assert!(apply_error.to_string().contains("must be regenerated"));
+
+        let mut test = characterization_test_for(
+            &fixture.work_order,
+            "tests/characterization.clj",
+            "(deftest pins-behavior (is true))\n",
+        );
+        test.schema = "deslop.characterization-test/1".to_string();
+        let error = verify_characterization_tests(&[test], &options)
+            .expect_err("legacy characterization input must fail");
+        assert!(error.to_string().contains("regenerate"));
+    }
+
+    #[test]
+    fn boundary_whitespace_expires_characterization_revision_guard() {
+        let fixture = clojure_fixture("(= (count xs) 0)\n");
+        let test = characterization_test_for(
+            &fixture.work_order,
+            "tests/characterization.clj",
+            "(deftest pins-behavior (is true))\n",
+        );
+        fs::write(
+            fixture.temp.path().join("sample.clj"),
+            " (= (count xs) 0)\n",
+        )
+        .expect("boundary mutation");
+        let options = test_options(fixture.temp.path(), Some("true"), CoverageConfig::Disabled);
+
+        let report = verify_characterization_tests(&[test], &options).expect("report");
+
+        assert!(!report.results[0].accepted);
+        assert_eq!(report.results[0].reasons, ["stale revision_guard"]);
+    }
+
+    #[test]
+    fn apply_rechecks_exact_region_immediately_before_write() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("sample.rs");
+        fs::write(&path, " changed();\n").expect("changed source");
+        let prepared = PreparedPatch {
+            path: PathBuf::from("sample.rs"),
+            replacement: "replacement();\n".to_string(),
+            range: 0..12,
+            expected_region: "original();\n".to_string(),
+            verdict: VerificationVerdict::Removable,
+            reasons: Vec::new(),
+        };
+
+        let error = write_prepared_patches(temp.path(), &[prepared], false)
+            .expect_err("changed bytes must abort the write");
+        assert!(
+            error
+                .to_string()
+                .contains("stale revision_guard before write")
+        );
+        assert_eq!(fs::read_to_string(path).unwrap(), " changed();\n");
     }
 
     #[test]
@@ -4953,9 +5126,9 @@ mod tests {
         let original = include_str!("../../../tests/fixtures/typescript/malformed.ts");
         fs::write(&source, original).expect("fixture");
         let patch = Patch {
-            schema: "deslop.patch/1".to_string(),
+            schema: "deslop.patch/2".to_string(),
             workorder_id: "legacy-workorder".to_string(),
-            region_fingerprint: "legacy-fingerprint".to_string(),
+            revision_guard: "legacy-guard".into(),
             replacement: "export function repaired(): number { return 1; }\n".to_string(),
             by: "test".to_string(),
         };

@@ -5514,3 +5514,91 @@ without a controlled fixture; use operation counts and a fixed benchmark corpus 
 `M0.11 release gate self-scan uncontrolled timing 8 parses 5 regions`.
 
 **Signature:** Codex (GPT-5), M0.11 integration owner, 2026-07-13.
+
+---
+
+## M0.12 checkpoint — separate exact write guards from normalized identity
+
+**Date/time:** 2026-07-13T15:49:42+02:00
+
+**Objective:** complete M0.12 by preserving the existing trimmed finding/baseline identity while
+introducing a distinct exact-byte revision guard for every rewrite-capable path, explicitly migrating
+region/workorder IDs and wire schemas, rejecting boundary-whitespace staleness, and closing the
+verify-to-write target-byte recheck gap.
+
+**Target:** core identity APIs, analyzer/external finding producers, protocol region/workorder/patch/
+characterization schemas, verifier/characterization/apply, slim import and egress, CLI, MCP live and
+duplicate specs, README/SPEC, roadmap, dependency lock, and regression suites. `/root` owned all writes
+and final integration; three read-only agents audited core, contract/test, and end-to-end surfaces.
+
+**Changes:**
+
+- Renamed the existing helper to `baseline_fingerprint` without changing its FNV64 algorithm or
+  trimmed text/path/line inputs. Finding, baseline, feedback, and analyzer behavior retain the same
+  best-effort cross-revision matching identity, explicitly without write authority.
+- Added serde-transparent `RevisionGuard`, built as `rg1_<byte-length>_<digest>` using BLAKE3 derive-key
+  domain separation over normalized path, exact line and byte range, and untrimmed UTF-8 target bytes.
+  The standard library has no stable cryptographic digest; official BLAKE3 Rust docs were checked via
+  Context7, and maintained `blake3 1.8.5` is the only new direct dependency.
+- Migrated to WorkOrder/2 with exact `start_byte`/`end_byte`, matching-only `region_fingerprint`,
+  proposal-time `revision_guard`, and explicit `wo2_` correlation IDs. Imported workorders must pass
+  schema, ID, normalized fingerprint, and exact guard consistency checks.
+- Migrated Patch/2 and CharacterizationTest/2 to mandatory `revision_guard` with no
+  `region_fingerprint` alias/default. Legacy `/1` write artifacts are rejected with regeneration
+  guidance. MCP envelopes are `deslop.workorders/2` and `deslop.fix/2`; SlimReport is `deslop.slim/3`.
+- Verifier public APIs now validate schemas even for programmatic/MCP inputs, compare the submitted
+  proposal guard with the newly current exact guard, retain the scan/read byte consistency check, and
+  carry expected exact region bytes into `PreparedPatch`. Apply rechecks those bytes immediately before
+  replacement and aborts the whole write on mismatch.
+- Slim validates imported workorder identity, confines its canonical path to the configured root,
+  compares serialized proposal bytes to current disk before any LLM egress, and emits only Patch/2 and
+  CharacterizationTest/2. MCP schemas/prompts expose both matching identity and exact guard and require
+  callers to copy the guard verbatim.
+- Updated README, SPEC, both MCP schema sources, tests, and `.agents/TODO.md`; M0.13 is now **NEXT**.
+
+**Commands run:** targeted Hindsight recall/search; official BLAKE3 Context7 resolution/docs query;
+`cargo check -p deslop-protocol`; `cargo check --workspace`; repeated all-target no-run compilation;
+focused core/protocol, verifier guard/legacy/characterization/pre-write, slim, CLI revision-guard,
+workorder, MCP default/boundary tests; `cargo test --workspace --quiet`;
+`cargo test -p deslop-mcp --features slim-llm -- --test-threads=1`;
+`cargo build --workspace`; `cargo build -p deslop-slim --no-default-features`;
+`cargo clippy --workspace -- -D warnings`; `cargo fmt --all --check`; and `git diff --check`.
+
+**Results:** PASS. Workspace: 269 passing tests plus one intentional ignored performance probe and
+passing doc-tests. Feature-enabled MCP: 22 passing tests. Workspace/minimal-slim builds, formatting,
+whitespace, and warnings-denied clippy pass. Six fixed-path boundary mutations—leading space/tab,
+trailing space/tab, final-LF removal, and LF→CRLF—retain the normalized `region_fingerprint` and
+`wo2_` ID, produce a different `revision_guard`, reject verify/characterization/apply, make zero writes,
+and preserve the changed source. CLI and MCP round trips prove the same behavior; baseline/1 still
+suppresses the matching finding across outer whitespace.
+
+**Failure modes / invalidated assumptions:** the first broad protocol patch had a stale context and was
+rejected atomically, so it was reapplied in reviewed increments. One focused `cargo test` invocation
+incorrectly passed three filters; Cargo rejected the command and each filter was rerun separately.
+The substantive invalidation is that the old post-rescan byte comparison was current-vs-current and
+therefore tautological for proposal freshness. A normalized fingerprint cannot authorize writes, and a
+verification result cannot be written later without rechecking the target bytes.
+
+**Current recommendation/checkpoint:** M0.12 is complete. Execute M0.13 next: persist proposal analyzer
+config, capability/provenance, requested scope, and source-revision context so verifier reconstruction
+matches the originating workorder set rather than silently using defaults.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; targeted local Rust reads
+remain the fallback.
+
+**Next actions:** design WorkOrder/3 or a versioned proposal-context envelope without collapsing M1's
+future ProjectSnapshotId/NodeKey contract into M0. Persist enough canonical analyzer configuration and
+scope to make current reconstruction deterministic, reject missing legacy context fail closed, and add
+suppression/threshold/capability round-trip regressions before touching NeverAuto policy in M0.14.
+
+**Dependencies/restart:** rebuild/reinstall CLI, MCP, and any protocol consumers. Workorder/1, Patch/1,
+CharacterizationTest/1, MCP workorders/1/fix/1, Slim/2, and `wo_` IDs are intentionally incompatible;
+regenerate outstanding proposals and patches. Baseline/1 files and finding fingerprints require no
+migration.
+
+**Negative-memory status:** Hindsight records that fuzzy/trimmed identity can never authorize a write,
+current-vs-current consistency does not prove proposal freshness, and apply must recheck exact expected
+bytes. Recheck under M1.4's ProjectSnapshotId/NodeKey migration and on any digest/path/range/transaction
+change. Search handles: `M0.12 text.trim boundary whitespace stale revision_guard wo2 patch/2`.
+
+**Signature:** Codex (GPT-5), M0.12 integration owner, 2026-07-13.

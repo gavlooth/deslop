@@ -1545,6 +1545,29 @@ mod tests {
     }
 
     #[test]
+    fn baseline_identity_survives_outer_whitespace_without_gaining_write_authority() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("sample.clj");
+        fs::write(&path, "(= (count xs) 0)\n").expect("original");
+        let original = scan_paths(std::slice::from_ref(&path)).expect("original scan");
+        let baseline = Baseline::from_reports(&original);
+        assert!(!baseline.fingerprints.is_empty());
+
+        fs::write(&path, " (= (count xs) 0)\n").expect("boundary whitespace");
+        let mut changed = scan_paths(std::slice::from_ref(&path)).expect("changed scan");
+        assert!(!changed[0].findings.is_empty());
+        assert!(
+            changed[0]
+                .findings
+                .iter()
+                .all(|finding| baseline.fingerprints.contains(&finding.fingerprint))
+        );
+
+        suppress_baseline(&mut changed, &baseline);
+        assert!(changed[0].findings.is_empty());
+    }
+
+    #[test]
     fn health_is_not_a_metrics_command_alias() {
         let error = Cli::try_parse_from(["deslop", "health"]).expect_err("health alias removed");
         assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
@@ -1875,7 +1898,7 @@ mod tests {
     #[test]
     fn slim_progress_never_changes_stdout_report_rendering() {
         let report = serde_json::json!({
-            "schema": "deslop.slim/2",
+            "schema": "deslop.slim/3",
             "dry_run": true,
             "verified": { "results": [] }
         });

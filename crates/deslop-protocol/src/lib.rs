@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use deslop_core::{FileReport, Finding, SafetyClass, Severity, Span, fingerprint};
+use deslop_core::{
+    FileReport, Finding, RevisionGuard, SafetyClass, Severity, Span, baseline_fingerprint,
+    revision_guard,
+};
 use deslop_parse::{SourceFile, analysis_provenance_or_failed};
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +21,8 @@ protocol_struct! {
 pub struct Region {
     start_line: usize,
     end_line: usize,
+    start_byte: usize,
+    end_byte: usize,
     text: String,
 }
 }
@@ -61,6 +66,8 @@ pub struct WorkOrder {
     id: String,
     path: PathBuf,
     region: Region,
+    region_fingerprint: String,
+    revision_guard: RevisionGuard,
     findings: Vec<WorkOrderFinding>,
     instruction: String,
     contract: Contract,
@@ -78,7 +85,7 @@ protocol_struct! {
 pub struct Patch {
     schema: String,
     workorder_id: String,
-    region_fingerprint: String,
+    revision_guard: RevisionGuard,
     replacement: String,
     by: String,
 }
@@ -88,7 +95,7 @@ protocol_struct! {
 pub struct CharacterizationTest {
     schema: String,
     workorder_id: String,
-    region_fingerprint: String,
+    revision_guard: RevisionGuard,
     test_path: PathBuf,
     test_text: String,
     by: String,
@@ -129,18 +136,56 @@ fn work_orders_for_source(source: &SourceFile, findings: &[Finding]) -> Vec<Work
 }
 
 pub fn region_fingerprint(path: &Path, region: &Region) -> String {
-    let start_byte = byte_offset_for_line(&region.text, 1);
-    let end_byte = region.text.len();
-    let span = Span::new(region.start_line, region.end_line, start_byte, end_byte);
-    fingerprint(path, "region", span, &region.text)
+    baseline_fingerprint(path, "region", region_span(region), &region.text)
 }
 
-pub fn workorder_region_fingerprint(work_order: &WorkOrder) -> String {
-    region_fingerprint(&work_order.path, &work_order.region)
+pub fn region_revision_guard(path: &Path, region: &Region) -> RevisionGuard {
+    revision_guard(path, region_span(region), &region.text)
+}
+
+pub fn workorder_revision_guard(work_order: &WorkOrder) -> &RevisionGuard {
+    &work_order.revision_guard
 }
 
 pub fn workorder_id_for_region(path: &Path, region: &Region) -> String {
-    format!("wo_{}", region_fingerprint(path, region))
+    format!("wo2_{}", region_fingerprint(path, region))
+}
+
+pub fn validate_workorder_identity(work_order: &WorkOrder) -> Result<(), String> {
+    if work_order.schema != "deslop.workorder/2" {
+        return Err(format!(
+            "unsupported workorder schema `{}`; regenerate as deslop.workorder/2",
+            work_order.schema
+        ));
+    }
+    let fingerprint = region_fingerprint(&work_order.path, &work_order.region);
+    if work_order.region_fingerprint != fingerprint {
+        return Err(
+            "workorder region_fingerprint does not match its normalized region identity"
+                .to_string(),
+        );
+    }
+    let guard = region_revision_guard(&work_order.path, &work_order.region);
+    if work_order.revision_guard != guard {
+        return Err("workorder revision_guard does not match its exact region bytes".to_string());
+    }
+    let id = workorder_id_for_region(&work_order.path, &work_order.region);
+    if work_order.id != id {
+        return Err(format!(
+            "workorder id `{}` does not match expected `{id}`",
+            work_order.id
+        ));
+    }
+    Ok(())
+}
+
+fn region_span(region: &Region) -> Span {
+    Span::new(
+        region.start_line,
+        region.end_line,
+        region.start_byte,
+        region.end_byte,
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -148,6 +193,8 @@ struct RewriteRegionKey {
     path: PathBuf,
     start_line: usize,
     end_line: usize,
+    start_byte: usize,
+    end_byte: usize,
     text: String,
 }
 
@@ -157,6 +204,8 @@ impl RewriteRegionKey {
             path: path.to_path_buf(),
             start_line: region.start_line,
             end_line: region.end_line,
+            start_byte: region.start_byte,
+            end_byte: region.end_byte,
             text: region.text,
         }
     }
@@ -165,6 +214,8 @@ impl RewriteRegionKey {
         Region {
             start_line: self.start_line,
             end_line: self.end_line,
+            start_byte: self.start_byte,
+            end_byte: self.end_byte,
             text: self.text.to_owned(),
         }
     }
@@ -173,10 +224,20 @@ impl RewriteRegionKey {
 fn region_for_finding(source: &SourceFile, finding: &Finding) -> Region {
     let region_span =
         source.enclosing_region_for_span(finding.span.start_line, finding.span.end_line);
+    let start_byte = source.line_start_byte(region_span.start_line);
+    let end_byte = source
+        .line_start_byte(region_span.end_line + 1)
+        .min(source.text.len());
     Region {
         start_line: region_span.start_line,
         end_line: region_span.end_line,
-        text: source.region_text(region_span.start_line, region_span.end_line),
+        start_byte,
+        end_byte,
+        text: source
+            .text
+            .get(start_byte..end_byte)
+            .unwrap_or("")
+            .to_string(),
     }
 }
 
@@ -211,12 +272,16 @@ fn safety_order(safety: SafetyClass) -> u8 {
 fn work_order_for_findings(key: RewriteRegionKey, findings: Vec<&Finding>) -> WorkOrder {
     let region = key.region();
     let id = workorder_id_for_region(&key.path, &region);
+    let region_fingerprint = region_fingerprint(&key.path, &region);
+    let revision_guard = region_revision_guard(&key.path, &region);
     WorkOrder {
-        schema: "deslop.workorder/1".to_string(),
+        schema: "deslop.workorder/2".to_string(),
         kind: WorkOrderKind::RewriteRegion,
         id,
         path: key.path,
         region,
+        region_fingerprint,
+        revision_guard,
         findings: findings.into_iter().map(work_order_finding).collect(),
         instruction: "Rewrite the region to address every listed finding that can be resolved without changing behavior or the public API. The safety contract wins if findings conflict. Preserve language and indentation.".to_string(),
         contract: Contract::default(),
@@ -235,11 +300,13 @@ fn work_order_finding(finding: &Finding) -> WorkOrderFinding {
 
 pub fn characterization_work_order_for(work_order: &WorkOrder) -> WorkOrder {
     WorkOrder {
-        schema: "deslop.workorder/1".to_string(),
+        schema: "deslop.workorder/2".to_string(),
         kind: WorkOrderKind::NeedsCharacterizationTest,
         id: work_order.id.to_owned(),
         path: work_order.path.to_path_buf(),
         region: work_order.region.clone(),
+        region_fingerprint: work_order.region_fingerprint.to_owned(),
+        revision_guard: work_order.revision_guard.clone(),
         findings: vec![WorkOrderFinding {
             rule: "needs-characterization-test".to_string(),
             severity: Severity::Major,
@@ -247,7 +314,7 @@ pub fn characterization_work_order_for(work_order: &WorkOrder) -> WorkOrder {
             message: "region has a weak test oracle; generate a characterization test before removal".to_string(),
             precondition: None,
         }],
-        instruction: "Write a test that pins the current observable behavior of this exact region. Do not change production behavior. Return deslop.characterization-test/1 JSONL with test_path and test_text; the test must compile and pass against the current unmodified code.".to_string(),
+        instruction: "Write a test that pins the current observable behavior of this exact region. Do not change production behavior. Return deslop.characterization-test/2 JSONL with test_path and test_text; the test must compile and pass against the current unmodified code.".to_string(),
         contract: Contract {
             must_parse: true,
             no_new_public_defs: false,
@@ -256,22 +323,6 @@ pub fn characterization_work_order_for(work_order: &WorkOrder) -> WorkOrder {
             check_cmd: work_order.contract.check_cmd.to_owned(),
         },
     }
-}
-
-fn byte_offset_for_line(text: &str, one_based_line: usize) -> usize {
-    if one_based_line <= 1 {
-        return 0;
-    }
-    let mut current_line = 1;
-    for (idx, ch) in text.char_indices() {
-        if ch == '\n' {
-            current_line += 1;
-            if current_line == one_based_line {
-                return idx + 1;
-            }
-        }
-    }
-    text.len()
 }
 
 #[cfg(test)]
@@ -318,15 +369,49 @@ mod tests {
         };
         let work_order = work_orders_for_source(&source, &[finding]).remove(0);
         let value = serde_json::to_value(&work_order).expect("json");
-        assert!(value.get("schema").is_some());
+        assert_eq!(value["schema"], "deslop.workorder/2");
         assert_eq!(value["kind"], "rewrite-region");
-        assert!(value.get("id").is_some());
+        assert!(
+            value["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("wo2_"))
+        );
         assert!(value.get("path").is_some());
-        assert!(value.get("region").is_some());
+        assert_eq!(value["region"]["start_byte"], 0);
+        assert_eq!(value["region"]["end_byte"], source.text.len());
         assert!(value.get("findings").is_some());
         assert!(value.get("instruction").is_some());
         assert!(value.get("contract").is_some());
-        assert!(value.get("region_fingerprint").is_none());
+        assert!(value["region_fingerprint"].is_string());
+        assert!(
+            value["revision_guard"]
+                .as_str()
+                .is_some_and(|guard| guard.starts_with("rg1_"))
+        );
+        validate_workorder_identity(&work_order).expect("valid generated identity");
+    }
+
+    #[test]
+    fn workorder_identity_survives_outer_whitespace_but_revision_guard_expires() {
+        let original = SourceFile::new(PathBuf::from("sample.rs"), "value();\n".into());
+        let changed = SourceFile::new(PathBuf::from("sample.rs"), " value();\n".into());
+        let original_order = work_orders_for_source(
+            &original,
+            &[finding(&original, 1, "long-method", SafetyClass::LlmOnly)],
+        )
+        .remove(0);
+        let changed_order = work_orders_for_source(
+            &changed,
+            &[finding(&changed, 1, "long-method", SafetyClass::LlmOnly)],
+        )
+        .remove(0);
+
+        assert_eq!(
+            original_order.region_fingerprint,
+            changed_order.region_fingerprint
+        );
+        assert_eq!(original_order.id, changed_order.id);
+        assert_ne!(original_order.revision_guard, changed_order.revision_guard);
     }
 
     #[test]

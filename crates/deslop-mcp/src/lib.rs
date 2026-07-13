@@ -14,7 +14,7 @@ use deslop_metrics::{MetricsConfig, metrics_paths};
 use deslop_parse::SourceFile;
 use deslop_protocol::{
     CharacterizationTest, Patch, WorkOrder, WorkOrderKind, work_orders_for_report,
-    workorder_region_fingerprint,
+    workorder_revision_guard,
 };
 use deslop_report::render_json;
 use deslop_slim::build_prompt;
@@ -136,7 +136,7 @@ fn scan_tool_spec() -> Value {
 fn propose_tool_spec() -> Value {
     tool(
         "propose",
-        "Return deslop.workorder/1 JSONL-compatible work orders.",
+        "Return deslop.workorder/2 JSONL-compatible work orders with exact revision guards.",
         object_schema(json!({
             "paths": paths_schema(),
             "config": config_schema("Optional deslop.toml path for [analyzer] propose settings."),
@@ -148,7 +148,7 @@ fn propose_tool_spec() -> Value {
 fn fix_tool_spec() -> Value {
     tool(
         "fix",
-        "Return deslop-slim rewrite prompts by default (mode=prompts). With deslop-mcp built using --features slim-llm, mode=auto runs deslop-slim server-side and returns deslop.slim/2.",
+        "Return deslop-slim rewrite prompts by default (mode=prompts). With deslop-mcp built using --features slim-llm, mode=auto runs deslop-slim server-side and returns deslop.slim/3.",
         object_schema(fix_tool_properties()),
     )
 }
@@ -159,7 +159,7 @@ fn fix_tool_properties() -> Value {
             "type": "string",
             "enum": ["prompts", "auto"],
             "default": "prompts",
-            "description": "prompts returns deslop.fix/1 for agent-as-consumer. auto requires deslop-mcp --features slim-llm and runs deslop-slim server-side."
+            "description": "prompts returns deslop.fix/2 for agent-as-consumer. auto requires deslop-mcp --features slim-llm and runs deslop-slim server-side."
         },
         "paths": paths_schema(),
         "root": { "type": "string", "description": "Project root for work-order rediscovery and verification; defaults to the server working directory." },
@@ -198,7 +198,7 @@ fn fix_tool_properties() -> Value {
 fn verify_tool_spec() -> Value {
     tool(
         "verify",
-        "Verify deslop.patch/1 patches without writing files.",
+        "Verify deslop.patch/2 patches without writing files.",
         required_schema(&["patches"], patch_verification_properties()),
     )
 }
@@ -206,7 +206,7 @@ fn verify_tool_spec() -> Value {
 fn characterize_tool_spec() -> Value {
     tool(
         "characterize",
-        "Emit deslop.workorder/1 requests for weak-oracle regions.",
+        "Emit deslop.workorder/2 requests for weak-oracle regions.",
         required_schema(
             &["patches"],
             json!({
@@ -239,7 +239,7 @@ fn apply_tool_spec() -> Value {
     properties["no_backup"] = json!({ "type": "boolean", "default": false });
     tool(
         "apply",
-        "Verify and atomically apply deslop.patch/1 patches.",
+        "Verify and atomically apply deslop.patch/2 patches.",
         required_schema(&["patches"], properties),
     )
 }
@@ -401,15 +401,15 @@ fn paths_schema() -> Value {
 fn patches_schema() -> Value {
     json!({
         "type": "array",
-        "items": { "$ref": "#/$defs/deslop.patch/1" },
+        "items": { "$ref": "#/$defs/deslop.patch/2" },
         "$defs": {
-            "deslop.patch/1": {
+            "deslop.patch/2": {
                 "type": "object",
-                "required": ["schema", "workorder_id", "region_fingerprint", "replacement", "by"],
+                "required": ["schema", "workorder_id", "revision_guard", "replacement", "by"],
                 "properties": {
-                    "schema": { "const": "deslop.patch/1" },
+                    "schema": { "const": "deslop.patch/2" },
                     "workorder_id": { "type": "string" },
-                    "region_fingerprint": { "type": "string" },
+                    "revision_guard": { "type": "string", "pattern": "^rg1_[0-9]+_[0-9a-f]{64}$" },
                     "replacement": { "type": "string" },
                     "by": { "type": "string" }
                 },
@@ -433,16 +433,16 @@ fn coverage_schema() -> Value {
 fn characterization_tests_schema() -> Value {
     json!({
         "type": "array",
-        "items": { "$ref": "#/$defs/deslop.characterization-test/1" },
+        "items": { "$ref": "#/$defs/deslop.characterization-test/2" },
         "default": [],
         "$defs": {
-            "deslop.characterization-test/1": {
+            "deslop.characterization-test/2": {
                 "type": "object",
-                "required": ["schema", "workorder_id", "region_fingerprint", "test_path", "test_text", "by"],
+                "required": ["schema", "workorder_id", "revision_guard", "test_path", "test_text", "by"],
                 "properties": {
-                    "schema": { "const": "deslop.characterization-test/1" },
+                    "schema": { "const": "deslop.characterization-test/2" },
                     "workorder_id": { "type": "string" },
-                    "region_fingerprint": { "type": "string" },
+                    "revision_guard": { "type": "string", "pattern": "^rg1_[0-9]+_[0-9a-f]{64}$" },
                     "test_path": { "type": "string" },
                     "test_text": { "type": "string" },
                     "by": { "type": "string" }
@@ -497,7 +497,7 @@ fn scan_tool(args: &Value) -> Result<Value> {
 fn propose_tool(args: &Value) -> Result<Value> {
     let batch = proposed_work_orders(args)?;
     Ok(json!({
-        "schema": "deslop.workorders/1",
+        "schema": "deslop.workorders/2",
         "status": batch.status,
         "analyses": batch.analyses,
         "blocked_files": batch.blocked_files,
@@ -524,7 +524,7 @@ fn fix_mode(args: &Value) -> Result<&str> {
 fn fix_prompts_tool(args: &Value) -> Result<Value> {
     let batch = proposed_work_orders(args)?;
     let next = if batch.status == AnalysisStatus::Complete {
-        "Rewrite each region. Build deslop.patch/1 patches { schema:\"deslop.patch/1\", workorder_id, region_fingerprint, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)."
+        "Rewrite each region. Copy revision_guard verbatim into deslop.patch/2 patches { schema:\"deslop.patch/2\", workorder_id, revision_guard, replacement, by } and call the `apply` tool (default applies only Removable; pass coverage / allow_non_removable to widen)."
     } else {
         "Analysis is incomplete. Repair every blocked file and rescan; no rewrite is authorized."
     };
@@ -535,7 +535,7 @@ fn fix_prompts_tool(args: &Value) -> Result<Value> {
         .map(fix_prompt_entry)
         .collect::<Vec<_>>();
     Ok(json!({
-        "schema": "deslop.fix/1",
+        "schema": "deslop.fix/2",
         "status": batch.status,
         "analyses": batch.analyses,
         "blocked_files": batch.blocked_files,
@@ -720,8 +720,11 @@ fn fix_prompt_entry(work_order: WorkOrder) -> Value {
         "region": {
             "start_line": work_order.region.start_line,
             "end_line": work_order.region.end_line,
+            "start_byte": work_order.region.start_byte,
+            "end_byte": work_order.region.end_byte,
         },
-        "region_fingerprint": workorder_region_fingerprint(&work_order),
+        "region_fingerprint": work_order.region_fingerprint,
+        "revision_guard": work_order.revision_guard,
         "contract": work_order.contract,
         "findings": work_order.findings,
         "prompt": prompt.text,
@@ -848,7 +851,7 @@ fn characterize_tool(args: &Value) -> Result<Value> {
         },
     )?;
     Ok(json!({
-        "schema": "deslop.workorders/1",
+        "schema": "deslop.workorders/2",
         "workorders": work_orders,
     }))
 }
@@ -991,7 +994,7 @@ fn patches_arg(args: &Value) -> Result<Vec<Patch>> {
         .cloned()
         .map(serde_json::from_value)
         .collect::<Result<Vec<_>, _>>()
-        .context("failed to parse deslop.patch/1 patch")
+        .context("failed to parse deslop.patch/2 patch")
 }
 
 fn characterization_tests_arg(args: &Value) -> Result<Vec<CharacterizationTest>> {
@@ -1009,7 +1012,7 @@ fn characterization_tests_arg(args: &Value) -> Result<Vec<CharacterizationTest>>
         .cloned()
         .map(serde_json::from_value)
         .collect::<Result<Vec<_>, _>>()
-        .context("failed to parse deslop.characterization-test/1 test")
+        .context("failed to parse deslop.characterization-test/2 test")
 }
 
 fn optional_string(args: &Value, key: &str) -> Option<String> {
@@ -1038,9 +1041,9 @@ pub fn patch_for_workorder(
     replacement: impl Into<String>,
 ) -> Patch {
     Patch {
-        schema: "deslop.patch/1".to_string(),
+        schema: "deslop.patch/2".to_string(),
         workorder_id: work_order.id.to_owned(),
-        region_fingerprint: workorder_region_fingerprint(work_order),
+        revision_guard: workorder_revision_guard(work_order).clone(),
         replacement: replacement.into(),
         by: "deslop-mcp-test".to_string(),
     }
@@ -1166,7 +1169,7 @@ mod tests {
         .expect("partial analysis is a domain result");
         let content = structured_content(&response);
 
-        assert_eq!(content["schema"], "deslop.slim/2");
+        assert_eq!(content["schema"], "deslop.slim/3");
         assert_eq!(content["blocked_files"].as_array().unwrap().len(), 1);
         assert!(content["patches"].as_array().unwrap().is_empty());
         assert!(content["applied"].is_null());
@@ -1270,6 +1273,18 @@ mod tests {
                 .expect("description")
                 .contains("lcov:<path>")
         );
+        let patches = &verify["inputSchema"]["properties"]["patches"];
+        assert_eq!(patches["items"]["$ref"], "#/$defs/deslop.patch/2");
+        let patch = &patches["$defs"]["deslop.patch/2"];
+        assert_eq!(patch["properties"]["schema"]["const"], "deslop.patch/2");
+        assert!(
+            patch["required"]
+                .as_array()
+                .expect("required")
+                .iter()
+                .any(|field| field == "revision_guard")
+        );
+        assert!(patch["properties"].get("region_fingerprint").is_none());
     }
 
     fn assert_scan_analyzer_schema(tool: &Value) {
@@ -1572,7 +1587,7 @@ mod tests {
         assert_eq!(first_tool_result(&verified)["verdict"], "coverage-unknown");
 
         let mut stale = patch_for_workorder(&work_order, "(empty? xs)\n");
-        stale.region_fingerprint = "stale".to_string();
+        stale.revision_guard = "stale".into();
         let rejected = call_tool(
             "verify",
             json!({ "scope": [&fixture.path], "patches": [stale] }),
@@ -1580,6 +1595,47 @@ mod tests {
         .expect("verify");
         assert_eq!(first_tool_result(&rejected)["passed"], false);
         assert_eq!(first_tool_result(&rejected)["verdict"], "rejected");
+
+        let mut legacy = patch_for_workorder(&work_order, "(empty? xs)\n");
+        legacy.schema = "deslop.patch/1".to_string();
+        let error = call_tool(
+            "verify",
+            json!({ "scope": [&fixture.path], "patches": [legacy] }),
+        )
+        .expect_err("legacy normalized guard must not be accepted");
+        assert!(error.to_string().contains("must be regenerated"));
+
+        let boundary_stale = patch_for_workorder(&work_order, "(empty? xs)\n");
+        fs::write(&fixture.path, " (= (count xs) 0)\n").expect("boundary whitespace mutation");
+        let rejected = call_tool(
+            "verify",
+            json!({ "scope": [&fixture.path], "patches": [boundary_stale] }),
+        )
+        .expect("verify boundary stale");
+        assert_eq!(first_tool_result(&rejected)["passed"], false);
+        assert_first_tool_reason_contains(&rejected, "stale revision_guard");
+
+        let applied = call_tool(
+            "apply",
+            json!({
+                "scope": [&fixture.path],
+                "patches": [boundary_stale],
+                "check_cmd": "true",
+                "allow_non_removable": true,
+                "no_backup": true
+            }),
+        )
+        .expect("apply boundary stale report");
+        assert!(
+            structured_content(&applied)["written"]
+                .as_array()
+                .expect("written")
+                .is_empty()
+        );
+        assert_eq!(
+            fs::read_to_string(&fixture.path).expect("source"),
+            " (= (count xs) 0)\n"
+        );
     }
 
     #[test]
@@ -1682,12 +1738,16 @@ mod tests {
         let content = structured_content(&fixed);
         let prompts = content["prompts"].as_array().expect("prompts");
 
-        assert_eq!(content["schema"], "deslop.fix/1");
+        assert_eq!(content["schema"], "deslop.fix/2");
         assert!(!prompts.is_empty());
         assert_eq!(prompts[0]["workorder_id"], work_order.id);
         assert_eq!(
             prompts[0]["region_fingerprint"],
-            workorder_region_fingerprint(&work_order)
+            work_order.region_fingerprint
+        );
+        assert_eq!(
+            prompts[0]["revision_guard"],
+            work_order.revision_guard.as_str()
         );
         assert!(
             prompts[0]["prompt"]
@@ -1912,7 +1972,7 @@ mod tests {
         )
         .expect("fix auto apply");
         let content = structured_content(&response);
-        assert_eq!(content["schema"], "deslop.slim/2");
+        assert_eq!(content["schema"], "deslop.slim/3");
         assert_eq!(content["dry_run"], false);
         assert_eq!(content["verified"]["results"][0]["verdict"], "removable");
         assert_eq!(content["gating"]["applied"].as_array().unwrap().len(), 1);
@@ -1941,7 +2001,7 @@ mod tests {
         )
         .expect("fix auto rejected");
         let content = structured_content(&response);
-        assert_eq!(content["schema"], "deslop.slim/2");
+        assert_eq!(content["schema"], "deslop.slim/3");
         assert_eq!(content["verified"]["results"][0]["verdict"], "rejected");
         assert_eq!(content["gating"]["rejected"].as_array().unwrap().len(), 1);
         assert!(content["applied"]["written"].as_array().unwrap().is_empty());

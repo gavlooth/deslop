@@ -16,10 +16,10 @@ dependency.** The tool is fully useful with the LLM feature compiled out.
 
 The product is the **deterministic analyzer + its output contract**, not a bundled model:
 
-- **`propose`** emits work orders (`deslop.workorder/1`).
+- **`propose`** emits work orders (`deslop.workorder/2`) with separate matching identity and exact-byte revision guard.
 - An LLM (Claude Code, Cursor, Codex, a CI bot, or the optional built-in consumer) rewrites regions.
-- **`verify` / `apply`** are the deterministic safety gate (`deslop.patch/1`): re-parse, run your
-  `--check-cmd`, match a region fingerprint, and only apply changes that clear the gate.
+- **`verify` / `apply`** are the deterministic safety gate (`deslop.patch/2`): re-parse, run your
+  `--check-cmd`, match the exact `revision_guard`, and only apply changes that clear the gate.
 
 ## Install
 
@@ -39,7 +39,7 @@ cargo install --path crates/deslop-cli --features mcp   # CLI + MCP server
 | `deslop propose <paths>` | Work orders for non-safe-auto findings |
 | `deslop fix` | The bundled LLM consumer: propose → rewrite → verify → apply |
 | `deslop fix --diff` | Preview deterministic safe-auto edits as a unified diff without writing |
-| `deslop verify` / `apply` | Verify / atomically apply `deslop.patch/1` patches |
+| `deslop verify` / `apply` | Verify / atomically apply `deslop.patch/2` patches |
 | `deslop characterize` / `verify-characterization` | Generate/accept behavior-pinning tests for risky regions |
 | `deslop baseline` / `scan --baseline` | Snapshot findings; gate only on regressions |
 | `deslop eval` | Run the labeled corpus; per-rule precision/recall |
@@ -86,7 +86,7 @@ explicitly with `--coverage <mode>` (prove it) or `--allow-unverified` (opt into
 
 - **MCP server** (`deslop mcp`, `--features mcp`): tools `scan`, `propose`, `verify`, `apply`,
   `characterize`, `verify_characterization`, `metrics`, `graph`, `rules`, and `fix`. The default build is
-  **network-free**. `fix` defaults to *agent-as-consumer* (returns rewrite prompts + fingerprints;
+  **network-free**. `fix` defaults to *agent-as-consumer* (returns rewrite prompts + exact revision guards;
   the calling agent rewrites and submits patches to `apply`); a server-run LLM mode is available only
   behind the `slim-llm` feature. `scan`, `propose`, and prompt-mode `fix` accept a `config` path and
   inline `analyzer` overrides, including per-language `long_method_nloc`; inline MCP values override

@@ -79,7 +79,7 @@ fn scan_tool_spec() -> Value {
 fn propose_tool_spec() -> Value {
     tool(
         "propose",
-        "Read-only. Return deslop.workorder/1 work orders for findings that need an agent rewrite (everything except safe-auto edits). No writes, no network.",
+        "Read-only. Return deslop.workorder/2 work orders with exact revision guards for findings that need an agent rewrite (everything except safe-auto edits). No writes, no network.",
         ToolBehavior::read_only("Propose rewrite work orders"),
         object_schema(json!({
             "paths": paths_schema(),
@@ -92,7 +92,7 @@ fn propose_tool_spec() -> Value {
 fn fix_tool_spec() -> Value {
     tool(
         "fix",
-        "mode=prompts (default): read-only, no network; returns deslop.fix/1 rewrite prompts plus region fingerprints for the calling agent to rewrite locally. mode=auto: requires a --features slim-llm build; runs deslop-slim server-side, sending flagged source regions to the LLM provider (network egress, explicit consent required) and writing verified rewrites only when apply=true. Returns deslop.slim/2.",
+        "mode=prompts (default): read-only, no network; returns deslop.fix/2 rewrite prompts plus exact revision guards for the calling agent to copy into patches. mode=auto: requires a --features slim-llm build; runs deslop-slim server-side, sending flagged source regions to the LLM provider (network egress, explicit consent required) and writing verified rewrites only when apply=true. Returns deslop.slim/3.",
         ToolBehavior {
             title: "Rewrite prompts or server-side fix",
             read_only: false,
@@ -110,7 +110,7 @@ fn fix_tool_properties() -> Value {
             "type": "string",
             "enum": ["prompts", "auto"],
             "default": "prompts",
-            "description": "prompts returns deslop.fix/1 for agent-as-consumer. auto requires deslop-mcp --features slim-llm and runs deslop-slim server-side."
+            "description": "prompts returns deslop.fix/2 for agent-as-consumer. auto requires deslop-mcp --features slim-llm and runs deslop-slim server-side."
         },
         "paths": paths_schema(),
         "analyzer": analyzer_schema(),
@@ -148,7 +148,7 @@ fn fix_tool_properties() -> Value {
 fn verify_tool_spec() -> Value {
     tool(
         "verify",
-        "Read-only for the workspace. Verify deslop.patch/1 patches in a temporary project copy and return deslop.verify/1 verdicts: removable, coverage-unknown, untested-risky, dead-candidate, or rejected. check_cmd (if set) runs in the temp copy, never in the workspace. Without coverage input, passing patches come back coverage-unknown, which `apply` will not write by default.",
+        "Read-only for the workspace. Verify deslop.patch/2 patches in a temporary project copy and return deslop.verify/1 verdicts: removable, coverage-unknown, untested-risky, dead-candidate, or rejected. check_cmd (if set) runs in the temp copy, never in the workspace. Without coverage input, passing patches come back coverage-unknown, which `apply` will not write by default.",
         ToolBehavior::read_only("Verify patches (dry run)"),
         required_schema(&["patches"], patch_verification_properties()),
     )
@@ -157,7 +157,7 @@ fn verify_tool_spec() -> Value {
 fn characterize_tool_spec() -> Value {
     tool(
         "characterize",
-        "Read-only. Verify patches, then return deslop.workorder/1 characterization-test requests for weak-oracle regions that passed verification. Use when coverage is unavailable and a behavior-pinning test is needed before apply.",
+        "Read-only. Verify patches, then return deslop.workorder/2 characterization-test requests for weak-oracle regions that passed verification. Use when coverage is unavailable and a behavior-pinning test is needed before apply.",
         ToolBehavior::read_only("Request characterization tests"),
         required_schema(
             &["patches"],
@@ -192,7 +192,7 @@ fn apply_tool_spec() -> Value {
     properties["no_backup"] = json!({ "type": "boolean", "default": false });
     tool(
         "apply",
-        "WRITES FILES. Verify deslop.patch/1 patches and atomically apply the ones that pass. Default writes only verifier-Removable patches; allow_non_removable widens to any non-rejected verdict. Backups (*.bak) are kept unless no_backup. No network. Returns deslop.apply/1 with verify results and written paths.",
+        "WRITES FILES. Verify deslop.patch/2 patches and atomically apply the ones that pass. Default writes only verifier-Removable patches; allow_non_removable widens to any non-rejected verdict. Backups (*.bak) are kept unless no_backup. No network. Returns deslop.apply/1 with verify results and written paths.",
         ToolBehavior::writes_files("Verify and apply patches"),
         required_schema(&["patches"], properties),
     )
@@ -359,15 +359,15 @@ fn paths_schema() -> Value {
 fn patches_schema() -> Value {
     json!({
         "type": "array",
-        "items": { "$ref": "#/$defs/deslop.patch/1" },
+        "items": { "$ref": "#/$defs/deslop.patch/2" },
         "$defs": {
-            "deslop.patch/1": {
+            "deslop.patch/2": {
                 "type": "object",
-                "required": ["schema", "workorder_id", "region_fingerprint", "replacement", "by"],
+                "required": ["schema", "workorder_id", "revision_guard", "replacement", "by"],
                 "properties": {
-                    "schema": { "const": "deslop.patch/1" },
+                    "schema": { "const": "deslop.patch/2" },
                     "workorder_id": { "type": "string" },
-                    "region_fingerprint": { "type": "string" },
+                    "revision_guard": { "type": "string", "pattern": "^rg1_[0-9]+_[0-9a-f]{64}$" },
                     "replacement": { "type": "string" },
                     "by": { "type": "string" }
                 },
@@ -391,16 +391,16 @@ fn coverage_schema() -> Value {
 fn characterization_tests_schema() -> Value {
     json!({
         "type": "array",
-        "items": { "$ref": "#/$defs/deslop.characterization-test/1" },
+        "items": { "$ref": "#/$defs/deslop.characterization-test/2" },
         "default": [],
         "$defs": {
-            "deslop.characterization-test/1": {
+            "deslop.characterization-test/2": {
                 "type": "object",
-                "required": ["schema", "workorder_id", "region_fingerprint", "test_path", "test_text", "by"],
+                "required": ["schema", "workorder_id", "revision_guard", "test_path", "test_text", "by"],
                 "properties": {
-                    "schema": { "const": "deslop.characterization-test/1" },
+                    "schema": { "const": "deslop.characterization-test/2" },
                     "workorder_id": { "type": "string" },
-                    "region_fingerprint": { "type": "string" },
+                    "revision_guard": { "type": "string", "pattern": "^rg1_[0-9]+_[0-9a-f]{64}$" },
                     "test_path": { "type": "string" },
                     "test_text": { "type": "string" },
                     "by": { "type": "string" }
