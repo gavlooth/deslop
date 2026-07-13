@@ -15,6 +15,10 @@ pub(crate) const RAW_ARENA_SCHEMA: &str = "deslop-raw-arena/1";
 pub(crate) struct ArenaNodeIndex(u32);
 
 impl ArenaNodeIndex {
+    pub(crate) fn from_usize(index: usize) -> Option<Self> {
+        u32::try_from(index).ok().map(Self)
+    }
+
     pub fn as_usize(self) -> usize {
         self.0 as usize
     }
@@ -30,7 +34,7 @@ impl ArenaSegmentIndex {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct SourcePoint {
+pub struct SourcePoint {
     row: usize,
     /// Zero-based byte offset within the row, not a character or UTF-16 column.
     column: usize,
@@ -47,7 +51,7 @@ impl SourcePoint {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct SyntaxSpan {
+pub struct SyntaxSpan {
     start_byte: usize,
     end_byte: usize,
     start_point: SourcePoint,
@@ -55,6 +59,29 @@ pub(crate) struct SyntaxSpan {
 }
 
 impl SyntaxSpan {
+    #[cfg(test)]
+    pub(crate) fn new_for_test(
+        start_byte: usize,
+        end_byte: usize,
+        start_row: usize,
+        start_column: usize,
+        end_row: usize,
+        end_column: usize,
+    ) -> Self {
+        Self {
+            start_byte,
+            end_byte,
+            start_point: SourcePoint {
+                row: start_row,
+                column: start_column,
+            },
+            end_point: SourcePoint {
+                row: end_row,
+                column: end_column,
+            },
+        }
+    }
+
     pub fn start_byte(self) -> usize {
         self.start_byte
     }

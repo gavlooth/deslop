@@ -138,16 +138,24 @@ reports, benchmark records, and work orders.
   Thirty-four parse tests lock private-Tree parity, aliases/repeated fields, Unicode byte columns,
   comments/gaps, empty/whitespace inputs, zero-width missing nodes, partial TS/TSX recovery, exact
   source reconstruction, deterministic IDs, and unchanged one-parse ledgers; full gates pass.
-- [ ] M1.4 Define scan-local `NodeId`, serialized revision-bound `NodeKey`, cross-revision baseline
+- [x] M1.4 Define scan-local `NodeId`, serialized revision-bound `NodeKey`, cross-revision baseline
   fingerprint, and exact `RevisionGuard`; test collisions/expiry and prohibit fuzzy write authorization.
-  **NEXT**
-- [ ] M1.5 Build containment and smallest-exclusive-region indices.
+  Evidence: `deslop-parse` exposes owner-checked, non-Serde project-global `NodeId`; strict
+  `deslop.node-key/1` identities tied to the exact repository/path/source/grammar and raw arena;
+  validated structural anchors and collision ordinals; and collision-prone `nb1_` comparison evidence
+  with no lookup or write-authority API. Forty-two parse tests lock reversed-input node order and
+  topology, wrong-owner precedence, key round-trips/expiry/collisions, ambiguous baselines, structural
+  digest vectors, and portable path rejection. Existing `rg1_` reconstruction remains exact and all
+  compatibility, workspace, feature, build, formatting, whitespace, and strict clippy gates pass.
+- [ ] M1.5 Build containment and smallest-exclusive-region indices. **NEXT**
 - [ ] M1.6 Implement exclusive local and declared inclusive aggregation APIs.
 - [ ] M1.7 Expose query/cursor-derived captures without reparsing source fragments.
 - [ ] M1.8 Add edit/changed-range invalidation and explicit re-anchor-or-expire behavior.
 - [ ] M1.9 Migrate analyzer and metrics consumers to the shared snapshot.
 - [ ] M1.10 Migrate graph, evaluator, LSP, MCP/protocol, and slim consumers.
 - [ ] M1.11 Instrument parse counts, ownership invariants, deterministic node order, latency, and memory.
+  Measure and compact M1.4's repeated per-node `FileRevisionKey`/field-path storage, allocating
+  `NodeView::children`, and linear range/key lookups before declaring the traversal API migration-ready.
 - [ ] M1.DoD Prove one parse per file revision in all scan/propose paths and no borrowed-node lifetime or
   overlapping exclusive-metric errors on the gold fixture matrix.
 

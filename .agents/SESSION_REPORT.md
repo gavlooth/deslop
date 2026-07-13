@@ -6065,3 +6065,98 @@ fixture, and byte point columns must be converted rather than published as UTF-1
 adds identity or M1.5 adds containment.
 
 **Signature:** Codex (GPT-5), M1.3 integration owner, 2026-07-13.
+
+---
+
+## M1.4 checkpoint — syntax identity domains and write-authority separation
+
+**Date/time:** 2026-07-13T18:48:58+02:00
+
+**Objective/target:** expose the owned arena through deterministic, owner-validated scan-local node
+identity; add a strict revision-bound serialized key and deliberately fuzzy cross-revision comparison
+fingerprint; and preserve exact write authorization without allowing syntax correlation to mint a
+`RevisionGuard` or authorize a write.
+
+**Changes:** added `deslop-parse::identity` and public `NodeId`, `NodeView`, `NodeIds`, `NodeKey`,
+`NodeAnchor`, `NodeBaselineFingerprint`, `SourcePoint`, and `SyntaxSpan` surfaces. Each immutable
+`ProjectAnalysis` receives a non-repeating process-local owner tag independent of deterministic
+analysis content; `NodeId` combines that tag with a dense project-global preorder slot, has no Serde
+implementation, and reports wrong-analysis before range errors. File ranges follow canonical
+`BTreeMap` path order and map reciprocal file-local parent/children into global IDs. Structured
+`deslop.node-key/1` values include exact `FileRevisionKey`, `deslop-raw-arena/1`, alias-free raw
+grammar kind and numeric symbol, the root-to-node incoming-field path, fixed-width byte/point
+coordinates, a bottom-up `nsa1_` raw structural digest, and a checked collision ordinal. Custom
+deserialization rejects unknown fields, unsupported schemas, invalid prefixes, empty identity
+fields, reversed coordinates, and non-canonical paths. `FileRevisionKey` wire paths use canonical
+slash components and `%25`; raw or escaped backslashes are rejected, and snapshot admission rejects
+literal Unix backslash components because legacy exact-guard normalization would alias them with
+directory separators. `nb1_` baseline fingerprints hash repository, path, raw kind, field path, and
+Unicode-trimmed node text while excluding revisions, coordinates, numeric grammar versions, anchors,
+and collision ordinals. They are explicitly collision-prone read-only evidence and have no reanchor,
+lookup, guard-construction, or write API. Existing `deslop-core` `rg1_` reconstruction remains the
+sole exact write authority and is unchanged for `/3` wire compatibility.
+
+**Commands/checks run:** targeted Hindsight startup, active-plan, and negative-memory reads; Serena
+activation/instruction checks followed by local Rust reads because Serena indexes this repository as
+Python-only; three read-only agent audits for the core identity boundary, consumer integration, and
+contract tests; focused parse tests and strict parse clippy throughout; exact core/protocol/verifier/
+CLI/slim compatibility tests; the exact M0 numerical gate; `cargo test --workspace`; `cargo test -p
+deslop-mcp --features slim-llm -- --test-threads=1`; `cargo build --workspace`; `cargo build -p
+deslop-slim --no-default-features`; `cargo fmt --all -- --check`; `cargo clippy --workspace
+--all-targets --all-features -- -D warnings`; `git diff --check`; `jj status`; and `jj diff --stat`.
+
+**Verification results:** PASS. `deslop-parse` has 42 passing tests. The dense three-file oracle has
+36 slots and 33 child edges with roots at 0, 10, and 19; reversed overlay orders produce identical
+full `(slot, path, kind, key, parent, children)` sequences while independent analyses produce
+different `NodeId` owners. Wrong owners win over even `u32::MAX` range errors. Prefixing `0.rs`
+shifts `a.rs` from slot 0 to 10 without changing its node keys. Key tests lock the exact eight-field
+wire, strict standalone anchors, schema/source/path adversaries, collision overflow, exact-revision
+expiry, ambiguous duplicate baselines, and the pinned Rust call-expression digest
+`nsa1_2e71d4d3ed08b9955a5d305e4d79667b5933bdd90860055902470563646d464c`. A peer-only file edit
+expires `NodeKey` while leaving a locally reconstructed target-region `rg1_` equal, proving that
+correlation identity and write authority are separate. Workspace: 322 passing tests plus one
+intentional ignored performance probe and all doc-tests. Feature-enabled MCP has 23 passing tests.
+Workspace and minimal-slim builds, formatting, whitespace, and strict all-target/all-feature clippy
+pass. The unchanged M0 numerical gate remains 30 workorders/IDs/targets, 65 grouped findings,
+21 files/74 symbols/197 graph edges/123 syntactic edges/zero false resolution, one ambiguity, three
+complete grammar sentinels, two quarantined partial fixtures, and one unavailable JET observation.
+
+**Failure modes / invalidated assumptions:** a deterministic owner derived from analysis content and
+a bare dense slot both allow accidental cross-analysis access; the accepted owner is process-local
+and separately allocated. A fuzzy or cross-revision `NodeKey`, a span-only structural anchor, and a
+first-match baseline resolver were rejected because each can silently select the wrong duplicate.
+Canonical roles were again excluded because M2 owns them. Permissive `PathBuf` Serde and `%5c`
+backslash decoding were rejected because their meaning changes by host platform and can alias or
+traverse on Windows. Public standalone anchor deserialization now preserves the same invariants as a
+nested `NodeKey`. A production node-to-guard accessor was rejected because Tree-sitter endpoint
+semantics are not the canonical verifier region contract; callers cannot mint write authority from
+syntax identity. Changing legacy `rg1_` coordinate hashing from native-width `usize` to fixed-width
+`u64` under the same prefix was rejected as a silent wire migration: `/3` artifacts must retain
+their current algorithm, and a portable `rg2_` belongs to the explicit M1.10 `/4` flag day. Removing
+legacy `RevisionGuard: From<String>` has the same migration boundary; runtime reconstruction already
+rejects forged values.
+
+**Current recommendation/checkpoint:** M1.4 is complete. Implement M1.5 as immutable containment and
+smallest-exclusive-region indices over the owned arena and public node IDs. Keep the index raw-CST
+and revision-local; do not introduce M2 canonical roles, fuzzy reanchoring, or write authority.
+
+**Blockers:** none for M1.5. Serena remains Python-symbol-only for this Rust workspace. The current
+legacy `rg1_` hash is architecture-native; do not claim cross-architecture wire portability or alter
+the existing prefix before M1.10's explicit schema migration.
+
+**Dependencies/restart:** rebuild Rust consumers to pick up the additive parse API. No service
+restart or external migration is required. `serde` and `serde_json` were already workspace
+dependencies. Consumer migration, deterministic reread staleness, LSP document versions, full
+peer-readset commit, multi-file atomic rollback, and the `/4` wire flag day remain assigned to
+M1.9/M1.10/M6/M7 rather than being implied by `NodeKey`.
+
+**Negative-memory status:** retain that `NodeId` ownership must be per analysis, `NodeKey` is exact
+revision-bound raw syntax identity with a strict arena schema and structural digest, and baseline
+fingerprints are collision-prone evidence with no lookup/write path. Literal backslashes cannot
+enter logical snapshot paths while `rg1_` normalizes them. Do not silently redefine `rg1_`; add a
+fixed-width successor only at the declared wire flag day. Measure M1.4's cloned per-node file keys
+and field paths, allocating child views, and linear range/key scans in M1.11 before migration-scale
+performance claims. Recheck when M1.5 adds indices, M1.8 adds invalidation, M1.10 migrates wire
+consumers, or M1.11 measures memory.
+
+**Signature:** Codex (GPT-5), M1.4 integration owner, 2026-07-13.

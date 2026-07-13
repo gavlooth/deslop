@@ -474,6 +474,8 @@ dependencies = [
  "deslop-core",
  "deslop-lang",
  "ignore",
+ "serde",
+ "serde_json",
  "tempfile",
  "tree-sitter",
 ]

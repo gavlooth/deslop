@@ -1,18 +1,25 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::{Context, Result, bail};
 use deslop_core::{AnalysisDiagnostic, AnalysisProvenance, Lang};
 use deslop_lang::Registry;
 use ignore::WalkBuilder;
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tree_sitter::{Parser, Tree};
 
 use crate::analysis_provenance_for_tree;
 #[cfg(test)]
-use crate::arena::{ArenaNodeIndex, ArenaSegmentIndex};
-use crate::arena::{RAW_ARENA_SCHEMA, SyntaxArena};
+use crate::arena::ArenaSegmentIndex;
+use crate::arena::{ArenaNodeIndex, RAW_ARENA_SCHEMA, SyntaxArena};
+use crate::identity::{
+    NodeBaselineFingerprint, NodeId, NodeKey, NodeKeyLookupError, NodeLookupError,
+    baseline_fingerprint, build_node_keys,
+};
 
 const SOURCE_REVISION_DOMAIN: &str = "deslop source revision v1";
 const SNAPSHOT_ID_DOMAIN: &str = "deslop project snapshot v1";
@@ -24,8 +31,10 @@ const PARSER_BUILD: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     "+tree-sitter/0.25.10"
 );
+static NEXT_ANALYSIS_OWNER: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct SourceRevision(String);
 
 impl SourceRevision {
@@ -41,7 +50,8 @@ impl SourceRevision {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct RepositoryId(String);
 
 impl RepositoryId {
@@ -72,7 +82,8 @@ impl RepositoryId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GrammarSelection {
     lang: Lang,
     dialect: String,
@@ -188,6 +199,65 @@ pub struct FileRevisionKey {
     pub path: PathBuf,
     pub source: SourceRevision,
     pub grammar: GrammarSelection,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FileRevisionKeyWire {
+    repository: RepositoryId,
+    path: String,
+    source: SourceRevision,
+    grammar: GrammarSelection,
+}
+
+impl Serialize for FileRevisionKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        FileRevisionKeyWire {
+            repository: self.repository.clone(),
+            path: encode_wire_repo_path(&self.path).map_err(serde::ser::Error::custom)?,
+            source: self.source.clone(),
+            grammar: self.grammar.clone(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for FileRevisionKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = FileRevisionKeyWire::deserialize(deserializer)?;
+        if wire.repository.as_str().trim().is_empty() {
+            return Err(D::Error::custom(
+                "file revision repository identity is empty",
+            ));
+        }
+        if !is_lower_prefixed_hex(wire.source.as_str(), "sr1_") {
+            return Err(D::Error::custom(
+                "file revision source must be lowercase sr1_ plus 64 hex digits",
+            ));
+        }
+        if wire.grammar.dialect().is_empty()
+            || wire.grammar.selector().is_empty()
+            || wire.grammar.grammar_id().is_empty()
+            || wire.grammar.grammar_version().is_empty()
+            || wire.grammar.parser_build().is_empty()
+        {
+            return Err(D::Error::custom(
+                "file revision grammar contains an empty identity field",
+            ));
+        }
+        Ok(Self {
+            repository: wire.repository,
+            path: decode_wire_repo_path(&wire.path).map_err(D::Error::custom)?,
+            source: wire.source,
+            grammar: wire.grammar,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -689,6 +759,55 @@ pub struct ProjectAnalysis {
     snapshot: Arc<ProjectSnapshot>,
     files: BTreeMap<PathBuf, Arc<ParsedFile>>,
     ledger: Arc<ParseLedger>,
+    owner: u64,
+    node_ranges: Box<[NodeFileRange]>,
+    node_keys: Box<[NodeKey]>,
+}
+
+#[derive(Debug)]
+struct NodeFileRange {
+    path: PathBuf,
+    start: u32,
+    end: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeIds {
+    owner: u64,
+    next: u32,
+    end: u32,
+}
+
+impl Iterator for NodeIds {
+    type Item = NodeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next >= self.end {
+            return None;
+        }
+        let id = NodeId {
+            owner: self.owner,
+            index: self.next,
+        };
+        self.next += 1;
+        Some(id)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = (self.end - self.next) as usize;
+        (remaining, Some(remaining))
+    }
+}
+
+impl ExactSizeIterator for NodeIds {}
+
+#[derive(Debug, Clone, Copy)]
+pub struct NodeView<'analysis> {
+    analysis: &'analysis ProjectAnalysis,
+    file: &'analysis ParsedFile,
+    arena: &'analysis SyntaxArena,
+    local: ArenaNodeIndex,
+    id: NodeId,
 }
 
 impl ProjectAnalysis {
@@ -721,11 +840,35 @@ impl ProjectAnalysis {
             files.insert(entry.path.clone(), Arc::new(parsed));
         }
         let id = analysis_id(&snapshot.id, files.values().map(|file| &file.key));
+        let owner = NEXT_ANALYSIS_OWNER
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                value.checked_add(1)
+            })
+            .map_err(|_| anyhow::anyhow!("project analysis owner tag space exhausted"))?;
+        let mut node_ranges = Vec::new();
+        let mut node_keys = Vec::new();
+        for (path, file) in &files {
+            let start = u32::try_from(node_keys.len())
+                .map_err(|_| anyhow::anyhow!("project analysis exceeds {} nodes", u32::MAX))?;
+            if let Some(arena) = &file.arena {
+                node_keys.extend(build_node_keys(&file.key, arena)?);
+            }
+            let end = u32::try_from(node_keys.len())
+                .map_err(|_| anyhow::anyhow!("project analysis exceeds {} nodes", u32::MAX))?;
+            node_ranges.push(NodeFileRange {
+                path: path.clone(),
+                start,
+                end,
+            });
+        }
         Ok(Arc::new(Self {
             id,
             snapshot,
             files,
             ledger,
+            owner,
+            node_ranges: node_ranges.into_boxed_slice(),
+            node_keys: node_keys.into_boxed_slice(),
         }))
     }
 
@@ -747,6 +890,211 @@ impl ProjectAnalysis {
 
     pub fn parse_counts(&self) -> BTreeMap<FileRevisionKey, FileParseCount> {
         self.ledger.counts()
+    }
+
+    pub fn node_count(&self) -> usize {
+        self.node_keys.len()
+    }
+
+    pub fn node_ids(&self) -> NodeIds {
+        NodeIds {
+            owner: self.owner,
+            next: 0,
+            end: self.node_keys.len() as u32,
+        }
+    }
+
+    pub fn file_node_ids(&self, path: &Path) -> Option<NodeIds> {
+        let range = self.node_ranges.iter().find(|range| range.path == path)?;
+        Some(NodeIds {
+            owner: self.owner,
+            next: range.start,
+            end: range.end,
+        })
+    }
+
+    pub fn node(&self, id: NodeId) -> Result<NodeView<'_>, NodeLookupError> {
+        if id.owner != self.owner {
+            return Err(NodeLookupError::WrongAnalysis);
+        }
+        if id.index as usize >= self.node_keys.len() {
+            return Err(NodeLookupError::OutOfRange {
+                requested: id.index,
+                node_count: self.node_keys.len() as u32,
+            });
+        }
+        let range = self
+            .node_ranges
+            .iter()
+            .find(|range| range.start <= id.index && id.index < range.end)
+            .expect("every global node index belongs to one file range");
+        let file = self
+            .files
+            .get(&range.path)
+            .expect("node range path belongs to analysis file map");
+        let arena = file
+            .arena
+            .as_ref()
+            .expect("non-empty node range belongs to parsed arena");
+        let local = ArenaNodeIndex::from_usize((id.index - range.start) as usize)
+            .expect("global and local node indices fit u32");
+        Ok(NodeView {
+            analysis: self,
+            file,
+            arena,
+            local,
+            id,
+        })
+    }
+
+    pub fn node_key(&self, id: NodeId) -> Result<&NodeKey, NodeLookupError> {
+        self.node(id)?;
+        Ok(&self.node_keys[id.index as usize])
+    }
+
+    pub fn node_by_key(&self, key: &NodeKey) -> Result<NodeView<'_>, NodeKeyLookupError> {
+        if !key.is_supported() {
+            return Err(NodeKeyLookupError::UnsupportedSchema);
+        }
+        let file = self
+            .files
+            .get(&key.file().path)
+            .ok_or(NodeKeyLookupError::FileRevisionExpired)?;
+        if &file.key != key.file() {
+            return Err(NodeKeyLookupError::FileRevisionExpired);
+        }
+        let range = self
+            .node_ranges
+            .iter()
+            .find(|range| range.path == key.file().path)
+            .expect("analysis file has a node range");
+        let offset = self.node_keys[range.start as usize..range.end as usize]
+            .iter()
+            .position(|candidate| candidate == key)
+            .ok_or(NodeKeyLookupError::NotFound)?;
+        let index = range.start as usize + offset;
+        self.node(NodeId {
+            owner: self.owner,
+            index: index as u32,
+        })
+        .map_err(|_| NodeKeyLookupError::NotFound)
+    }
+}
+
+impl NodeView<'_> {
+    fn raw(&self) -> &crate::arena::SyntaxNode {
+        self.arena
+            .node(self.local)
+            .expect("node view local index belongs to its arena")
+    }
+
+    fn file_start(&self) -> u32 {
+        self.analysis
+            .node_ranges
+            .iter()
+            .find(|range| range.path == self.file.key.path)
+            .expect("node view file has a global range")
+            .start
+    }
+
+    pub fn id(&self) -> NodeId {
+        self.id
+    }
+
+    pub fn key(&self) -> &NodeKey {
+        &self.analysis.node_keys[self.id.index as usize]
+    }
+
+    pub fn file_key(&self) -> &FileRevisionKey {
+        &self.file.key
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.file.key.path
+    }
+
+    pub fn grammar(&self) -> &GrammarSelection {
+        self.file.grammar()
+    }
+
+    pub fn raw_kind(&self) -> &str {
+        self.raw().raw_kind()
+    }
+
+    pub fn raw_kind_id(&self) -> u16 {
+        self.raw().raw_kind_id()
+    }
+
+    pub fn raw_grammar_kind(&self) -> &str {
+        self.raw().raw_grammar_kind()
+    }
+
+    pub fn raw_grammar_kind_id(&self) -> u16 {
+        self.raw().raw_grammar_kind_id()
+    }
+
+    pub fn field(&self) -> Option<&str> {
+        self.raw().field()
+    }
+
+    pub fn span(&self) -> crate::arena::SyntaxSpan {
+        self.raw().span()
+    }
+
+    pub fn is_named(&self) -> bool {
+        self.raw().is_named()
+    }
+
+    pub fn is_extra(&self) -> bool {
+        self.raw().is_extra()
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.raw().is_error()
+    }
+
+    pub fn is_missing(&self) -> bool {
+        self.raw().is_missing()
+    }
+
+    pub fn has_error(&self) -> bool {
+        self.raw().has_error()
+    }
+
+    pub fn parent(&self) -> Option<NodeId> {
+        self.raw().parent().map(|parent| NodeId {
+            owner: self.id.owner,
+            index: self.file_start() + parent.as_usize() as u32,
+        })
+    }
+
+    pub fn children(&self) -> Vec<NodeId> {
+        let start = self.file_start();
+        self.raw()
+            .children()
+            .iter()
+            .map(|child| NodeId {
+                owner: self.id.owner,
+                index: start + child.as_usize() as u32,
+            })
+            .collect()
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        self.arena
+            .node_source(self.file.source(), self.local)
+            .expect("node span belongs to its exact source")
+    }
+
+    pub fn text(&self) -> &str {
+        std::str::from_utf8(self.bytes()).expect("an arena exists only for valid UTF-8 source")
+    }
+
+    /// Return collision-prone, read-only comparison evidence.
+    ///
+    /// This value never authorizes lookup, re-anchoring, a revision guard, or a write.
+    pub fn baseline_fingerprint(&self) -> NodeBaselineFingerprint {
+        baseline_fingerprint(self.key(), self.text())
     }
 }
 
@@ -973,15 +1321,23 @@ fn normalize_logical_path(path: &Path) -> Result<PathBuf> {
     for component in path.components() {
         match component {
             Component::CurDir => {}
-            Component::Normal(part) => normalized.push(part),
+            Component::Normal(part) => {
+                let part = part
+                    .to_str()
+                    .ok_or_else(|| anyhow::anyhow!("logical path is not valid Unicode"))?;
+                if part.contains('\\') {
+                    bail!(
+                        "logical path {} contains a literal backslash component",
+                        path.display()
+                    );
+                }
+                normalized.push(part);
+            }
             _ => bail!("logical path {} is not normalized", path.display()),
         }
     }
     if normalized.as_os_str().is_empty() {
         bail!("logical path {} must name an entry", path.display());
-    }
-    if normalized.to_str().is_none() {
-        bail!("logical path is not valid Unicode");
     }
     Ok(normalized)
 }
@@ -1088,6 +1444,80 @@ fn snapshot_kind_byte(kind: SnapshotEntryKind) -> u8 {
     }
 }
 
+fn encode_wire_repo_path(path: &Path) -> std::result::Result<String, String> {
+    let mut encoded = Vec::new();
+    for component in path.components() {
+        let Component::Normal(component) = component else {
+            return Err("file revision path must contain only normal components".to_string());
+        };
+        let component = component
+            .to_str()
+            .ok_or_else(|| "file revision path must be Unicode".to_string())?;
+        if component.is_empty() || component.contains(['\0', '\\']) {
+            return Err(
+                "file revision path component is empty or contains NUL or backslash".to_string(),
+            );
+        }
+        encoded.push(component.replace('%', "%25"));
+    }
+    if encoded.is_empty() {
+        return Err("file revision path must not be empty".to_string());
+    }
+    Ok(encoded.join("/"))
+}
+
+fn decode_wire_repo_path(encoded: &str) -> std::result::Result<PathBuf, String> {
+    if encoded.is_empty()
+        || encoded.starts_with('/')
+        || encoded.ends_with('/')
+        || encoded.contains("//")
+        || encoded.contains('\\')
+        || encoded.contains('\0')
+    {
+        return Err("file revision path is not canonical root-relative wire form".to_string());
+    }
+    let mut path = PathBuf::new();
+    for component in encoded.split('/') {
+        let component = decode_wire_component(component)?;
+        if component.is_empty() || component == "." || component == ".." {
+            return Err("file revision path contains a non-normal component".to_string());
+        }
+        path.push(component);
+    }
+    Ok(path)
+}
+
+fn decode_wire_component(encoded: &str) -> std::result::Result<String, String> {
+    let bytes = encoded.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            decoded.push(bytes[index]);
+            index += 1;
+            continue;
+        }
+        let escape = bytes
+            .get(index + 1..index + 3)
+            .ok_or_else(|| "truncated file revision path escape".to_string())?;
+        match escape {
+            b"25" => decoded.push(b'%'),
+            _ => return Err("unsupported file revision path escape".to_string()),
+        }
+        index += 3;
+    }
+    String::from_utf8(decoded).map_err(|_| "file revision path escape is not UTF-8".to_string())
+}
+
+fn is_lower_prefixed_hex(value: &str, prefix: &str) -> bool {
+    value.strip_prefix(prefix).is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
 fn path_bytes(path: &Path) -> Vec<u8> {
     if path == Path::new(".") {
         return b".".to_vec();
@@ -1110,10 +1540,21 @@ fn path_bytes(path: &Path) -> Vec<u8> {
 mod tests {
     use super::*;
     use crate::arena::{RAW_ARENA_SCHEMA, SyntaxSegmentKind, SyntaxSegmentOwner};
-    use deslop_core::AnalysisStatus;
+    use deslop_core::{AnalysisStatus, Span, revision_guard};
 
     fn repository() -> RepositoryId {
         RepositoryId::explicit("test-repository").unwrap()
+    }
+
+    fn node_by_kind<'analysis>(
+        analysis: &'analysis ProjectAnalysis,
+        kind: &str,
+    ) -> NodeView<'analysis> {
+        analysis
+            .node_ids()
+            .map(|id| analysis.node(id).unwrap())
+            .find(|node| node.raw_kind() == kind)
+            .unwrap()
     }
 
     #[test]
@@ -2171,6 +2612,447 @@ mod tests {
                 reused: 0,
             })
         );
+    }
+
+    #[test]
+    fn project_global_node_ids_are_dense_deterministic_and_owner_checked() {
+        let temp = tempfile::tempdir().unwrap();
+        let build = |reverse_input: bool, with_prefix: bool| {
+            let mut builder = ProjectSnapshotBuilder::new(temp.path(), repository()).unwrap();
+            let overlays: [(&str, &[u8]); 3] = if reverse_input {
+                [
+                    ("a.rs", b"fn a() {}\n"),
+                    ("b.rs", b"const B: i32 = 1;\n"),
+                    ("c.rs", b"fn c(x: i32) -> i32 { x }\n"),
+                ]
+            } else {
+                [
+                    ("c.rs", b"fn c(x: i32) -> i32 { x }\n"),
+                    ("b.rs", b"const B: i32 = 1;\n"),
+                    ("a.rs", b"fn a() {}\n"),
+                ]
+            };
+            for (path, source) in overlays {
+                builder = builder.with_overlay(path, source.to_vec()).unwrap();
+            }
+            if with_prefix {
+                builder = builder
+                    .with_overlay("0.rs", b"fn zero() {}\n".to_vec())
+                    .unwrap();
+            }
+            ProjectAnalysis::build(builder.build().unwrap()).unwrap()
+        };
+        let first = build(false, false);
+        let second = build(true, false);
+        assert_eq!(first.id(), second.id());
+        assert_eq!(first.node_count(), 36);
+        assert_eq!(
+            first.node_ids().map(|id| id.index).collect::<Vec<_>>(),
+            (0..36).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            first
+                .file_node_ids(Path::new("a.rs"))
+                .unwrap()
+                .map(|id| id.index)
+                .collect::<Vec<_>>(),
+            (0..10).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            first
+                .file_node_ids(Path::new("b.rs"))
+                .unwrap()
+                .map(|id| id.index)
+                .collect::<Vec<_>>(),
+            (10..19).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            first
+                .file_node_ids(Path::new("c.rs"))
+                .unwrap()
+                .map(|id| id.index)
+                .collect::<Vec<_>>(),
+            (19..36).collect::<Vec<_>>()
+        );
+
+        let first_root = first.node_ids().next().unwrap();
+        let second_root = second.node_ids().next().unwrap();
+        assert_ne!(first_root, second_root);
+        assert_eq!(
+            second
+                .node_by_key(first.node_key(first_root).unwrap())
+                .unwrap()
+                .id(),
+            second_root
+        );
+        let sequence = |analysis: &ProjectAnalysis| {
+            analysis
+                .node_ids()
+                .map(|id| {
+                    let node = analysis.node(id).unwrap();
+                    (
+                        id.index,
+                        node.path().to_path_buf(),
+                        node.raw_kind().to_string(),
+                        node.key().clone(),
+                        node.parent().map(|parent| parent.index),
+                        node.children()
+                            .into_iter()
+                            .map(|child| child.index)
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sequence(&first), sequence(&second));
+        let mut roots = Vec::new();
+        let mut child_edges = 0;
+        for id in first.node_ids() {
+            let node = first.node(id).unwrap();
+            match node.parent() {
+                Some(parent) => {
+                    assert_eq!(first.node(parent).unwrap().path(), node.path());
+                    assert!(first.node(parent).unwrap().children().contains(&id));
+                }
+                None => roots.push(id.index),
+            }
+            for child in node.children() {
+                child_edges += 1;
+                assert_eq!(first.node(child).unwrap().parent(), Some(id));
+                assert_eq!(first.node(child).unwrap().path(), node.path());
+            }
+        }
+        assert_eq!(roots, [0, 10, 19]);
+        assert_eq!(child_edges, 33);
+        assert_eq!(
+            second.node(first_root).unwrap_err(),
+            NodeLookupError::WrongAnalysis
+        );
+        assert_eq!(
+            first
+                .node(NodeId {
+                    owner: first.owner,
+                    index: 35
+                })
+                .unwrap()
+                .path(),
+            Path::new("c.rs")
+        );
+        assert_eq!(
+            first
+                .node(NodeId {
+                    owner: first.owner,
+                    index: 36,
+                })
+                .unwrap_err(),
+            NodeLookupError::OutOfRange {
+                requested: 36,
+                node_count: 36,
+            }
+        );
+        assert_eq!(
+            first
+                .node(NodeId {
+                    owner: second.owner,
+                    index: u32::MAX,
+                })
+                .unwrap_err(),
+            NodeLookupError::WrongAnalysis
+        );
+        assert_eq!(
+            first
+                .node(NodeId {
+                    owner: first.owner,
+                    index: u32::MAX,
+                })
+                .unwrap_err(),
+            NodeLookupError::OutOfRange {
+                requested: u32::MAX,
+                node_count: 36,
+            }
+        );
+
+        let before_keys = first
+            .node_ids()
+            .map(|id| first.node(id).unwrap())
+            .filter(|node| node.path() == Path::new("a.rs"))
+            .map(|node| node.key().clone())
+            .collect::<Vec<_>>();
+        let prefixed = build(true, true);
+        let after_keys = prefixed
+            .file_node_ids(Path::new("a.rs"))
+            .unwrap()
+            .map(|id| prefixed.node_key(id).unwrap().clone())
+            .collect::<Vec<_>>();
+        assert_eq!(before_keys, after_keys);
+        assert_eq!(
+            prefixed
+                .file_node_ids(Path::new("a.rs"))
+                .unwrap()
+                .next()
+                .unwrap()
+                .index,
+            10
+        );
+    }
+
+    #[test]
+    fn node_keys_round_trip_and_expire_with_file_revision() {
+        let temp = tempfile::tempdir().unwrap();
+        let build = |source: &[u8]| {
+            let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+                .unwrap()
+                .with_overlay("key.rs", source.to_vec())
+                .unwrap()
+                .build()
+                .unwrap();
+            ProjectAnalysis::build(snapshot).unwrap()
+        };
+        let first = build(b"fn stable() { value(); }\n");
+        let function = first
+            .node_ids()
+            .map(|id| first.node(id).unwrap())
+            .find(|node| node.raw_kind() == "function_item")
+            .unwrap();
+        let key = function.key().clone();
+        assert_eq!(key.schema(), "deslop.node-key/1");
+        assert_eq!(key.arena_schema(), "deslop-raw-arena/1");
+        assert_eq!(key.file(), function.file_key());
+        assert_eq!(key.raw_grammar_kind(), "function_item");
+        assert_eq!(key.anchor().start_byte(), 0);
+        assert!(key.anchor().structural_digest().starts_with("nsa1_"));
+        assert_eq!(key.collision_ordinal(), 0);
+        let json = serde_json::to_string(&key).unwrap();
+        let decoded: NodeKey = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, key);
+        assert_eq!(first.node_by_key(&decoded).unwrap().id(), function.id());
+
+        let mut value = serde_json::to_value(&key).unwrap();
+        let fields = value
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            fields,
+            [
+                "anchor",
+                "arena_schema",
+                "collision_ordinal",
+                "field_path",
+                "file",
+                "raw_grammar_kind",
+                "raw_grammar_kind_id",
+                "schema",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+        );
+        assert!(!json.contains("owner"));
+        assert!(!json.contains("canonical_role"));
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("canonical_role".to_string(), serde_json::json!("callable"));
+        assert!(serde_json::from_value::<NodeKey>(value).is_err());
+
+        let mut wrong_schema = serde_json::to_value(&key).unwrap();
+        wrong_schema["schema"] = serde_json::json!("deslop.node-key/999");
+        assert!(serde_json::from_value::<NodeKey>(wrong_schema).is_err());
+
+        let mut wrong_arena = serde_json::to_value(&key).unwrap();
+        wrong_arena["arena_schema"] = serde_json::json!("deslop-raw-arena/999");
+        assert!(serde_json::from_value::<NodeKey>(wrong_arena).is_err());
+
+        let mut uppercase_source = serde_json::to_value(&key).unwrap();
+        uppercase_source["file"]["source"] = serde_json::json!(format!("sr1_{}", "A".repeat(64)));
+        assert!(serde_json::from_value::<NodeKey>(uppercase_source).is_err());
+
+        let mut forged_source = serde_json::to_value(&key).unwrap();
+        forged_source["file"]["source"] = serde_json::json!(format!("sr1_{}", "0".repeat(64)));
+        let forged_source: NodeKey = serde_json::from_value(forged_source).unwrap();
+        assert_eq!(
+            first.node_by_key(&forged_source).unwrap_err(),
+            NodeKeyLookupError::FileRevisionExpired
+        );
+
+        let mut absolute_path = serde_json::to_value(&key).unwrap();
+        absolute_path["file"]["path"] = serde_json::json!("/key.rs");
+        assert!(serde_json::from_value::<NodeKey>(absolute_path).is_err());
+
+        let mut reversed_anchor = serde_json::to_value(&key).unwrap();
+        reversed_anchor["anchor"]["start_byte"] = serde_json::json!(10);
+        reversed_anchor["anchor"]["end_byte"] = serde_json::json!(1);
+        assert!(serde_json::from_value::<NodeKey>(reversed_anchor).is_err());
+
+        let mut wrong_ordinal = serde_json::to_value(&key).unwrap();
+        wrong_ordinal["collision_ordinal"] = serde_json::json!(99);
+        let wrong_ordinal: NodeKey = serde_json::from_value(wrong_ordinal).unwrap();
+        assert_eq!(
+            first.node_by_key(&wrong_ordinal).unwrap_err(),
+            NodeKeyLookupError::NotFound
+        );
+
+        let changed = build(b"fn stable() { changed(); }\n");
+        assert_eq!(
+            changed.node_by_key(&key).unwrap_err(),
+            NodeKeyLookupError::FileRevisionExpired
+        );
+        assert_ne!(
+            changed
+                .node_ids()
+                .map(|id| changed.node_key(id).unwrap())
+                .find(|candidate| candidate.raw_grammar_kind() == "function_item")
+                .unwrap(),
+            &key
+        );
+
+        let peer_changed = build(b"fn stable() { value(); }\n \t");
+        let peer_function = node_by_kind(&peer_changed, "function_item");
+        assert_eq!(
+            function.baseline_fingerprint(),
+            peer_function.baseline_fingerprint()
+        );
+        assert_ne!(function.key(), peer_function.key());
+        assert_eq!(
+            peer_changed.node_by_key(&key).unwrap_err(),
+            NodeKeyLookupError::FileRevisionExpired
+        );
+        let guard_for = |node: NodeView<'_>| {
+            let span = node.span();
+            revision_guard(
+                node.path(),
+                Span::new(
+                    span.start_point().row() + 1,
+                    span.end_point().row() + 1,
+                    span.start_byte(),
+                    span.end_byte(),
+                ),
+                node.text(),
+            )
+        };
+        assert_eq!(guard_for(function), guard_for(peer_function));
+    }
+
+    #[test]
+    fn baseline_fingerprints_are_fuzzy_ambiguous_and_never_node_keys() {
+        let temp = tempfile::tempdir().unwrap();
+        let build = |source: &[u8]| {
+            let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+                .unwrap()
+                .with_overlay("baseline.rs", source.to_vec())
+                .unwrap()
+                .build()
+                .unwrap();
+            ProjectAnalysis::build(snapshot).unwrap()
+        };
+        let original = build(b"fn stable() { value(); }\n");
+        let relocated = build(b"\n\nfn stable() { value(); }\n");
+        let changed = build(b"fn stable() { changed(); }\n");
+        let original_node = node_by_kind(&original, "function_item");
+        let relocated_node = node_by_kind(&relocated, "function_item");
+        let changed_node = node_by_kind(&changed, "function_item");
+
+        assert_eq!(
+            original_node.baseline_fingerprint(),
+            relocated_node.baseline_fingerprint()
+        );
+        assert_ne!(original_node.key(), relocated_node.key());
+        assert_ne!(
+            original_node.baseline_fingerprint(),
+            changed_node.baseline_fingerprint()
+        );
+
+        let duplicates = build(b"fn same() {}\nfn same() {}\n");
+        let duplicate_fingerprints = duplicates
+            .node_ids()
+            .map(|id| duplicates.node(id).unwrap())
+            .filter(|node| node.raw_kind() == "function_item")
+            .map(|node| node.baseline_fingerprint())
+            .collect::<Vec<_>>();
+        assert_eq!(duplicate_fingerprints.len(), 2);
+        assert_eq!(duplicate_fingerprints[0], duplicate_fingerprints[1]);
+        let duplicate_keys = duplicates
+            .node_ids()
+            .map(|id| duplicates.node(id).unwrap())
+            .filter(|node| node.raw_kind() == "function_item")
+            .map(|node| node.key().clone())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(duplicate_keys.len(), 2);
+    }
+
+    #[test]
+    fn node_key_structural_anchor_has_a_pinned_raw_grammar_vector() {
+        let temp = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("anchor.rs", b"fn a(){same();}\n".to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        assert_eq!(analysis.node_count(), 17);
+        let call = node_by_kind(&analysis, "call_expression");
+        assert_eq!(call.key().raw_grammar_kind_id(), 256);
+        assert_eq!(
+            call.key().field_path(),
+            &[None, Some("body".to_string()), None, None]
+        );
+        assert_eq!(call.key().anchor().start_byte(), 7);
+        assert_eq!(call.key().anchor().end_byte(), 13);
+        assert_eq!(call.key().anchor().start_row(), 0);
+        assert_eq!(call.key().anchor().start_column(), 7);
+        assert_eq!(call.key().anchor().end_row(), 0);
+        assert_eq!(call.key().anchor().end_column(), 13);
+        assert_eq!(
+            call.key().anchor().structural_digest(),
+            "nsa1_2e71d4d3ed08b9955a5d305e4d79667b5933bdd90860055902470563646d464c"
+        );
+    }
+
+    #[test]
+    fn file_revision_wire_paths_are_portable_and_strict() {
+        assert_eq!(
+            encode_wire_repo_path(Path::new("nested/file.rs")).unwrap(),
+            "nested/file.rs"
+        );
+        assert_eq!(
+            decode_wire_repo_path("nested/file.rs").unwrap(),
+            PathBuf::from("nested/file.rs")
+        );
+        assert_eq!(
+            encode_wire_repo_path(Path::new("percent%file.rs")).unwrap(),
+            "percent%25file.rs"
+        );
+        assert_eq!(
+            decode_wire_repo_path("percent%25file.rs").unwrap(),
+            PathBuf::from("percent%file.rs")
+        );
+        #[cfg(unix)]
+        {
+            assert!(encode_wire_repo_path(Path::new("a\\b.rs")).is_err());
+            assert!(normalize_logical_path(Path::new("a\\b.rs")).is_err());
+            assert!(
+                ProjectSnapshotBuilder::new(tempfile::tempdir().unwrap().path(), repository())
+                    .unwrap()
+                    .with_overlay("a\\b.rs", b"fn ambiguous() {}\n".to_vec())
+                    .is_err()
+            );
+        }
+        for invalid in [
+            "",
+            "/abs.rs",
+            "./a.rs",
+            "a/../b.rs",
+            "a//b.rs",
+            "a\\b.rs",
+            "a%5cb.rs",
+            "a%5c..%5csecret.rs",
+        ] {
+            assert!(decode_wire_repo_path(invalid).is_err(), "{invalid}");
+        }
     }
 
     #[cfg(unix)]
