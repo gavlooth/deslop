@@ -181,15 +181,28 @@ reports, benchmark records, and work orders.
   query-source ownership/u32 bounds, and owned Send/Sync/'static results. Parse has 56 passing tests;
   workspace, feature, build, rustdoc, formatting, whitespace, and strict all-target/all-feature clippy
   gates pass.
-- [ ] M1.8 Add edit/changed-range invalidation and explicit re-anchor-or-expire behavior. **NEXT**
-- [ ] M1.9 Migrate analyzer and metrics consumers to the shared snapshot.
+- [x] M1.8 Add edit/changed-range invalidation and explicit re-anchor-or-expire behavior.
+  Evidence: immutable successor analyses reuse exact unchanged `ParsedFile` Arcs, parse compatible
+  edited files against cloned old Trees, and match clean rebuild IDs, arenas, keys, queries, and
+  provenance. Canonical old-to-final byte invalidation is separate from final-coordinate structural
+  changed ranges, which are allowed to be empty. Plain derived diffs expire every changed-file node;
+  verified sequential edit histories alone may return transition-local Tree-sitter subtree
+  re-anchors after mapped-range, exact-byte, visible/grammar-kind, flag, field-path, and structural
+  validation. Retained, re-anchored, removed, grammar-changed, syntax-unavailable, and changed nodes
+  have explicit outcomes. Tests pin exact ledger counts, duplicate ambiguity, multi-edit coordinates,
+  partial/empty/invalid UTF-8 files, rename lifecycle, u32/UTF-8 bounds, and predecessor immutability.
+  Parse has 66 passing tests; workspace, slim MCP, build, rustdoc, formatting, whitespace, and strict
+  all-target/all-feature clippy gates pass.
+- [ ] M1.9 Migrate analyzer and metrics consumers to the shared snapshot. **NEXT**
 - [ ] M1.10 Migrate graph, evaluator, LSP, MCP/protocol, and slim consumers.
 - [ ] M1.11 Instrument parse counts, ownership invariants, deterministic node order, latency, and memory.
   Measure and compact M1.4's repeated per-node `FileRevisionKey`/field-path storage, allocating
   `NodeView::children`, linear range/key lookups, M1.5 index storage, point-context allocation, and
   M1.6's retained local/full/declared aggregate values and caller-defined clone/merge costs, plus
   M1.7's retained query source/metadata/result strings and per-execution Tree preorder/`Node::id`
-  map, before declaring the traversal API migration-ready.
+  map, and M1.8's O(K*B) sequential edit validation, rebuilt edited-file arena/keys, O(N) transition
+  map, and O(total project nodes) successor assembly, before declaring the traversal API
+  migration-ready.
 - [ ] M1.DoD Prove one parse per file revision in all scan/propose paths and no borrowed-node lifetime or
   overlapping exclusive-metric errors on the gold fixture matrix.
 

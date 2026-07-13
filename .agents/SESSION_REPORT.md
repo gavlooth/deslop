@@ -6449,3 +6449,98 @@ borrowed handles, serialize NodeId/query handles, reparse/reread source, infer M
 partial-tree authority. Recheck these constraints during M1.8, M1.9, M2, and M1.11.
 
 **Signature:** Codex (GPT-5), M1.7 integration owner, 2026-07-13.
+
+---
+
+## M1.8 checkpoint — immutable incremental successor and explicit node transitions
+
+**Date/time:** 2026-07-13T20:49:49+02:00
+
+**Objective/target:** construct a new immutable `ProjectAnalysis` from a successor snapshot, reuse
+compatible parser state without mutating the published predecessor, report textual and structural
+changes without conflating them, and make every predecessor node either explicitly retained,
+re-anchored with exact evidence, or expired for a typed reason.
+
+**Changes:** added `deslop-parse::incremental` with `ProjectAnalysis::successor` and
+`successor_with_edits`. Exact unchanged `FileRevisionKey`s share the original `Arc<ParsedFile>` but
+receive fresh analysis-local `NodeId`s; their outcome is `Retained`, not cross-revision re-anchoring.
+Compatible edited files clone and sequentially edit the old private Tree, invoke the exact stored
+runtime language once, rebuild all public arena/containment/key state from final bytes, and must
+equal a clean rebuild. A canonical UTF-8-safe old-to-final `source_invalidation_edit` is separate
+from validated sequential edits and Tree-sitter `syntax_changed_ranges`; the latter are structural,
+final-new-coordinate evidence and may be empty for real byte edits. Plain `successor` derives one
+coarse splice for parser reuse/invalidation but expires every node in the edited file because final
+bytes cannot prove edit history. `successor_with_edits` validates each replacement in its current
+intermediate coordinate space, UTF-8 and u32 bounds, and exact final reconstruction. Only that exact
+history may correlate nodes, and only when the private Tree-sitter node identity survives and the
+mapped span, bytes, visible and grammar kinds/ids, canonical flags, field path, and structural digest
+all match. No span, proximity, baseline, collision, `has_changes`, or fallback matching exists.
+Transition evidence is process-local correlation only and explicitly cannot refresh a proposal,
+work order, revision guard, editor version, projection, or write authority. Removed, grammar-changed,
+syntax-unavailable, and changed nodes expire distinctly. Same-grammar runtime-language disagreement
+is an integrity error; repository mismatch and malformed scripts fail before construction. Cold and
+incremental project parsing now both fail if Tree-sitter unexpectedly returns no Tree. The parse
+ledger is fresh per successor: only zero-invocation whole-file Arc reuse records `reused=1`;
+incremental old-Tree parsing records one invocation and `reused=0`.
+
+**Commands/checks run:** startup Serena/Hindsight context; roadmap, prior checkpoint, ADR, pinned
+Tree-sitter API/source, parse ownership/identity/query/consumer inspection; three read-only agent
+tracks for core authority, downstream integration, and independent numerical contracts; repeated
+focused incremental and full parse tests; `cargo test --workspace`; `cargo test -p deslop-mcp
+--features slim-llm -- --test-threads=1`; `cargo build --workspace --all-targets --all-features`;
+`cargo clippy --workspace --all-targets --all-features -- -D warnings`; warnings-denied workspace
+rustdoc; `cargo fmt --all -- --check`; `git diff --check`; `jj status`; and `jj diff --stat`.
+
+**Verification results:** PASS. `deslop-parse` has 66 passing tests, including ten focused successor
+contracts. On the pinned 67-byte to 70-byte two-edit fixture, derived evidence is canonical
+`34..61 => 34..64`, Tree-sitter reports structural `40..64`, and all 49 changed-file nodes expire;
+the verified sequential script records `34..37 => 34..40` then intermediate `59..64 => 59..64`,
+Tree-sitter reports no structural changed range, and exactly 24 nodes re-anchor while 25 expire. The
+unchanged 13-byte peer shares its file Arc, retains all ten keys with fresh NodeIds, and records ledger
+`1 requested / 1 owner / 0 invocation / 1 reuse`; edited files record `1/1/1/0`. Partial TypeScript
+repair re-anchors 7 of 20 nodes and expires 13, including the insertion-point recovery node. Empty to
+22-byte Rust expires its sole old root; valid to invalid UTF-8 rebuilds with zero invocation and
+expires every syntax node; invalid no-op reuse and invalid-to-valid recovery have pinned counts.
+Rename is deterministically `Added(new)` plus `Removed(old)` with no cross-path transition. Duplicate
+append/prepend histories prove derived evidence never authorizes identity and every exact re-anchor
+lands only in the history-consistent occurrence. Workspace tests and doc-tests pass with one
+intentional ignored slow probe; feature-enabled MCP has 23 passing tests. All build, strict clippy,
+rustdoc, formatting, and whitespace gates pass.
+
+**Failure modes / invalidated assumptions:** Tree-sitter changed ranges were rejected as a byte diff
+or complete invalidation set because same-shape token edits, trivia edits, and some deletions produce
+empty structural ranges. An LCP/LCS-derived splice was rejected as node-identity proof because
+duplicate final bytes do not reveal whether insertion/deletion occurred before or after an identical
+subtree. Raw Tree-sitter identity alone was rejected because context-sensitive aliases and public
+structure can change; every public invariant is rechecked. Span/kind proximity, fuzzy baselines,
+collision ordinals, nearest-node matching, and `has_changes` were rejected as authority. Sequential
+edit ranges cannot be unioned because each is relative to a different intermediate state; callers
+must use the canonical old-to-final invalidation. Counting an incremental parse as `reused=1` was
+rejected because that counter denotes whole-file zero-parser reuse, while the incremental change kind
+already records old-Tree use. Publishing a no-Tree incremental result while cold construction failed
+differently was rejected; both construction paths now fail.
+
+**Current recommendation/checkpoint:** M1.8 is complete. Implement M1.9 by migrating analyzer and
+metrics consumers to one shared snapshot/analysis. Rebuild edited-file projections and project-level
+dependencies under the new analysis identity even when some nodes re-anchor; use declared reset
+boundaries and exclusive ownership to eliminate current overlapping region parse/metric amplification.
+
+**Blockers:** none. Serena still indexes this Rust workspace as Python-only, so local Rust inspection
+remains the documented fallback. M1.8 proves correctness and bounded parser reuse, not project-scale
+latency: successor assembly still rebuilds flat node ranges/keys across the project and edit-script
+validation is currently O(K*B). M1.11/M9 own measurement and compaction.
+
+**Dependencies/restart:** rebuild Rust consumers for the additive API. No new dependency, wire
+schema, service restart, cache clear, or migration is required. M1.9/M1.10 own consumer projection
+migration and dependency invalidation; M1.11 owns parse/reuse/latency/memory instrumentation; M2 owns
+semantic adapter/query packs. Existing work orders and revision guards always remain expired across a
+successor regardless of node transition outcome.
+
+**Negative-memory status:** stored in Hindsight. Never treat structural changed ranges or a derived
+old/new splice as edit provenance; never re-anchor through proximity, fuzzy fingerprints, collision
+matching, raw kinds alone, or persisted Tree-sitter IDs; never union sequential intermediate ranges;
+never count old-Tree incremental parsing as whole-file reuse; and never convert transition-local
+correlation into projection or write authority. Recheck only if the edit-history authority or pinned
+Tree-sitter contract changes.
+
+**Signature:** Codex (GPT-5), M1.8 integration owner, 2026-07-13.

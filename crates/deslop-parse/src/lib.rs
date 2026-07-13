@@ -15,6 +15,7 @@ mod aggregation;
 mod arena;
 mod containment;
 mod identity;
+mod incremental;
 mod query;
 mod snapshot;
 
@@ -26,6 +27,11 @@ pub use arena::{SourcePoint, SyntaxSpan};
 pub use identity::{
     NODE_BASELINE_SCHEMA, NODE_KEY_SCHEMA, NodeAnchor, NodeBaselineFingerprint, NodeId, NodeKey,
     NodeKeyLookupError, NodeLookupError,
+};
+pub use incremental::{
+    FileAnalysisChange, FileAnalysisChangeKind, FileRebuildReason, FileSourceEdits,
+    NodeExpiryReason, NodeReanchor, NodeReanchorEvidence, ProjectAnalysisUpdate,
+    ProjectAnalysisUpdateError, SourceEdit, SourceEditEvidence, SourceReplacement,
 };
 pub use query::{
     OwnedSyntaxCapture, OwnedSyntaxMatch, SyntaxCaptureQuantifier, SyntaxQuery,

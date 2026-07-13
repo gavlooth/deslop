@@ -316,11 +316,15 @@ impl SnapshotEntry {
         }
     }
 
-    fn grammar_language(&self) -> Option<&tree_sitter::Language> {
+    pub(crate) fn grammar_language(&self) -> Option<&tree_sitter::Language> {
         match &self.analysis {
             EntryAnalysis::Source { language, .. } => Some(language),
             EntryAnalysis::AnalysisInput => None,
         }
+    }
+
+    pub(crate) fn stored_source(&self) -> &Arc<StoredSource> {
+        &self.source
     }
 }
 
@@ -659,7 +663,7 @@ pub struct ParseLedger {
 }
 
 impl ParseLedger {
-    fn record_requested(&self, key: &FileRevisionKey) {
+    pub(crate) fn record_requested(&self, key: &FileRevisionKey) {
         let mut counts = self
             .counts
             .lock()
@@ -667,7 +671,7 @@ impl ParseLedger {
         counts.entry(key.clone()).or_default().requested += 1;
     }
 
-    fn record_owner(&self, key: &FileRevisionKey) {
+    pub(crate) fn record_owner(&self, key: &FileRevisionKey) {
         let mut counts = self
             .counts
             .lock()
@@ -675,12 +679,20 @@ impl ParseLedger {
         counts.entry(key.clone()).or_default().owners += 1;
     }
 
-    fn record_invocation(&self, key: &FileRevisionKey) {
+    pub(crate) fn record_invocation(&self, key: &FileRevisionKey) {
         let mut counts = self
             .counts
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         counts.entry(key.clone()).or_default().parser_invocations += 1;
+    }
+
+    pub(crate) fn record_reuse(&self, key: &FileRevisionKey) {
+        let mut counts = self
+            .counts
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        counts.entry(key.clone()).or_default().reused += 1;
     }
 
     pub fn counts(&self) -> BTreeMap<FileRevisionKey, FileParseCount> {
@@ -693,14 +705,14 @@ impl ParseLedger {
 
 #[derive(Debug)]
 pub struct ParsedFile {
-    key: FileRevisionKey,
-    source: Arc<StoredSource>,
-    language: tree_sitter::Language,
-    text: Option<Arc<str>>,
-    tree: Option<Tree>,
-    arena: Option<SyntaxArena>,
-    provenance: AnalysisProvenance,
-    line_starts: Vec<usize>,
+    pub(crate) key: FileRevisionKey,
+    pub(crate) source: Arc<StoredSource>,
+    pub(crate) language: tree_sitter::Language,
+    pub(crate) text: Option<Arc<str>>,
+    pub(crate) tree: Option<Tree>,
+    pub(crate) arena: Option<SyntaxArena>,
+    pub(crate) provenance: AnalysisProvenance,
+    pub(crate) line_starts: Vec<usize>,
 }
 
 impl ParsedFile {
@@ -1121,6 +1133,14 @@ impl ProjectAnalysis {
             let parsed = parse_owned_file(entry, key, &ledger)?;
             files.insert(entry.path.clone(), Arc::new(parsed));
         }
+        Self::assemble(snapshot, files, ledger)
+    }
+
+    pub(crate) fn assemble(
+        snapshot: Arc<ProjectSnapshot>,
+        files: BTreeMap<PathBuf, Arc<ParsedFile>>,
+        ledger: Arc<ParseLedger>,
+    ) -> Result<Arc<Self>> {
         let id = analysis_id(&snapshot.id, files.values().map(|file| &file.key));
         let owner = NEXT_ANALYSIS_OWNER
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
@@ -1168,6 +1188,10 @@ impl ProjectAnalysis {
 
     pub fn file(&self, path: &Path) -> Option<&ParsedFile> {
         self.files.get(path).map(Arc::as_ref)
+    }
+
+    pub(crate) fn file_arc(&self, path: &Path) -> Option<Arc<ParsedFile>> {
+        self.files.get(path).cloned()
     }
 
     pub fn parse_counts(&self) -> BTreeMap<FileRevisionKey, FileParseCount> {
@@ -1959,11 +1983,19 @@ impl<'analysis> NodeView<'analysis> {
     }
 }
 
-fn parse_owned_file(
+pub(crate) fn parse_owned_file(
     entry: &SnapshotEntry,
     key: FileRevisionKey,
     ledger: &ParseLedger,
 ) -> Result<ParsedFile> {
+    if entry.bytes().len() > u32::MAX as usize {
+        bail!(
+            "source {} is {} bytes, exceeding Tree-sitter's {}-byte limit",
+            entry.path.display(),
+            entry.bytes().len(),
+            u32::MAX
+        );
+    }
     ledger.record_requested(&key);
     ledger.record_owner(&key);
     let line_starts = byte_line_starts(entry.bytes());
@@ -1997,35 +2029,28 @@ fn parse_owned_file(
         .set_language(&language)
         .with_context(|| format!("failed to configure parser for {}", entry.path.display()))?;
     ledger.record_invocation(&key);
-    let tree = parser.parse(text.as_ref(), None);
-    let provenance = tree.as_ref().map_or_else(
-        || {
-            AnalysisProvenance::failed(vec![AnalysisDiagnostic {
-                code: "parser-no-tree".to_string(),
-                message: "tree-sitter returned no syntax tree".to_string(),
-                span: None,
-            }])
-        },
-        analysis_provenance_for_tree,
-    );
-    let arena = tree
-        .as_ref()
-        .map(|tree| SyntaxArena::from_tree(tree, entry.bytes(), key.grammar.clone()))
-        .transpose()
+    let tree = parser.parse(text.as_ref(), None).with_context(|| {
+        format!(
+            "Tree-sitter returned no syntax tree for {}",
+            entry.path.display()
+        )
+    })?;
+    let provenance = analysis_provenance_for_tree(&tree);
+    let arena = SyntaxArena::from_tree(&tree, entry.bytes(), key.grammar.clone())
         .with_context(|| format!("failed to own syntax arena for {}", entry.path.display()))?;
     Ok(ParsedFile {
         key,
         source: entry.source.clone(),
         language,
         text: Some(text),
-        tree,
-        arena,
+        tree: Some(tree),
+        arena: Some(arena),
         provenance,
         line_starts,
     })
 }
 
-fn byte_line_starts(bytes: &[u8]) -> Vec<usize> {
+pub(crate) fn byte_line_starts(bytes: &[u8]) -> Vec<usize> {
     let mut starts = vec![0];
     starts.extend(
         bytes

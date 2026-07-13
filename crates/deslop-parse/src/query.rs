@@ -9,7 +9,7 @@ use tree_sitter::{
     StreamingIterator, Tree,
 };
 
-use crate::arena::{ArenaNodeIndex, SyntaxArena};
+use crate::arena::{ArenaNodeIndex, SyntaxArena, tree_nodes_preorder};
 use crate::identity::{NodeId, NodeLookupError};
 use crate::snapshot::{GrammarSelection, ProjectAnalysis};
 
@@ -593,14 +593,7 @@ fn map_tree_nodes<'tree>(
     arena: &SyntaxArena,
     path: &Path,
 ) -> Result<(Vec<Node<'tree>>, HashMap<usize, ArenaNodeIndex>), SyntaxQueryError> {
-    let mut nodes = Vec::with_capacity(arena.nodes().len());
-    let mut pending = vec![tree.root_node()];
-    while let Some(node) = pending.pop() {
-        nodes.push(node);
-        let mut cursor = node.walk();
-        let children = node.children(&mut cursor).collect::<Vec<_>>();
-        pending.extend(children.into_iter().rev());
-    }
+    let nodes = tree_nodes_preorder(tree);
     if nodes.len() != arena.nodes().len() {
         return Err(SyntaxQueryError::TreeArenaMismatch {
             path: path.to_path_buf(),

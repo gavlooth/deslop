@@ -8,6 +8,18 @@ use crate::snapshot::GrammarSelection;
 
 pub(crate) const RAW_ARENA_SCHEMA: &str = "deslop-raw-arena/1";
 
+pub(crate) fn tree_nodes_preorder(tree: &Tree) -> Vec<Node<'_>> {
+    let mut nodes = Vec::new();
+    let mut pending = vec![tree.root_node()];
+    while let Some(node) = pending.pop() {
+        nodes.push(node);
+        let mut cursor = node.walk();
+        let children = node.children(&mut cursor).collect::<Vec<_>>();
+        pending.extend(children.into_iter().rev());
+    }
+    nodes
+}
+
 /// A deterministic, file-local slot in an owned syntax arena.
 ///
 /// This is intentionally not the revision-bound `NodeId` introduced by M1.4. It is meaningful only
@@ -50,6 +62,10 @@ pub struct SourcePoint {
 }
 
 impl SourcePoint {
+    pub(crate) const fn new(row: usize, column: usize) -> Self {
+        Self { row, column }
+    }
+
     pub fn row(self) -> usize {
         self.row
     }
@@ -68,6 +84,20 @@ pub struct SyntaxSpan {
 }
 
 impl SyntaxSpan {
+    pub(crate) const fn new(
+        start_byte: usize,
+        end_byte: usize,
+        start_point: SourcePoint,
+        end_point: SourcePoint,
+    ) -> Self {
+        Self {
+            start_byte,
+            end_byte,
+            start_point,
+            end_point,
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn new_for_test(
         start_byte: usize,
