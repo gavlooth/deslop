@@ -5771,3 +5771,69 @@ provenance fixtures cannot prove a proposal-filter regression. Recheck only when
 protected subspans or a safety class is added.
 
 **Signature:** Codex (GPT-5), M0.14 integration owner, 2026-07-13.
+
+---
+
+## M0.DoD checkpoint — numerical M0 contract snapshot
+
+**Date/time:** 2026-07-13T17:00:54+02:00
+
+**Objective/target:** close M0 with one convergent, executable demonstration of workorder uniqueness,
+graph authority, grammar selection, and partial/external-capability honesty. This checkpoint adds no
+production behavior and does not claim that empirical ID uniqueness is a collision-proof identity
+construction.
+
+**Changes:** added `crates/deslop-cli/tests/m0_definition_of_done.rs`, a public-CLI integration
+snapshot over the M0 corpus and focused fixtures. It measures proposal cardinality, unique IDs and
+targets, grouped findings, corpus graph authority counts, a genuine duplicate-qualified-name
+ambiguity, the former `compact_label` false-resolution probe, typed TS/TSX/JSX completeness,
+malformed TS/TSX partial scan/metrics/graph behavior, and a deterministic empty-environment JET
+capability observation. The CLI grammar proof is explicitly paired with the parser AST-sentinel
+truth table covering `jsx_element`, `type_annotation`, wrong-grammar rejection, `.mts`, and `.cts`.
+Updated TODO to complete M0 and select M1.1.
+
+**Commands/checks run:** live CLI `propose`, `graph`, `scan`, `metrics`, and external-capability
+probes; focused `cargo test -p deslop-cli --test m0_definition_of_done -- --nocapture`; focused
+`cargo test -p deslop-parse selects_javascript_typescript_and_tsx_grammars_by_dialect -- --nocapture`;
+`cargo test --workspace`; `cargo test -p deslop-mcp --features slim-llm -- --test-threads=1`;
+`cargo build --workspace`; `cargo build -p deslop-slim --no-default-features`; `cargo fmt --all
+-- --check`; `cargo clippy --workspace --all-targets --all-features -- -D warnings`; and `git diff
+--check`.
+
+**Verification results:** PASS. The DoD snapshot reports 30 workorders, 30 unique IDs, 30 unique
+targets, and 65 grouped findings. The corpus graph reports 21 files, 74 symbols, 197 edges, 123
+syntactic reference edges, and zero non-containment resolved edges. A synthetic duplicate
+`Alpha::ping` fixture produces exactly one ambiguous edge, an external-symbol placeholder, and zero
+false resolution; the live `compact_label` probe has two definitions, ten calls, and zero resolved
+calls. Three dialect fixtures are complete with zero diagnostics; two malformed typed fixtures are
+partial with zero findings, zero metric regions/outliers, and zero graph symbols/edges. An isolated
+JET project yields exactly one persisted capability observation with `available=false` and three T1
+fallback workorders. Workspace: 289 passing tests plus one intentional ignored performance probe and
+all doc-tests. Feature-enabled MCP: 23 passing tests. Builds, formatting, whitespace, and strict
+all-target/all-feature clippy pass.
+
+**Failure modes / invalidated assumptions:** counting zero resolved edges in the ordinary corpus and
+the syntactic `compact_label` probe did not exercise the `ambiguous` state; that proof was invalidated
+and replaced with an actual duplicate-qualified-name fixture. CLI language labels plus successful
+parsing alone do not prove the selected grammar; the DoD proof therefore composes with the existing
+AST-sentinel and negative-grammar truth table. An environment-dependent JET probe was made
+deterministic by activating an empty project and restricting `JULIA_LOAD_PATH` to that project and
+stdlib.
+
+**Current recommendation/checkpoint:** M0 is complete. Begin M1.1 with an ADR that preserves the
+distinctions already proven in M0: exact revision guards versus baseline identity, syntax ownership
+versus serialized keys, complete/partial authority, per-path grammar selection, external capability
+observations, and graph evidence versus binding proof.
+
+**Blockers:** none. Serena remains Python-symbol-only for this Rust workspace; targeted local Rust
+reads remain the fallback.
+
+**Dependencies/restart:** none; this checkpoint adds only an integration test and durable artifacts.
+No production rebuild is required beyond normal validation.
+
+**Negative-memory status:** a zero count on syntactic edges is not evidence that the ambiguous branch
+works; DoD tests must create the authority state they claim to validate. Also, successful typed input
+does not alone prove grammar selection without AST sentinels and wrong-grammar controls. Recheck if
+graph confidence states, grammar dispatch, corpus membership, or workorder grouping change.
+
+**Signature:** Codex (GPT-5), M0.DoD integration owner, 2026-07-13.

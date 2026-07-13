@@ -107,13 +107,18 @@ reports, benchmark records, and work orders.
   verifier reconstruction, slim, MCP, deterministic fix, and LSP deny rewrite authority; JSON/SARIF
   retain per-finding safety; supported-Julia boundary E2E proves scan visibility with zero CLI agent,
   workorder, prompt, model-call, check-command, verification, or write output even under overrides.
-- [ ] M0.DoD Demonstrate zero duplicate work-order IDs, zero falsely resolved ambiguous fixture edges,
-  correct grammar selection, and honest partial/capability labels on the M0 corpus.
-  **NEXT**
+- [x] M0.DoD Demonstrate zero duplicate work-order IDs, zero falsely resolved ambiguous fixture edges,
+  correct grammar selection, and honest partial/capability labels on the M0 corpus. Evidence: one
+  executable CLI snapshot locks 30 workorders/30 IDs/30 targets/65 grouped findings; 21 files/74
+  symbols/197 graph edges with 123 syntactic and zero falsely resolved reference edges; one actual
+  ambiguous edge and the 10-call `compact_label` regression with zero false resolution; three complete
+  typed dialect scans paired with the AST grammar truth table; two partial scans with zero metric
+  regions/graph symbols; and one persisted unavailable JET capability observation.
 
 ## M1 — One parse, one owned syntax snapshot
 
 - [ ] M1.1 Write an ADR for `ProjectAnalysis`, source revisions, ownership, invalidation, and consumers.
+  **NEXT**
 - [ ] M1.2 Implement a revision/content-addressed source store and one parse owner per file revision.
 - [ ] M1.3 Implement the owned node arena with raw kind, field, span, parent/children, named/error flags,
   token/trivia ownership, source slice, and grammar provenance.
