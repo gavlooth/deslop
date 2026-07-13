@@ -1,10 +1,13 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use deslop_core::{AnalysisStatus, FileAnalysis, Lang, Span, file_analyses_status};
 use deslop_lang::{LangPack, RegionClass, RegionSpan, Registry};
-use deslop_parse::{SourceFile, analysis_provenance_or_failed, parse_source};
+use deslop_parse::{
+    NodeId, ParsedFile, ProjectAnalysis, SourceFile, SyntaxAdapterFacts,
+    analysis_provenance_or_failed, parse_source,
+};
 use ignore::WalkBuilder;
 use serde::Serialize;
 use tree_sitter::Node;
@@ -212,6 +215,111 @@ pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<Metrics
             meaning: "hand-set structural burden evidence for triage only; not readability, health, refactor need, probability, confidence, or safety",
         },
     })
+}
+
+/// Compute metrics from one already-owned immutable project analysis without reading or parsing.
+pub fn metrics_analysis(
+    analysis: &ProjectAnalysis,
+    config: MetricsConfig,
+) -> Result<MetricsReport> {
+    let mut functions = Vec::new();
+    let mut analyses = Vec::new();
+    for file in analysis.files() {
+        analyses.push(FileAnalysis {
+            path: file.key().path.clone(),
+            lang: file.grammar().lang(),
+            analysis: file.provenance().clone(),
+        });
+        if file.provenance().permits_rewrites() {
+            functions.extend(metrics_file(analysis, file)?);
+        }
+    }
+    finish_metrics_report(analyses, functions, config)
+}
+
+fn finish_metrics_report(
+    mut analyses: Vec<FileAnalysis>,
+    mut functions: Vec<RegionMetrics>,
+    config: MetricsConfig,
+) -> Result<MetricsReport> {
+    functions.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(a.span.start_line.cmp(&b.span.start_line))
+            .then(a.name.cmp(&b.name))
+    });
+    analyses.sort_by(|a, b| a.path.cmp(&b.path));
+    let status = file_analyses_status(&analyses);
+    let authoritative = status == AnalysisStatus::Complete;
+    let heuristic_burden_distribution =
+        authoritative.then(|| normalize_heuristic_burden(&mut functions));
+    let heuristic_outliers = heuristic_burden_distribution.map_or_else(Vec::new, |distribution| {
+        detect_heuristic_outliers(&functions, distribution)
+    });
+    let hotspots = authoritative
+        .then(|| detect_hotspots(&functions, config.sigma))
+        .unwrap_or_default();
+    Ok(MetricsReport {
+        schema: "deslop.metrics/5",
+        status,
+        analyses,
+        functions,
+        heuristic_outliers,
+        heuristic_burden_distribution,
+        hotspots,
+        heuristic_model: HeuristicBurdenModel {
+            id: "deslop-heuristic-burden/1",
+            experimental: true,
+            human_calibrated: false,
+            authority: "triage_only",
+            gating_permitted: false,
+            meaning: "hand-set structural burden evidence for triage only; not readability, health, refactor need, probability, confidence, or safety",
+        },
+    })
+}
+
+struct MetricFile<'analysis> {
+    analysis: &'analysis ProjectAnalysis,
+    file: &'analysis ParsedFile,
+    facts: Box<[SyntaxAdapterFacts]>,
+    facts_by_node: HashMap<NodeId, usize>,
+}
+
+impl<'analysis> MetricFile<'analysis> {
+    fn new(analysis: &'analysis ProjectAnalysis, file: &'analysis ParsedFile) -> Result<Self> {
+        let facts = analysis.syntax_adapter_facts(&file.key().path)?;
+        let facts_by_node = facts
+            .iter()
+            .enumerate()
+            .map(|(index, facts)| (facts.node(), index))
+            .collect();
+        Ok(Self {
+            analysis,
+            file,
+            facts,
+            facts_by_node,
+        })
+    }
+
+    fn text(&self) -> &str {
+        self.file
+            .text()
+            .expect("complete metrics file has UTF-8 text")
+    }
+
+    fn fact(&self, node: NodeId) -> &SyntaxAdapterFacts {
+        &self.facts[self.facts_by_node[&node]]
+    }
+}
+
+fn metrics_file(analysis: &ProjectAnalysis, file: &ParsedFile) -> Result<Vec<RegionMetrics>> {
+    let context = MetricFile::new(analysis, file)?;
+    let pack = Registry::default().pack_for_lang(file.grammar().lang());
+    let regions = metric_regions_owned(pack, &context)?;
+    Ok(regions
+        .into_iter()
+        .map(|region| measure_region_owned(pack, &context, region))
+        .collect())
 }
 
 pub fn metrics_source(source: &SourceFile) -> Result<Vec<RegionMetrics>> {
@@ -429,6 +537,73 @@ fn metric_regions(pack: &dyn LangPack, source: &SourceFile) -> Result<Vec<Metric
     Ok(regions)
 }
 
+fn metric_regions_owned(pack: &dyn LangPack, source: &MetricFile<'_>) -> Result<Vec<MetricRegion>> {
+    let root = source
+        .analysis
+        .file_node_ids(&source.file.key().path)
+        .and_then(|mut ids| ids.next())
+        .expect("complete syntax file owns a root node");
+    let root_view = source
+        .analysis
+        .node(root)
+        .expect("root id is analysis-owned");
+    if root_view.has_error() {
+        return Ok(vec![whole_file_region_owned(source, None)]);
+    }
+    if pack.metrics_regions().is_empty() {
+        return Ok(vec![whole_file_region_owned(source, Some(root))]);
+    }
+    let mut regions = Vec::new();
+    collect_regions_owned(root, pack, source, &mut regions);
+    if regions.is_empty() {
+        regions.push(whole_file_region_owned(source, Some(root)));
+    }
+    Ok(regions)
+}
+
+fn collect_regions_owned(
+    node: NodeId,
+    pack: &dyn LangPack,
+    source: &MetricFile<'_>,
+    regions: &mut Vec<MetricRegion>,
+) {
+    let view = source.analysis.node(node).expect("node is analysis-owned");
+    let kind = view.raw_kind();
+    let declared_region = pack.metrics_regions().contains(&kind);
+    let semantic_region =
+        kind != "list_lit" || source.fact(node).region_class() != RegionClass::Other;
+    if declared_region && semantic_region {
+        regions.push(MetricRegion {
+            name: region_name_owned(node, source),
+            kind: kind.to_string(),
+            span: source
+                .fact(node)
+                .enclosing_region()
+                .unwrap_or_else(|| region_from_view(view.span(), source.text().len())),
+            node: Some(node),
+            legacy_node: None,
+        });
+    }
+    for child in view.children() {
+        collect_regions_owned(child, pack, source, regions);
+    }
+}
+
+fn whole_file_region_owned(source: &MetricFile<'_>, node: Option<NodeId>) -> MetricRegion {
+    MetricRegion {
+        name: "file".to_string(),
+        kind: "file".to_string(),
+        span: RegionSpan {
+            start_line: 1,
+            end_line: source.text().lines().count().max(1),
+            start_byte: 0,
+            end_byte: source.text().len(),
+        },
+        node,
+        legacy_node: None,
+    }
+}
+
 fn collect_regions(
     node: Node<'_>,
     pack: &dyn LangPack,
@@ -445,7 +620,8 @@ fn collect_regions(
             span: pack
                 .enclosing_region(node, text)
                 .unwrap_or_else(|| region_from_node(node, text)),
-            node: Some(node_range(node)),
+            node: None,
+            legacy_node: Some(node_range(node)),
         });
     }
     let mut cursor = node.walk();
@@ -465,7 +641,8 @@ fn whole_file_region(source: &SourceFile, node: Option<NodeRange>) -> MetricRegi
             start_byte: 0,
             end_byte: source.text.len(),
         },
-        node,
+        node: None,
+        legacy_node: node,
     }
 }
 
@@ -483,7 +660,53 @@ fn measure_region(pack: &dyn LangPack, source: &SourceFile, region: MetricRegion
         .unwrap_or("");
     let tokens = tokenize(text, pack.line_comments());
     let halstead = halstead(&tokens, pack);
-    let ast = ast_stats_for_region(pack, source, region.node);
+    let ast = ast_stats_for_region(pack, source, region.legacy_node);
+    let nloc = nloc(text, pack.line_comments());
+    let cyclomatic = ast.branch_count as f64 + 1.0;
+    let maintainability_index = maintainability_index(halstead.volume, cyclomatic, nloc);
+    let complexity = complexity_metrics(ast, cyclomatic, nloc, maintainability_index);
+    let expressivity = expressivity(
+        text,
+        &tokens,
+        cyclomatic,
+        nloc,
+        pack.line_comments(),
+        ast.information,
+    );
+    let heuristic_burden = heuristic_burden_metrics(
+        &complexity,
+        &expressivity,
+        ast.node_count,
+        region.legacy_node.is_some(),
+    );
+    RegionMetrics {
+        path: source.path.clone(),
+        lang: source.lang,
+        name: region.name,
+        kind: region.kind,
+        span: span_from_region(region.span),
+        complexity,
+        expressivity,
+        halstead,
+        heuristic_burden,
+    }
+}
+
+fn measure_region_owned(
+    pack: &dyn LangPack,
+    source: &MetricFile<'_>,
+    region: MetricRegion,
+) -> RegionMetrics {
+    let text = source
+        .text()
+        .get(region.span.start_byte..region.span.end_byte)
+        .unwrap_or("");
+    let tokens = tokenize(text, pack.line_comments());
+    let halstead = halstead(&tokens, pack);
+    let ast = region
+        .node
+        .map(|node| ast_complexity_owned(node, source))
+        .unwrap_or_default();
     let nloc = nloc(text, pack.line_comments());
     let cyclomatic = ast.branch_count as f64 + 1.0;
     let maintainability_index = maintainability_index(halstead.volume, cyclomatic, nloc);
@@ -503,8 +726,8 @@ fn measure_region(pack: &dyn LangPack, source: &SourceFile, region: MetricRegion
         region.node.is_some(),
     );
     RegionMetrics {
-        path: source.path.clone(),
-        lang: source.lang,
+        path: source.file.key().path.clone(),
+        lang: source.file.grammar().lang(),
         name: region.name,
         kind: region.kind,
         span: span_from_region(region.span),
@@ -606,12 +829,56 @@ fn ast_complexity(node: Node<'_>, pack: &dyn LangPack, text: &str) -> AstStats {
     stats
 }
 
+fn ast_complexity_owned(node: NodeId, source: &MetricFile<'_>) -> AstStats {
+    fn visit(
+        node: NodeId,
+        source: &MetricFile<'_>,
+        nesting: usize,
+        stats: &mut AstStats,
+        kinds: &mut BTreeMap<String, usize>,
+        leaf_tokens: &mut BTreeMap<String, usize>,
+    ) {
+        let view = source.analysis.node(node).expect("node is analysis-owned");
+        let kind = view.raw_kind();
+        stats.node_count += 1;
+        *kinds.entry(kind.to_string()).or_insert(0) += 1;
+        if view.is_leaf() && !kind.contains("comment") {
+            let token = view.text();
+            if !token.trim().is_empty() {
+                *leaf_tokens.entry(token.to_string()).or_insert(0) += 1;
+            }
+        }
+        let fact = source.fact(node);
+        let branch_contribution = fact.metric_branch_contribution();
+        if branch_contribution > 0 {
+            stats.branch_count += branch_contribution;
+            stats.cognitive += branch_contribution * (1 + nesting);
+        }
+        if fact.is_metric_flow_break() {
+            stats.cognitive += 1;
+        }
+        let next_nesting = nesting + usize::from(fact.is_metric_nesting());
+        stats.max_nesting = stats.max_nesting.max(next_nesting);
+        for child in view.children() {
+            visit(child, source, next_nesting, stats, kinds, leaf_tokens);
+        }
+    }
+    let mut stats = AstStats::default();
+    let mut kinds = BTreeMap::new();
+    let mut leaf_tokens = BTreeMap::new();
+    visit(node, source, 0, &mut stats, &mut kinds, &mut leaf_tokens);
+    stats.information =
+        information_stats(&leaf_tokens, normalized_entropy(kinds.values().copied()));
+    stats
+}
+
 #[derive(Debug, Clone)]
 struct MetricRegion {
     name: String,
     kind: String,
     span: RegionSpan,
-    node: Option<NodeRange>,
+    node: Option<NodeId>,
+    legacy_node: Option<NodeRange>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1358,6 +1625,21 @@ fn region_from_node(node: Node<'_>, text: &str) -> RegionSpan {
     }
 }
 
+fn region_from_view(span: deslop_parse::SyntaxSpan, text_len: usize) -> RegionSpan {
+    let start = span.start_point();
+    let end = span.end_point();
+    let mut end_line = end.row() + 1;
+    if end.column() == 0 && end_line > start.row() + 1 {
+        end_line -= 1;
+    }
+    RegionSpan {
+        start_line: start.row() + 1,
+        end_line,
+        start_byte: span.start_byte(),
+        end_byte: span.end_byte().min(text_len),
+    }
+}
+
 fn region_name(node: Node<'_>, text: &str) -> String {
     if let Some(name) = node.child_by_field_name("name") {
         return name
@@ -1377,6 +1659,33 @@ fn region_name(node: Node<'_>, text: &str) -> String {
     node.kind().to_string()
 }
 
+fn region_name_owned(node: NodeId, source: &MetricFile<'_>) -> String {
+    let view = source.analysis.node(node).expect("node is analysis-owned");
+    let children = view.children();
+    if let Some(name) = children.iter().find_map(|child| {
+        let child = source
+            .analysis
+            .node(*child)
+            .expect("child is analysis-owned");
+        (child.field() == Some("name")).then_some(child)
+    }) {
+        return name.text().to_string();
+    }
+    children
+        .into_iter()
+        .find_map(|child| {
+            let child = source
+                .analysis
+                .node(child)
+                .expect("child is analysis-owned");
+            child
+                .raw_kind()
+                .contains("identifier")
+                .then(|| child.text().to_string())
+        })
+        .unwrap_or_else(|| view.raw_kind().to_string())
+}
+
 fn short_name(region: &RegionMetrics) -> String {
     format!(
         "{}:{} {}",
@@ -1390,6 +1699,7 @@ fn short_name(region: &RegionMetrics) -> String {
 mod tests {
     use super::*;
     use deslop_lang::RUST_PACK;
+    use deslop_parse::{ProjectAnalysis, ProjectSnapshotBuilder, RepositoryId};
 
     #[test]
     fn cyclomatic_counts_known_rust_branches() {
@@ -1581,17 +1891,32 @@ mod tests {
     }
 
     #[test]
-    fn metrics_paths_locks_current_parse_amplification_count() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/python/behavioral.py");
-
+    fn metrics_analysis_uses_one_owned_parse_and_never_touches_the_legacy_counter() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap();
+        let path = root.join("tests/fixtures/python/behavioral.py");
         deslop_parse::reset_parse_source_invocations();
-        let report = metrics_paths(&[path], MetricsConfig::default()).expect("metrics");
+        let snapshot = ProjectSnapshotBuilder::new(&root, RepositoryId::local(&root).unwrap())
+            .unwrap()
+            .with_exact_files(&[path])
+            .build()
+            .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let counts_before = analysis.parse_counts();
+        let report = metrics_analysis(&analysis, MetricsConfig::default()).expect("metrics");
+        let repeated = metrics_analysis(&analysis, MetricsConfig::default()).expect("metrics");
 
         assert_eq!(report.functions.len(), 5);
-        // Current path: one outer provenance parse, then repeated provenance, region discovery,
-        // and one parse per region (R + 3). M1's owned snapshot target is one parse total.
-        assert_eq!(deslop_parse::parse_source_invocations(), 8);
+        assert_eq!(
+            render_json(&report).unwrap(),
+            render_json(&repeated).unwrap()
+        );
+        assert_eq!(analysis.parse_counts(), counts_before);
+        assert_eq!(counts_before.len(), 1);
+        assert_eq!(counts_before.values().next().unwrap().parser_invocations, 1);
+        assert_eq!(deslop_parse::parse_source_invocations(), 0);
     }
 
     #[test]

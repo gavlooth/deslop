@@ -10,6 +10,7 @@ use tree_sitter::{Parser, Tree};
 pub use deslop_lang::RegionSpan;
 
 // M1.3 owns the raw arena internally; M1.4 adds owner-validated public node views.
+mod adapter;
 mod aggregation;
 #[allow(dead_code)]
 mod arena;
@@ -19,6 +20,7 @@ mod incremental;
 mod query;
 mod snapshot;
 
+pub use adapter::{SyntaxAdapterFacts, SyntaxAdapterFactsError};
 pub use aggregation::{
     InclusiveSyntaxPolicy, SyntaxAggregateLookupError, SyntaxAggregateOwner,
     SyntaxAggregateProjection, SyntaxAggregates, SyntaxAggregationError, SyntaxNodeAggregate,

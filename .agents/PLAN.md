@@ -990,6 +990,41 @@ Create the revision/source store, node arena, IDs/keys, containment index, token
 diagnostics, role hooks, and query surfaces. Migrate metrics, analyzer, graph, protocol, LSP, evaluator,
 and slim consumers so instrumentation proves one parse per file revision.
 
+#### Active M1.9 execution plan — analyzer and metrics shared-analysis migration
+
+Active hypothesis: making `Arc<ProjectAnalysis>` the only primary analyzer/metrics input, plus one
+owned adapter-fact projection per file, will preserve current language behavior while reducing every
+complete file revision to one parser invocation and eliminating nested-region metric double ownership.
+
+Current approach: root owns integration. `deslop-parse` evaluates existing `LangPack` node hooks
+internally against its retained private Tree and publishes only owned facts aligned to `NodeId`s.
+Analyzer and metrics receive borrowed file contexts over one `Arc<ProjectAnalysis>`; they use pinned
+bytes, line starts, grammar selection, `NodeView` traversal, owned adapter facts, query captures, and
+exclusive/reset-aware aggregation. Path/source compatibility APIs build exactly one snapshot and
+delegate; rules never reread, reselect grammar, or call legacy parse functions. Boundary inputs are
+captured at orchestration, and external results remain revision-bound.
+
+Validation path: pin the existing simple Rust metric vector and five-region Python identities; prove
+the Python file's 364 bytes and 12 physical NLOC have one declared owner despite previously summing to
+649 bytes/21 NLOC; prove parse ledger `1/1/1/0`, legacy parse counter zero, unchanged ledger across
+repeated consumers, deterministic output, malformed mixed-snapshot downgrade, path alias collapse,
+external/suppression parity, and full workspace contracts. The terminal outcomes are either exact
+behavior with one parse and conserved ownership, or an explicit blocked/downgraded adapter capability;
+legacy per-rule/per-region parsing is not an accepted fallback.
+
+Next checkpoint: primary `scan_analysis` and `metrics_analysis` APIs pass focused numerical contracts,
+and `scan_paths`/`metrics_paths` are thin one-snapshot adapters with no consumer `parse_source` calls.
+
+Negative-memory constraints: do not expose borrowed Tree-sitter nodes; duplicate `LangPack` raw-kind
+logic; infer durable identity from reanchors; union nested inclusive metric regions; reread paths after
+snapshot construction; use path-selected language instead of stored grammar; or count an incremental
+old-Tree seed as whole-file reuse. M1.8 reanchors are correlation only, so every M1.9 projection binds
+the new `ProjectAnalysisId` and is rebuilt on every successor.
+
+Agent assignments: `/root` integration and final verification; `core_surface_audit` analyzer ownership;
+`contract_test_audit` metrics numerical contracts; `integration_surface_audit` orchestration and
+compatibility boundary. All agent tracks are read-only.
+
 ### M2 — Language-adapter contract
 
 Implement capability manifests, grammar variants, query packs, canonical roles, operator/token policy,

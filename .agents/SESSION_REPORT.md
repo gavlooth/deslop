@@ -6544,3 +6544,54 @@ correlation into projection or write authority. Recheck only if the edit-history
 Tree-sitter contract changes.
 
 **Signature:** Codex (GPT-5), M1.8 integration owner, 2026-07-13.
+
+---
+
+## M1.9 partial checkpoint — owned adapter facts and primary metrics analysis
+
+**Date/time:** 2026-07-13T21:04:12+02:00
+
+**Objective/target:** begin migrating analyzer and metrics from repeated legacy parsing to one shared
+`ProjectAnalysis`, without exposing borrowed Tree-sitter nodes or duplicating `LangPack` semantics.
+
+**Changes:** added parse-owned `SyntaxAdapterFacts` projection. It evaluates all existing node-based
+language-pack hooks inside `deslop-parse` against the retained private Tree, selects the pack from the
+stored `GrammarSelection` language, validates full Tree/arena cardinality, and returns only owned facts
+aligned to existing `NodeId`s. Added primary `metrics_analysis(&ProjectAnalysis, MetricsConfig)` and an
+owned `MetricFile` context using pinned text, `NodeView` traversal, and one bulk adapter-fact map. Region
+discovery and AST complexity have owned implementations with no path read or parser call. The M1.9
+execution plan now records the shared-analysis boundary, terminal validation, ownership requirements,
+and read/external/discovery constraints. Legacy `metrics_paths`/`metrics_source` remain temporarily in
+place and M1.9 is not marked complete.
+
+**Commands/checks run:** targeted analyzer/metrics/parse/source/roadmap inspection; Hindsight M1.9
+search; three read-only audit tracks; focused `cargo check`; `cargo test -p deslop-metrics`; combined
+`cargo test -p deslop-parse -p deslop-metrics`; formatting and whitespace checks; `jj status`; and
+`jj diff --stat`.
+
+**Results:** PARTIAL PASS. Parse has 66 passing tests and metrics has 20. The new behavioral-Python
+primary-path test builds one snapshot/analysis, obtains five regions twice with byte-identical JSON,
+records exactly one parser invocation, leaves the parse ledger unchanged across both projections, and
+leaves the legacy parse counter at zero. All focused formatting and whitespace gates pass.
+
+**Invalidated assumptions / negative memory:** parse elimination alone does not complete the metrics
+migration. The owned implementation still slices full nested spans and recursively walks full nested
+subtrees, so the 364-byte/12-NLOC Python fixture still expands to the invalid 649 summed bytes/21 NLOC.
+The required next step is reset-aware ownership at semantic enclosing owners plus an explicit
+single-owner physical-line policy. Naively feeding legacy directory scopes to the snapshot builder is
+also invalid because legacy walkers honor ignore files while current snapshot discovery does not.
+Live-path external analyzer results cannot enter a revision-bound projection; inputs must be mirrored
+and pinned or capability must be unavailable. Projection identity must bind `ProjectAnalysisId` plus
+config/adapter/external capability. These constraints are stored provisionally in Hindsight.
+
+**Current recommendation/next actions:** finish metrics exclusive ownership and its exact 364-byte,
+12-NLOC conservation oracle; add centralized/versioned root and discovery/read-plan construction;
+then implement primary analyzer context/projection and migrate every agnostic/token/Rust/boundary/
+suppression traversal. Only after path compatibility adapters delegate through one snapshot and all
+legacy consumer parser calls are gone should M1.9 be checked.
+
+**Blockers:** no external blocker. The remaining boundary is substantial and intentionally not hidden:
+external analyzers and config/build artifacts need a snapshot-pinned read manifest before their
+results can retain authority.
+
+**Signature:** Codex (GPT-5), M1.9 integration owner, partial checkpoint, 2026-07-13.
