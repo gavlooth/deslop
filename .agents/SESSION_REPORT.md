@@ -7834,3 +7834,102 @@ the invalid Hindsight `keyword` search mode was already recorded. Search handles
 golden`, `Python await composite lexical suppression`, `named anonymous raw-kind collision`.
 
 **Signature:** Codex (GPT-5), M2.8 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2.9 active checkpoint — Clojure reader/macro policy and goldens
+
+**Date/time:** 2026-07-14T02:00:00+02:00
+
+**Objective/target:** complete the Clojure production adapter without treating uniform list nodes or
+quoted macro templates as semantic runtime evidence.
+
+**Changes:** planning/audit only. Inspected `ClojurePack`, exact grammar descriptor, existing
+reader/macro/control golden, parser assertions, installed grammar node catalog, and durable negative
+memory for evaluated versus quoted list forms. Defined a convergent predicate-query and numerical
+projection matrix.
+
+**Commands/checks run:** targeted Hindsight retrieval; targeted source/fixture/parser reads; complete
+installed Clojure node-type catalog inspection with `jq`; dependency/version audit.
+
+**Results:** ACTIVE / UNVERIFIED. Clojure remains default unknown for all M2 policy surfaces. Its
+grammar exposes `source`, uniform `list_lit`, literal/symbol nodes, and explicit reader forms; it does
+not provide declaration/call/control node kinds. Contextual list-head classification and evaluated-
+reader ancestry are therefore mandatory.
+
+**Invalidated assumptions / negative memory:** existing durable constraint remains authoritative:
+raw `list_lit` membership cannot prove branch/nesting/flow; syntax-quoted macro templates are data,
+and reader conditionals lack selected-platform provenance. No raw-kind-only S1 implementation is
+acceptable. Clojure external analyzer support and head-based metrics do not themselves complete the
+frozen role/query/lexical/construct contracts.
+
+**Current recommendation/next actions:** add contextual canonical roles and predicate queries first,
+compile them against the real grammar, then implement lexical/reader/dialect policy and measure the
+fixed golden matrix.
+
+**Blockers/dependencies/restart:** Serena Rust symbols remain unavailable; targeted local tools and
+compiler/query/runtime oracles are the fallback. No functional blocker or dependency change applies.
+
+**Negative-memory status:** existing Clojure quoted/list-head constraint loaded from Hindsight and
+carried locally. Search handles: `M2.9 Clojure golden`, `Clojure list_lit reader conditional macro
+expansion`, `quoted form runtime role leakage`.
+
+**Signature:** Codex (GPT-5), M2.9 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M2.9 terminal checkpoint — Clojure reader/macro policy and goldens
+
+**Date/time:** 2026-07-14T02:09:27+02:00
+
+**Objective/target:** complete the truthful Clojure production adapter while preventing quoted,
+discarded, syntax-quoted, and reader-conditional data from gaining runtime control authority.
+
+**Changes:** `ClojurePack` now derives S1 and provides evaluated-ancestry/list-head canonical roles,
+total Unicode symbol/operator lexical classification, file-incomplete recovery, opaque unsupported
+`#=` evaluation, explicit opaque reader-macro facts, exact generated comment/metadata markers, and
+exact `clojure/tree-sitter-clojure/0.1.0` provenance. Added safe provided query families for module
+scope, comments, and raw reader/opaque forms; declaration, reference, and control queries remain
+unknown rather than capturing quoted forms. Added valid/malformed goldens with query-role checks,
+quoted-control non-leakage, exact numerical projections, and one parse per file. Replaced Clojure’s
+text-prefix list-head parser with grammar `value/name` field extraction across canonical roles and
+existing metric/region callbacks, so metadata-prefixed definitions retain their true head.
+
+**Commands/checks run:** focused language schema/test cycles; diagnostic then pinned Clojure golden;
+complete affected `cargo test -p deslop-lang -p deslop-parse -p deslop-metrics`; affected strict
+clippy, format, and whitespace checks; then `cargo test --workspace --all-features`; `cargo build
+--workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features
+--no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all
+-- --check`; and `git diff --check`.
+
+**Results:** PASS. Valid golden: 160 CST role facts, 183 assignments across 14 role categories; 90
+token owners with comment 2, delimiter 36, identifier 30, literal 10, operator 3, other 1,
+punctuation 8; safe query captures `[0,0,1,0,2,7]`; exact construct counts generated 2 / macro 6 /
+unsupported 1. Unicode `π`, exact symbol operator `*`, newline-owning full comments, generated comment
+and metadata, quote/discard/read-conditional/syntax-quote/unquotes, and opaque `#=` are pinned. The
+live `if` carries Branch; the quoted `if` carries neither Branch nor Call. Malformed input emits one
+whole-file `ERROR`. Every provided query capture has its declared role, both files parse once, and all
+workspace gates pass; only the two repository-designated slow probes are ignored.
+
+**Invalidated assumptions / negative memory:** (1) the frozen Tree-sitter query source cannot express
+“no quoted ancestor” across arbitrary nesting. Head-predicate queries would therefore return quoted
+declarations/references/control as runtime structure. Authority downgrade: those three families remain
+unknown; module scope, comments, and raw opaque readers are provided. Preferred alternative is an
+ancestry-aware filter in a versioned query schema, assessed in M2.11—not a leaky approximation. (2)
+Clojure metadata is included in a `list_lit` span, so prefix scanning sees `^` instead of `defn`.
+Grammar `value/name` fields are the authoritative head and now drive canonical plus metric/region
+hooks. (3) comment nodes own their trailing newline; the exact generated policy explicitly declares
+LF and EOF variants. Macro facts grant no macroexpansion or active reader-platform authority.
+
+**Current recommendation/next actions:** execute M2.10 for Julia, then make the cross-adapter M2.11
+matrix explicitly test Clojure’s three unknown contextual query families against leakage.
+
+**Blockers/dependencies/restart:** no immediate blocker. Deferred contextual query support requires a
+versioned contract change if pursued; current output is complete and honest without it. No dependency,
+migration, service restart, or live-state activation applies.
+
+**Negative-memory status:** contextual-query and metadata-head invalidations require durable Hindsight
+storage. Search handles: `M2.9 Clojure golden`, `Clojure quoted ancestor query leakage`, `Clojure
+metadata list head value name fields`.
+
+**Signature:** Codex (GPT-5), M2.9 integration owner, terminal checkpoint, 2026-07-14.

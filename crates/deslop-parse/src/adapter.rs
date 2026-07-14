@@ -2628,6 +2628,224 @@ mod tests {
     }
 
     #[test]
+    fn clojure_production_adapter_golden_matrix_is_owned_and_parse_once() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("clojure-production-adapter-golden").unwrap(),
+        )
+        .unwrap()
+        .with_overlay(
+            "adapter_matrix.clj",
+            include_bytes!("../../../tests/fixtures/clojure/adapter_matrix.clj").to_vec(),
+        )
+        .unwrap()
+        .with_overlay(
+            "malformed.clj",
+            include_bytes!("../../../tests/fixtures/clojure/malformed.clj").to_vec(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let path = Path::new("adapter_matrix.clj");
+        let identity = analysis
+            .snapshot()
+            .entry(path)
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap();
+        assert_eq!(
+            identity.capabilities().highest_complete_tier(),
+            Some(SemanticTier::S1)
+        );
+
+        let roles = analysis.canonical_role_projection(path).unwrap();
+        let lexical = analysis.lexical_token_projection(path).unwrap();
+        let constructs = analysis.construct_policy_projection(path).unwrap();
+        let queries = analysis.compile_language_query_pack(path).unwrap();
+        for owner in [
+            roles.analysis(),
+            lexical.analysis(),
+            constructs.analysis(),
+            queries.analysis(),
+        ] {
+            assert!(Arc::ptr_eq(owner, &analysis));
+        }
+        assert_eq!(constructs.dialect().dialect(), "clojure");
+        assert_eq!(constructs.dialect().grammar_id(), "tree-sitter-clojure");
+        assert_eq!(constructs.dialect().grammar_version(), "0.1.0");
+
+        let mut role_counts = std::collections::BTreeMap::new();
+        for fact in roles.facts() {
+            for role in fact.roles().iter() {
+                *role_counts.entry(role.as_str()).or_insert(0_usize) += 1;
+            }
+        }
+        let mut lexical_counts = std::collections::BTreeMap::new();
+        for fact in lexical.facts() {
+            *lexical_counts
+                .entry(fact.classification().token_class().as_str())
+                .or_insert(0_usize) += 1;
+        }
+        let root_node = analysis.file_node_ids(path).unwrap().next().unwrap();
+        let query_counts = QueryFamily::ALL.map(|family| {
+            queries.query(family).map_or(0, |compiled| {
+                analysis
+                    .syntax_query_matches(compiled.query(), root_node)
+                    .unwrap()
+                    .iter()
+                    .map(|matched| matched.captures().len())
+                    .sum::<usize>()
+            })
+        });
+        let mut construct_counts = std::collections::BTreeMap::new();
+        for fact in constructs.facts() {
+            *construct_counts
+                .entry(fact.kind().as_str())
+                .or_insert(0_usize) += 1;
+        }
+        assert_eq!(roles.facts().len(), 160);
+        assert_eq!(
+            role_counts,
+            std::collections::BTreeMap::from([
+                ("block", 1),
+                ("branch", 1),
+                ("call", 6),
+                ("callable", 1),
+                ("comment", 2),
+                ("declaration", 2),
+                ("expression", 82),
+                ("generated", 2),
+                ("literal", 10),
+                ("module", 2),
+                ("opaque-region", 7),
+                ("parameter", 1),
+                ("project", 1),
+                ("read", 65),
+            ])
+        );
+        assert_eq!(lexical.facts().len(), 90);
+        assert_eq!(
+            lexical_counts,
+            std::collections::BTreeMap::from([
+                ("comment", 2),
+                ("delimiter", 36),
+                ("identifier", 30),
+                ("literal", 10),
+                ("operator", 3),
+                ("other", 1),
+                ("punctuation", 8),
+            ])
+        );
+        assert_eq!(query_counts, [0, 0, 1, 0, 2, 7]);
+        assert_eq!(
+            construct_counts,
+            std::collections::BTreeMap::from([
+                ("generated-code", 2),
+                ("macro", 6),
+                ("unsupported-construct", 1),
+            ])
+        );
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "π"
+                && fact.classification().token_class() == LexicalTokenClass::Identifier
+        }));
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "*"
+                && fact.classification().operator_class() == Some(LexicalOperatorClass::Arithmetic)
+        }));
+        for comment in [";; @generated\n", "; line comment\n"] {
+            assert!(lexical.facts().iter().any(|fact| {
+                fact.text() == comment
+                    && fact.classification().token_class() == LexicalTokenClass::Comment
+            }));
+        }
+        assert!(roles.facts().iter().any(|fact| {
+            let view = analysis.node(fact.node()).unwrap();
+            view.text().starts_with("(if quoted")
+                && !fact.roles().contains(CanonicalRole::Branch)
+                && !fact.roles().contains(CanonicalRole::Call)
+        }));
+        assert!(roles.facts().iter().any(|fact| {
+            let view = analysis.node(fact.node()).unwrap();
+            view.text().starts_with("(if (> total") && fact.roles().contains(CanonicalRole::Branch)
+        }));
+        assert_eq!(
+            constructs
+                .facts()
+                .iter()
+                .map(|fact| (fact.kind().as_str(), fact.raw().raw_kind(), fact.text()))
+                .collect::<Vec<_>>(),
+            [
+                ("generated-code", "comment", ";; @generated\n"),
+                ("generated-code", "meta_lit", "^:generated"),
+                (
+                    "macro",
+                    "quoting_lit",
+                    "'(if quoted (when hidden :bad) :data)",
+                ),
+                ("macro", "dis_expr", "#_(when discarded :bad)"),
+                (
+                    "macro",
+                    "read_cond_lit",
+                    "#?(:clj (println total) :cljs (js/console.log total))",
+                ),
+                ("macro", "syn_quoting_lit", "`(when ~π ~@values)"),
+                ("macro", "unquoting_lit", "~π"),
+                ("macro", "unquote_splicing_lit", "~@values"),
+                ("unsupported-construct", "evaling_lit", "#=(+ 1 2)",),
+            ]
+        );
+
+        for compiled in queries.compiled() {
+            let declarations = compiled.declaration().captures();
+            for matched in analysis
+                .syntax_query_matches(compiled.query(), root_node)
+                .unwrap()
+                .iter()
+            {
+                for capture in matched.captures() {
+                    let declaration = declarations
+                        .iter()
+                        .find(|declared| declared.name() == capture.capture_name())
+                        .unwrap();
+                    let fact = roles
+                        .facts()
+                        .iter()
+                        .find(|fact| fact.node() == capture.node())
+                        .unwrap();
+                    for required in declaration.roles().iter() {
+                        assert!(fact.roles().contains(required));
+                    }
+                }
+            }
+        }
+
+        let malformed = analysis
+            .construct_policy_projection(Path::new("malformed.clj"))
+            .unwrap();
+        assert_eq!(
+            malformed
+                .facts()
+                .iter()
+                .map(|fact| (fact.kind().as_str(), fact.raw().raw_kind(), fact.text()))
+                .collect::<Vec<_>>(),
+            [(
+                "parse-error",
+                "ERROR",
+                "(defn broken [value]\n  (+ value 1)\n",
+            )]
+        );
+        assert!(
+            analysis
+                .parse_counts()
+                .values()
+                .all(|count| count.parser_invocations == 1)
+        );
+    }
+
+    #[test]
     fn stored_query_pack_compiles_and_executes_all_six_families() {
         let root = tempfile::tempdir().unwrap();
         let source = b"#[generated]\nfn sample(value: i32) {\n    // note\n    if value > 0 { helper(); }\n    vec![value];\n}\n";

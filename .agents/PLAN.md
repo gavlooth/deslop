@@ -1642,6 +1642,59 @@ executable audit proves every actual query capture carries all declared canonica
 keyword rules prevent named `await`/`lambda`/`type`/`yield` composites from suppressing operands.
 Every file parses once and all workspace gates pass. Next: M2.9 Clojure production policy/goldens.
 
+#### Active M2.9 execution plan — Clojure reader/macro policy and goldens
+
+Active hypothesis: Clojure can complete S1 only if list roles and queries use evaluated list-head
+context while reader forms remain explicit opaque syntax. Raw `list_lit` membership alone cannot
+distinguish declarations, calls, scopes, branches, or macro templates, and syntax-quoted/quoted forms
+must never fabricate runtime control flow.
+
+CONVERGENCE: compile all six query families, including head-text predicates, against the stored
+Clojure grammar; run all four projections over a fixed reader/macro/control golden plus malformed
+input; pin numerical vectors, exact `clojure/tree-sitter-clojure/0.1.0` identity, Unicode/comments/
+symbol operators, reader-macro and generated facts, query-to-role consistency, and one parse per file.
+If evaluated forms derive S1 without assigning runtime roles inside quoted/discarded templates, every
+capture honors its role contract, and all workspace gates pass, M2.9 is done.
+
+Current approach: implement contextual canonical roles from `node_head_token` plus
+`clojure_form_is_evaluated`; treat ordinary evaluated lists as syntactic calls, known defining/scope/
+control heads specially, and symbols/literals/reader data by their exact raw kinds. Query predicates
+will retain helper head captures with honest read roles. Lexical policy classifies exact operator text
+on `sym_name` before identifiers and avoids claiming composite symbol nodes. Recovery is
+file-incomplete; `#=` evaluation is opaque unsupported syntax; explicit reader forms are opaque macro
+syntax; exact `;; @generated` comments and `^:generated` metadata are generated markers. Declare only
+the stored Clojure grammar; no macroexpansion or active reader-conditional branch authority is added.
+
+Validation path: schema/S1 checks; actual predicate query compilation/execution; numerical valid and
+malformed projections; quoted/discarded non-leakage and query-role audit; ownership/no-reparse; affected
+strict checks; full workspace gates.
+
+Negative-memory constraints: uniform `list_lit` nodes require list-head and evaluated-reader context;
+syntax-quoted templates are data except explicit unquotes; reader conditionals have no active-platform
+selection authority; query compilation alone does not prove capture-role consistency; composite raw
+kinds must not suppress token children; S1 grants no resolution, macroexpansion, CFG, effects, or
+compiler/clj-kondo authority.
+
+Agent assignment: `/root` owns M2.9 policy, fixtures, integration, and verification; no concurrent
+file edits are assigned.
+
+Current checkpoint (2026-07-14T02:00:00+02:00): audited the production pack, existing reader/macro/
+control fixture, durable Clojure complexity constraint, and the complete grammar catalog. Production
+M2 policy remains unknown. The grammar exposes only uniform data/reader node kinds plus `list_lit`, so
+the implementation must be contextual rather than raw-kind-only.
+
+Terminal checkpoint (2026-07-14T02:09:27+02:00): M2.9 is complete at the honest query boundary.
+Clojure derives S1 with evaluated list-head roles, 160 CST facts / 183 assignments across 14 roles,
+90 token owners, exact reader/recovery/generated/dialect policy, and no S2+ promotion. Safe provided
+queries yield `[0,0,1,0,2,7]`; declaration/reference/control remain unknown because the stored query
+contract cannot exclude arbitrary quoted/syntax-quoted ancestors. The golden proves a live `if` is a
+branch while quoted `if` is neither branch nor call, locks two generated / six reader-macro / one
+unsupported `#=` facts, and locks one malformed whole-file `ERROR`. Grammar-field head extraction
+repairs metadata-prefixed definitions in canonical and existing metric/region hooks. Every file parses
+once and all workspace gates pass. Deferred boundary: ancestry-aware contextual query filtering belongs
+in M2.11 or a versioned query schema; it must not be approximated by leaking quoted forms. Next: M2.10
+Julia production policy/goldens.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link

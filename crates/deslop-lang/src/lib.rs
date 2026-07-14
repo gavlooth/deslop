@@ -2159,6 +2159,298 @@ impl LangPack for GenericPack {
     }
 }
 
+fn clojure_node_is_evaluated(node: Node<'_>) -> bool {
+    let mut pending_unquotes = 0usize;
+    let mut ancestor = node.parent();
+    while let Some(parent) = ancestor {
+        match parent.kind() {
+            "dis_expr" | "quoting_lit" | "var_quoting_lit" | "evaling_lit" => return false,
+            "unquoting_lit" | "unquote_splicing_lit" => pending_unquotes += 1,
+            "syn_quoting_lit" if pending_unquotes == 0 => return false,
+            "syn_quoting_lit" => pending_unquotes -= 1,
+            _ => {}
+        }
+        ancestor = parent.parent();
+    }
+    true
+}
+
+fn clojure_list_head_token<'a>(node: Node<'_>, text: &'a str) -> Option<&'a str> {
+    if node.kind() != "list_lit" {
+        return None;
+    }
+    let head = node.child_by_field_name("value")?;
+    if head.kind() != "sym_lit" {
+        return None;
+    }
+    let name = head.child_by_field_name("name")?;
+    text.get(name.start_byte()..name.end_byte())
+}
+
+fn clojure_canonical_roles(node: Node<'_>, text: &str) -> CanonicalRoleSet {
+    let roles = match node.kind() {
+        "source" => vec![CanonicalRole::Project, CanonicalRole::Module],
+        "list_lit" if clojure_node_is_evaluated(node) => {
+            match clojure_list_head_token(node, text) {
+                Some("ns") => vec![CanonicalRole::Declaration, CanonicalRole::Module],
+                Some("def" | "defonce") => vec![CanonicalRole::Declaration],
+                Some("defn" | "defn-" | "defmacro" | "defmethod") => {
+                    vec![CanonicalRole::Declaration, CanonicalRole::Callable]
+                }
+                Some("defrecord" | "deftype" | "defprotocol" | "definterface" | "defmulti") => {
+                    vec![CanonicalRole::Declaration, CanonicalRole::Type]
+                }
+                Some("fn" | "fn*") => vec![CanonicalRole::Callable, CanonicalRole::Block],
+                Some("let" | "let*" | "letfn" | "binding") => vec![CanonicalRole::Block],
+                Some(
+                    "if" | "if-not" | "if-let" | "if-some" | "when" | "when-not" | "when-let"
+                    | "when-some" | "cond" | "condp",
+                ) => vec![CanonicalRole::Branch],
+                Some("case") => vec![CanonicalRole::Branch, CanonicalRole::Match],
+                Some("for" | "doseq" | "dotimes" | "while" | "loop") => {
+                    vec![CanonicalRole::Loop, CanonicalRole::Block]
+                }
+                Some("throw" | "recur" | "return") => vec![CanonicalRole::Statement],
+                Some(_) | None => vec![CanonicalRole::Expression, CanonicalRole::Call],
+            }
+        }
+        "vec_lit"
+            if node.parent().is_some_and(|parent| {
+                parent.kind() == "list_lit"
+                    && clojure_node_is_evaluated(parent)
+                    && matches!(
+                        clojure_list_head_token(parent, text),
+                        Some("defn" | "defn-" | "fn" | "fn*")
+                    )
+            }) =>
+        {
+            vec![CanonicalRole::Parameter]
+        }
+        "vec_lit" | "map_lit" | "set_lit" | "ns_map_lit" => vec![CanonicalRole::Expression],
+        "sym_lit" | "sym_name" | "sym_ns" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Read]
+        }
+        "bool_lit" | "char_lit" | "kwd_lit" | "nil_lit" | "num_lit" | "regex_lit" | "str_lit" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Literal]
+        }
+        "comment"
+            if matches!(
+                text.get(node.start_byte()..node.end_byte()),
+                Some(";; @generated\n" | ";; @generated")
+            ) =>
+        {
+            vec![CanonicalRole::Comment, CanonicalRole::Generated]
+        }
+        "comment" => vec![CanonicalRole::Comment],
+        "ERROR" => vec![CanonicalRole::Error],
+        "anon_fn_lit"
+        | "derefing_lit"
+        | "dis_expr"
+        | "evaling_lit"
+        | "quoting_lit"
+        | "read_cond_lit"
+        | "splicing_read_cond_lit"
+        | "syn_quoting_lit"
+        | "tagged_or_ctor_lit"
+        | "unquote_splicing_lit"
+        | "unquoting_lit"
+        | "var_quoting_lit" => vec![CanonicalRole::OpaqueRegion],
+        "meta_lit" if text.get(node.start_byte()..node.end_byte()) == Some("^:generated") => {
+            vec![CanonicalRole::Generated]
+        }
+        _ => Vec::new(),
+    };
+    CanonicalRoleSet::from_roles(roles)
+}
+
+fn clojure_query_pack(adapter_schema: &str) -> LanguageQueryPack {
+    let capture = |name, roles: &[CanonicalRole]| {
+        QueryCaptureDeclaration::new(name, CanonicalRoleSet::from_roles(roles.iter().copied()))
+            .expect("the Clojure query capture is valid")
+    };
+    LanguageQueryPack::new(
+        adapter_schema,
+        vec![
+            QueryFamilyDeclaration::unknown(QueryFamily::Declarations),
+            QueryFamilyDeclaration::unknown(QueryFamily::References),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Scopes,
+                CapabilityAuthority::Adapter,
+                "(source) @scope.module",
+                vec![capture("scope.module", &[CanonicalRole::Module])],
+            ),
+            QueryFamilyDeclaration::unknown(QueryFamily::Control),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Comments,
+                CapabilityAuthority::Adapter,
+                "(comment) @comment",
+                vec![capture("comment", &[CanonicalRole::Comment])],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::OpaqueGenerated,
+                CapabilityAuthority::Adapter,
+                "[(anon_fn_lit) (derefing_lit) (dis_expr) (evaling_lit) (quoting_lit) (read_cond_lit) (splicing_read_cond_lit) (syn_quoting_lit) (tagged_or_ctor_lit) (unquote_splicing_lit) (unquoting_lit) (var_quoting_lit)] @opaque",
+                vec![capture("opaque", &[CanonicalRole::OpaqueRegion])],
+            ),
+        ],
+    )
+    .expect("the Clojure query pack is valid")
+}
+
+fn clojure_lexical_policy(adapter_schema: &str) -> LanguageLexicalPolicy {
+    let token =
+        |raw_kind, class| LexicalRule::new(raw_kind, None, LexicalClassification::token(class));
+    let symbol_operator = |text: &'static str, class: LexicalOperatorClass| {
+        LexicalRule::new(
+            "sym_name",
+            Some(text.to_string()),
+            LexicalClassification::operator(class),
+        )
+    };
+    let mut rules = vec![
+        symbol_operator("+", LexicalOperatorClass::Arithmetic),
+        symbol_operator("-", LexicalOperatorClass::Arithmetic),
+        symbol_operator("*", LexicalOperatorClass::Arithmetic),
+        symbol_operator("/", LexicalOperatorClass::Arithmetic),
+        symbol_operator("quot", LexicalOperatorClass::Arithmetic),
+        symbol_operator("mod", LexicalOperatorClass::Arithmetic),
+        symbol_operator("rem", LexicalOperatorClass::Arithmetic),
+        symbol_operator("=", LexicalOperatorClass::Comparison),
+        symbol_operator("not=", LexicalOperatorClass::Comparison),
+        symbol_operator("<", LexicalOperatorClass::Comparison),
+        symbol_operator(">", LexicalOperatorClass::Comparison),
+        symbol_operator("<=", LexicalOperatorClass::Comparison),
+        symbol_operator(">=", LexicalOperatorClass::Comparison),
+        symbol_operator("and", LexicalOperatorClass::Logical),
+        symbol_operator("or", LexicalOperatorClass::Logical),
+        symbol_operator("not", LexicalOperatorClass::Logical),
+        symbol_operator("bit-and", LexicalOperatorClass::Bitwise),
+        symbol_operator("bit-or", LexicalOperatorClass::Bitwise),
+        symbol_operator("bit-xor", LexicalOperatorClass::Bitwise),
+        symbol_operator("bit-not", LexicalOperatorClass::Bitwise),
+        symbol_operator("bit-shift-left", LexicalOperatorClass::Bitwise),
+        symbol_operator("bit-shift-right", LexicalOperatorClass::Bitwise),
+    ];
+    rules.extend(
+        ["sym_name", "sym_ns"]
+            .into_iter()
+            .map(|kind| token(kind, LexicalTokenClass::Identifier)),
+    );
+    rules.extend(
+        [
+            "bool_lit",
+            "char_lit",
+            "kwd_lit",
+            "nil_lit",
+            "num_lit",
+            "regex_lit",
+            "str_lit",
+        ]
+        .into_iter()
+        .map(|kind| token(kind, LexicalTokenClass::Literal)),
+    );
+    rules.extend(
+        ["(", ")", "[", "]", "{", "}"]
+            .into_iter()
+            .map(|kind| token(kind, LexicalTokenClass::Delimiter)),
+    );
+    rules.extend(
+        [
+            "#", "##", "#'", "#=", "#?", "#?@", "#^", "#_", "'", "`", "~", "~@", "^", "@", ":",
+            "::",
+        ]
+        .into_iter()
+        .map(|kind| token(kind, LexicalTokenClass::Punctuation)),
+    );
+    rules.extend([
+        token("comment", LexicalTokenClass::Comment),
+        token("ERROR", LexicalTokenClass::Error),
+        token("*", LexicalTokenClass::Other),
+    ]);
+    LanguageLexicalPolicy::provided(
+        adapter_schema,
+        CapabilityAuthority::Adapter,
+        IdentifierCasePolicy::Sensitive,
+        true,
+        vec![";".to_string()],
+        Vec::new(),
+        rules,
+    )
+    .expect("the Clojure lexical policy is valid")
+}
+
+fn clojure_construct_policy(adapter_schema: &str) -> LanguageConstructPolicy {
+    LanguageConstructPolicy::new(
+        adapter_schema,
+        ParseRecoveryPolicy::provided(
+            CapabilityAuthority::Syntax,
+            ParseRecoveryHandling::FileIncomplete,
+        ),
+        vec![
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::UnsupportedConstruct,
+                CapabilityAuthority::Adapter,
+                vec![ConstructRule::new(
+                    "evaling_lit",
+                    None,
+                    ConstructHandling::Opaque,
+                )],
+            )
+            .expect("the Clojure unsupported policy is valid"),
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::Macro,
+                CapabilityAuthority::Adapter,
+                vec![
+                    ConstructRule::new("anon_fn_lit", None, ConstructHandling::Opaque),
+                    ConstructRule::new("derefing_lit", None, ConstructHandling::Opaque),
+                    ConstructRule::new("dis_expr", None, ConstructHandling::Opaque),
+                    ConstructRule::new("quoting_lit", None, ConstructHandling::Opaque),
+                    ConstructRule::new("read_cond_lit", None, ConstructHandling::Opaque),
+                    ConstructRule::new("splicing_read_cond_lit", None, ConstructHandling::Opaque),
+                    ConstructRule::new("syn_quoting_lit", None, ConstructHandling::Opaque),
+                    ConstructRule::new("tagged_or_ctor_lit", None, ConstructHandling::Opaque),
+                    ConstructRule::new("unquote_splicing_lit", None, ConstructHandling::Opaque),
+                    ConstructRule::new("unquoting_lit", None, ConstructHandling::Opaque),
+                    ConstructRule::new("var_quoting_lit", None, ConstructHandling::Opaque),
+                ],
+            )
+            .expect("the Clojure macro policy is valid"),
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::GeneratedCode,
+                CapabilityAuthority::Adapter,
+                vec![
+                    ConstructRule::new(
+                        "comment",
+                        Some(";; @generated\n".to_string()),
+                        ConstructHandling::SurfaceSyntax,
+                    ),
+                    ConstructRule::new(
+                        "comment",
+                        Some(";; @generated".to_string()),
+                        ConstructHandling::SurfaceSyntax,
+                    ),
+                    ConstructRule::new(
+                        "meta_lit",
+                        Some("^:generated".to_string()),
+                        ConstructHandling::SurfaceSyntax,
+                    ),
+                ],
+            )
+            .expect("the Clojure generated policy is valid"),
+        ],
+        DialectPolicy::provided(
+            CapabilityAuthority::Syntax,
+            vec![DialectDeclaration::new(
+                "clojure",
+                "tree-sitter-clojure",
+                "0.1.0",
+            )],
+        )
+        .expect("the Clojure dialect policy is valid"),
+    )
+    .expect("the Clojure construct policy is valid")
+}
+
 impl LangPack for ClojurePack {
     fn name(&self) -> &'static str {
         "clojure"
@@ -2166,6 +2458,27 @@ impl LangPack for ClojurePack {
 
     fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
         LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
+            .with_declaration(CapabilityDeclaration::provided(
+                AdapterCapability::CanonicalRoles,
+                CapabilityAuthority::Adapter,
+            ))
+            .expect("the Clojure S1 capability declaration is valid")
+    }
+
+    fn canonical_roles(&self, node: Node<'_>, text: &str) -> CanonicalRoleSet {
+        clojure_canonical_roles(node, text)
+    }
+
+    fn query_pack(&self) -> LanguageQueryPack {
+        clojure_query_pack(self.adapter_schema())
+    }
+
+    fn lexical_policy(&self) -> LanguageLexicalPolicy {
+        clojure_lexical_policy(self.adapter_schema())
+    }
+
+    fn construct_policy(&self) -> LanguageConstructPolicy {
+        clojure_construct_policy(self.adapter_schema())
     }
 
     fn lang(&self) -> Lang {
@@ -2267,7 +2580,7 @@ impl LangPack for ClojurePack {
         usize::from(
             clojure_form_is_evaluated(node)
                 && matches!(
-                    node_head_token(node, text),
+                    clojure_list_head_token(node, text),
                     Some(
                         "if" | "if-not"
                             | "if-let"
@@ -2295,14 +2608,14 @@ impl LangPack for ClojurePack {
 
     fn is_metric_flow_break(&self, node: Node<'_>, text: &str) -> bool {
         clojure_form_is_evaluated(node)
-            && matches!(node_head_token(node, text), Some("throw" | "recur"))
+            && matches!(clojure_list_head_token(node, text), Some("throw" | "recur"))
     }
 
     fn region_class(&self, node: Node<'_>, text: &str) -> RegionClass {
         if node.kind() != "list_lit" {
             return RegionClass::Other;
         }
-        match node_head_token(node, text) {
+        match clojure_list_head_token(node, text) {
             Some("defn" | "defmacro" | "defmethod" | "fn") => RegionClass::Behavioral,
             Some(
                 "ns" | "require" | "import" | "def" | "defrecord" | "deftype" | "defprotocol"
@@ -2317,7 +2630,8 @@ impl LangPack for ClojurePack {
     }
 
     fn is_constant_definition_region(&self, node: Node<'_>, text: &str) -> bool {
-        node.kind() == "list_lit" && matches!(node_head_token(node, text), Some("def" | "defonce"))
+        node.kind() == "list_lit"
+            && matches!(clojure_list_head_token(node, text), Some("def" | "defonce"))
     }
 
     fn is_duplication_data_region(&self, node: Node<'_>, _text: &str) -> bool {
@@ -2330,22 +2644,7 @@ impl LangPack for ClojurePack {
 }
 
 fn clojure_form_is_evaluated(node: Node<'_>) -> bool {
-    if node.kind() != "list_lit" {
-        return false;
-    }
-    let mut pending_unquotes = 0usize;
-    let mut ancestor = node.parent();
-    while let Some(parent) = ancestor {
-        match parent.kind() {
-            "dis_expr" | "quoting_lit" | "var_quoting_lit" | "evaling_lit" => return false,
-            "unquoting_lit" | "unquote_splicing_lit" => pending_unquotes += 1,
-            "syn_quoting_lit" if pending_unquotes == 0 => return false,
-            "syn_quoting_lit" => pending_unquotes -= 1,
-            _ => {}
-        }
-        ancestor = parent.parent();
-    }
-    true
+    node.kind() == "list_lit" && clojure_node_is_evaluated(node)
 }
 
 impl LangPack for JuliaPack {
@@ -4727,7 +5026,7 @@ mod tests {
             assert_eq!(manifest.capabilities().len(), 23);
             let production_policy = matches!(
                 pack.lang(),
-                Lang::JavaScript | Lang::TypeScript | Lang::Python | Lang::Rust
+                Lang::JavaScript | Lang::TypeScript | Lang::Python | Lang::Clojure | Lang::Rust
             );
             assert_eq!(
                 manifest.highest_complete_tier(),
@@ -4742,12 +5041,18 @@ mod tests {
             } else {
                 CapabilitySupport::Unknown
             };
-            assert!(
-                queries
-                    .queries()
-                    .iter()
-                    .all(|query| query.support() == expected)
-            );
+            assert!(queries.queries().iter().all(|query| {
+                let expected_query = if pack.lang() == Lang::Clojure
+                    && matches!(
+                        query.family(),
+                        QueryFamily::Declarations | QueryFamily::References | QueryFamily::Control
+                    ) {
+                    CapabilitySupport::Unknown
+                } else {
+                    expected
+                };
+                query.support() == expected_query
+            }));
             let lexical = pack.lexical_policy();
             lexical.validate().unwrap();
             assert_eq!(lexical.adapter_schema(), pack.adapter_schema());

@@ -319,7 +319,16 @@ reports, benchmark records, and work orders.
   assignments across 21 roles, query captures `[4,1,8,3,2,2]`, four exact construct facts, one exact
   malformed `ERROR`, query-to-role consistency, and one parse per file. Exact-text keyword rules keep
   `await`/`lambda`/`type`/`yield` composites from suppressing their operands. All workspace gates pass.
-- [ ] M2.9 Implement/repair Clojure adapter and golden fixtures.
+- [x] M2.9 Implement/repair Clojure adapter and golden fixtures.
+  Evidence: production `ClojurePack` now derives S1 with evaluated list-head canonical roles, total
+  symbol/operator lexical ownership, file-incomplete recovery, explicit opaque reader-macro and `#=`
+  policies, exact generated markers, and `clojure/tree-sitter-clojure/0.1.0` provenance. Goldens lock
+  160 CST facts, 90 token owners, 183 role assignments across 14 roles, safe query vector
+  `[0,0,1,0,2,7]`, nine exact construct facts, one exact malformed `ERROR`, quoted-control non-leakage,
+  and one parse per file. Declaration/reference/control queries remain honestly unknown because stored
+  Tree-sitter queries cannot exclude arbitrary quoted ancestors; scope/comment/reader queries are
+  provided. Grammar-field head extraction also repairs metadata-prefixed metric/region forms. All
+  workspace gates pass.
 - [ ] M2.10 Implement/repair Julia adapter and golden fixtures.
 - [ ] M2.11 Add cross-adapter construct matrices and unsupported-capability leakage tests.
 - [ ] M2.DoD Every emitted fact declares adapter/version/capability/provenance, and no confirmed output
