@@ -10,13 +10,17 @@ use tree_sitter::{Parser, Tree};
 pub use deslop_lang::{
     AdapterCapability, CANONICAL_ROLE_SCHEMA, CanonicalRole, CanonicalRoleSet, CapabilityAuthority,
     CapabilityDeclaration, CapabilitySupport, ConstructHandling, ConstructPolicyKind,
-    ConstructPolicySection, ConstructRule, DialectDeclaration, DialectPolicy, IdentifierCasePolicy,
-    LANGUAGE_ADAPTER_CAPABILITY_SCHEMA, LANGUAGE_CONSTRUCT_POLICY_SCHEMA,
-    LANGUAGE_LEXICAL_POLICY_SCHEMA, LANGUAGE_QUERY_PACK_SCHEMA, LanguageAdapterCapabilityManifest,
-    LanguageConstructPolicy, LanguageLexicalPolicy, LanguageQueryPack, LexicalClassification,
-    LexicalOperatorClass, LexicalRule, LexicalTokenClass, ParseRecoveryHandling,
-    ParseRecoveryPolicy, QueryCaptureDeclaration, QueryFamily, QueryFamilyDeclaration, RegionSpan,
-    SemanticTier,
+    ConstructPolicySection, ConstructRule, DeclarationTimingRule, DialectDeclaration,
+    DialectPolicy, DuplicateDefinitionRule, ExtractionFactKind, IdentifierCasePolicy,
+    ImportTraversalRule, LANGUAGE_ADAPTER_CAPABILITY_SCHEMA, LANGUAGE_CONSTRUCT_POLICY_SCHEMA,
+    LANGUAGE_LEXICAL_POLICY_SCHEMA, LANGUAGE_QUERY_PACK_SCHEMA, LANGUAGE_RESOLUTION_RULE_SCHEMA,
+    LanguageAdapterCapabilityManifest, LanguageConstructPolicy, LanguageLexicalPolicy,
+    LanguageQueryPack, LanguageResolutionRulePack, LexicalClassification, LexicalOperatorClass,
+    LexicalRule, LexicalTokenClass, ModulePrerequisite, ParseRecoveryHandling, ParseRecoveryPolicy,
+    PrecedenceDimension, PrecedenceDirection, PrecedenceTerm, QualificationRootRule,
+    QueryCaptureDeclaration, QueryFamily, QueryFamilyDeclaration, RegionSpan,
+    ResolutionInstruction, ResolutionRuleSection, ResolutionRuleSectionKind,
+    ResolutionSyntaxSelector, RuleNamespace, RuleScopeKind, ScopeParentRule, SemanticTier,
 };
 
 // M1.3 owns the raw arena internally; M1.4 adds owner-validated public node views.
@@ -30,6 +34,7 @@ mod incremental;
 mod instrumentation;
 mod planner;
 mod query;
+mod resolution_traversal;
 mod scope_graph;
 mod snapshot;
 
@@ -71,6 +76,12 @@ pub use query::{
     SyntaxQuery, SyntaxQueryCompileErrorKind, SyntaxQueryError, SyntaxQueryId, SyntaxQueryPattern,
     SyntaxQueryPredicate, SyntaxQueryPredicateArgument, SyntaxQueryProperty,
     SyntaxQueryPropertyPredicate,
+};
+pub use resolution_traversal::{
+    DeferredImportTraversal, DynamicBoundaryTraversal, ExplicitShadowing, LexicalScopeStep,
+    NamespaceReachability, PrecedenceComponent, ResolutionTraversal, ResolutionTraversalEngine,
+    ResolutionTraversalError, RuleSectionGap, TimingObservation, TraversalCandidate,
+    VisibilityObservation,
 };
 pub use scope_graph::{
     BUILD_CONTEXT_SCHEMA, BindingDraft, BindingForm, BindingTarget, BindingTargetDraft,

@@ -1962,6 +1962,89 @@ definition-of-done tests pass unchanged. All workspace all-feature test/build/ru
 gates pass with only the two designated slow probes ignored. Next: M3.3 versioned language resolution
 rule packs and shared path engine; do not reuse M3.2 hand-labelled facts as semantic authority.
 
+#### Active M3.3 execution plan — total language rule packs and shared traversal
+
+Active hypothesis: M3.3 is complete when every stored grammar dialect has one strict, total,
+versioned rule pack describing its namespace/scope/timing/shadowing/path/import/dynamic semantics, and
+one shared engine can apply those declared relations to M3.2 facts without inventing a global lookup,
+terminal outcome, or capability claim.
+
+Current approach: add `deslop.resolution-rules/1` to `deslop-lang` and bind it into every `LangPack`
+identity. Each section declares Provided/Unsupported/Unknown independently and only Provided sections
+carry executable payload. Model scope creators/parent selection, extraction forms, namespace unions and
+transitions, visibility, declaration timing, shadowing/duplicates, qualification roots and members,
+imports/aliases/globs/preludes/exports/re-exports, module prerequisites, opaque boundaries, and a
+lexicographic structured precedence relation. Populate exact dialect-specific rule metadata for Rust,
+JavaScript/JSX, TypeScript/TSX, Python, Julia, and Clojure; retain explicit Unknown wherever current M2
+queries cannot extract the required facts (notably Clojure declarations/references). Do not promote the
+production capability manifests in this item. Add a parse-owned transient traversal engine over an
+existing `ScopeGraphProjection`; it may enumerate reachable lexical/import steps and structured
+precedence but must not serialize candidates or assign Unique/Ambiguous/Unresolved—M3.4 owns those.
+
+Validation path: strict totality/Serde/schema/dialect tests in `deslop-lang`; exact seven-dialect pack
+goldens; engine tests over hand-labelled nested scopes, namespaces, timing, explicit shadowing, aliases,
+and opaque boundaries; adversarial no-global-name/no-sort-winner tests; identity-change tests; existing
+M0/M1/M2/M3.2 authority gates; then full workspace gates.
+
+Next checkpoint: a validated schema whose unknown sections are payload-free and whose exact dialect
+selection changes stored adapter/projection identity.
+
+Negative-memory constraints: repeated LangPack methods require uniquely anchored edits; query captures
+are syntax seeds, not bindings; no universal hard-coded precedence; no float scores; no first-wins or
+bare-name lookup; no terminal status in M3.3; no capability promotion while extraction or build inputs
+remain incomplete.
+
+Agent assignment: `/root` owns M3.3 schema, all per-language metadata, traversal, integration, and
+verification; no concurrent edits are assigned.
+
+Current checkpoint (2026-07-14T03:14:01+02:00): ADR rule-pack requirements, the total capability/query
+catalogs, all six production `LangPack` implementations covering seven dialects, and the M3.2 public
+fact surface are audited. Current packs expose query seeds but all S2/S3 capabilities remain Unknown;
+Clojure declarations/references/control are explicitly Unknown. This is the authority baseline.
+
+Schema checkpoint (2026-07-14T03:28:32+02:00): `deslop.resolution-rules/1` is implemented as a strict
+ten-section declarative instruction schema. It models exact syntax selectors, scopes/parents, fact
+extraction, portable/adapter namespaces and transitions, visibility/timing, shadowing/duplicates,
+qualification/member traversal, import/export traversal, module prerequisites, dynamic boundaries,
+and ordered non-floating precedence dimensions. Provided sections require adapter authority and
+payload; Unknown/Unsupported sections reject both. Pack validation enforces total section order, exact
+dialect triples, namespace declaration closure, and one structured precedence relation. Three strict
+schema tests and focused clippy pass. `LangPack` has an unknown-by-default hook, and stored
+`LanguageAdapterIdentity` now includes and hashes the validated rule pack; any provided rules must
+declare the selected grammar dialect. Focused language/parse tests pass. Next: exact production
+per-dialect packs, then traversal.
+
+Rule-pack checkpoint (2026-07-14T03:35:11+02:00): all six production language families now return
+strict total packs for the seven selected dialect triples (Clojure, Julia, Python, JavaScript, JSX,
+TypeScript/TSX, and Rust). The catalogs explicitly declare each language's namespaces, unions and
+transitions, known scope parents, visibility/timing, duplicate behavior, qualification, import forms,
+module prerequisites, dynamic boundaries, and lexicographic precedence. Every precedence term now
+pins `lower-first` or `higher-first`; duplicate dimensions are rejected. Extraction remains Unknown
+and payload-free for every family, other incompletely supported sections remain Unknown, and all
+production capability manifests are unchanged. The exact matrix, serialization distinctness, strict
+round-trip, both focused crate suites, and focused all-target clippy pass. Next: implement and test the
+parse-owned transient traversal, retaining every reachable candidate without a terminal outcome.
+
+Traversal checkpoint (2026-07-14T03:43:55+02:00): `ResolutionTraversalEngine` now builds immutable
+fact indexes and starts from the reference's exact scope and first qualification segment. It walks only
+the lexical parent chain, retains every same-key declaration attempt, applies pack-declared namespace
+unification/transitions and directional precedence components, observes visibility and binding timing,
+links definitions/bindings/explicit shadowing, and exposes relevant imports and dynamic boundaries as
+deferred observations. An unrelated sibling declaration is numerically excluded from the three retained
+reachable candidates; wrong-namespace and declared-later attempts remain visible. Results deliberately
+have no Serde implementation or terminal status, and a compile-fail doctest locks that M3.4 boundary.
+Rule payload identity, focused language/parse suites, parse rustdoc, focused clippy, fmt, and diff checks
+pass. Next checkpoint: full workspace gates, exact authority/TODO audit, and terminal M3.3 report.
+
+Terminal checkpoint (2026-07-14T03:45:52+02:00): M3.3 is complete in jj change `xupxwnxm`. The
+1,514-line rule module supplies strict total versioned production packs for six language families and
+seven exact dialects; the 1,303-line transient engine applies their namespace and precedence relations
+only to reachable M3.2 facts. All focused and workspace all-feature test/build/rustdoc/clippy/fmt/diff
+gates pass, including unchanged M0/M1/M2 DoD and the no-semantic-authority-leak test. Production S2/S3
+capabilities remain Unknown and extraction remains Unknown/payload-free. M3.3 is checked. Next: open a
+fresh M3.4 change to define strict retained candidate paths, rejection evidence, coverage, and terminal
+outcomes on top of this non-selecting traversal; do not retrofit status or Serde into the M3.3 types.
+
 ### M4 — CFG, PST, PDG, and SDG
 
 Lower control flow per adapter; compute dominance/post-dominance and SESE/PST regions; add liveness,

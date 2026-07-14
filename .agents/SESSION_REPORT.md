@@ -8445,3 +8445,242 @@ complete payload sf1`, `canonical role coherence`, `coverage reason`, `no S2 pro
 fixture and authority boundary will be stored in Hindsight at this checkpoint.
 
 **Signature:** Codex (GPT-5), M3.2 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M3.3 active checkpoint — language resolution rule packs
+
+**Date/time:** 2026-07-14T03:14:01+02:00
+
+**Objective/target:** implement total per-dialect resolution-rule metadata and the shared traversal
+mechanism without crossing into M3.4 result/outcome storage.
+
+**Changes:** planning/audit only in fresh jj change `xupxwnxm`. Loaded M3/graph negative memory,
+reviewed ADR 0002's complete rule-pack and precedence contract, audited `LangPack`, capability and query
+schemas, production adapter hooks, seven exact dialect identities, and the new M3.2 fact surface.
+
+**Commands/checks run:** Hindsight targeted active/negative searches; targeted `sed`/`rg` over ADR,
+TODO, `deslop-lang` schemas, query packs, capability manifests, and every production adapter; `jj new`
+and `jj status`.
+
+**Results/failure modes:** clean child change created over terminal M3.2. All production S2/S3
+capabilities remain Unknown. Rust, JavaScript, TypeScript/TSX, Python, and Julia have provided syntax
+query seeds for declarations/references/scopes; Clojure declarations/references/control remain Unknown.
+Therefore a rule schema may describe known language semantics, but no adapter can claim complete name
+resolution merely because metadata or query captures exist.
+
+The first schema patch failed atomically before any code edit because its top-of-file anchor expected a
+different Tree-sitter import shape. No partial module, trait hook, or adapter edit landed; final `jj
+status` shows planning artifacts only. The broad patch path is invalidated. Next implementation must
+split module creation, uniquely anchored `mod`/re-export insertion, trait-hook insertion, and each
+adapter override into separately compiled patches.
+
+**Invalidated assumptions:** M3.3 must not collapse into a universal “locals before imports” function,
+and it cannot mark terminal outcomes—that would skip M3.4's complete candidate-path contract. Static
+rule metadata and executable extraction coverage are distinct; capability manifests stay unchanged
+until the latter is complete.
+
+**Current recommendation/checkpoint:** implement the strict total schema first, bind it into stored
+adapter identity, then populate each dialect with explicit Provided/Unsupported/Unknown sections before
+building the transient shared traversal engine.
+
+**Blockers/dependencies/restart:** none. No new dependency or live-state action is expected.
+
+**Negative-memory status:** active constraints include graph/1 bare-name false resolution, query/fact
+coherence, and repeated `LangPack` patch-anchor mistakes. Search handles: `M3.3 rule pack`, `structured
+precedence`, `Clojure query unknown`, `no first wins`.
+
+**Signature:** Codex (GPT-5), M3.3 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M3.3 schema checkpoint — strict resolution-rule identity
+
+**Date/time:** 2026-07-14T03:28:32+02:00
+
+**Objective/target:** complete the strict rule-pack substrate and bind it into immutable adapter and
+analysis identity before adding production language metadata.
+
+**Changes:** added `crates/deslop-lang/src/resolution.rs` with `deslop.resolution-rules/1`, ten ordered
+rule sections, typed declarative instructions, exact dialect triples, namespace closure, strict
+Provided/Unknown/Unsupported payload rules, and structured precedence. Added the unknown-by-default
+`LangPack::resolution_rule_pack` hook. Extended stored `LanguageAdapterIdentity` to retain, expose, and
+hash the rule pack, and snapshot construction to validate adapter-schema and selected-dialect matches.
+
+**Commands/checks run:** `cargo fmt --all`; `cargo check -p deslop-lang`; focused resolution tests;
+focused grammar-selection parse test; `cargo clippy -p deslop-lang -p deslop-parse --all-targets -- -D
+warnings`; `git diff --check`.
+
+**Results:** PASS. Three schema tests prove strict round-trip, total payload-free unknown catalogs,
+wrong-section rejection, duplicate precedence rejection, undeclared namespace rejection, and unknown-
+field rejection. Focused snapshot selection remains green. Production adapters still use the default
+all-Unknown pack and no capability manifest changed.
+
+**Invalidated assumptions / failure modes:** the earlier broad patch was replaced by separately
+compiled module, trait, and identity patches with live anchors. A rule pack is now an identity input,
+not an untracked side table. Provided metadata without an exact selected dialect is rejected at
+snapshot publication.
+
+**Current recommendation/next actions:** add each production pack with a unique implementation anchor
+and exact dialect catalog. Keep extraction sections Unknown wherever the existing M2 syntax inventory
+cannot prove a total extractor. Compile after each language family, then implement shared traversal.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, or live-state action applies.
+
+**Negative-memory status:** the atomic broad-patch failure is superseded by the verified staged path;
+the repeated-LangPack anchor constraint remains active for per-language overrides. Search handles:
+`resolution-rules/1`, `stored rule identity`, `provided dialect gate`.
+
+**Signature:** Codex (GPT-5), M3.3 integration owner, schema checkpoint, 2026-07-14.
+
+---
+
+## M3.3 rule-pack checkpoint — exact production metadata
+
+**Date/time:** 2026-07-14T03:35:11+02:00
+
+**Objective/target:** attach honest, exact per-dialect language semantics to the strict rule-pack
+substrate before implementing shared traversal.
+
+**Changes:** added unique production `LangPack` overrides for Clojure, Julia, Python, JavaScript/JSX,
+TypeScript/TSX, and Rust. Their total catalogs cover declared namespaces and unification/transitions,
+known scopes, timing, shadowing/duplicates, qualification/member access, import/export behavior,
+module prerequisites, dynamic boundaries, and structured precedence. Precedence terms now carry an
+explicit `lower-first` or `higher-first` direction. Extraction remains Unknown and payload-free for
+all families, and other unsupported-by-current-evidence sections remain Unknown. No capability
+manifest was promoted.
+
+**Commands/checks run:** `cargo fmt --all`; `cargo test -p deslop-lang`; `cargo test -p deslop-parse`;
+`cargo clippy -p deslop-lang -p deslop-parse --all-targets -- -D warnings`; targeted `rg` audits.
+
+**Results:** PASS. The language suite reports 12 passed. The parse suite reports 99 passed, one
+designated slow probe ignored, and two compile-fail doctests passed. Focused clippy is warning-free.
+The exact built-in matrix proves all seven dialects, family-specific namespace and Provided-section
+counts, distinct serialized packs, exact/partial dialect matching, and payload-free Unknown extraction.
+Schema tests reject unknown payloads, wrong-section operations, undeclared namespaces, duplicate
+precedence dimensions, and unknown fields.
+
+**Invalidated assumptions / failure modes:** an ordered list of precedence dimensions alone was
+underspecified because it did not say whether later source order or smaller lexical distance wins.
+That representation is superseded by directional `PrecedenceTerm` values. Static language metadata
+still does not prove fact extraction or name-resolution capability.
+
+**Current recommendation/next actions:** build the parse-owned transient traversal over M3.2 facts.
+It must restrict traversal to reachable scope/import relations, retain every candidate and structured
+precedence component, expose deferred/opaque boundaries, and never assign or persist a terminal result.
+
+**Blockers/dependencies/restart:** none. These immutable identity inputs take effect on the next
+analysis construction; there is no long-lived process, cache migration, reload, or restart in scope.
+
+**Negative-memory status:** the nondirectional precedence representation is invalidated and must not
+return. Active constraints remain: no global bare-name lookup, no first-wins sorting, no terminal M3.4
+outcome, and no capability promotion from metadata alone. Search handles: `directional precedence`,
+`production resolution packs`, `extraction Unknown`.
+
+**Signature:** Codex (GPT-5), M3.3 integration owner, rule-pack checkpoint, 2026-07-14.
+
+---
+
+## M3.3 traversal checkpoint — reachable attempts without outcomes
+
+**Date/time:** 2026-07-14T03:43:55+02:00
+
+**Objective/target:** implement the shared execution layer for stored language rules while reserving
+serialized candidate paths and terminal resolution status for M3.4.
+
+**Changes:** added the parse-owned `ResolutionTraversalEngine` and public transient result types. The
+engine indexes M3.2 facts, begins at a reference's exact scope/namespace/first path segment, follows only
+lexical parent edges, and retains every same-key declaration attached to those scopes. Each attempt
+carries definition/binding links, lexical distance, pack-declared namespace reachability, visibility,
+binding-timing observations, explicit shadowing facts, adapter-schema coherence, and the ordered
+directional precedence components. Relevant alias/selective/glob/module imports and affected dynamic
+boundaries are returned as deferred observations. Unknown rule sections are explicit gaps. Added a
+stored-identity test proving that changing only the resolution-rule payload changes adapter identity
+bytes, and re-exported the complete rule vocabulary through `deslop-parse`.
+
+**Commands/checks run:** `cargo fmt --all`; focused traversal tests with `--nocapture`; `cargo test -p
+deslop-lang`; `cargo test -p deslop-parse`; focused adapter-identity test; `cargo clippy -p deslop-lang
+-p deslop-parse --all-targets -- -D warnings`; `RUSTDOCFLAGS='-D warnings' cargo doc -p deslop-lang -p
+deslop-parse --no-deps`; `git diff --check`; targeted terminal-vocabulary and capability audits.
+
+**Results:** PASS. The adversarial fixture retains exactly three reachable candidates: the outer value,
+the inner declared-later value, and the inner wrong-namespace type. The same-key sibling declaration in
+an unrelated callable is excluded. Timing marks the outer binding visible and the inner binding later;
+namespace rules reject the type attempt; explicit shadowing remains attached; one alias import and one
+dynamic boundary are deferred. The Rust pack exposes exactly one rule gap, Unknown extraction. The parse
+suite reports 102 passed/one designated slow probe ignored plus three compile-fail doctests; the added
+doctest proves traversal results are not serializable. Focused clippy, rustdoc, fmt, and diff checks pass.
+
+**Invalidated assumptions / failure modes:** repository-global name indexes are unnecessary for lexical
+traversal and remain prohibited as candidate authority. Stable fact order is used only as a declared
+precedence component, never to select a candidate. Import syntax without module/export traversal is a
+deferred observation, not an endpoint. A result struct with Serde or Unique/Ambiguous/Unresolved would
+cross the frozen milestone boundary and is explicitly absent.
+
+**Current recommendation/next actions:** run the complete workspace all-feature gates and unchanged
+M0/M1/M2 authority tests. If green, check only M3.3, write the terminal checkpoint, and store the durable
+rule/traversal and negative-memory conclusions before starting M3.4 in a fresh jj change.
+
+**Blockers/dependencies/restart:** none. Traversal operates on immutable in-memory projections; no live
+service, schema migration, persistent cache, reload, or restart is involved.
+
+**Negative-memory status:** active and satisfied. Search handles: `M3.3 no global lookup`, `transient
+traversal no outcome`, `deferred import endpoint`, `directional precedence`. No fallback path was added.
+
+**Signature:** Codex (GPT-5), M3.3 integration owner, traversal checkpoint, 2026-07-14.
+
+---
+
+## M3.3 terminal checkpoint — language rule packs and shared traversal
+
+**Date/time:** 2026-07-14T03:45:52+02:00
+
+**Objective/target:** finish per-language declarative resolution rules and the shared reachable-fact
+traversal without claiming extraction completeness, promoting S2/S3 capabilities, or implementing
+M3.4's retained candidate/outcome schema.
+
+**Changes:** completed `deslop.resolution-rules/1` and wired it through `LangPack`, all six production
+families/seven selected dialects, immutable `LanguageAdapterIdentity`, and projection identity bytes.
+The strict 1,514-line rule module has ten total ordered sections with exact dialects, support/authority,
+typed namespaces/scopes/timing/shadowing/qualification/import/module/dynamic relations, and directional
+structured precedence. The 1,303-line parse traversal indexes M3.2 facts, walks only exact lexical
+ancestors, retains all attempted declarations and provenance-bearing observations, and defers imports,
+qualification remainder, and dynamic boundaries without choosing or serializing an outcome. Checked
+M3.3 in `.agents/TODO.md`. No dependency, graph/analyzer/protocol/CLI behavior, or live process changed.
+
+**Commands/checks run:** focused schema, identity, traversal, language, and parse tests; focused
+all-target clippy and rustdoc; then `cargo test --workspace --all-features`; `cargo build --workspace
+--all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`; `cargo
+clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`; `git diff
+--check`; final `jj status`/diff/TODO/capability/terminal-vocabulary audits.
+
+**Results:** PASS. All workspace tests pass; only the two repository-designated slow probes are ignored.
+The parse crate reports 103 passed/one ignored and three compile-fail doctests. The language crate reports
+12 passed. M0, M1, and M2 exact definition-of-done gates pass unchanged. The production no-semantic-
+authority-leak test passes. The built-in matrix covers Clojure, Julia, Python, JavaScript, JSX,
+TypeScript, TSX, and Rust dialect selection (seven distinct triples across six families), strict
+totality, namespace/section counts, and distinct serialization. The traversal fixture numerically
+retains three reachable attempts and excludes the unrelated sibling; timing, namespace, shadowing,
+alias-import, dynamic-boundary, directional-precedence, wrong-handle, and non-Serde boundaries pass.
+
+**Invalidated assumptions / negative memory:** the initial broad multi-surface patch anchor was
+invalidated and replaced with staged edits. Nondirectional precedence dimensions were invalidated and
+replaced with explicit lower/higher-first terms. Repository-global same-name lookup, stable-order winner
+selection, import syntax as an endpoint, metadata as extraction proof, and terminal status in M3.3 remain
+prohibited. These constraints are implemented rather than documented as fallbacks.
+
+**Current recommendation/next actions:** begin M3.4 in a fresh jj child. Define a strict
+`deslop.resolution/1` projection that retains every traversal edge, endpoint attempt, structured
+precedence key, rejection reason, visibility/namespace/timing/build checks, source facts, authority,
+coverage, and dynamic observations before deriving coverage-bounded Unique/Ambiguous/Unresolved/Unknown
+status. Preserve the M3.3 transient engine as non-selecting input and keep lower-precedence paths.
+
+**Blockers/dependencies/restart:** none. Rule metadata is used by newly built analyses. There is no
+persistent schema consumer yet, so no migration, cache clear, service reload, or restart is required.
+
+**Negative-memory status:** terminal durable constraints will be stored in Hindsight. Search handles:
+`M3.3 exact rule packs`, `directional precedence`, `transient reachable traversal`, `no S2 promotion`,
+`no M3.4 outcome`. The broad-patch and nondirectional-precedence failures are superseded by the verified
+staged/directional implementation and remain negative constraints.
+
+**Signature:** Codex (GPT-5), M3.3 integration owner, terminal checkpoint, 2026-07-14.

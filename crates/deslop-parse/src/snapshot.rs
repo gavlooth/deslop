@@ -228,6 +228,7 @@ pub struct LanguageAdapterIdentity {
     queries: LanguageQueryPack,
     lexical: LanguageLexicalPolicy,
     constructs: LanguageConstructPolicy,
+    resolution_rules: deslop_lang::LanguageResolutionRulePack,
 }
 
 impl LanguageAdapterIdentity {
@@ -253,6 +254,10 @@ impl LanguageAdapterIdentity {
 
     pub fn construct_policy(&self) -> &LanguageConstructPolicy {
         &self.constructs
+    }
+
+    pub fn resolution_rules(&self) -> &deslop_lang::LanguageResolutionRulePack {
+        &self.resolution_rules
     }
 
     fn identity_bytes(&self) -> Vec<u8> {
@@ -402,6 +407,33 @@ impl LanguageAdapterIdentity {
             push_part(&mut bytes, variant.grammar_id().as_bytes());
             push_part(&mut bytes, variant.grammar_version().as_bytes());
         }
+        push_part(&mut bytes, self.resolution_rules.schema().as_bytes());
+        push_part(
+            &mut bytes,
+            self.resolution_rules.adapter_schema().as_bytes(),
+        );
+        for dialect in self.resolution_rules.dialects() {
+            push_part(&mut bytes, dialect.dialect().as_bytes());
+            push_part(&mut bytes, dialect.grammar_id().as_bytes());
+            push_part(&mut bytes, dialect.grammar_version().as_bytes());
+        }
+        for section in self.resolution_rules.sections() {
+            push_part(&mut bytes, section.kind().as_str().as_bytes());
+            push_part(&mut bytes, section.support().as_str().as_bytes());
+            push_part(
+                &mut bytes,
+                section
+                    .authority()
+                    .map_or(b"", |authority| authority.as_str().as_bytes()),
+            );
+            for instruction in section.instructions() {
+                push_part(
+                    &mut bytes,
+                    &serde_json::to_vec(instruction)
+                        .expect("resolution instructions have infallible JSON serialization"),
+                );
+            }
+        }
         bytes
     }
 }
@@ -501,6 +533,36 @@ fn resolve_grammar(
             adapter.adapter_schema()
         );
     }
+    let resolution_rules = adapter.resolution_rule_pack();
+    resolution_rules.validate().map_err(|error| {
+        anyhow::anyhow!(
+            "invalid resolution rule pack for language adapter {}: {error}",
+            adapter.name()
+        )
+    })?;
+    if resolution_rules.adapter_schema() != adapter.adapter_schema() {
+        bail!(
+            "language adapter {} resolution rules target {} but adapter schema is {}",
+            adapter.name(),
+            resolution_rules.adapter_schema(),
+            adapter.adapter_schema()
+        );
+    }
+    if resolution_rules.has_provided_rules()
+        && !resolution_rules.supports_dialect(
+            descriptor.dialect(),
+            descriptor.grammar_id(),
+            descriptor.grammar_version(),
+        )
+    {
+        bail!(
+            "language adapter {} resolution rules do not declare selected dialect {}/{}/{}",
+            adapter.name(),
+            descriptor.dialect(),
+            descriptor.grammar_id(),
+            descriptor.grammar_version()
+        );
+    }
     Ok((
         GrammarSelection::from_descriptor(descriptor),
         language,
@@ -513,6 +575,7 @@ fn resolve_grammar(
                 queries,
                 lexical,
                 constructs,
+                resolution_rules,
             },
         },
     ))
@@ -3630,6 +3693,29 @@ mod tests {
                 "deslop-parse/0.1.0+tree-sitter/0.25.10"
             );
         }
+    }
+
+    #[test]
+    fn resolution_rule_payload_changes_stored_adapter_identity_bytes() {
+        let temp = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("sample.rs", b"fn sample() {}\n".to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let identity = snapshot
+            .entry(Path::new("sample.rs"))
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap()
+            .clone();
+        assert!(identity.resolution_rules().has_provided_rules());
+
+        let mut changed = identity.clone();
+        changed.resolution_rules =
+            deslop_lang::LanguageResolutionRulePack::unknown(identity.schema());
+        assert_ne!(identity.identity_bytes(), changed.identity_bytes());
     }
 
     #[test]

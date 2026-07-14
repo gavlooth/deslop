@@ -372,7 +372,7 @@ reports, benchmark records, and work orders.
   identity, ownership, and authority tests pass. Production adapters remain S1 with S2/S3 Unknown; M3.3
   still exclusively owns executable resolution rules and capability promotion. Every workspace gate and
   the unchanged M0/M1/M2 definition-of-done tests pass.
-- [ ] M3.3 Implement per-language declarative resolution rules or an explicitly equivalent adapter.
+- [x] M3.3 Implement per-language declarative resolution rules or an explicitly equivalent adapter.
 - [ ] M3.4 Store all candidate paths and unique/ambiguous/unresolved status; prohibit bare-name resolution.
 - [ ] M3.5 Stitch file/module/package/build-target names incrementally.
 - [ ] M3.6 Add optional compiler/LSP semantic facts with higher authority and conflict reporting.

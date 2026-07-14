@@ -6,6 +6,10 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use tree_sitter::Node;
 
+mod resolution;
+
+pub use resolution::*;
+
 pub const LANGUAGE_ADAPTER_CAPABILITY_SCHEMA: &str = "deslop.language-adapter-capabilities/1";
 pub const CANONICAL_ROLE_SCHEMA: &str = "deslop.canonical-roles/1";
 pub const LANGUAGE_QUERY_PACK_SCHEMA: &str = "deslop.language-query-pack/1";
@@ -1935,6 +1939,9 @@ pub trait LangPack: Send + Sync {
     fn construct_policy(&self) -> LanguageConstructPolicy {
         LanguageConstructPolicy::unknown(self.adapter_schema())
     }
+    fn resolution_rule_pack(&self) -> LanguageResolutionRulePack {
+        LanguageResolutionRulePack::unknown(self.adapter_schema())
+    }
     fn canonical_roles(&self, _node: Node<'_>, _text: &str) -> CanonicalRoleSet {
         CanonicalRoleSet::default()
     }
@@ -2479,6 +2486,13 @@ impl LangPack for ClojurePack {
 
     fn construct_policy(&self) -> LanguageConstructPolicy {
         clojure_construct_policy(self.adapter_schema())
+    }
+
+    fn resolution_rule_pack(&self) -> LanguageResolutionRulePack {
+        crate::resolution::builtin_resolution_rule_pack(
+            self.adapter_schema(),
+            crate::resolution::BuiltinResolutionFamily::Clojure,
+        )
     }
 
     fn lang(&self) -> Lang {
@@ -3036,6 +3050,13 @@ impl LangPack for JuliaPack {
         julia_construct_policy(self.adapter_schema())
     }
 
+    fn resolution_rule_pack(&self) -> LanguageResolutionRulePack {
+        crate::resolution::builtin_resolution_rule_pack(
+            self.adapter_schema(),
+            crate::resolution::BuiltinResolutionFamily::Julia,
+        )
+    }
+
     fn lang(&self) -> Lang {
         Lang::Julia
     }
@@ -3454,6 +3475,13 @@ impl LangPack for PythonPack {
 
     fn construct_policy(&self) -> LanguageConstructPolicy {
         python_construct_policy(self.adapter_schema())
+    }
+
+    fn resolution_rule_pack(&self) -> LanguageResolutionRulePack {
+        crate::resolution::builtin_resolution_rule_pack(
+            self.adapter_schema(),
+            crate::resolution::BuiltinResolutionFamily::Python,
+        )
     }
 
     fn lang(&self) -> Lang {
@@ -3945,6 +3973,13 @@ impl LangPack for JavaScriptPack {
         )
     }
 
+    fn resolution_rule_pack(&self) -> LanguageResolutionRulePack {
+        crate::resolution::builtin_resolution_rule_pack(
+            self.adapter_schema(),
+            crate::resolution::BuiltinResolutionFamily::JavaScript,
+        )
+    }
+
     fn lang(&self) -> Lang {
         Lang::JavaScript
     }
@@ -4112,6 +4147,13 @@ impl LangPack for TypeScriptPack {
                 ),
                 DialectDeclaration::new("tsx", "tree-sitter-typescript/tsx", "0.23.2"),
             ],
+        )
+    }
+
+    fn resolution_rule_pack(&self) -> LanguageResolutionRulePack {
+        crate::resolution::builtin_resolution_rule_pack(
+            self.adapter_schema(),
+            crate::resolution::BuiltinResolutionFamily::TypeScript,
         )
     }
 
@@ -4567,6 +4609,13 @@ impl LangPack for RustPack {
 
     fn construct_policy(&self) -> LanguageConstructPolicy {
         rust_construct_policy(self.adapter_schema())
+    }
+
+    fn resolution_rule_pack(&self) -> LanguageResolutionRulePack {
+        crate::resolution::builtin_resolution_rule_pack(
+            self.adapter_schema(),
+            crate::resolution::BuiltinResolutionFamily::Rust,
+        )
     }
 
     fn lang(&self) -> Lang {
