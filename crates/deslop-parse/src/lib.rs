@@ -35,6 +35,7 @@ mod instrumentation;
 mod planner;
 mod query;
 mod resolution;
+mod resolution_gate;
 mod resolution_traversal;
 mod scope_graph;
 mod semantic_resolution;
@@ -88,6 +89,11 @@ pub use resolution::{
     ResolutionProjection, ResolutionProjectionError, ResolutionProjectionUpdate,
     ResolutionRejectionReason, ResolutionResult, ResolutionResultId, ResolutionResultKey,
     ResolutionResultRecord, ResolutionStatus,
+};
+pub use resolution_gate::{
+    RESOLUTION_CONSUMER_GATE_SCHEMA, ResolutionCapabilityRequirement,
+    ResolutionConsumerRequirement, ResolutionDependencyEvidence, ResolutionEligibilityBlock,
+    ResolutionEligibilityDecision, ResolutionGateError, evaluate_unique_binding,
 };
 pub use resolution_traversal::{
     DeferredImportTraversal, DynamicBoundaryTraversal, ExplicitShadowing, LexicalScopeStep,

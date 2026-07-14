@@ -2563,3 +2563,77 @@ resolver, schema, adapter, graph, consumer, or capability declaration changed.
 Next checkpoint: open M3.DoD in a fresh jj child and audit every semantic-recipe consumer gate against the
 frozen corpus statuses/authority, especially blocking Unknown, Ambiguous, Unresolved, Conflict, dynamic
 boundaries, and incomplete reverse dependencies without graph/2 fallback.
+
+#### Active M3.DoD execution plan — fail-closed unique-binding consumer gate
+
+Active hypothesis: no semantic recipe type exists yet—M5.1 owns that schema—so wiring resolution into the
+current syntactic/LLM work-order pipeline would conflate contracts. The semantic boundary M3 can complete is
+a public, versioned, fail-closed eligibility decision that future M4/M5 consumers must use. It accepts only
+an exact `ResolutionProjection`/`ResolutionResult`, the result's stored adapter capability manifest, a
+declared minimum static authority and capability set, and projection-bound reverse-dependency evidence.
+There is deliberately no graph/2 input or fallback path.
+
+Current approach:
+
+1. Add `deslop.resolution-consumer-gate/1` in `deslop-parse`. A unique-binding requirement must name the
+   consumer, include NameResolution plus any additional capabilities, and require Adapter/LSP/Compiler
+   static authority. Syntax is insufficient and RuntimeVerification is orthogonal.
+2. Derive reverse-dependency evidence from an exact projection/result and allow only explicit downgrade,
+   never caller-created Complete evidence. Evaluate status, complete result/path coverage, one distinct
+   viable endpoint, no dynamic boundary, sufficient result authority, every stored adapter capability and
+   capability authority, exact projection/result identity, and complete dependency evidence. Retain every
+   block reason in a serializable decision; do not first-fail.
+3. Join the frozen 16-case corpus to the gate: exactly the seven Complete Unique cases may pass a basic
+   NameResolution/Adapter requirement; Ambiguous, Unresolved, Unknown, dynamic, and partial cases must retain
+   exact blocks. Add provider Conflict, higher-authority, missing capability, dependency downgrade, foreign
+   evidence, and decision strictness cases. Prove the API has no graph projection parameter or endpoint-only
+   escape hatch.
+
+CONVERGENCE: one frozen-corpus gate matrix plus one adversarial requirement/evidence matrix resolves the
+whole decision. Terminal outcomes are: (a) any non-Unique/incomplete/dynamic case passes—gate invalid; (b) a
+Complete Unique case with declared capability/authority/dependencies blocks—gate mapping invalid; (c) graph
+or caller-forged Complete evidence can enter—API invalid; or (d) exact allow/block matrices pass, authorizing
+workspace gates. M5 can then consume this contract without reopening M3 semantics.
+
+Validation path: gate constructor/strict-wire tests; frozen-corpus eligibility counts and block matrices;
+provider Conflict and capability/authority/dependency adversarial tests; parse crate/doctests; workspace
+all-feature test/build/rustdoc/clippy/fmt/diff gates; M0/M1/M2 and graph false-resolution regression gates.
+
+Negative-memory constraints: do not attach semantic authority to existing graph/2 or WorkOrder; do not let
+endpoint presence bypass status; do not accept Preferred on Conflict; do not treat RuntimeVerification as
+static rank; do not allow Syntax authority for semantic recipes; do not forge Complete dependencies; do not
+first-fail and hide concurrent blockers; do not promote production adapter capabilities.
+
+Agent assignment: `/root` owns the gate schema/API, corpus integration, adversarial validation, and terminal
+integration. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: implement strict requirement and projection-bound dependency evidence types before the
+eligibility evaluator, then prove malformed/foreign evidence fails closed.
+
+Gate implementation checkpoint (2026-07-14): focused contract complete. New public
+`deslop.resolution-consumer-gate/1` decisions retain exact analysis/projection/scope-graph/build-context/
+result identity, canonical consumer requirements, projection-bound dependency evidence, selected endpoint
+only when eligible, and every block reason. Capability requirements are capability-specific and accept only
+Adapter, LanguageServer, or Compiler static minima. NameResolution is mandatory. Dependency evidence can be
+derived only from the exact projection/result and may be downgraded but not caller-upgraded.
+
+The evaluator checks exact result/evidence ownership, status Unique, result/path coverage through derived
+dependency evidence, no dynamic boundary, sufficient NameResolution result authority, sufficient stored-
+manifest authority for additional capabilities, complete dependencies, and exactly one distinct viable
+endpoint. Three focused tests pass: the frozen 16-case matrix permits exactly seven labelled Complete Unique
+cases; requirement/capability/authority/dependency/foreign evidence failures block; and a compiler-preferred
+Conflict remains ineligible with no selected endpoint. Next: parse and workspace validation plus targeted
+API/source audit for graph/2 absence, decision provenance, and unchanged production capability declarations.
+
+#### M3.DoD terminal checkpoint — complete and verified
+
+The versioned `deslop.resolution-consumer-gate/1` boundary is complete. It has no graph/protocol dependency
+or fallback, retains exact analysis/projection/scope-graph/build-context/result provenance, evaluates
+capability-specific static authority plus projection-bound dependency evidence, and exposes an endpoint only
+when every retained block is absent. The frozen corpus admits exactly 7/16 Complete Unique cases; all other
+cases and the provider-conflict, authority, capability, dependency, and foreign-evidence adversarial probes
+fail closed. Full workspace all-feature test/build/rustdoc/clippy/fmt/diff gates and the M0-M2 plus graph
+false-resolution regressions pass.
+
+Terminal outcome: M3.DoD is complete. The next active milestone is M4.1: define the versioned control-edge
+schema and its fail-closed capability/authority boundary before adapter lowering begins.

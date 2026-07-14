@@ -6703,6 +6703,348 @@ fn sibling() {
         );
     }
 
+    fn basic_semantic_consumer_requirement() -> crate::ResolutionConsumerRequirement {
+        crate::ResolutionConsumerRequirement::unique_binding(
+            "semantic-recipe/test",
+            vec![
+                crate::ResolutionCapabilityRequirement::new(
+                    AdapterCapability::NameResolution,
+                    CapabilityAuthority::Adapter,
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap()
+    }
+
+    fn gate_result(
+        projection: &ResolutionProjection,
+        result: &ResolutionResult,
+        requirement: &crate::ResolutionConsumerRequirement,
+    ) -> crate::ResolutionEligibilityDecision {
+        let dependencies =
+            crate::ResolutionDependencyEvidence::from_projection(projection, result).unwrap();
+        crate::evaluate_unique_binding(projection, result, requirement, &dependencies).unwrap()
+    }
+
+    #[test]
+    fn m3_dod_frozen_corpus_allows_only_complete_unique_bindings() {
+        let requirement = basic_semantic_consumer_requirement();
+        let mut eligible = Vec::new();
+
+        for (label, mode, partial) in [
+            ("duplicate-equal-precedence", FixtureMode::Ambiguous, false),
+            (
+                "nested-explicit-shadowing",
+                FixtureMode::ExplicitShadowing,
+                false,
+            ),
+            (
+                "namespace-visibility-timing-rejections",
+                FixtureMode::Rejected,
+                false,
+            ),
+            ("dynamic-boundary", FixtureMode::Dynamic, false),
+            (
+                "conditional-deferred-import",
+                FixtureMode::DeferredImport,
+                false,
+            ),
+            (
+                "mapped-deferred-import",
+                FixtureMode::DeferredMappedImport,
+                false,
+            ),
+            ("unresolved-qualification", FixtureMode::Qualified, false),
+            ("complete-zero-candidate", FixtureMode::Missing, false),
+            ("partial-zero-candidate", FixtureMode::Missing, true),
+        ] {
+            let fixture = fixture(mode, partial);
+            let projection =
+                ResolutionProjection::build(fixture.graph, policy(label.as_bytes())).unwrap();
+            let result = projection.results()[0].wire();
+            let decision = gate_result(&projection, result, &requirement);
+            if decision.eligible() {
+                eligible.push(label);
+            }
+            if label == "duplicate-equal-precedence" {
+                assert!(decision.blocks().contains(
+                    &crate::ResolutionEligibilityBlock::StatusNotUnique {
+                        actual: ResolutionStatus::Ambiguous,
+                    }
+                ));
+                assert!(decision.blocks().contains(
+                    &crate::ResolutionEligibilityBlock::ViableEndpointCardinality { actual: 2 }
+                ));
+            }
+            if label == "dynamic-boundary" {
+                assert!(
+                    decision
+                        .blocks()
+                        .contains(&crate::ResolutionEligibilityBlock::DynamicBoundary { count: 1 })
+                );
+                assert!(decision.blocks().iter().any(|block| matches!(
+                    block,
+                    crate::ResolutionEligibilityBlock::ReverseDependenciesIncomplete { .. }
+                )));
+            }
+            if label == "complete-zero-candidate" {
+                assert!(decision.blocks().contains(
+                    &crate::ResolutionEligibilityBlock::StatusNotUnique {
+                        actual: ResolutionStatus::Unresolved,
+                    }
+                ));
+                assert!(decision.blocks().contains(
+                    &crate::ResolutionEligibilityBlock::ViableEndpointCardinality { actual: 0 }
+                ));
+            }
+        }
+
+        let graph = module_fixture();
+        let projection =
+            ResolutionProjection::build(Arc::clone(&graph), policy(b"m3-dod-modules")).unwrap();
+        for (label, spelling) in [
+            ("selective-import", "imported"),
+            ("alias-import", "alias"),
+            ("re-export", "through"),
+            ("wildcard-import", "globbed"),
+            ("re-export-cycle", "looped"),
+        ] {
+            let result = module_result(&graph, &projection, "importer.resolutionrs", spelling);
+            if gate_result(&projection, result, &requirement).eligible() {
+                eligible.push(label);
+            }
+        }
+
+        let graph = module_fixture_with_peer("fn imported() {} fn peer() { imported; }\n");
+        let projection =
+            ResolutionProjection::build(Arc::clone(&graph), policy(b"m3-dod-unrelated-duplicate"))
+                .unwrap();
+        for (label, path) in [
+            ("unrelated-importer-name", "importer.resolutionrs"),
+            ("unrelated-peer-name", "peer.resolutionrs"),
+        ] {
+            let result = module_result(&graph, &projection, path, "imported");
+            if gate_result(&projection, result, &requirement).eligible() {
+                eligible.push(label);
+            }
+        }
+
+        eligible.sort();
+        assert_eq!(
+            eligible,
+            [
+                "alias-import",
+                "nested-explicit-shadowing",
+                "re-export",
+                "selective-import",
+                "unrelated-importer-name",
+                "unrelated-peer-name",
+                "wildcard-import",
+            ]
+        );
+    }
+
+    #[test]
+    fn m3_dod_requirement_authority_capability_and_dependency_blocks_are_fail_closed() {
+        assert!(
+            crate::ResolutionCapabilityRequirement::new(
+                AdapterCapability::NameResolution,
+                CapabilityAuthority::Syntax,
+            )
+            .is_err()
+        );
+        assert!(
+            crate::ResolutionCapabilityRequirement::new(
+                AdapterCapability::NameResolution,
+                CapabilityAuthority::RuntimeVerification,
+            )
+            .is_err()
+        );
+        assert!(
+            crate::ResolutionConsumerRequirement::unique_binding(
+                "missing-name-resolution",
+                vec![
+                    crate::ResolutionCapabilityRequirement::new(
+                        AdapterCapability::CallGraph,
+                        CapabilityAuthority::Adapter,
+                    )
+                    .unwrap(),
+                ],
+            )
+            .is_err()
+        );
+        let duplicate = crate::ResolutionCapabilityRequirement::new(
+            AdapterCapability::NameResolution,
+            CapabilityAuthority::Adapter,
+        )
+        .unwrap();
+        assert!(
+            crate::ResolutionConsumerRequirement::unique_binding(
+                "duplicate-capability",
+                vec![duplicate.clone(), duplicate],
+            )
+            .is_err()
+        );
+
+        let fixture = fixture(FixtureMode::Unique, false);
+        let projection =
+            ResolutionProjection::build(Arc::clone(&fixture.graph), policy(b"m3-dod-adversarial"))
+                .unwrap();
+        let result = projection.results()[0].wire();
+
+        let compiler_requirement = crate::ResolutionConsumerRequirement::unique_binding(
+            "compiler-only-recipe",
+            vec![
+                crate::ResolutionCapabilityRequirement::new(
+                    AdapterCapability::NameResolution,
+                    CapabilityAuthority::Compiler,
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let compiler_decision = gate_result(&projection, result, &compiler_requirement);
+        assert!(!compiler_decision.eligible());
+        assert!(compiler_decision.blocks().contains(
+            &crate::ResolutionEligibilityBlock::AuthorityInsufficient {
+                capability: AdapterCapability::NameResolution,
+                required: CapabilityAuthority::Compiler,
+                actual: CapabilityAuthority::Adapter,
+            }
+        ));
+
+        let call_requirement = crate::ResolutionConsumerRequirement::unique_binding(
+            "call-recipe",
+            vec![
+                crate::ResolutionCapabilityRequirement::new(
+                    AdapterCapability::NameResolution,
+                    CapabilityAuthority::Adapter,
+                )
+                .unwrap(),
+                crate::ResolutionCapabilityRequirement::new(
+                    AdapterCapability::CallGraph,
+                    CapabilityAuthority::Adapter,
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let call_decision = gate_result(&projection, result, &call_requirement);
+        assert!(!call_decision.eligible());
+        assert!(call_decision.blocks().contains(
+            &crate::ResolutionEligibilityBlock::CapabilityUnavailable {
+                capability: AdapterCapability::CallGraph,
+                support: CapabilitySupport::Unknown,
+            }
+        ));
+
+        let dependencies =
+            crate::ResolutionDependencyEvidence::from_projection(&projection, result)
+                .unwrap()
+                .downgrade("consumer impact cone is intentionally incomplete")
+                .unwrap();
+        let decision = crate::evaluate_unique_binding(
+            &projection,
+            result,
+            &basic_semantic_consumer_requirement(),
+            &dependencies,
+        )
+        .unwrap();
+        assert!(!decision.eligible());
+        assert!(decision.blocks().iter().any(|block| matches!(
+            block,
+            crate::ResolutionEligibilityBlock::ReverseDependenciesIncomplete {
+                actual: FactCoverage::Partial,
+                reasons,
+            } if reasons.len() == 1
+                && reasons[0] == "consumer impact cone is intentionally incomplete"
+        )));
+
+        let other =
+            ResolutionProjection::build(fixture.graph, policy(b"m3-dod-foreign-evidence")).unwrap();
+        assert_eq!(
+            crate::evaluate_unique_binding(
+                &other,
+                other.results()[0].wire(),
+                &basic_semantic_consumer_requirement(),
+                &crate::ResolutionDependencyEvidence::from_projection(&projection, result).unwrap(),
+            )
+            .unwrap_err(),
+            crate::ResolutionGateError::ForeignEvidence
+        );
+
+        let json = serde_json::to_value(gate_result(
+            &projection,
+            result,
+            &basic_semantic_consumer_requirement(),
+        ))
+        .unwrap();
+        assert_eq!(json["schema"], crate::RESOLUTION_CONSUMER_GATE_SCHEMA);
+        assert!(json.get("graph_fallback").is_none());
+        assert!(json.get("endpoint").is_some());
+    }
+
+    #[test]
+    fn m3_dod_provider_conflict_blocks_even_with_compiler_preference() {
+        let graph = module_fixture();
+        let reference = module_reference(&graph, "imported");
+        let provider_endpoint = module_declaration(&graph, "through");
+        let mut builder = SemanticResolutionFactBuilder::new(Arc::clone(&graph));
+        let compiler = add_semantic_provider(
+            &mut builder,
+            SemanticProviderKind::Compiler,
+            "m3-dod-rustc",
+            FactCoverageEvidence::complete(),
+        );
+        add_semantic_fact(
+            &mut builder,
+            compiler,
+            reference.clone(),
+            "m3-dod-compiler-through",
+            ResolutionStatus::Unique,
+            vec![ResolutionEndpoint::Declaration(provider_endpoint)],
+            FactCoverageEvidence::complete(),
+        );
+        let projection = ResolutionProjection::build_with_semantic_facts(
+            Arc::clone(&graph),
+            policy(b"m3-dod-provider-conflict"),
+            Arc::new(builder.finish().unwrap()),
+        )
+        .unwrap();
+        let result = projection
+            .results()
+            .iter()
+            .map(ResolutionResultRecord::wire)
+            .find(|result| result.reference() == &reference)
+            .unwrap();
+        assert_eq!(result.status(), ResolutionStatus::Conflict);
+        assert_eq!(result.authority(), Some(CapabilityAuthority::Compiler));
+        assert!(result.preferred().is_some());
+
+        let requirement = crate::ResolutionConsumerRequirement::unique_binding(
+            "compiler-backed-recipe",
+            vec![
+                crate::ResolutionCapabilityRequirement::new(
+                    AdapterCapability::NameResolution,
+                    CapabilityAuthority::Compiler,
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let decision = gate_result(&projection, result, &requirement);
+        assert!(!decision.eligible());
+        assert!(
+            decision
+                .blocks()
+                .contains(&crate::ResolutionEligibilityBlock::StatusNotUnique {
+                    actual: ResolutionStatus::Conflict,
+                })
+        );
+        assert!(decision.endpoint().is_none());
+    }
+
     #[test]
     fn declared_modules_stitch_alias_and_selective_exports_without_target_fallback() {
         let graph = module_fixture();

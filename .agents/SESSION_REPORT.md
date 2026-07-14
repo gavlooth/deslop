@@ -9422,3 +9422,130 @@ terminal matrix 7 1 2 6 0`, `27 path 18 endpoint`, `Unknown denominator 6`, `cle
 `invalidation reasons non-exclusive`, `production authority unchanged`.
 
 **Signature:** Codex (GPT-5), M3.8 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M3.DoD active checkpoint — semantic consumer boundary audit
+
+**Date/time:** 2026-07-14T18:23:21+02:00
+
+**Objective/target:** meet M3 definition of done by preserving the frozen resolution gate and blocking every
+semantic unique-binding consumer when status, coverage, authority, capability, dynamic, or dependency
+evidence is insufficient.
+
+**Changes:** planning/audit only. Opened clean jj child `nmqkqpms` over terminal M3.8 `msxmkvpo`. Audited ADR
+0002 consumer authority, all non-test uses of `ResolutionProjection`/`ResolutionStatus`, graph/2/MCP
+descriptions, protocol work orders, adapter manifests, result provenance, and TODO ownership for M4/M5.
+
+**Commands/checks run:** M3.8 Hindsight positive/negative writes plus consolidation (1,259 entities, 3,364
+relations, 3,566 observations); `jj new/log/status`; targeted Hindsight M3.DoD search; targeted `rg`/`sed`
+over parse/lang/protocol/graph/MCP/ADR/TODO surfaces.
+
+**Results/failure modes:** resolution results currently have no production consumer outside `deslop-parse`.
+Transformation recipes do not exist until M5.1; current WorkOrders are syntax/finding rewrite requests and
+must not be silently reclassified as semantic recipes. Graph/2 remains explicitly syntactic and its MCP
+description already denies resolution proof. The missing M3 boundary is therefore a reusable fail-closed
+eligibility contract. Exact adapter manifests are retained in result reference evidence, so capability
+checks need no live registry lookup. Reverse-dependency evidence must be projection-bound and downgrade-only.
+
+**Invalidated assumptions / negative memory:** wiring M3 resolution into every current WorkOrder would be a
+contract error, not completeness. An endpoint or higher-authority Preferred conclusion cannot authorize a
+Conflict. Syntax and RuntimeVerification are not acceptable static semantic authority. A caller-supplied
+boolean cannot prove dependency completeness, and first-failure decisions would hide concurrent blockers.
+
+**Current recommendation/next actions:** add a versioned unique-binding consumer gate in deslop-parse with
+strict requirement construction, projection-bound dependency evidence, all-reasons decisions, and no graph
+input. Join it to all 16 frozen cases plus provider/capability/dependency adversarial cases.
+
+**Blockers/dependencies/restart:** none. No dependency or live process is needed.
+
+**Negative-memory status:** provisional and active. Search handles: `M3.DoD unique binding gate`, `no
+WorkOrder semantic conflation`, `projection-bound dependencies`, `Preferred Conflict blocks`, `no graph2
+fallback`, `all block reasons`.
+
+**Signature:** Codex (GPT-5), M3.DoD integration owner, consumer-boundary checkpoint, 2026-07-14.
+
+---
+
+## M3.DoD gate implementation checkpoint
+
+**Date/time:** 2026-07-14T18:28:33+02:00
+
+**Objective/target:** provide the semantic boundary future recipes can consume while guaranteeing incomplete,
+ambiguous, dynamic, conflicting, under-capability, under-authority, and incomplete-dependency results block.
+
+**Changes:** added `resolution_gate.rs` and public exports. `ResolutionCapabilityRequirement` rejects Syntax
+and RuntimeVerification minima; `ResolutionConsumerRequirement::unique_binding` requires canonical distinct
+capabilities including NameResolution; `ResolutionDependencyEvidence::from_projection` binds exact
+projection/result and is downgrade-only. `evaluate_unique_binding` returns a versioned all-reasons decision
+with complete provenance and no graph input/fallback. Added three focused adversarial tests in the existing
+resolution fixture module.
+
+**Commands/checks run:** `cargo check -p deslop-parse`; repeated `cargo fmt`; focused `cargo test -p
+deslop-parse 'resolution::tests::m3_dod_' -- --nocapture`.
+
+**Results:** PASS. Exactly seven frozen cases are eligible: nested explicit shadowing's inner binding,
+selective import, alias import, re-export, wildcard import, and the importer/peer same-spelled local results.
+All other nine cases block. Ambiguous retains status plus two-endpoint cardinality blocks; dynamic retains
+status, partial coverage, dynamic-boundary, and incomplete-dependency blocks; complete zero-candidate retains
+Unresolved plus zero-endpoint blocks. Compiler minimum blocks adapter evidence; CallGraph requirement blocks
+Unknown production/test manifest capability; downgraded dependencies block; foreign evidence errors. A
+compiler-preferred Conflict still blocks and exposes no endpoint.
+
+**Invalidated assumptions / failure modes:** the first test compile compared a borrowed `Vec<String>` to a
+string array; this was a test expression type mismatch, corrected without contract change. More importantly,
+one global authority minimum would have incorrectly demanded compiler authority for unrelated CallGraph
+capability; requirements are capability-specific, and NameResolution uses joined result authority while
+additional capabilities use the exact stored adapter manifest.
+
+**Current recommendation/next actions:** run parse tests/doctests/rustdoc/clippy, audit the new public surface
+and absence of graph/protocol coupling, then run full workspace all-feature terminal gates. Close M3.DoD only
+if frozen M3.7/M3.8, M0-M2, graph false-resolution, and production capability gates stay green.
+
+**Blockers/dependencies/restart:** none. No new dependency or live-state transition applies.
+
+**Negative-memory status:** provisional constraints implemented. Search handles: `M3.DoD seven eligible`,
+`capability-specific authority`, `dependency downgrade only`, `compiler Preferred Conflict blocks`, `no
+graph input`, `all reasons decision`.
+
+**Signature:** Codex (GPT-5), M3.DoD integration owner, gate implementation checkpoint, 2026-07-14.
+
+---
+
+## M3.DoD terminal checkpoint — complete
+
+**Date/time:** 2026-07-14T18:33:25+02:00
+
+**Objective/target:** close M3 with a public semantic-consumer boundary that cannot authorize incomplete,
+ambiguous, dynamic, conflicting, under-capability, under-authority, or dependency-incomplete resolution.
+
+**Changes:** finalized and documented `deslop.resolution-consumer-gate/1`, its exact-provenance decision,
+capability-specific static authority checks, projection-bound downgrade-only dependency evidence, and
+endpoint suppression on every block. Checked M3.DoD in the durable TODO.
+
+**Commands/checks run:** focused M3.DoD tests; parse crate tests and compile-fail doctests; `cargo test
+--workspace --all-features`; `cargo build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc
+--workspace --all-features --no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D
+warnings`; `cargo fmt --all -- --check`; `git diff --check`; targeted source/API and cargo-tree audits.
+
+**Results:** PASS. Exactly 7/16 frozen Complete Unique cases are eligible and all other nine block. Parse has
+134 passing tests, one designated ignored test, and four passing compile-fail doctests. Full workspace gates,
+M0-M2 regressions, graph false-resolution probes, provider Conflict, authority/capability/dependency, and
+foreign-evidence adversarial cases pass. Production adapter capability declarations remain unchanged.
+
+**Invalidated assumptions / failure modes:** current WorkOrders are syntactic rewrite requests, not semantic
+recipes. Authority requirements must be capability-specific rather than global. A Preferred provider in a
+Conflict cannot authorize a consumer. Syntax and RuntimeVerification are not static semantic authority.
+Complete dependency evidence cannot be caller-forged, endpoint presence cannot bypass result status, and
+graph/2 cannot serve as a resolution fallback.
+
+**Current recommendation/next actions:** snapshot the verified M3 boundary, consolidate its durable memory,
+then begin M4.1 with a versioned control-flow edge schema and explicit authority/capability semantics.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, rebuild, or live-process restart applies.
+
+**Negative-memory status:** terminal constraints ready for durable consolidation. Search handles: `M3.DoD
+consumer gate complete`, `WorkOrder is not semantic recipe`, `capability-specific authority`, `Preferred
+Conflict blocks`, `projection-bound dependencies`, `no graph2 fallback`.
+
+**Signature:** Codex (GPT-5), M3.DoD integration owner, terminal checkpoint, 2026-07-14.

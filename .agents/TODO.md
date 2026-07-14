@@ -414,8 +414,12 @@ reports, benchmark records, and work orders.
   incremental scenarios prove 5 reused/0 rebuilt plus one new unrelated reference, 0/1 for a reachable
   Unique→Ambiguous duplicate, 1/5 for an export cone, and 0/1 for exact module appearance. All workspace
   gates pass; production authority is unchanged.
-- [ ] M3.DoD Meet the frozen gold-corpus resolution gate and block semantic recipes wherever authority is
-  incomplete or ambiguous.
+- [x] M3.DoD Meet the frozen gold-corpus resolution gate and block semantic recipes wherever authority is
+  incomplete or ambiguous. The public `deslop.resolution-consumer-gate/1` accepts only exact projection/
+  result identity, capability-specific static authority, and projection-bound downgrade-only dependency
+  evidence; it has no graph/2 fallback. Exactly the seven Complete Unique frozen cases pass, while all nine
+  non-eligible cases plus provider conflict, insufficient authority/capability, incomplete dependency, and
+  foreign evidence cases block without exposing an endpoint. All workspace all-feature gates pass.
 
 ## M4 — CFG, PST, PDG, and SDG
 
