@@ -451,7 +451,11 @@ reports, benchmark records, and work orders.
   exact M4 CFG points. Ordered def/use events drive entry-reachable reaching definitions and liveness;
   parameter/return/mutation boundaries and conservative effects remain explicit, capability-bound facts.
   Eight numerical/integration/adversarial suites and all workspace all-feature gates pass.
-- [ ] M4.6 Build local PDGs from control and data dependence.
+- [x] M4.6 Build local PDGs from control and data dependence.
+  Accepted ADR 0007 and strict `deslop.program-dependence/1` bind exact CFG/region/non-structured/dataflow
+  sources. Direct control edges require complete post-dominator chains; flow edges require exact reaching
+  definitions; unresolved/nonterminating evidence becomes typed gaps. Eight focused suites and all workspace
+  all-feature gates pass.
 - [ ] M4.7 Build call/parameter/return/global summaries and SDG edges where resolution authority permits.
 - [ ] M4.8 Add exception, async/yield, closure, mutation, alias uncertainty, and early-exit fixtures.
 - [ ] M4.9 Compare graph edges/regions with hand-labelled gold fixtures and compiler facts where available.

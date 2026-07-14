@@ -10204,3 +10204,117 @@ Search handles: `M4.5 declarations need bindings`, `ambiguous resolution fixture
 write`, `Provided Effects reachable totality`, `parameter definition at entry`, `dataflow owner containment`.
 
 **Signature:** Codex (GPT-5), M4.5 integration owner, terminal checkpoint, 2026-07-14.
+
+### M4.6 start checkpoint — strict local program dependence graphs
+
+**Date/time:** 2026-07-14 21:52:21 CEST (Europe/Madrid).
+
+**Objective/target:** implement M4.6 local PDGs from exact M4.3 control-dependence evidence and exact M4.5
+reaching-definition links while retaining M4.4 non-structured facts and all upstream/local gaps.
+
+**Changes:** accepted ADR 0007 and wrote the active convergent plan. The v1 boundary uses exact CFG points as
+PDG nodes, flow data edges from retained definition/access pairs, direct control edges from CFG-edge witnesses
+and complete post-dominator chains, and typed gaps for unresolved access or unavailable post-dominance. Anti-
+and output-dependence remain outside v1 because M4.5 does not authorize their memory/write-order semantics.
+
+**Commands run:** `jj new -m 'Build local program dependence graphs'`; targeted `rg`/`sed` audit of the M4
+roadmap, ADRs 0003-0006, M4.1 CFG edges/points, M4.3 point/post-dominator relations, M4.4 typed facts, and M4.5
+definition/access/point APIs. M4.5 Hindsight consolidation completed with 1,309 entities, 3,573 relations, and
+3,786 observations.
+
+**Results:** the required source APIs are present and versioned. M4.3 deliberately leaves post-dominance empty
+for exit-unreachable points, so the control-dependence algorithm must fail individual witnesses into typed
+gaps rather than force a virtual exit. M4.5 accesses already retain exact reaching-definition keys, allowing
+flow data edges without new name or order inference.
+
+**Invalidated assumptions / negative-memory constraint:** CFG adjacency is not control dependence; stable
+iteration cannot repair a missing post-dominator chain; liveness does not authorize anti/output dependence;
+M4.4 facts cannot be dropped merely because some PDG edges are computable.
+
+**Current recommendation / next actions:** implement the strict wire/projection surface, pure control/data
+derivers, and numerical fixtures before the combined integration/corruption suite.
+
+**Blockers/dependencies/restart:** none.
+
+**Signature:** Codex (GPT-5), M4.6 integration owner, start checkpoint, 2026-07-14.
+
+#### M4.6 implementation checkpoint — combined control/data PDG passes
+
+**Date/time:** 2026-07-14 22:08:55 CEST (Europe/Madrid).
+
+**Changes:** added and exported strict `deslop.program-dependence/1`; implemented source-projection/policy
+binding, point nodes, flow edges from exact reaching definitions, control edges from exact CFG-edge witnesses
+and complete immediate-post-dominator chains, typed unresolved/post-dominance gaps, M4.4 fact retention,
+coverage propagation, payload identities, and strict document validation. Expanded the capability-provided
+integration source to a real conditional with a two-definition dataflow join.
+
+**Commands run:** repeated focused `cargo test -p deslop-parse --all-features m4_6_ -- --nocapture`; focused
+M4.5/M4.6 and all-M4 parse suites; `cargo clippy -p deslop-parse --all-features --all-targets -- -D warnings`;
+`cargo fmt --all`; `git diff --check`.
+
+**Results:** PASS. Eight M4.6 tests lock diamond and nested control dependence, loop-header self-dependence,
+nonterminating post-dominance gaps, unreachable-edge isolation, two-definition flow dependence, unresolved
+access gaps, a Complete combined conditional PDG with one control and five flow edges, and a Partial ambiguous/
+nonterminating PDG retaining one M4.4 NonTerminatingCycle fact plus three typed gaps. Repeat identity, changed
+policy identity, strict round-trip, and corruption/schema/unknown-field rejection pass. Parse clippy is clean.
+
+**Invalidated assumptions/failure modes:** `ResolutionProjection` exposes its policy through the retained
+document, not a direct getter. A nonterminating CFG still requires an explicit incoming virtual-exit edge, but
+that edge may originate in an unreachable exit-dispatch component. Entry reachability and exit reachability
+are independent M4.3 domains: a point can be unreachable from entry yet reach virtual exit, so PDG validation
+must not impose `exit_reachable => reachable`. Execution dependence edges still require entry-reachable nodes.
+
+**Current recommendation/next actions:** perform the terminal source-closure/coverage audit and run all six
+workspace gates; if clean, close M4.6 and advance to M4.7 summaries/SDG.
+
+**Blockers/dependencies/restart:** none.
+
+**Negative-memory status:** local durable lesson updated. Search handles: `M4.6 reachability domains
+independent`, `unreachable exit dispatch exit reachable`, `do not force virtual exit`, `CFG adjacency not
+control dependence`.
+
+**Signature:** Codex (GPT-5), M4.6 integration owner, combined-engine checkpoint, 2026-07-14.
+
+#### M4.6 terminal checkpoint — complete and verified
+
+**Date/time:** 2026-07-14 22:13:55 CEST (Europe/Madrid).
+
+**Objective/target:** close M4.6 with strict local PDGs whose control and flow edges are derived only from
+retained M4.1-M4.5 authority and whose unavailable evidence remains typed and consumer-visible.
+
+**Final changes:** accepted ADR 0007; added and exported strict `deslop.program-dependence/1`; bound exact
+analysis, CFG, control-region, non-structured-control, resolution, and dataflow projections/policies; added
+point nodes, canonical source catalogs, direct control edges with inducing CFG witnesses, flow edges with exact
+symbol/definition/access evidence, typed unresolved-access and post-dominance gaps, M4.4 fact retention,
+coverage propagation, and payload identities. Strict validation enforces source closure, canonical nonempty
+reasons, gap/reason alignment, Complete-without-gaps, reachable execution endpoints, and exit-reachable control
+evidence.
+
+**Commands run:** focused M4.6, combined M4.5/M4.6, and all-M4 parse tests; focused parse clippy; `cargo test
+--workspace --all-features`; `cargo build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc
+--workspace --all-features --no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D warnings`;
+`cargo fmt --all -- --check`; `git diff --check`.
+
+**Results:** PASS. Eight focused M4.6 suites lock diamond/nested/loop control dependence, unreachable and
+nonterminating behavior, multi-definition flow, unresolved gaps, a Complete combined conditional PDG with one
+control plus five flow edges, and a Partial ambiguous/nonterminating PDG retaining its M4.4 fact and three
+typed gaps. Deterministic/policy identity and strict round-trip/corruption matrices pass. All workspace targets
+pass except the two designated ignored probes; parse reports 178 active passing tests, one designated ignored
+probe, and four passing compile-fail doctests.
+
+**Invalidated assumptions/failure modes:** CFG adjacency is not control dependence; an incomplete
+post-dominator walk cannot emit partial guessed edges; liveness does not authorize anti/output dependence; an
+unreachable exit-dispatch may be exit-reachable; nonterminating CFGs still require explicit virtual-exit
+topology without connecting the reachable cycle to it; unknown resolution never becomes a data edge.
+
+**Current recommendation/next actions:** begin M4.7 with versioned local summaries and SDG edges that attach
+to exact M4.5 parameter/output/effect boundaries and M4.6 nodes, and emit no interprocedural edge without exact
+M3 call resolution and compatible callee authority.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, cache clear, or runtime restart applies.
+
+**Negative-memory status:** local lessons recorded; Hindsight consolidation follows this snapshot. Search
+handles: `M4.6 reachability domains independent`, `CFG adjacency not control dependence`, `do not force virtual
+exit`, `typed PDG gaps`, `exact reaching definition only`.
+
+**Signature:** Codex (GPT-5), M4.6 integration owner, terminal checkpoint, 2026-07-14.

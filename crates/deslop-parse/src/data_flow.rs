@@ -1868,14 +1868,14 @@ mod tests {
 
     use super::*;
     use crate::{
-        BindingDraft, BindingForm, BindingTargetDraft, BuildContextId, ControlEdgeDraft,
-        ControlEdgeKind, ControlEdgePrecision, ControlExitOutcome, ControlFlowBuilder,
-        ControlFlowCoverageEvidence, ControlFlowGraphDraft, ControlFlowOwnerKind,
-        ControlFlowPolicyId, ControlPointDraft, ControlPointKind, ControlSyntheticPointKind,
-        FactCoverageEvidence, Mutability, NameNamespace, NamespacePolicy, ProjectAnalysis,
-        ProjectSnapshotBuilder, ReferenceDraft, RepositoryId, ResolutionPolicyId, ScopeDraft,
-        ScopeFactPolicyId, ScopeGraphBuilder, ScopeKind, VisibilityDraft, VisibilityKind,
-        derive_control_regions,
+        BindingDraft, BindingForm, BindingTargetDraft, BuildContextId, ControlBranchKind,
+        ControlEdgeDraft, ControlEdgeKind, ControlEdgePrecision, ControlExitOutcome,
+        ControlFlowBuilder, ControlFlowCoverageEvidence, ControlFlowGraphDraft,
+        ControlFlowOwnerKind, ControlFlowPolicyId, ControlLoopKind, ControlPointDraft,
+        ControlPointKind, ControlSyntheticPointKind, FactCoverageEvidence, Mutability,
+        NameNamespace, NamespacePolicy, ProjectAnalysis, ProjectSnapshotBuilder, ReferenceDraft,
+        RepositoryId, ResolutionPolicyId, ScopeDraft, ScopeFactPolicyId, ScopeGraphBuilder,
+        ScopeKind, VisibilityDraft, VisibilityKind, derive_control_regions,
     };
 
     struct DataFlowTestPack;
@@ -2259,7 +2259,7 @@ mod tests {
         .with_registry(registry)
         .with_overlay(
             "flow.dflowrs",
-            b"fn run(x: i32) -> i32 { let mut y = x; y += 1; y }\n".to_vec(),
+            b"fn run(x: i32) -> i32 { let mut y = x; if x > 0 { y += 1; } y }\n".to_vec(),
         )
         .unwrap()
         .build()
@@ -2310,7 +2310,7 @@ mod tests {
     }
 
     #[test]
-    fn m4_5_ambiguous_resolution_remains_unknown_and_partial() {
+    fn m4_5_m4_6_ambiguous_resolution_remains_unknown_partial_and_a_pdg_gap() {
         let analysis = integration_analysis();
         let root_node = nodes_by_kind(&analysis, "source_file")[0];
         let function = nodes_by_kind(&analysis, "function_item")[0];
@@ -2431,6 +2431,11 @@ mod tests {
                         ordinal: 0,
                     },
                     ControlPointDraft {
+                        kind: ControlPointKind::Synthetic(ControlSyntheticPointKind::ExitDispatch),
+                        source: Some(function),
+                        ordinal: 0,
+                    },
+                    ControlPointDraft {
                         kind: ControlPointKind::Exit,
                         source: None,
                         ordinal: 0,
@@ -2447,7 +2452,15 @@ mod tests {
                     },
                     ControlEdgeDraft {
                         from: 1,
-                        to: 2,
+                        to: 1,
+                        kind: ControlEdgeKind::Loop(ControlLoopKind::Back),
+                        source: function,
+                        predicate: None,
+                        precision: ControlEdgePrecision::Exact,
+                    },
+                    ControlEdgeDraft {
+                        from: 2,
+                        to: 3,
                         kind: ControlEdgeKind::Exit(ControlExitOutcome::Normal),
                         source: function,
                         predicate: None,
@@ -2509,19 +2522,74 @@ mod tests {
         assert!(graph.accesses()[0].symbol().is_none());
         assert!(graph.accesses()[0].reaching_definitions().is_empty());
         assert!(graph.accesses()[0].uncertainty().is_some());
+
+        let projection = Arc::new(projection);
+        let non_structured = Arc::new(
+            crate::derive_non_structured_control_regions(
+                Arc::clone(projection.control_regions()),
+                crate::NonStructuredControlPolicyId::from_parts(&[
+                    b"data-flow-ambiguous-non-structured/1",
+                ])
+                .unwrap(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(non_structured.document().graphs()[0].facts().len(), 1);
+        assert_eq!(
+            non_structured.document().graphs()[0].facts()[0].classification(),
+            crate::NonStructuredControlClassification::NonTerminatingCycle
+        );
+        let pdg = crate::derive_program_dependence(
+            projection,
+            Arc::clone(&non_structured),
+            crate::ProgramDependencePolicyId::from_parts(&[b"data-flow-ambiguous-pdg/1"]).unwrap(),
+        )
+        .unwrap();
+        let graph = &pdg.document().graphs()[0];
+        assert_eq!(graph.coverage().status(), FactCoverage::Partial);
+        assert!(
+            graph
+                .edges()
+                .iter()
+                .all(|edge| !matches!(edge.kind(), crate::ProgramDependenceEdgeKind::Flow { .. }))
+        );
+        assert_eq!(graph.non_structured_facts().len(), 1);
+        assert_eq!(
+            graph
+                .gaps()
+                .iter()
+                .filter(|gap| matches!(
+                    gap.kind(),
+                    crate::ProgramDependenceGapKind::UnresolvedAccess { .. }
+                ))
+                .count(),
+            1
+        );
+        assert_eq!(
+            graph
+                .gaps()
+                .iter()
+                .filter(|gap| matches!(
+                    gap.kind(),
+                    crate::ProgramDependenceGapKind::ControlPostDominanceUnavailable { .. }
+                ))
+                .count(),
+            2
+        );
     }
 
     #[test]
-    fn m4_5_end_to_end_projection_joins_resolution_cfg_boundaries_and_effects() {
+    fn m4_5_m4_6_end_to_end_projection_joins_resolution_cfg_boundaries_effects_and_pdg() {
         let analysis = integration_analysis();
         let root_node = nodes_by_kind(&analysis, "source_file")[0];
         let function = nodes_by_kind(&analysis, "function_item")[0];
         let block = nodes_by_kind(&analysis, "block")[0];
         let let_node = nodes_by_kind(&analysis, "let_declaration")[0];
+        let if_node = nodes_by_kind(&analysis, "if_expression")[0];
         let assignment = nodes_by_kind(&analysis, "expression_statement")[0];
         let xs = nodes_by_text(&analysis, "x");
         let ys = nodes_by_text(&analysis, "y");
-        assert_eq!(xs.len(), 2);
+        assert_eq!(xs.len(), 3);
         assert_eq!(ys.len(), 3);
         let complete = FactCoverageEvidence::complete();
         let namespaces = NamespacePolicy::new(vec![NameNamespace::Value], vec![]).unwrap();
@@ -2640,6 +2708,20 @@ mod tests {
                 },
             )
             .unwrap();
+        let x_condition = scope_builder
+            .add_reference(
+                xs[2],
+                roles(&analysis, xs[2]),
+                complete.clone(),
+                ReferenceDraft {
+                    original_spelling: "x".into(),
+                    segments: vec!["x".into()],
+                    namespace: NameNamespace::Value,
+                    scope: callable_scope,
+                    role: ReferenceRole::Read,
+                },
+            )
+            .unwrap();
         let y_write = scope_builder
             .add_reference(
                 ys[1],
@@ -2677,6 +2759,7 @@ mod tests {
         let y_declaration_key = key(y_declaration);
         let y_binding_key = key(y_binding);
         let x_reference_key = key(x_reference);
+        let x_condition_key = key(x_condition);
         let y_write_key = key(y_write);
         let y_read_key = key(y_read);
         let resolution = Arc::new(
@@ -2703,6 +2786,11 @@ mod tests {
             ControlPointDraft {
                 kind: ControlPointKind::Syntax,
                 source: Some(let_node),
+                ordinal: 0,
+            },
+            ControlPointDraft {
+                kind: ControlPointKind::Syntax,
+                source: Some(if_node),
                 ordinal: 0,
             },
             ControlPointDraft {
@@ -2737,9 +2825,25 @@ mod tests {
         let edges = vec![
             edge(0, 1, ControlEdgeKind::Entry),
             edge(1, 2, ControlEdgeKind::Normal),
-            edge(2, 3, ControlEdgeKind::Normal),
+            ControlEdgeDraft {
+                from: 2,
+                to: 3,
+                kind: ControlEdgeKind::Branch(ControlBranchKind::True),
+                source: if_node,
+                predicate: Some(if_node),
+                precision: ControlEdgePrecision::Exact,
+            },
+            ControlEdgeDraft {
+                from: 2,
+                to: 4,
+                kind: ControlEdgeKind::Branch(ControlBranchKind::False),
+                source: if_node,
+                predicate: Some(if_node),
+                precision: ControlEdgePrecision::Exact,
+            },
             edge(3, 4, ControlEdgeKind::Normal),
-            edge(4, 5, ControlEdgeKind::Exit(ControlExitOutcome::Normal)),
+            edge(4, 5, ControlEdgeKind::Normal),
+            edge(5, 6, ControlEdgeKind::Exit(ControlExitOutcome::Normal)),
         ];
         let mut flow_builder = ControlFlowBuilder::new(
             Arc::clone(&analysis),
@@ -2766,6 +2870,7 @@ mod tests {
                 .clone()
         };
         let let_point = point_for_source(let_node);
+        let condition_point = point_for_source(if_node);
         let write_point = point_for_source(assignment);
         let read_point = point_for_source(ys[2]);
         let regions = Arc::new(
@@ -2826,6 +2931,12 @@ mod tests {
                     ordinal: 0,
                 },
                 DataFlowAccessDraft {
+                    point: condition_point,
+                    reference: x_condition_key,
+                    kind: DataFlowAccessKind::Read,
+                    ordinal: 0,
+                },
+                DataFlowAccessDraft {
                     point: write_point,
                     reference: y_write_key.clone(),
                     kind: DataFlowAccessKind::ReadWrite,
@@ -2878,7 +2989,7 @@ mod tests {
         assert_eq!(graph.coverage().status(), FactCoverage::Complete);
         assert_eq!(graph.symbols().len(), 2);
         assert_eq!(graph.definitions().len(), 3);
-        assert_eq!(graph.accesses().len(), 3);
+        assert_eq!(graph.accesses().len(), 4);
         assert_eq!(graph.boundaries().len(), 4);
         assert_eq!(graph.effects().len(), all_points.len());
         let tail = graph
@@ -2886,7 +2997,7 @@ mod tests {
             .iter()
             .find(|access| access.reference() == &y_read_key)
             .unwrap();
-        assert_eq!(tail.reaching_definitions().len(), 1);
+        assert_eq!(tail.reaching_definitions().len(), 2);
         assert_eq!(
             graph
                 .boundaries()
@@ -2894,6 +3005,131 @@ mod tests {
                 .filter(|boundary| boundary.kind() == DataFlowBoundaryKind::ParameterInput)
                 .count(),
             1
+        );
+
+        let non_structured = Arc::new(
+            crate::derive_non_structured_control_regions(
+                Arc::clone(&regions),
+                crate::NonStructuredControlPolicyId::from_parts(&[
+                    b"data-flow-integration-non-structured/1",
+                ])
+                .unwrap(),
+            )
+            .unwrap(),
+        );
+        let pdg = crate::derive_program_dependence(
+            Arc::new(projection.clone()),
+            Arc::clone(&non_structured),
+            crate::ProgramDependencePolicyId::from_parts(&[b"data-flow-integration-pdg/1"])
+                .unwrap(),
+        )
+        .unwrap();
+        let pdg_graph = &pdg.document().graphs()[0];
+        assert_eq!(pdg_graph.coverage().status(), FactCoverage::Complete);
+        assert_eq!(pdg_graph.nodes().len(), all_points.len());
+        assert!(pdg_graph.gaps().is_empty());
+        assert!(pdg_graph.non_structured_facts().is_empty());
+        assert_eq!(
+            pdg_graph
+                .edges()
+                .iter()
+                .filter(|edge| matches!(edge.kind(), crate::ProgramDependenceEdgeKind::Flow { .. }))
+                .count(),
+            5
+        );
+        assert_eq!(
+            pdg_graph
+                .edges()
+                .iter()
+                .filter(|edge| matches!(
+                    edge.kind(),
+                    crate::ProgramDependenceEdgeKind::Control { .. }
+                ))
+                .count(),
+            1
+        );
+        let controller = pdg_graph
+            .nodes()
+            .iter()
+            .find(|node| node.source() == Some(analysis.node_key(if_node).unwrap()))
+            .unwrap();
+        let controlled = pdg_graph
+            .nodes()
+            .iter()
+            .find(|node| node.source() == Some(analysis.node_key(assignment).unwrap()))
+            .unwrap();
+        let control_edge = pdg_graph
+            .edges()
+            .iter()
+            .find(|edge| {
+                matches!(
+                    edge.kind(),
+                    crate::ProgramDependenceEdgeKind::Control { .. }
+                )
+            })
+            .unwrap();
+        assert_eq!(control_edge.from(), controller.key());
+        assert_eq!(control_edge.to(), controlled.key());
+        let crate::ProgramDependenceEdgeKind::Control { inducing_edges } = control_edge.kind()
+        else {
+            unreachable!()
+        };
+        assert_eq!(inducing_edges.len(), 1);
+        let tail_node = pdg_graph
+            .nodes()
+            .iter()
+            .find(|node| node.source() == Some(analysis.node_key(ys[2]).unwrap()))
+            .unwrap();
+        assert_eq!(
+            pdg_graph
+                .edges()
+                .iter()
+                .filter(|edge| {
+                    edge.to() == tail_node.key()
+                        && matches!(edge.kind(), crate::ProgramDependenceEdgeKind::Flow { .. })
+                })
+                .count(),
+            2
+        );
+        let pdg_bytes = serde_json::to_vec(pdg.document()).unwrap();
+        let decoded_pdg: crate::ProgramDependenceDocument =
+            serde_json::from_slice(&pdg_bytes).unwrap();
+        assert_eq!(serde_json::to_vec(&decoded_pdg).unwrap(), pdg_bytes);
+        let repeated_pdg = crate::derive_program_dependence(
+            Arc::new(projection.clone()),
+            Arc::clone(&non_structured),
+            crate::ProgramDependencePolicyId::from_parts(&[b"data-flow-integration-pdg/1"])
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(repeated_pdg.id(), pdg.id());
+        assert_eq!(
+            serde_json::to_vec(repeated_pdg.document()).unwrap(),
+            pdg_bytes
+        );
+        let changed_pdg = crate::derive_program_dependence(
+            Arc::new(projection.clone()),
+            Arc::clone(&non_structured),
+            crate::ProgramDependencePolicyId::from_parts(&[b"data-flow-integration-pdg/2"])
+                .unwrap(),
+        )
+        .unwrap();
+        assert_ne!(changed_pdg.id(), pdg.id());
+        let mut corrupted_pdg: serde_json::Value = serde_json::from_slice(&pdg_bytes).unwrap();
+        corrupted_pdg["graphs"][0]["nodes"][0]["reachable"] = false.into();
+        assert!(serde_json::from_value::<crate::ProgramDependenceDocument>(corrupted_pdg).is_err());
+        let mut unknown_pdg_field: serde_json::Value = serde_json::from_slice(&pdg_bytes).unwrap();
+        unknown_pdg_field
+            .as_object_mut()
+            .unwrap()
+            .insert("untrusted".into(), true.into());
+        assert!(
+            serde_json::from_value::<crate::ProgramDependenceDocument>(unknown_pdg_field).is_err()
+        );
+        let mut wrong_pdg_schema: serde_json::Value = serde_json::from_slice(&pdg_bytes).unwrap();
+        wrong_pdg_schema["schema"] = "deslop.program-dependence/999".into();
+        assert!(
+            serde_json::from_value::<crate::ProgramDependenceDocument>(wrong_pdg_schema).is_err()
         );
 
         let mut missing_effect = draft.clone();

@@ -41,6 +41,7 @@ mod incremental;
 mod instrumentation;
 mod non_structured_control;
 mod planner;
+mod program_dependence;
 mod query;
 mod resolution;
 mod resolution_gate;
@@ -115,6 +116,14 @@ pub use non_structured_control::{
 pub use planner::{
     ProjectSnapshotPlanner, ProjectSnapshotRequest, RepositorySpec, RootSpec, SnapshotBuild,
     SnapshotPresentationMap,
+};
+pub use program_dependence::{
+    PROGRAM_DEPENDENCE_POLICY_SCHEMA, PROGRAM_DEPENDENCE_SCHEMA, ProgramDependenceBuildError,
+    ProgramDependenceCoverageEvidence, ProgramDependenceDocument, ProgramDependenceEdge,
+    ProgramDependenceEdgeKey, ProgramDependenceEdgeKind, ProgramDependenceGap,
+    ProgramDependenceGapKey, ProgramDependenceGapKind, ProgramDependenceGraph,
+    ProgramDependenceGraphKey, ProgramDependenceNode, ProgramDependenceNodeKey,
+    ProgramDependencePolicyId, ProgramDependenceProjection, derive_program_dependence,
 };
 pub use query::{
     CompiledQueryFamily, LANGUAGE_QUERY_PROJECTION_SCHEMA, LanguageQueryProjection,

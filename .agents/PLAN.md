@@ -3058,3 +3058,69 @@ projection fixture. The fixture also locks missing-effect Partial coverage, malf
 rejection, deterministic repeat identity, policy-sensitive identity, strict round-trip, unknown-field,
 schema, and payload-corruption rejection. All six workspace terminal gates pass. M4.5 is complete; next is
 M4.6 local PDGs from M4.3 control dependence and M4.5 reaching-definition links.
+
+### Active plan — M4.6 strict local program dependence graphs
+
+Active hypothesis: a local PDG is complete only when every data edge comes from an exact M4.5
+definition/access/reaching link and every control edge comes from an exact M4.1 CFG-edge witness plus a usable
+M4.3 post-dominator chain. Exit-unreachable control and unresolved accesses must become typed gaps, not absent
+edges or inferred truth.
+
+Current approach:
+
+1. Accept ADR 0007 and define strict `deslop.program-dependence/1`, binding exact M4.1-M4.5 projections,
+   policies, graph owners, point relation keys, dataflow point keys, and M4.4 non-structured fact keys.
+2. Derive flow data-dependence edges directly from each access's canonical reaching-definition set. Preserve
+   same-point edges and emit typed unresolved-access gaps without spelling/source-order fallbacks.
+3. Derive direct control dependence from CFG edges and M4.3 post-dominator/ipdom relations. Emit no edge when
+   the target post-dominates the origin; walk to `ipdom(origin)` otherwise; fail the whole witness into a typed
+   gap if any required post-dominance link is unavailable.
+4. Freeze numerical linear/diamond/nested/loop/nonterminating/unreachable and multi-definition data fixtures,
+   plus source/policy identity, upstream Partial coverage, non-structured propagation, and corruption matrices.
+
+CONVERGENCE: one hand-labelled combined control/data corpus measures exact PDG nodes, control edges, flow
+edges, inducing CFG-edge witnesses, symbols, definition/access evidence, and typed gaps. Terminal outcomes are:
+(a) sequencing appears as control dependence—invalid; (b) any flow edge lacks an exact reaching definition—
+invalid; (c) nonterminating or unresolved evidence disappears—invalid; (d) source/policy corruption survives—
+invalid; or (e) all numerical and workspace gates pass, authorizing M4.7 summaries/SDG.
+
+Validation path: exact edge-set assertions against manual oracles; upstream coverage and gap matrices; strict
+round-trip/mutation and policy/source identity; focused parse tests and clippy; full workspace tests, build,
+rustdoc, clippy, fmt, and diff checks.
+
+Negative-memory constraints: do not equate CFG adjacency with control dependence; do not force virtual-exit
+post-dominance; do not infer data edges from spelling, roles, source order, or liveness; do not erase M4.4
+facts; do not call an incomplete edge set a complete PDG.
+
+Agent assignment: `/root` owns ADR, schema, algorithms, fixtures, integration, and verification. No sub-agent
+was requested, so no delegation is active.
+
+Next checkpoint: implement the strict public wire/projection surface and pure numerical control/data edge
+derivation before the combined source-projection fixture.
+
+M4.6 implementation checkpoint (2026-07-14): strict `deslop.program-dependence/1` wire, policy, graph, node,
+edge, gap, and projection identities are implemented and publicly exported. Every node binds one CFG point to
+its exact M4.3 relation and M4.5 point fact. Flow edges cite exact symbol/definition/access evidence. Control
+edges aggregate exact inducing CFG edges and are emitted only after a complete ipdom-chain walk; unresolved
+accesses and unavailable post-dominance become typed gaps. M4.4 fact keys are retained on each graph.
+
+Eight M4.6 suites pass. Pure oracles cover diamond, nested-branch, loop-header self-dependence,
+nonterminating control gaps, unreachable-edge isolation, and multi-definition flow plus unresolved access. The
+combined Provided-capability fixture now uses a real conditional Rust source/CFG and measures one exact
+control edge plus five exact flow edges, including two reaching definitions at the join. The incomplete fixture
+combines ambiguity and nontermination, retains its M4.4 NonTerminatingCycle fact, one unresolved-access gap,
+and two post-dominance gaps. Deterministic identity, policy identity, strict round-trip, and corruption/schema/
+unknown-field rejection pass. Focused parse tests, all-target clippy with warnings denied, and diff check pass.
+
+Next checkpoint: complete the terminal contract audit, run all workspace gates, update TODO/report and durable
+memory, then snapshot M4.6 if no untested source-closure or coverage boundary remains.
+
+M4.6 terminal checkpoint (2026-07-14): source closure and strict wire validation now additionally require
+canonical nonempty coverage reasons, forbid typed gaps under Complete coverage, bind every gap to its exact
+coverage reason, require exit-reachable evidence for emitted control edges, and require entry-reachable
+endpoints for control post-dominance gaps. Entry and exit reachability remain independent retained domains.
+
+All six workspace terminal gates pass. Parse reports 178 active passing tests plus four passing compile-fail
+doctests and one designated ignored instrumentation probe. M4.6 is complete. Next is M4.7 call/parameter/
+return/global summaries and SDG edges, gated by exact M3 resolution, M4.5 boundaries/effects, M4.6 local PDGs,
+and all retained M4.4/M4.6 gaps.
