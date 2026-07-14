@@ -2113,6 +2113,47 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn m4_8_capture_borrow_and_mutation_access_modes_are_conservative() {
+        for kind in [DataFlowAccessKind::Capture, DataFlowAccessKind::Borrow] {
+            assert!(kind.reads());
+            assert!(!kind.writes());
+        }
+        assert!(DataFlowAccessKind::ReadWrite.reads());
+        assert!(DataFlowAccessKind::ReadWrite.writes());
+        assert!(!DataFlowAccessKind::Write.reads());
+        assert!(DataFlowAccessKind::Write.writes());
+    }
+
+    #[test]
+    fn m4_8_advanced_output_and_effect_catalogs_round_trip_without_collapse() {
+        let boundaries = [
+            DataFlowBoundaryKind::MutationOutput,
+            DataFlowBoundaryKind::ExceptionalOutput,
+            DataFlowBoundaryKind::SuspensionOutput,
+        ];
+        let effects = [
+            DataFlowEffectKind::ReadsMemory,
+            DataFlowEffectKind::WritesMemory,
+            DataFlowEffectKind::Throws,
+            DataFlowEffectKind::Suspends,
+            DataFlowEffectKind::Captures,
+            DataFlowEffectKind::GlobalState,
+        ];
+        let boundary_wire = serde_json::to_vec(&boundaries).unwrap();
+        let effect_wire = serde_json::to_vec(&effects).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<[DataFlowBoundaryKind; 3]>(&boundary_wire).unwrap(),
+            boundaries
+        );
+        assert_eq!(
+            serde_json::from_slice::<[DataFlowEffectKind; 6]>(&effect_wire).unwrap(),
+            effects
+        );
+        assert_eq!(boundaries.into_iter().collect::<BTreeSet<_>>().len(), 3);
+        assert_eq!(effects.into_iter().collect::<BTreeSet<_>>().len(), 6);
+    }
+
+    #[test]
     fn m4_5_linear_reaching_definitions_kill_prior_symbol_definition() {
         let graph = indexed(&[&[1], &[2], &[]], &[0, 1, 2]);
         let a = symbol(0);
@@ -2313,7 +2354,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn m4_5_m4_6_ambiguous_resolution_remains_unknown_partial_and_a_pdg_gap() {
+    fn m4_5_m4_6_m4_8_ambiguous_capture_remains_unknown_partial_and_a_pdg_gap() {
         let analysis = integration_analysis();
         let root_node = nodes_by_kind(&analysis, "source_file")[0];
         let function = nodes_by_kind(&analysis, "function_item")[0];
@@ -2511,7 +2552,7 @@ pub(crate) mod tests {
                 accesses: vec![DataFlowAccessDraft {
                     point: access_point,
                     reference: reference_key,
-                    kind: DataFlowAccessKind::Read,
+                    kind: DataFlowAccessKind::Capture,
                     ordinal: 0,
                 }],
                 boundaries: vec![],
@@ -2522,6 +2563,7 @@ pub(crate) mod tests {
         let graph = &projection.document().graphs()[0];
         assert_eq!(graph.coverage().status(), FactCoverage::Partial);
         assert_eq!(graph.accesses().len(), 1);
+        assert_eq!(graph.accesses()[0].kind(), DataFlowAccessKind::Capture);
         assert!(graph.accesses()[0].symbol().is_none());
         assert!(graph.accesses()[0].reaching_definitions().is_empty());
         assert!(graph.accesses()[0].uncertainty().is_some());

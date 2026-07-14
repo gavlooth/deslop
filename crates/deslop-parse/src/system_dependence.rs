@@ -2309,7 +2309,7 @@ mod tests {
     }
 
     #[test]
-    fn m4_7_two_callable_summaries_emit_exact_call_parameter_return_and_global_facts() {
+    fn m4_7_m4_8_two_callable_summaries_preserve_exact_edges_and_advanced_outputs() {
         let analysis = analysis();
         let root = nodes_by_kind(&analysis, "source_file")[0];
         let functions = nodes_by_kind(&analysis, "function_item");
@@ -2779,7 +2779,7 @@ mod tests {
                         ordinal: 0,
                     },
                     DataFlowAccessDraft {
-                        point: tail_point,
+                        point: tail_point.clone(),
                         reference: global_read_key.clone(),
                         kind: DataFlowAccessKind::Read,
                         ordinal: 1,
@@ -2796,7 +2796,7 @@ mod tests {
                         point: run_flow.exit().clone(),
                         kind: DataFlowBoundaryKind::ReturnOutput,
                         declaration: Some(y_declaration_key.clone()),
-                        source_fact: y_read_key,
+                        source_fact: y_read_key.clone(),
                     },
                     DataFlowBoundaryDraft {
                         point: run_flow.exit().clone(),
@@ -2804,8 +2804,35 @@ mod tests {
                         declaration: Some(global_declaration_key.clone()),
                         source_fact: global_read_key.clone(),
                     },
+                    DataFlowBoundaryDraft {
+                        point: run_flow.exit().clone(),
+                        kind: DataFlowBoundaryKind::ExceptionalOutput,
+                        declaration: None,
+                        source_fact: y_read_key.clone(),
+                    },
+                    DataFlowBoundaryDraft {
+                        point: run_flow.exit().clone(),
+                        kind: DataFlowBoundaryKind::SuspensionOutput,
+                        declaration: None,
+                        source_fact: y_read_key.clone(),
+                    },
                 ],
-                effects: effects(run_flow),
+                effects: {
+                    let mut values = effects(run_flow);
+                    let tail = values
+                        .iter_mut()
+                        .find(|effect| effect.point == tail_point)
+                        .unwrap();
+                    tail.effects = vec![
+                        DataFlowEffectKind::ReadsMemory,
+                        DataFlowEffectKind::WritesMemory,
+                        DataFlowEffectKind::Throws,
+                        DataFlowEffectKind::Suspends,
+                        DataFlowEffectKind::Captures,
+                    ];
+                    tail.effects.sort();
+                    values
+                },
             })
             .unwrap();
         let data = Arc::new(data_builder.build().unwrap());
@@ -2891,6 +2918,20 @@ mod tests {
             .unwrap()
             .key()
             .clone();
+        let run_exception = run_data
+            .boundaries()
+            .iter()
+            .find(|boundary| boundary.kind() == DataFlowBoundaryKind::ExceptionalOutput)
+            .unwrap()
+            .key()
+            .clone();
+        let run_suspension = run_data
+            .boundaries()
+            .iter()
+            .find(|boundary| boundary.kind() == DataFlowBoundaryKind::SuspensionOutput)
+            .unwrap()
+            .key()
+            .clone();
         let actual_x = run_data
             .accesses()
             .iter()
@@ -2955,7 +2996,12 @@ mod tests {
             .add_summary(CallableSummaryDraft {
                 program_dependence_graph: run_pdg.key().clone(),
                 formal_inputs: vec![run_parameter],
-                outputs: vec![run_return, global_mutation.clone()],
+                outputs: vec![
+                    run_return,
+                    global_mutation.clone(),
+                    run_exception,
+                    run_suspension,
+                ],
                 globals: vec![GlobalSummaryDraft {
                     declaration: global_declaration_key,
                     reads: vec![global_access],
@@ -2999,6 +3045,28 @@ mod tests {
                 .filter(|edge| matches!(edge.kind(), SystemDependenceEdgeKind::Call { .. }))
                 .count(),
             1
+        );
+        let run_summary = system
+            .document()
+            .summaries()
+            .iter()
+            .find(|summary| summary.program_dependence_graph() == run_pdg.key())
+            .unwrap();
+        assert_eq!(run_summary.outputs().len(), 4);
+        let advanced_effect = run_data
+            .effects()
+            .iter()
+            .find(|effect| effect.point() == &tail_point)
+            .unwrap();
+        assert_eq!(
+            advanced_effect.effects(),
+            &[
+                DataFlowEffectKind::ReadsMemory,
+                DataFlowEffectKind::WritesMemory,
+                DataFlowEffectKind::Throws,
+                DataFlowEffectKind::Suspends,
+                DataFlowEffectKind::Captures,
+            ]
         );
         assert_eq!(
             system

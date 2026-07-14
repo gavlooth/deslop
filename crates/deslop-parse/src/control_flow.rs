@@ -2335,7 +2335,7 @@ impl fmt::Display for ControlFlowBuildError {
 impl std::error::Error for ControlFlowBuildError {}
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use deslop_core::Lang;
     use deslop_lang::{
@@ -2564,7 +2564,7 @@ mod tests {
             .unwrap_or_else(|| panic!("missing {kind}"))
     }
 
-    fn complete_projection() -> ControlFlowProjection {
+    pub(crate) fn complete_projection() -> ControlFlowProjection {
         let analysis = analysis(true);
         let owner = node_by_kind(&analysis, "function_item");
         let condition = node_by_kind(&analysis, "identifier");
@@ -2788,6 +2788,105 @@ mod tests {
                 },
             ],
         }
+    }
+
+    #[test]
+    fn m4_8_exception_suspension_and_early_exit_families_remain_typed() {
+        let projection = complete_projection();
+        let graph = &projection.document().graphs()[0];
+        let family_counts = graph.edges().iter().fold([0usize; 4], |mut counts, edge| {
+            match edge.kind() {
+                ControlEdgeKind::Normal => counts[0] += 1,
+                ControlEdgeKind::Exceptional(_) => counts[1] += 1,
+                ControlEdgeKind::Suspension(_) => counts[2] += 1,
+                ControlEdgeKind::Abrupt(_) => counts[3] += 1,
+                _ => {}
+            }
+            counts
+        });
+        assert_eq!(family_counts, [2, 2, 2, 2]);
+        for kind in [
+            ControlEdgeKind::Exceptional(ControlExceptionalKind::Handler),
+            ControlEdgeKind::Exceptional(ControlExceptionalKind::Propagate),
+            ControlEdgeKind::Suspension(ControlSuspensionKind::Suspend),
+            ControlEdgeKind::Suspension(ControlSuspensionKind::Resume),
+            ControlEdgeKind::Abrupt(ControlAbruptKind::Break { label: None }),
+            ControlEdgeKind::Abrupt(ControlAbruptKind::Return),
+        ] {
+            assert_eq!(
+                graph
+                    .edges()
+                    .iter()
+                    .filter(|edge| edge.kind() == &kind)
+                    .count(),
+                1,
+                "missing or collapsed advanced edge {kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn m4_8_production_await_and_closure_remain_explicitly_partial() {
+        let analysis = production_rust_analysis(
+            "async fn run(x: i32) -> i32 { let captured = || x; yield x; helper().await; captured() }\n",
+        );
+        let lowered = lower_control_flow(
+            analysis,
+            ControlFlowPolicyId::from_parts(&[b"m4.8-await-closure/1"]).unwrap(),
+        )
+        .unwrap();
+        assert!(lowered.gaps().is_empty());
+        let projection = lowered.projection().unwrap();
+        assert_eq!(projection.document().graphs().len(), 2);
+        assert!(projection.document().graphs().iter().any(|graph| {
+            graph.coverage().status() == FactCoverage::Partial
+                && graph.coverage().reasons().iter().any(|reason| {
+                    reason == "await_expression lowering is retained but not implemented by the shared M4.2 traversal"
+                })
+                && graph.coverage().reasons().iter().any(|reason| {
+                    reason == "yield_expression lowering is retained but not implemented by the shared M4.2 traversal"
+                })
+        }));
+        assert!(projection.document().graphs().iter().all(|graph| {
+            !graph
+                .edges()
+                .iter()
+                .any(|edge| matches!(edge.kind(), ControlEdgeKind::Suspension(_)))
+        }));
+    }
+
+    #[test]
+    fn m4_8_return_never_falls_through_to_following_syntax() {
+        let analysis = production_rust_analysis("fn run() { return; helper(); }\n");
+        let return_node = node_by_kind(&analysis, "return_expression");
+        let call_node = node_by_kind(&analysis, "call_expression");
+        let lowered = lower_control_flow(
+            Arc::clone(&analysis),
+            ControlFlowPolicyId::from_parts(&[b"m4.8-early-return/1"]).unwrap(),
+        )
+        .unwrap();
+        let graph = &lowered.projection().unwrap().document().graphs()[0];
+        let return_key = analysis.node_key(return_node).unwrap();
+        let call_key = analysis.node_key(call_node).unwrap();
+        let return_point = graph
+            .points()
+            .iter()
+            .find(|point| point.source() == Some(return_key))
+            .unwrap();
+        assert!(graph.edges().iter().any(|edge| {
+            edge.from() == return_point.key()
+                && edge.kind() == &ControlEdgeKind::Abrupt(ControlAbruptKind::Return)
+        }));
+        assert!(!graph.edges().iter().any(|edge| {
+            edge.from() == return_point.key() && edge.kind() == &ControlEdgeKind::Normal
+        }));
+        assert!(
+            graph
+                .points()
+                .iter()
+                .find(|point| point.source() == Some(call_key))
+                .is_none_or(|point| !graph.edges().iter().any(|edge| edge.to() == point.key()))
+        );
     }
 
     #[test]

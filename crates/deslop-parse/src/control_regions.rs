@@ -1559,6 +1559,41 @@ mod tests {
     }
 
     #[test]
+    fn m4_8_advanced_typed_flow_retains_total_dual_reachability() {
+        let flow = Arc::new(crate::control_flow::tests::complete_projection());
+        let projection = derive_control_regions(
+            flow,
+            ControlRegionPolicyId::from_parts(&[b"m4.8-advanced-regions/1"]).unwrap(),
+        )
+        .unwrap();
+        let graph = &projection.document().graphs()[0];
+        assert_eq!(graph.coverage().status(), FactCoverage::Complete);
+        assert_eq!(graph.points().len(), 11);
+        assert!(
+            graph
+                .points()
+                .iter()
+                .all(|point| point.reachable() && point.exit_reachable())
+        );
+        assert_eq!(
+            graph
+                .points()
+                .iter()
+                .filter(|point| point.immediate_dominator().is_none())
+                .count(),
+            1
+        );
+        assert_eq!(
+            graph
+                .points()
+                .iter()
+                .filter(|point| point.immediate_post_dominator().is_none())
+                .count(),
+            1
+        );
+    }
+
+    #[test]
     fn m4_3_linear_graph_has_exact_dual_trees_and_root_region() {
         let projection = regions("fn run() {}\n");
         assert_eq!(projection.schema(), CONTROL_REGION_SCHEMA);

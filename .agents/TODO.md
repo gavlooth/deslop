@@ -461,7 +461,11 @@ reports, benchmark records, and work orders.
   summary per local PDG, graph-specific CallGraph/Sdg support plus authority, explicit actual/formal and
   output/receiver bindings, exact local-callee resolution, global summaries, four interprocedural edge kinds,
   and typed gaps. Eight focused suites and all workspace all-feature gates pass.
-- [ ] M4.8 Add exception, async/yield, closure, mutation, alias uncertainty, and early-exit fixtures.
+- [x] M4.8 Add exception, async/yield, closure, mutation, alias uncertainty, and early-exit fixtures.
+  Eight focused suites freeze typed exceptional/suspension/abrupt CFG topology, total dual reachability,
+  honest production await/yield/closure Partial coverage, no early-return fallthrough, conservative Capture/
+  Borrow/ReadWrite semantics, advanced outputs/effects, ambiguous-capture PDG gaps, and SDG retention without
+  fabricated interprocedural edges. All workspace all-feature gates pass.
 - [ ] M4.9 Compare graph edges/regions with hand-labelled gold fixtures and compiler facts where available.
 - [ ] M4.DoD Pass frozen CFG/PST/PDG gold gates and propagate every missing/uncertain semantic fact into
   recipe eligibility.

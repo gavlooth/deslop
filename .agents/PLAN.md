@@ -3180,3 +3180,59 @@ authority, deterministic and changed-policy identity, strict round-trip, and cor
 rejection. Strict wire validation checks call-site membership and graph direction for edges/gaps, not merely
 their content hashes. All six workspace terminal gates pass. M4.7 is complete; next is M4.8 advanced
 exception, async/yield, closure, mutation, alias-uncertainty, and early-exit fixtures.
+
+### Active plan — M4.8 advanced semantic uncertainty fixtures
+
+Active hypothesis: M4.1-M4.7 already have typed control edges, output boundaries, effects, capture/borrow/
+read-write accesses, and coverage/gap propagation sufficient to represent the advanced matrix honestly. M4.8
+should first freeze those cross-layer contracts and add production code only where a numerical fixture proves
+that uncertainty is lost or incorrectly promoted.
+
+Current approach:
+
+1. Define one versioned hand-labelled fixture manifest covering exceptional handler/propagation, await/yield
+   suspension/resume, nested closure capture, mutation outputs, unresolved borrow/alias boundaries, and
+   return/break/continue early exits.
+2. Exercise exact CFG topology and M4.3/M4.4 region behavior for exceptional, suspension, and early-exit
+   graphs, including independent entry/exit reachability and conservative-edge coverage.
+3. Exercise M4.5/M4.6 facts for Capture, Borrow, ReadWrite, Throws, Suspends, Captures, exceptional/suspension/
+   mutation outputs, exact reaching definitions, and unresolved alias gaps.
+4. Exercise M4.7 behavior where advanced outputs are supported or deliberately rejected, proving that no
+   return/parameter/global edge is fabricated from effect flags or source order.
+5. Freeze exact numerical vectors, strict round-trip/corruption identity, and production-adapter uncertainty;
+   run focused and all-workspace terminal gates.
+
+CONVERGENCE: a single manifest enumerates the expected typed points, edges, boundaries, effects, dependence
+edges, gaps, and coverage state for every advanced case. Terminal outcomes are: (a) exceptional/suspension or
+early-exit flow collapses into Normal—invalid; (b) capture/borrow/alias uncertainty creates an exact symbol or
+dependence edge—invalid; (c) mutation/output evidence disappears—invalid; (d) an effect flag alone creates an
+SDG/global edge—invalid; or (e) the full numerical matrix and workspace gates pass, authorizing M4.9 gold and
+compiler comparison.
+
+Validation path: exact enum/count/topology assertions, entry/exit reachability vectors, output/effect catalogs,
+PDG/SDG edge and gap sets, strict source/policy identity and corruption checks, focused parse tests/clippy, then
+full workspace test, build, rustdoc, clippy, fmt, and diff gates.
+
+Negative-memory constraints: do not model an exception or suspension as ordinary Normal flow; do not infer
+capture or alias targets from spelling/containment; do not turn Borrow into a write; do not treat an effect as
+an identified global/output; do not connect early exits to following syntax; preserve every unavailable fact
+as coverage or a typed gap.
+
+Agent assignment: `/root` owns manifest, fixtures, any necessary contract correction, integration, and
+verification. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: write the frozen manifest and smallest pure CFG/dataflow fixture set, then audit which
+advanced cases require a cross-layer integration fixture.
+
+M4.8 terminal checkpoint (2026-07-14): eight focused suites now freeze the full requested matrix. Explicit
+hand-labelled exceptional, suspension, abrupt-return, and break topology remains typed and produces total
+entry/exit reachability plus dual dominance. Production Rust async await/yield and nested closure owners remain
+Partial with exact unimplemented-lowering reasons and no fabricated suspension edges. Return has no Normal
+fallthrough to later syntax. Capture/Borrow remain read-like rather than writes, ReadWrite remains both, and
+mutation/exceptional/suspension outputs plus Throws/Suspends/Captures effects round-trip without collapse.
+
+The ambiguous-capture integration path stays symbol-free with no reaching definitions or PDG flow edge and an
+exact unresolved-access gap. The two-callable M4.7 integration now also retains exceptional/suspension caller
+outputs and advanced effects while its exact call/parameter/return/parameter-out edge count remains four;
+effects alone create no extra SDG/global edge. All 57 M4 tests and all six workspace terminal gates pass.
+M4.8 is complete; next is M4.9 comparison against hand-labelled gold and compiler facts where available.

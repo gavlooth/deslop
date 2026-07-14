@@ -10400,3 +10400,79 @@ callee`, `binding timing required for unique resolution`, `participant capabilit
 effect identity`, `strict edge gap call-site semantics`.
 
 **Signature:** Codex (GPT-5), M4.7 integration owner, terminal checkpoint, 2026-07-14.
+
+### M4.8 start checkpoint — advanced semantic uncertainty matrix
+
+**Date/time:** 2026-07-14 22:50:06 CEST (Europe/Madrid).
+
+**Objective/target:** add frozen exception, async/yield, closure, mutation, alias-uncertainty, and early-exit
+fixtures that numerically verify M4.1-M4.7 preserve typed semantics and never promote unavailable evidence.
+
+**Changes:** created a new jj change and wrote the convergent M4.8 plan. The initial contract audit confirms
+the existing schemas expose exceptional, abrupt, and suspension control edges; exceptional/suspension/
+mutation output boundaries; Capture/Borrow/ReadWrite accesses; Throws/Suspends/Captures effects; and typed
+PDG/SDG gaps. The implementation will begin as a fixture/contract exercise and change production behavior
+only if a measured case loses or overclaims evidence.
+
+**Commands run:** `jj new -m 'Add advanced semantic uncertainty fixtures'`; targeted `rg`/`sed` inventory of
+M4.1 control edge/point kinds, M4.5 access/boundary/effect kinds, and existing closure/await/yield/early-exit
+coverage.
+
+**Results:** the public vocabulary appears sufficient for the requested matrix, but cross-layer validation and
+coverage behavior are not yet frozen. This is a start checkpoint, not a completion claim.
+
+**Invalidated assumptions / negative-memory constraint:** advanced fixtures are not permission to translate
+exceptional or suspension flow into Normal edges, infer capture/alias targets, identify globals from effects,
+or connect early exits to later syntax.
+
+**Current recommendation / next actions:** build one hand-labelled manifest and pure numerical CFG/dataflow
+fixtures first; add cross-layer PDG/SDG integration only for cases where the lower-layer vector passes.
+
+**Blockers/dependencies/restart:** none.
+
+**Signature:** Codex (GPT-5), M4.8 integration owner, start checkpoint, 2026-07-14.
+
+#### M4.8 terminal checkpoint — advanced uncertainty matrix verified
+
+**Date/time:** 2026-07-14 23:00:18 CEST (Europe/Madrid).
+
+**Objective/target:** close M4.8 with numerical fixtures for exception, async/yield, closure, mutation,
+alias uncertainty, and early exits across the M4.1-M4.7 contracts.
+
+**Changes:** added eight focused suites. The hand-labelled CFG fixture preserves two exceptional, two
+suspension, and two abrupt edges as distinct families and remains fully entry/exit reachable under M4.3 dual
+dominance. Production Rust await/yield with a nested closure produces two owners, exact Partial reasons, and
+no fabricated suspension edge. Early return has no Normal or incoming fallthrough path to following syntax.
+M4.5 locks Capture/Borrow as read-like, ReadWrite as read+write, all advanced output/effect wire variants, and
+an ambiguous Capture with no symbol/reaching definitions. That capture reaches M4.6 only as an unresolved
+access gap with no flow edge. The M4.7 integration retains mutation/exceptional/suspension outputs and
+ReadsMemory/WritesMemory/Throws/Suspends/Captures effects while preserving exactly four explicit
+interprocedural edges and no effect-derived additions.
+
+**Commands run:** focused `cargo test -p deslop-parse --all-features m4_8_ -- --nocapture`; M4.7 regression
+and aggregate M4 suites; focused parse clippy and diff check; `cargo test --workspace --all-features`; `cargo
+build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`;
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`; `git
+diff --check`.
+
+**Results:** PASS. M4.8 is 8/8, aggregate M4 is 57/57, parse is 192 active passing tests with one designated
+ignored instrumentation probe, and all build/rustdoc/clippy/format/diff gates pass. Measured production await/
+yield remains Partial rather than incorrectly gaining typed suspension edges; the explicit fixture proves the
+schema and region engine can retain those edge families when authoritative input exists.
+
+**Invalidated assumptions/failure modes:** a declared lowering rule is not evidence that the shared traversal
+implemented it; closure ownership does not imply capture resolution; Capture/Borrow are not writes; effect
+flags are not identified output/global dependencies; exceptional/suspension outputs do not automatically
+authorize M4.7 return/parameter-out edges; later syntax after return is not reachable by source order.
+
+**Current recommendation/next actions:** begin M4.9 by externalizing frozen graph/region expectations into a
+strict gold schema, compare computed CFG/PST/PDG vectors numerically, and add compiler-backed facts only where
+an available compiler artifact has explicit authority and dependency identity.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, cache clear, or runtime restart applies.
+
+**Negative-memory status:** durable checkpoint pending Hindsight write. Search handles: `M4.8 declared rule
+not lowered`, `await yield honest Partial`, `ambiguous Capture PDG gap`, `early return no fallthrough`, `effect
+flags no SDG edge`.
+
+**Signature:** Codex (GPT-5), M4.8 integration owner, terminal checkpoint, 2026-07-14.
