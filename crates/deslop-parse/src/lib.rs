@@ -30,6 +30,7 @@ mod incremental;
 mod instrumentation;
 mod planner;
 mod query;
+mod scope_graph;
 mod snapshot;
 
 pub use adapter::{
@@ -70,6 +71,17 @@ pub use query::{
     SyntaxQuery, SyntaxQueryCompileErrorKind, SyntaxQueryError, SyntaxQueryId, SyntaxQueryPattern,
     SyntaxQueryPredicate, SyntaxQueryPredicateArgument, SyntaxQueryProperty,
     SyntaxQueryPropertyPredicate,
+};
+pub use scope_graph::{
+    BUILD_CONTEXT_SCHEMA, BindingDraft, BindingForm, BindingTarget, BindingTargetDraft,
+    BindingTiming, BuildContextId, BuildModuleDraft, DeclarationDraft, DeclarationModifier,
+    DefinitionDraft, DynamicBoundaryDraft, ExportDraft, FactCoverage, FactCoverageEvidence,
+    ImportDraft, ImportForm, Mutability, NameNamespace, NamespacePolicy, ReferenceDraft,
+    ReferenceRole, SCOPE_FACT_POLICY_SCHEMA, SCOPE_GRAPH_SCHEMA, ScopeDraft, ScopeFactData,
+    ScopeFactEvidence, ScopeFactId, ScopeFactKey, ScopeFactKind, ScopeFactPolicyId,
+    ScopeFactRecord, ScopeFactWire, ScopeGraphBuildError, ScopeGraphBuilder, ScopeGraphDocument,
+    ScopeGraphProjection, ScopeKind, ShadowingDraft, SymbolKind, Visibility, VisibilityDraft,
+    VisibilityKind,
 };
 
 pub use snapshot::{
@@ -391,6 +403,7 @@ mod tests {
             ("incremental", include_str!("incremental.rs")),
             ("instrumentation", include_str!("instrumentation.rs")),
             ("query", include_str!("query.rs")),
+            ("scope_graph", include_str!("scope_graph.rs")),
             ("snapshot", include_str!("snapshot.rs")),
         ] {
             let mut public_header = String::new();

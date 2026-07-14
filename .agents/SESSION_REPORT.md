@@ -8302,3 +8302,146 @@ resolution memory remains active. Search handles: `ADR 0002 scope graph`, `cover
 `all resolution paths`.
 
 **Signature:** Codex (GPT-5), M3.1 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M3.2 active checkpoint — owned scope-graph fact model
+
+**Date/time:** 2026-07-14T02:52:02+02:00
+
+**Objective/target:** implement the foundational `deslop.scope-graph/1` facts and identities without
+beginning language resolution rules or promoting S2/S3 authority.
+
+**Changes:** planning/audit only. Reloaded Serena and Hindsight startup context, inspected ADR 0002's
+fact/identity/coverage contract, audited `ProjectAnalysis`, `ProjectionId`, `NodeId`, strict `NodeKey`
+wire identity, stored grammar/adapter identities, capability manifests, and M2 owned projections. The
+selected boundary is a new `deslop-parse` module because it owns every required immutable identity and
+already has Serde and hashing dependencies.
+
+**Commands/checks run:** Serena activation/onboarding/memory reads; Hindsight global/repo startup
+recall and targeted active/negative searches; `jj status`; targeted `rg`/`sed` audits of the roadmap,
+ADR, parse identities, adapters, Cargo manifests, and language capability catalog.
+
+**Results/failure modes:** working copy is clean at `kxlpnnwt f0ec75b3`. Serena identifies the project
+as Python and cannot expose Rust symbols, so targeted local reads remain the documented fallback.
+Hindsight searches succeed when mode is omitted. Explicit `semantic` mode failed as unsupported and
+was recorded as negative memory. No code or verification result exists yet.
+
+**Invalidated assumptions:** M3.2 cannot put portable fact identity in `deslop-lang` because exact
+`NodeId`/`NodeKey` ownership lives in `deslop-parse`. A serialized path/range/spelling is not a fact ID.
+Production extraction cannot be smuggled into this task because it requires the M3.3 total rule packs.
+
+**Current recommendation/checkpoint:** implement a strict validating builder with dense local handles,
+revision/build-context-bound keys, retained analysis ownership, complete structural fact variants,
+and adversarial schema/link tests. Keep all current capability manifests unchanged.
+
+**Blockers/dependencies/restart:** none. No new dependency, migration, restart, or live-state action is
+required.
+
+**Negative-memory status:** active constraints cover graph/1 bare-name false resolution, query/fact
+coherence, invalid Hindsight search modes, and no premature S2/S3 authority. Search handles: `M3.2
+scope facts identity`, `NodeId NodeKey ownership`, `unknown search mode semantic`.
+
+**Signature:** Codex (GPT-5), M3.2 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M3.2 implementation checkpoint — complete owned fact catalog
+
+**Date/time:** 2026-07-14T03:08:20+02:00
+
+**Objective/target:** establish the full structural fact and identity substrate before the terminal
+workspace verification cycle.
+
+**Changes:** added `crates/deslop-parse/src/scope_graph.rs` and exported its public contract. It defines
+versioned build-context/fact-policy/projection schemas; dense analysis-owned non-Serde fact IDs;
+payload-bound revision keys; portable namespaces/scope kinds/visibility/binding timing/reference roles;
+scope, declaration, definition, binding, reference, import, export, build-module, dynamic-boundary, and
+shadowing records; explicit Complete/Partial/Unsupported/Failed evidence with mandatory incomplete
+reasons; a validating builder; retained `Arc<ProjectAnalysis>` projection; and strict wire documents.
+Promoted the already-workspace-pinned `serde_json` dependency from test-only to runtime for canonical
+payload hashing; no new package was added. Added the new module to the borrowed Tree-sitter surface
+guard.
+
+**Commands/checks run:** repeated focused `cargo test -p deslop-parse scope_graph`; full `cargo test -p
+deslop-parse`; `cargo clippy -p deslop-parse --all-features --all-targets -- -D warnings`;
+`RUSTDOCFLAGS='-D warnings' cargo doc -p deslop-parse --all-features --no-deps`; `cargo fmt --all`; and
+`git diff --check`.
+
+**Results/failure modes:** PASS. Six scope-graph tests pass, the parse crate is 99 passed/1 designated
+slow probe ignored, both `NodeId` and `ScopeFactId` compile-fail Serde doctests pass, focused clippy and
+rustdoc are warning-free, and whitespace is clean. An initial fixture expected four parsed `x` nodes;
+Rust format-string text is not a parsed identifier, so the measured grammar count is three. The fixture
+was corrected to the actual syntax inventory and no implementation path depended on the false count.
+
+**Invalidated assumptions:** a prefix-valid fact key is insufficient—the key must hash its complete
+evidence and fact payload so corrupted roles, coverage, links, or contents cannot survive strict
+deserialization. Coverage status alone is insufficient; every non-Complete fact now requires an exact
+reason. Canonical roles cannot be accepted on trust; the builder checks them against the owned M2
+projection.
+
+**Current recommendation/checkpoint:** run the full all-feature workspace test/build/doc/clippy/fmt/
+diff gates. If green, verify manifests remain S1 with S2/S3 Unknown, mark M3.2 complete, and checkpoint
+Hindsight. M3.3 remains the sole owner of executable language rule packs and capability promotion.
+
+**Blockers/dependencies/restart:** none. The schema is new and not live-consumed, so no migration,
+restart, reload, or cache clear applies.
+
+**Negative-memory status:** the failed four-identifier fixture assumption is corrected locally and is
+not a reusable implementation strategy. Durable constraints remain: no forged M2 evidence, bare-name
+resolution, NodeId serialization, or premature semantic authority. Search handles: `M3.2 payload-bound
+fact key`, `coverage reason`, `Rust format string identifier count`.
+
+**Signature:** Codex (GPT-5), M3.2 integration owner, implementation checkpoint, 2026-07-14.
+
+---
+
+## M3.2 terminal checkpoint — owned scope-graph facts and identities
+
+**Date/time:** 2026-07-14T03:10:07+02:00
+
+**Objective/target:** finish the foundational scope/name fact layer while preserving the M2 authority
+ceiling and reserving all executable resolution semantics for M3.3.
+
+**Changes:** completed and exported `deslop.scope-graph/1`, `deslop.build-context/1`, and
+`deslop.scope-fact-policy/1` from `deslop-parse`. The 2,659-line module supplies ten fact variants,
+dense non-Serde handles, complete-payload `sf1_` keys, strict wire documents, retained analysis
+ownership, build-context/policy-sensitive projection identity, copied NodeKey/raw/canonical/grammar/
+adapter/capability evidence, explicit coverage reasons, typed builders, and cross-fact validation.
+Updated the M3.2 TODO and durable plan. No language manifest, adapter behavior, graph code, analyzer,
+protocol, CLI, or live process changed.
+
+**Commands/checks run:** focused and full parse tests; focused all-feature/all-target clippy and parse
+rustdoc; then `cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`; `cargo clippy --workspace
+--all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`; `git diff --check`; and final
+`jj status`/diff/authority audits.
+
+**Results:** PASS. The 14-fact fixture covers Scope, Declaration, Definition, Binding, Reference,
+Import, Export, BuildModule, DynamicBoundary, and Shadowing. Six focused tests cover deterministic
+round-trip ownership; build-context/policy identity isolation; foreign/wrong-kind handles; forged M2
+roles; capability/coverage alignment; unknown fields and schema drift; corrupt source order/payload
+keys; invalid namespaces; cycles; and dangling links. The parse crate reports 99 passed/1 designated
+slow probe ignored plus two compile-fail doctests. Exact M0, M1, and M2 definition-of-done tests pass.
+The production no-semantic-authority-leak test passes, and the change surface contains no
+`deslop-lang` or `deslop-graph` edit. All full gates are green; only the two repository-designated slow
+probes are ignored.
+
+**Invalidated assumptions / negative memory:** recorded during implementation: format-string contents
+do not create Rust identifier syntax nodes; prefix-valid keys do not prove payload identity; caller-
+supplied canonical roles require owned-M2 verification; and incomplete status without a reason is not
+sufficient provenance. None is left as a fallback path.
+
+**Current recommendation/next actions:** begin M3.3 by defining total versioned adapter rule packs and
+the shared path engine against this builder. Do not populate production facts, mark Complete, or promote
+LexicalScopes/NameResolution/ImportsExports until exact dialect rules and supported/unsupported sections
+are executable and tested.
+
+**Blockers/dependencies/restart:** none. This is a new unused schema substrate; no migration, rebuild of
+cached user data, restart, reload, or cache clear is required.
+
+**Negative-memory status:** durable constraints are active and satisfied. Search handles: `M3.2
+complete payload sf1`, `canonical role coherence`, `coverage reason`, `no S2 promotion`. The corrected
+fixture and authority boundary will be stored in Hindsight at this checkpoint.
+
+**Signature:** Codex (GPT-5), M3.2 integration owner, terminal checkpoint, 2026-07-14.

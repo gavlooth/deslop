@@ -12,8 +12,8 @@ deslop-core.workspace = true
 deslop-lang.workspace = true
 ignore.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 tree-sitter.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 tempfile.workspace = true

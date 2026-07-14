@@ -1902,6 +1902,66 @@ executable verification requirements, rejected shortcuts, and M3 rollout. It exp
 non-containment edges syntactic. The 355-line/2,736-word structural contract check and all workspace
 test/build/doc/clippy/fmt/diff gates pass. Next: M3.2 core scope-graph fact schemas and ownership.
 
+#### Active M3.2 execution plan — owned scope-graph facts and identities
+
+Active hypothesis: M3.2 is complete when one immutable projection can retain every structural name
+fact required by ADR 0002, prove that its process-local IDs belong to the exact `ProjectAnalysis`, and
+emit strict revision/build-context-bound wire identities without claiming that any production adapter
+can resolve names.
+
+Current approach: add the versioned `deslop.scope-graph/1` fact contract at the parse/owned-analysis
+boundary. Separate dense analysis-owned handles from serializable keys; require exact `NodeId`/`NodeKey`
+anchors and copied raw/canonical/adapter/grammar/capability evidence; model scopes, declarations,
+definitions, bindings, references, imports, exports, build modules, dynamic boundaries, visibility,
+and shadowing. Construct facts through a validating builder that rejects foreign nodes, dangling or
+wrong-kind links, invalid source order, duplicate/empty identities, and incomplete namespace policy.
+Derive projection and fact keys from the analysis, build context, schema, and complete deterministic
+fact payload. Production language packs remain S1 with S2/S3 Unknown; M3.3 owns extraction/rules.
+
+Validation path: focused parse schema/builder tests first; strict Serde unknown-field/schema tests;
+foreign-analysis, dangling-link, shadowing, and determinism adversarial tests; static public-surface
+guard for borrowed Tree-sitter types; then the full workspace all-feature test/build/rustdoc/clippy/
+fmt/diff gates and unchanged M0/M1/M2 definition-of-done gates through the workspace suite.
+
+Next checkpoint: the core module compiles with a minimal hand-labelled scope graph whose links, wire
+keys, evidence, and retained `Arc<ProjectAnalysis>` round-trip exactly.
+
+Negative-memory constraints: never infer scope from containment, never treat query/canonical roles as
+bindings, never serialize `NodeId`, never use bare spelling/path/graph/2 IDs as fact identity, never
+mark empty or partial construction complete, and never promote adapter capabilities before M3.3 rule
+packs exist.
+
+Agent assignment: `/root` owns M3.2 design, implementation, integration, and verification; no
+concurrent file edits are assigned.
+
+Current checkpoint (2026-07-14T02:52:02+02:00): ADR 0002, current analysis identities, adapter facts,
+grammar/adapter snapshots, and `NodeKey` serialization are audited. The implementation boundary is
+`deslop-parse`: it already owns `Arc<ProjectAnalysis>`, `NodeId`, `NodeKey`, adapter identity, grammar,
+Serde, and projection hashing. No new crate or dependency is required.
+
+Implementation checkpoint (2026-07-14T03:08:20+02:00): the `deslop.scope-graph/1` module now models
+all ten structural fact classes through dense non-Serde `ScopeFactId` handles and payload-bound
+`sf1_` wire keys. A 14-fact Rust fixture proves scope/declaration/definition/binding/reference/import/
+export/build-module/dynamic-boundary/shadowing ownership, visibility, namespace policy, exact M2
+canonical-role coherence, adapter/grammar/capability evidence, explicit coverage reasons, deterministic
+build-context/policy-sensitive identities, and strict round-trip serialization. Adversarial tests reject
+foreign IDs, wrong-kind/dangling/cyclic links, forged roles, invalid namespaces, corrupt source order,
+payload/key mismatch, schema/unknown-field drift, and Complete coverage without Provided capability.
+All 100 parse tests, two compile-fail doctests, focused all-target clippy, parse rustdoc, and whitespace
+checks pass. Next checkpoint: full workspace gates and terminal M3.2 audit.
+
+Terminal checkpoint (2026-07-14T03:10:07+02:00): M3.2 is complete in jj change `kxlpnnwt`. The new
+2,659-line module includes the full public model and six focused executable tests. Its hand-labelled
+projection contains 14 facts spanning every one of the ten ADR classes; fact IDs cannot serialize;
+wire keys bind the complete payload, analysis revision, build context, fact policy, ordinal, and exact
+node evidence; all incomplete coverage retains a reason. Strict documents validate schemas, keys,
+adapter/capability/grammar/raw evidence, namespaces, visibility boundaries, typed links, scope cycles,
+file-scope module constituents, and shadowing namespaces. Production manifests and graph code are
+untouched, the existing no-authority-leak test passes, graph/2 remains syntactic, and M0/M1/M2 exact
+definition-of-done tests pass unchanged. All workspace all-feature test/build/rustdoc/clippy/fmt/diff
+gates pass with only the two designated slow probes ignored. Next: M3.3 versioned language resolution
+rule packs and shared path engine; do not reuse M3.2 hand-labelled facts as semantic authority.
+
 ### M4 — CFG, PST, PDG, and SDG
 
 Lower control flow per adapter; compute dominance/post-dominance and SESE/PST regions; add liveness,

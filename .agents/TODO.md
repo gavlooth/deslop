@@ -364,7 +364,14 @@ reports, benchmark records, and work orders.
   outcomes, separate lookup and evidence authority, import/export/re-export rules, incremental reverse
   dependencies, consumer gates, adversarial verification, and graph/2 syntactic-only compatibility.
   Structural ADR checks and every workspace gate pass.
-- [ ] M3.2 Model scopes, definitions, references, bindings, imports/exports, visibility, and shadowing.
+- [x] M3.2 Model scopes, definitions, references, bindings, imports/exports, visibility, and shadowing.
+  `deslop.scope-graph/1` now provides analysis-owned dense fact handles, complete-payload revision keys,
+  strict build-context/policy-bound wire documents, exact node/raw/canonical/grammar/adapter/capability
+  evidence, explicit coverage reasons, all ten ADR fact classes, and validated namespace, visibility,
+  parent, link, module, and shadowing invariants. A 14-fact executable fixture plus adversarial schema,
+  identity, ownership, and authority tests pass. Production adapters remain S1 with S2/S3 Unknown; M3.3
+  still exclusively owns executable resolution rules and capability promotion. Every workspace gate and
+  the unchanged M0/M1/M2 definition-of-done tests pass.
 - [ ] M3.3 Implement per-language declarative resolution rules or an explicitly equivalent adapter.
 - [ ] M3.4 Store all candidate paths and unique/ambiguous/unresolved status; prohibit bare-name resolution.
 - [ ] M3.5 Stitch file/module/package/build-target names incrementally.
