@@ -8219,3 +8219,86 @@ context-specific callee-role fix. Search handles: `M2 DoD query role mismatch`, 
 field_expression member_expression call function`, `adapter schema 2`.
 
 **Signature:** Codex (GPT-5), M2.DoD integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M3.1 active checkpoint — scope and resolution authority ADR
+
+**Date/time:** 2026-07-14T02:43:00+02:00
+
+**Objective/target:** freeze the scope/name-resolution model and authority boundary before implementing
+any S2/S3 binding, import/export, call, or impact claims.
+
+**Changes:** planning/audit only. Opened a clean M3.1 change, loaded graph-resolution negative memory,
+inspected ADR 0001 and the complete M3 roadmap, and audited graph/2 candidate routing, shadow blocking,
+module-key heuristics, ambiguity collapse, confidence labels, and agent notes.
+
+**Commands/checks run:** targeted Hindsight search; TODO/plan/ADR inventory; full ADR 0001 read; targeted
+graph builder/extractor/identity/test reads.
+
+**Results:** ACTIVE / UNVERIFIED. Current graph/2 correctly withholds resolved authority from calls,
+imports, and inheritance, but it is not an M3 substrate: ambiguous endpoints are collapsed to one
+placeholder, paths are not retained, module/import keys are heuristic, namespaces/build targets are
+not modeled, and candidate uniqueness remains syntax-only.
+
+**Invalidated assumptions / negative memory:** repository-global or heuristic-key uniqueness is not
+lexical/name-resolution proof. Sorting candidates is determinism, not precedence. Runtime observation
+and compiler/static resolution have different domains and cannot be merged by a single last-writer-wins
+authority rank.
+
+**Current recommendation/next actions:** write accepted ADR 0002 with schemas, path/outcome and authority
+tables, build-context binding, invalidation, verification, rejected alternatives, and M3 rollout.
+
+**Blockers/dependencies/restart:** no blocker or dependency change. Serena Rust symbols remain
+unavailable; targeted local reads are the documented fallback. No restart or live-state action applies.
+
+**Negative-memory status:** graph/1 false-resolution and M2 authority memories are loaded. Search
+handles: `M3.1 ADR scope resolution`, `bare name uniqueness`, `all candidate paths authority`.
+
+**Signature:** Codex (GPT-5), M3.1 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M3.1 terminal checkpoint — accepted scope and resolution authority ADR
+
+**Date/time:** 2026-07-14T02:46:28+02:00
+
+**Objective/target:** establish the normative scope/name-resolution and authority contract before any
+M3 implementation promotes S2/S3 output.
+
+**Changes:** added accepted `docs/adr/0002-scope-and-name-resolution.md`. It defines versioned scope
+graph and resolution projections; exact analysis/adapter/grammar/build-context identity; scope,
+declaration, definition, binding, reference, import/export, module, and dynamic-boundary facts;
+language-declared namespaces and structured precedence; complete viable/rejected resolution paths;
+coverage and outcome tables; separate lookup/evidence authority; compiler/LSP/runtime conflicts;
+import/alias/glob/re-export/module stitching; incremental invalidation; consumer gating; executable
+verification; consequences, rejected alternatives, and M3.2-M3.DoD rollout.
+
+**Commands/checks run:** targeted memory and graph audits; ADR 0001 and M3 roadmap review; structural
+heading/term assertions; whitespace and size checks; then `cargo test --workspace --all-features`;
+`cargo build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace
+--all-features --no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D warnings`;
+`cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. ADR 0002 is 355 lines / 2,736 words and covers every M3.1 decision branch. Complete
+coverage is required for Unique/Ambiguous/Unresolved; incomplete cases are Unknown, and provider
+disagreement is Conflict. Every candidate path and rejection is retained. Global bare-name uniqueness,
+sorted first-wins, inferred externality, and graph/2 semantic promotion are rejected. All workspace
+gates pass; only the two repository-designated slow probes are ignored.
+
+**Invalidated assumptions / negative memory:** lookup precedence and evidence authority cannot share
+one rank. Runtime observation is orthogonal to static binding. A single candidate under incomplete
+coverage is Unknown, not Unique; zero candidates are Unknown unless coverage is complete. Deterministic
+sorting does not resolve semantic ties.
+
+**Current recommendation/next actions:** implement M3.2 fact schemas and retained ownership exactly
+against ADR 0002, without beginning resolution rules or promoting capability manifests prematurely.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, restart, cache clear, or live-state
+activation applies.
+
+**Negative-memory status:** the accepted ADR is the durable corrective authority; graph/1 false-name
+resolution memory remains active. Search handles: `ADR 0002 scope graph`, `coverage outcome authority`,
+`all resolution paths`.
+
+**Signature:** Codex (GPT-5), M3.1 integration owner, terminal checkpoint, 2026-07-14.

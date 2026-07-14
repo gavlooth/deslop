@@ -1852,6 +1852,56 @@ Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolu
 files/modules/packages and optional compiler/LSP facts. Gate on duplicate-name, shadowing, aliasing, and
 incremental-file fixtures before any semantic refactor uses `resolved` edges.
 
+#### Active M3.1 execution plan — scope and resolution authority ADR
+
+Active hypothesis: M3 can avoid another false-resolution cycle only if the data model, resolution-path
+semantics, ambiguity rules, build-context identity, and evidence-authority precedence are frozen before
+implementation. A globally unique spelling must never be sufficient evidence.
+
+CONVERGENCE: write ADR 0002 with one complete decision table covering scope/name/reference identities,
+namespace separation, lexical and import path traversal, visibility/shadowing, all-candidate retention,
+unique/ambiguous/unresolved versus incomplete outcomes, dynamic/opaque constructs, build-target context,
+compiler/runtime evidence conflicts, and incremental invalidation. Include executable acceptance
+requirements that map directly to M3.2-M3.8. If every current graph/2 shortcut is explicitly classified
+as syntactic-only and the ADR leaves no authority-precedence branch undefined, M3.1 is done.
+
+Current approach: define versioned conceptual `ScopeGraph/1` and `ResolutionProjection/1` contracts over
+the retained M2 facts. Resolution paths preserve every traversed lexical/import/export/alias/glob/package
+edge, candidate endpoint, rank, viability, rejection reason, authority, and source fact. Only complete S2
+name-resolution coverage with one highest-precedence endpoint may be Unique; incomplete coverage is
+Unknown, never Unresolved. Compiler evidence outranks adapter resolution for its exact build context;
+runtime observations remain observed dynamic edges rather than overwriting static binding. Current
+graph/2 remains below this contract.
+
+Validation path: review ADR structure against ADR 0001, every M3 TODO item, M2 capability tiers, and
+current graph failure modes; run Markdown/whitespace/link/path checks and full workspace gates because
+the ADR becomes normative implementation input.
+
+Next checkpoint: accepted ADR 0002 with explicit schemas, invariants, outcome/authority tables,
+incremental invalidation, rejected alternatives, rollout, and numerical gold-gate requirements.
+
+Negative-memory constraints: never resolve a bare name from repository-global uniqueness; never discard
+ambiguous candidate paths or choose first/sorted winner; absence is Unresolved only under complete
+coverage; syntax query captures are not bindings; TypeScript/TSX dialect identity remains stored; runtime
+observation is not universal static proof; compiler/LSP facts must bind exact build context/version.
+
+Agent assignment: `/root` owns ADR 0002, M3.1 integration, and verification; no concurrent file edits
+are assigned.
+
+Current checkpoint (2026-07-14T02:43:00+02:00): ADR 0001 style and current graph/2 routing are audited.
+The existing graph intentionally labels non-containment edges Syntactic/Ambiguous, drops ambiguous
+candidate lists, and uses heuristic module/name keys; ADR 0002 must supersede these surfaces before M3
+can promote any capability.
+
+Terminal checkpoint (2026-07-14T02:46:28+02:00): M3.1 is complete. Accepted ADR 0002 freezes
+`deslop.scope-graph/1` and `deslop.resolution/1`, exact build-context identity, the scope/declaration/
+definition/binding/reference/import/export fact model, adapter-owned namespaces and lookup precedence,
+complete viable/rejected resolution paths, separate coverage and five terminal outcomes, evidence
+authority/conflict rules, module/re-export stitching, incremental invalidation, consumer gates, twelve
+executable verification requirements, rejected shortcuts, and M3 rollout. It explicitly keeps graph/2
+non-containment edges syntactic. The 355-line/2,736-word structural contract check and all workspace
+test/build/doc/clippy/fmt/diff gates pass. Next: M3.2 core scope-graph fact schemas and ownership.
+
 ### M4 — CFG, PST, PDG, and SDG
 
 Lower control flow per adapter; compute dominance/post-dominance and SESE/PST regions; add liveness,

@@ -357,7 +357,13 @@ reports, benchmark records, and work orders.
 
 ## M3 — Scope and project-name graph
 
-- [ ] M3.1 Write an ADR for scope, resolution paths, ambiguity, and authority precedence.
+- [x] M3.1 Write an ADR for scope, resolution paths, ambiguity, and authority precedence.
+  ADR 0002 accepts versioned `deslop.scope-graph/1` and `deslop.resolution/1` contracts with exact
+  build-context identity, language-declared scopes/namespaces/precedence, all viable/rejected candidate
+  paths, Complete/Partial/Unsupported/Failed coverage, Unique/Ambiguous/Unresolved/Unknown/Conflict
+  outcomes, separate lookup and evidence authority, import/export/re-export rules, incremental reverse
+  dependencies, consumer gates, adversarial verification, and graph/2 syntactic-only compatibility.
+  Structural ADR checks and every workspace gate pass.
 - [ ] M3.2 Model scopes, definitions, references, bindings, imports/exports, visibility, and shadowing.
 - [ ] M3.3 Implement per-language declarative resolution rules or an explicitly equivalent adapter.
 - [ ] M3.4 Store all candidate paths and unique/ambiguous/unresolved status; prohibit bare-name resolution.
