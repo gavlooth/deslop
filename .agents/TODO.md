@@ -300,7 +300,7 @@ reports, benchmark records, and work orders.
   families, a total Unicode/comment/operator lexical policy, file-incomplete recovery, exact
   macro/generated/unsafe policies, and `rust/tree-sitter-rust/0.24.2` dialect provenance. Its
   manifest honestly derives S1 while S2-S4 remain unknown. Valid/malformed goldens lock 161 CST
-  nodes, 110 token owners, 78 role assignments across 17 roles, query captures `[5,2,5,1,2,3]`,
+  nodes, 110 token owners, 90 role assignments across 17 roles, query captures `[5,2,5,1,2,3]`,
   six construct regions, and one exact `ERROR` fact, with one parse per file. The literal `*` raw
   token is now distinct from the terminal wildcard. All workspace gates pass.
 - [x] M2.7 Implement/repair JavaScript, TypeScript, and TSX adapters and golden fixtures.
@@ -344,8 +344,16 @@ reports, benchmark records, and work orders.
   construct support/payload matrices, construct counts and generated texts, syntax-only malformed
   recovery, contextual Clojure non-leakage, S1 ceilings with every S2-S4 capability unknown, and one
   parse per source. All workspace gates pass.
-- [ ] M2.DoD Every emitted fact declares adapter/version/capability/provenance, and no confirmed output
+- [x] M2.DoD Every emitted fact declares adapter/version/capability/provenance, and no confirmed output
   requires a higher tier than the adapter supplies.
+  Evidence: the joined seven-dialect DoD oracle walks 854 role facts, 536 token facts, 28 construct
+  facts, and 88 query captures through their exact node, raw grammar evidence, retained projection,
+  adapter schema `/2`, stored grammar dialect/version, and capability/policy authority. It locks 640
+  canonical-role assignments, four syntax-only analyzer findings with zero AnalyzerConfirmed output,
+  15 metric regions, and a 15-symbol/42-edge graph whose 27 non-containment edges have zero resolved
+  claims while S2-S4 remain unknown. The audit repaired Rust scoped/field and TypeScript member callee
+  role omissions, keeps all seven parses one-per-file, preserves M0/M1 DoD, and passes every workspace
+  gate.
 
 ## M3 — Scope and project-name graph
 

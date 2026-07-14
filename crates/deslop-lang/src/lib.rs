@@ -1923,7 +1923,7 @@ pub trait LangPack: Send + Sync {
     /// Versioned identity for the semantic hooks implemented by this adapter.
     /// Implementations must bump this value whenever hook behavior changes.
     fn adapter_schema(&self) -> &'static str {
-        "deslop-lang-adapter/1"
+        "deslop-lang-adapter/2"
     }
     fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest;
     fn query_pack(&self) -> LanguageQueryPack {
@@ -3609,6 +3609,16 @@ fn ecma_canonical_roles(node: Node<'_>, text: &str) -> CanonicalRoleSet {
         "identifier" | "property_identifier" | "private_property_identifier" => {
             vec![CanonicalRole::Expression, CanonicalRole::Read]
         }
+        "member_expression"
+            if node.parent().is_some_and(|parent| {
+                parent.kind() == "call_expression"
+                    && parent
+                        .child_by_field_name("function")
+                        .is_some_and(|function| function.id() == node.id())
+            }) =>
+        {
+            vec![CanonicalRole::Expression, CanonicalRole::Read]
+        }
         "string" | "number" | "true" | "false" | "null" | "undefined" | "template_string"
         | "regex" => vec![CanonicalRole::Expression, CanonicalRole::Literal],
         "jsx_element" | "jsx_self_closing_element" | "jsx_fragment" => {
@@ -4272,6 +4282,16 @@ fn rust_canonical_roles(node: Node<'_>, text: &str) -> CanonicalRoleSet {
             vec![CanonicalRole::Expression, CanonicalRole::Write]
         }
         "identifier" | "field_identifier" | "type_identifier" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Read]
+        }
+        "scoped_identifier" | "field_expression"
+            if node.parent().is_some_and(|parent| {
+                parent.kind() == "call_expression"
+                    && parent
+                        .child_by_field_name("function")
+                        .is_some_and(|function| function.id() == node.id())
+            }) =>
+        {
             vec![CanonicalRole::Expression, CanonicalRole::Read]
         }
         "integer_literal" | "float_literal" | "char_literal" | "string_literal"

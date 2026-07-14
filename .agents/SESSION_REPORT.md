@@ -8119,3 +8119,103 @@ constraints are now executable in the cross-adapter matrix. Search handles: `M2.
 `production adapter leakage matrix`, `21 source construct query authority`.
 
 **Signature:** Codex (GPT-5), M2.11 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2 definition-of-done active checkpoint — joined provenance and tier ceiling
+
+**Date/time:** 2026-07-14T02:35:00+02:00
+
+**Objective/target:** close M2 only with an executable joined proof that every emitted adapter fact
+has an auditable retained adapter/version/capability/provenance chain and that downstream confirmed
+outputs do not exceed the source adapter's S1 ceiling.
+
+**Changes:** planning/audit only. Opened a clean M2.DoD `jj` change, loaded relevant authority and
+partial-analysis memories, inspected the M0/M1 DoD integration style and all public adapter projection
+surfaces, and defined a seven-dialect joined oracle. No implementation or production policy changed.
+
+**Commands/checks run:** targeted Hindsight retrieval; TODO/plan/report and public projection/identity
+API reads; M0/M1 DoD test inspection; live seven-fixture CLI graph and scan JSON probes.
+
+**Results:** ACTIVE / UNVERIFIED. Current live graph is complete with 7 files, 15 symbols, 42 edges,
+15 structurally resolved containment edges, 27 syntactic edges, and zero resolved non-containment
+edges. Current scan is complete with four findings and zero AnalyzerConfirmed findings. Public
+projections retain analysis/path/schema/policy or query pack, and stored entries retain exact adapter,
+manifest, and grammar identity; the DoD test must join and verify that chain for every fact.
+
+**Invalidated assumptions / negative memory:** a projection ID hash is identity binding, not by itself
+human-auditable provenance. The closure proof must traverse projection → analysis/path → stored adapter
+identity/grammar → capability or policy declaration. Conversely, duplicating strings into every fact
+would add redundant payload without additional authority. Resolved containment is S1 structural
+ownership; resolved calls/imports/inheritance would require currently Unknown higher-tier semantics.
+
+**Current recommendation/next actions:** implement the joined M2 DoD integration test, run it first,
+then the unchanged M0/M1 gates and complete workspace verification.
+
+**Blockers/dependencies/restart:** Serena Rust symbols remain unavailable; targeted local APIs and
+compiler/runtime checks are the documented fallback. No functional blocker, dependency, migration,
+restart, or cache action applies.
+
+**Negative-memory status:** no new production failure yet. The projection-hash-versus-auditable-chain
+distinction is carried into the executable test. Search handles: `M2 DoD provenance chain`, `resolved
+non containment tier ceiling`, `adapter fact stored identity`.
+
+**Signature:** Codex (GPT-5), M2.DoD integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M2 definition-of-done terminal checkpoint — joined provenance and tier ceiling
+
+**Date/time:** 2026-07-14T02:40:16+02:00
+
+**Objective/target:** close the complete M2 language-adapter contract with an executable proof that
+every emitted fact is joined to exact adapter/version/capability/provenance and no confirmed consumer
+output exceeds the stored adapter tier.
+
+**Changes:** added `m2_definition_of_done.rs`, a seven-dialect retained-analysis integration gate that
+walks every canonical-role, lexical-token, construct-policy, and query-capture fact through its exact
+node/raw grammar evidence, projection schema/id/owner/path, stored adapter identity, grammar dialect
+and version, and capability/policy declaration. The first run found Rust call references captured as
+`scoped_identifier`/`field_expression` and TypeScript references captured as `member_expression` with
+no declared Expression/Read roles. Fixed the root mapping only for nodes occupying the exact
+`call_expression.function` field, updated local golden counts, and bumped the shared adapter contract
+from `/1` to `/2`. The gate also runs analyzer, metrics, and graph over the same analysis and enforces
+the S1 ceiling. Updated M2.6 evidence to the corrected Rust 90-role-assignment total.
+
+**Commands/checks run:** live seven-fixture scan/graph/metrics JSON probes; repeated focused M2 DoD
+localization; affected language/parse tests; unchanged M0/M1/M2 DoD integration gates; affected
+all-feature/all-target strict clippy, format, and diff checks; then `cargo test --workspace
+--all-features`; `cargo build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc
+--workspace --all-features --no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D
+warnings`; `cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. Seven exact dialects produce 854 canonical facts with 640 role assignments, 536
+lexical facts, 28 construct facts, and 88 query captures; every raw fact agrees with the retained node
+and every capture satisfies its declared roles. All manifests derive S1 and keep S2-S4 Unknown. The
+same analysis produces four findings with zero AnalyzerConfirmed claims, 15 metric regions, and a
+44-node graph containing 15 symbols and 42 edges; all 27 non-containment edges are non-resolved.
+Every file has exactly one parser invocation before and after all projections/consumers. M0 and M1
+numerical gates remain unchanged. All workspace gates pass; only the two repository-designated slow
+probes are ignored.
+
+**Invalidated assumptions / negative memory:** local language goldens and query compilation did not
+prove global query-capture/canonical-role consistency. The missing callee-composite roles survived
+M2.6/M2.7 because those goldens pinned each projection separately. Authority downgrade: a provided
+query family is not coherent until every emitted capture resolves to all declared canonical roles.
+Preferred alternative implemented: one joined DoD oracle plus context-specific callee roles; do not
+globally label scoped/member composites as reads because they also occur in type/non-call contexts.
+The behavior change requires adapter schema `/2`, so cached `/1` derived identities must be rebuilt.
+
+**Current recommendation/next actions:** begin M3.1 with the scope/name-resolution ADR. Preserve the
+M2 gate as the hard ceiling: no resolved non-containment output until M3 supplies explicit S2/S3
+capability and provenance.
+
+**Blockers/dependencies/restart:** no functional blocker or dependency change. Existing serialized or
+cached adapter-derived identities using `deslop-lang-adapter/1` must be regenerated; no service restart
+or migration applies to in-memory/current analyses.
+
+**Negative-memory status:** durable storage required for the separately-green-projections fallacy and
+context-specific callee-role fix. Search handles: `M2 DoD query role mismatch`, `scoped_identifier
+field_expression member_expression call function`, `adapter schema 2`.
+
+**Signature:** Codex (GPT-5), M2.DoD integration owner, terminal checkpoint, 2026-07-14.

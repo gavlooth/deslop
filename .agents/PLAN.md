@@ -1792,6 +1792,60 @@ Malformed files emit only their exact syntax-authority `ERROR`; near markers emi
 No production adapter policy changed, and all workspace gates pass. Next: audit M2.DoD independently
 against every emitted fact/projection and confirmed-output tier boundary.
 
+#### Active M2.DoD execution plan — joined adapter provenance and tier ceiling
+
+Active hypothesis: M2 can close without another production policy change if one joined integration
+oracle proves the complete owner chain from every role/token/construct/query fact through its retained
+projection, exact node, stored adapter identity, grammar dialect/version, capability/policy declaration,
+and analysis identity—and independently proves downstream output never claims unresolved S2/S3/S4
+authority.
+
+CONVERGENCE: build one seven-dialect production snapshot and evaluate all four adapter projection
+families. For every emitted role/token/construct/query capture, resolve its node in the same analysis,
+compare raw grammar evidence, verify the exact stored policy/capability authority and grammar-bound
+query identity, and lock aggregate counts. Then run analyzer/metrics/graph over that same analysis:
+all reports must be complete, AnalyzerConfirmed findings must have separate recorded external authority
+(none are expected in the closed fixture), and no non-containment graph edge may be Resolved while
+NameResolution/CallGraph remain Unknown. Exact one-parse ownership and full gates terminate M2.DoD.
+
+Current approach: add `crates/deslop-cli/tests/m2_definition_of_done.rs`, reusing the seven production
+adapter fixtures and public `deslop-parse` projection APIs. Treat projection retention plus stored
+identity as the declared provenance chain; do not duplicate adapter/version strings into every node
+record. Assert versioned projection/policy schemas, exact grammar dialects, S1 manifests, raw node
+agreement, construct/query declaration authority, capture-role agreement, and downstream tier ceiling.
+
+Validation path: focused M2 DoD integration test; affected CLI/parse/analyzer/metrics/graph tests and
+strict clippy; unchanged M0/M1 DoD tests; then full workspace test/build/doc/clippy/fmt/diff gates.
+
+Next checkpoint: one numerical joined proof covers all seven dialects and all emitted fact families,
+with no higher-tier confirmed output and no reparse.
+
+Negative-memory constraints: a projection hash alone is not an auditable declaration, so the test must
+walk the stored identity/policy chain; query captures remain syntax evidence; graph containment may be
+structurally Resolved at S1 but non-containment resolution requires unavailable S2/S3 authority;
+AnalyzerConfirmed is permissible only with separately recorded external capability, never inferred
+from a syntax adapter; TypeScript and TSX dialect provenance remains distinct.
+
+Agent assignment: `/root` owns the M2.DoD audit, integration test, and verification; no concurrent file
+edits are assigned.
+
+Current checkpoint (2026-07-14T02:35:00+02:00): read-only live probes over the seven fixtures report a
+complete 15-symbol/42-edge graph with 27 syntactic edges and zero resolved non-containment edges; scan
+reports four findings and zero AnalyzerConfirmed findings. The stored projection APIs expose enough
+identity and policy data for the joined proof; implementation remains unverified.
+
+Terminal checkpoint (2026-07-14T02:40:16+02:00): M2.DoD and M2 are complete. The joined public-surface
+oracle binds all 854 canonical facts / 640 role assignments, 536 lexical facts, 28 construct facts,
+and 88 query captures to their retained projection, exact raw node, stored adapter schema `/2`, grammar
+dialect/version, and capability or policy authority. It found a real query-role mismatch: Rust
+`scoped_identifier`/`field_expression` and ECMAScript `member_expression` call-function captures lacked
+the declared Expression/Read roles. The root fix assigns those roles only in the exact
+`call_expression.function` context and bumps the adapter contract version. Analyzer emits four findings
+and zero AnalyzerConfirmed claims; metrics emits 15 regions; the 15-symbol/42-edge graph has 27
+non-containment edges and zero resolved non-containment claims while every adapter remains S1 with
+S2-S4 Unknown. All seven files parse once, unchanged M0/M1 DoD gates pass, and every workspace gate
+passes. Next: M3.1 scope/resolution ADR.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link
