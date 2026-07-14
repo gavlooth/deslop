@@ -390,7 +390,16 @@ reports, benchmark records, and work orders.
   clean documents: unrelated edits reuse 5/rebuild 0 results, export additions reuse 1/rebuild 5, and a
   newly matching module rebuilds the formerly unresolved reference. All workspace gates pass; production
   adapter semantic capabilities remain unchanged.
-- [ ] M3.6 Add optional compiler/LSP semantic facts with higher authority and conflict reporting.
+- [x] M3.6 Add optional compiler/LSP semantic facts with higher authority and conflict reporting.
+  `deslop.language-adapter-capabilities/2` distinguishes LanguageServer from Compiler authority, while
+  strict `deslop.semantic-resolution-facts/1` documents pin provider executable/configuration/project-
+  model/result artifacts, graph/build identity, coverage, references, endpoints, and diagnostics.
+  Resolution retains adapter and every provider conclusion/path: compiler outranks complete LSP, complete
+  LSP outranks adapter, lower disagreement is Conflict with a preferred diagnostic, equal-authority
+  disagreement has no winner, and incomplete facts cannot authorize or conflict. Semantic artifact changes
+  rebuild exactly their references (4 reused/1 rebuilt for one result artifact; 3/2 for shared provider
+  configuration) with byte-identical clean successors. All workspace gates pass; runtime evidence remains
+  orthogonal and production adapter authority is unchanged.
 - [ ] M3.7 Add duplicate-name, nested scope, wildcard/alias import, re-export, dynamic, and unresolved fixtures.
 - [ ] M3.8 Measure resolution precision/recall and incremental file-isolation behavior.
 - [ ] M3.DoD Meet the frozen gold-corpus resolution gate and block semantic recipes wherever authority is

@@ -17,7 +17,9 @@ use crate::{
     DynamicBoundaryTraversal, FactCoverage, NamespaceReachability, ProjectionId,
     ResolutionTraversal, ResolutionTraversalEngine, ResolutionTraversalError, RuleSectionGap,
     ScopeFactData, ScopeFactEvidence, ScopeFactId, ScopeFactKey, ScopeFactKind,
-    ScopeGraphProjection, TimingObservation, TraversalCandidate, VisibilityObservation,
+    ScopeGraphProjection, SemanticProvider, SemanticResolutionFact, SemanticResolutionFactDocument,
+    SemanticResolutionFactError, SemanticResolutionFactKey, SemanticResolutionFacts,
+    TimingObservation, TraversalCandidate, VisibilityObservation,
 };
 
 pub const RESOLUTION_SCHEMA: &str = "deslop.resolution/1";
@@ -131,6 +133,145 @@ pub struct ResolutionCoverageEvidence {
     reasons: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "key", rename_all = "kebab-case")]
+pub enum ResolutionConclusionSource {
+    Adapter,
+    Semantic(SemanticResolutionFactKey),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolutionConclusion {
+    source: ResolutionConclusionSource,
+    authority: Option<CapabilityAuthority>,
+    status: ResolutionStatus,
+    endpoints: Vec<ResolutionEndpoint>,
+    coverage: ResolutionCoverageEvidence,
+}
+
+impl ResolutionConclusion {
+    pub fn source(&self) -> &ResolutionConclusionSource {
+        &self.source
+    }
+
+    pub fn authority(&self) -> Option<CapabilityAuthority> {
+        self.authority
+    }
+
+    pub fn status(&self) -> ResolutionStatus {
+        self.status
+    }
+
+    pub fn endpoints(&self) -> &[ResolutionEndpoint] {
+        &self.endpoints
+    }
+
+    pub fn coverage(&self) -> &ResolutionCoverageEvidence {
+        &self.coverage
+    }
+
+    fn validate(&self) -> Result<(), ResolutionProjectionError> {
+        self.coverage.validate()?;
+        if self.endpoints.iter().collect::<BTreeSet<_>>().len() != self.endpoints.len() {
+            return Err(ResolutionProjectionError::Invalid(
+                "resolution conclusion contains duplicate endpoints".into(),
+            ));
+        }
+        if self.coverage.status == FactCoverage::Complete
+            && self.authority.is_none()
+            && self.status != ResolutionStatus::Conflict
+        {
+            return Err(ResolutionProjectionError::Invalid(
+                "complete resolution conclusion requires evidence authority".into(),
+            ));
+        }
+        if self.authority == Some(CapabilityAuthority::RuntimeVerification) {
+            return Err(ResolutionProjectionError::Invalid(
+                "runtime verification cannot enter a static resolution conclusion".into(),
+            ));
+        }
+        if self.coverage.status == FactCoverage::Complete
+            && self.authority == Some(CapabilityAuthority::Syntax)
+        {
+            return Err(ResolutionProjectionError::Invalid(
+                "syntax authority cannot assert a terminal binding conclusion".into(),
+            ));
+        }
+        match (self.coverage.status, self.status, self.endpoints.len()) {
+            (FactCoverage::Complete, ResolutionStatus::Unique, 1)
+            | (FactCoverage::Complete, ResolutionStatus::Unresolved, 0) => Ok(()),
+            (FactCoverage::Complete, ResolutionStatus::Ambiguous, count) if count > 1 => Ok(()),
+            (FactCoverage::Complete, ResolutionStatus::Conflict, _)
+                if self.source == ResolutionConclusionSource::Adapter =>
+            {
+                Ok(())
+            }
+            (FactCoverage::Complete, ResolutionStatus::Unknown | ResolutionStatus::Conflict, _) => {
+                Err(ResolutionProjectionError::Invalid(
+                    "one provider conclusion cannot be complete unknown/conflict evidence".into(),
+                ))
+            }
+            (FactCoverage::Complete, _, _) => Err(ResolutionProjectionError::Invalid(
+                "resolution conclusion endpoint cardinality contradicts its status".into(),
+            )),
+            (_, ResolutionStatus::Unknown, _) => Ok(()),
+            (_, _, _) => Err(ResolutionProjectionError::Invalid(
+                "incomplete resolution conclusion must remain unknown".into(),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreferredResolutionConclusion {
+    authority: CapabilityAuthority,
+    status: ResolutionStatus,
+    endpoints: Vec<ResolutionEndpoint>,
+    sources: Vec<ResolutionConclusionSource>,
+}
+
+impl PreferredResolutionConclusion {
+    pub fn authority(&self) -> CapabilityAuthority {
+        self.authority
+    }
+
+    pub fn status(&self) -> ResolutionStatus {
+        self.status
+    }
+
+    pub fn endpoints(&self) -> &[ResolutionEndpoint] {
+        &self.endpoints
+    }
+
+    pub fn sources(&self) -> &[ResolutionConclusionSource] {
+        &self.sources
+    }
+
+    fn validate(&self) -> Result<(), ResolutionProjectionError> {
+        if self.status == ResolutionStatus::Unknown || self.status == ResolutionStatus::Conflict {
+            return Err(ResolutionProjectionError::Invalid(
+                "preferred conclusion must be terminal and non-conflicting".into(),
+            ));
+        }
+        if self.sources.is_empty()
+            || self.sources.iter().collect::<BTreeSet<_>>().len() != self.sources.len()
+        {
+            return Err(ResolutionProjectionError::Invalid(
+                "preferred conclusion requires distinct evidence sources".into(),
+            ));
+        }
+        match (self.status, self.endpoints.len()) {
+            (ResolutionStatus::Unique, 1) | (ResolutionStatus::Unresolved, 0) => Ok(()),
+            (ResolutionStatus::Ambiguous, count) if count > 1 => Ok(()),
+            _ => Err(ResolutionProjectionError::Invalid(
+                "preferred conclusion endpoint cardinality contradicts its status".into(),
+            )),
+        }
+    }
+}
+
 impl ResolutionCoverageEvidence {
     pub fn status(&self) -> FactCoverage {
         self.status
@@ -239,6 +380,10 @@ pub enum ResolutionCheckKind {
     Shadowing,
     ImportTarget,
     ExportSetCoverage,
+    ProviderIdentity,
+    ProviderArtifact,
+    ProviderProjectModel,
+    EvidenceAuthority,
     DynamicBoundary,
 }
 
@@ -339,6 +484,7 @@ pub struct ResolutionPath {
     rejection_reasons: Vec<ResolutionRejectionReason>,
     checks: Vec<ResolutionCheck>,
     source_facts: Vec<ScopeFactKey>,
+    source_provider_facts: Vec<SemanticResolutionFactKey>,
     dynamic_boundaries: Vec<ScopeFactKey>,
     authorities: Vec<CapabilityAuthority>,
     coverage: ResolutionCoverageEvidence,
@@ -377,6 +523,10 @@ impl ResolutionPath {
         &self.source_facts
     }
 
+    pub fn source_provider_facts(&self) -> &[SemanticResolutionFactKey] {
+        &self.source_provider_facts
+    }
+
     pub fn dynamic_boundaries(&self) -> &[ScopeFactKey] {
         &self.dynamic_boundaries
     }
@@ -407,6 +557,7 @@ impl ResolutionPath {
             ));
         }
         if self.precedence.is_empty()
+            && self.source_provider_facts.is_empty()
             && !self.checks.iter().any(|check| {
                 check.kind == ResolutionCheckKind::LookupPrecedence
                     && check.state == ResolutionCheckState::Unknown
@@ -434,6 +585,17 @@ impl ResolutionPath {
             ));
         }
         validate_unique_keys("resolution path source facts", &self.source_facts)?;
+        if self
+            .source_provider_facts
+            .iter()
+            .collect::<BTreeSet<_>>()
+            .len()
+            != self.source_provider_facts.len()
+        {
+            return Err(ResolutionProjectionError::Invalid(
+                "resolution path contains duplicate provider facts".into(),
+            ));
+        }
         validate_unique_keys(
             "resolution path dynamic boundaries",
             &self.dynamic_boundaries,
@@ -557,6 +719,7 @@ struct ResolutionPathPayload<'a> {
     rejection_reasons: &'a [ResolutionRejectionReason],
     checks: &'a [ResolutionCheck],
     source_facts: &'a [ScopeFactKey],
+    source_provider_facts: &'a [SemanticResolutionFactKey],
     dynamic_boundaries: &'a [ScopeFactKey],
     authorities: &'a [CapabilityAuthority],
     coverage: &'a ResolutionCoverageEvidence,
@@ -572,6 +735,7 @@ impl<'a> From<&'a ResolutionPath> for ResolutionPathPayload<'a> {
             rejection_reasons: &path.rejection_reasons,
             checks: &path.checks,
             source_facts: &path.source_facts,
+            source_provider_facts: &path.source_provider_facts,
             dynamic_boundaries: &path.dynamic_boundaries,
             authorities: &path.authorities,
             coverage: &path.coverage,
@@ -589,8 +753,11 @@ pub struct ResolutionResult {
     coverage: ResolutionCoverageEvidence,
     status: ResolutionStatus,
     authority: Option<CapabilityAuthority>,
+    conclusions: Vec<ResolutionConclusion>,
+    preferred: Option<PreferredResolutionConclusion>,
     paths: Vec<ResolutionPath>,
     source_facts: Vec<ScopeFactKey>,
+    source_provider_facts: Vec<SemanticResolutionFactKey>,
     dynamic_boundaries: Vec<ScopeFactKey>,
     diagnostics: Vec<String>,
 }
@@ -624,12 +791,24 @@ impl ResolutionResult {
         self.authority
     }
 
+    pub fn conclusions(&self) -> &[ResolutionConclusion] {
+        &self.conclusions
+    }
+
+    pub fn preferred(&self) -> Option<&PreferredResolutionConclusion> {
+        self.preferred.as_ref()
+    }
+
     pub fn paths(&self) -> &[ResolutionPath] {
         &self.paths
     }
 
     pub fn source_facts(&self) -> &[ScopeFactKey] {
         &self.source_facts
+    }
+
+    pub fn source_provider_facts(&self) -> &[SemanticResolutionFactKey] {
+        &self.source_provider_facts
     }
 
     pub fn dynamic_boundaries(&self) -> &[ScopeFactKey] {
@@ -654,6 +833,17 @@ impl ResolutionResult {
         validate_key(self.key.as_str(), "rr1_")?;
         self.coverage.validate()?;
         validate_unique_keys("resolution result source facts", &self.source_facts)?;
+        if self
+            .source_provider_facts
+            .iter()
+            .collect::<BTreeSet<_>>()
+            .len()
+            != self.source_provider_facts.len()
+        {
+            return Err(ResolutionProjectionError::Invalid(
+                "resolution result contains duplicate provider facts".into(),
+            ));
+        }
         validate_unique_keys(
             "resolution result dynamic boundaries",
             &self.dynamic_boundaries,
@@ -685,15 +875,33 @@ impl ResolutionResult {
                     ));
                 }
             }
+            for key in path.source_provider_facts() {
+                if !self.source_provider_facts.contains(key) {
+                    return Err(ResolutionProjectionError::Invalid(
+                        "resolution path provider fact is absent from its result".into(),
+                    ));
+                }
+            }
         }
         if self.coverage.status == FactCoverage::Complete
-            && self
-                .paths
-                .iter()
-                .any(|path| path.coverage.status != FactCoverage::Complete)
+            && self.preferred.as_ref().is_some_and(|preferred| {
+                self.paths.iter().any(|path| {
+                    let supplies_preferred =
+                        preferred.sources().iter().any(|source| match source {
+                            ResolutionConclusionSource::Adapter => {
+                                path.source_provider_facts().is_empty()
+                            }
+                            ResolutionConclusionSource::Semantic(key) => {
+                                path.source_provider_facts().contains(key)
+                            }
+                        });
+                    supplies_preferred && path.coverage.status != FactCoverage::Complete
+                })
+            })
         {
             return Err(ResolutionProjectionError::Invalid(
-                "complete resolution result contains an incomplete candidate path".into(),
+                "complete resolution result contains an incomplete candidate path for its preferred conclusion"
+                    .into(),
             ));
         }
         if !self.source_facts.contains(&self.reference)
@@ -708,14 +916,52 @@ impl ResolutionResult {
                 "resolution result reference evidence is not name-resolution evidence".into(),
             ));
         }
-        if self.authority != self.reference_evidence.authority {
-            return Err(ResolutionProjectionError::Invalid(
-                "resolution result authority differs from reference evidence".into(),
-            ));
-        }
-        if self.coverage.status == FactCoverage::Complete && self.authority.is_none() {
+        if self.coverage.status == FactCoverage::Complete
+            && self.authority.is_none()
+            && self.status != ResolutionStatus::Conflict
+        {
             return Err(ResolutionProjectionError::Invalid(
                 "complete resolution coverage requires explicit evidence authority".into(),
+            ));
+        }
+        if self.conclusions.is_empty() {
+            return Err(ResolutionProjectionError::Invalid(
+                "resolution result contains no provider conclusions".into(),
+            ));
+        }
+        let mut sources = BTreeSet::new();
+        let mut adapter_conclusion = None;
+        for conclusion in &self.conclusions {
+            conclusion.validate()?;
+            if !sources.insert(conclusion.source()) {
+                return Err(ResolutionProjectionError::Invalid(
+                    "resolution result contains duplicate conclusion sources".into(),
+                ));
+            }
+            if conclusion.source() == &ResolutionConclusionSource::Adapter {
+                adapter_conclusion = Some(conclusion);
+            }
+        }
+        let adapter_conclusion = adapter_conclusion.ok_or_else(|| {
+            ResolutionProjectionError::Invalid(
+                "resolution result omits its adapter conclusion".into(),
+            )
+        })?;
+        if adapter_conclusion.authority() != self.reference_evidence.authority {
+            return Err(ResolutionProjectionError::Invalid(
+                "adapter conclusion authority differs from reference evidence".into(),
+            ));
+        }
+        if let Some(preferred) = &self.preferred {
+            preferred.validate()?;
+            if self.authority != Some(preferred.authority()) {
+                return Err(ResolutionProjectionError::Invalid(
+                    "resolution result authority differs from its preferred conclusion".into(),
+                ));
+            }
+        } else if self.authority.is_some() {
+            return Err(ResolutionProjectionError::Invalid(
+                "resolution result without a preferred conclusion cannot claim authority".into(),
             ));
         }
         validate_status(self)?;
@@ -741,8 +987,11 @@ struct ResolutionResultPayload<'a> {
     coverage: &'a ResolutionCoverageEvidence,
     status: ResolutionStatus,
     authority: Option<CapabilityAuthority>,
+    conclusions: &'a [ResolutionConclusion],
+    preferred: &'a Option<PreferredResolutionConclusion>,
     paths: &'a [ResolutionPath],
     source_facts: &'a [ScopeFactKey],
+    source_provider_facts: &'a [SemanticResolutionFactKey],
     dynamic_boundaries: &'a [ScopeFactKey],
     diagnostics: &'a [String],
 }
@@ -756,8 +1005,11 @@ impl<'a> From<&'a ResolutionResult> for ResolutionResultPayload<'a> {
             coverage: &result.coverage,
             status: result.status,
             authority: result.authority,
+            conclusions: &result.conclusions,
+            preferred: &result.preferred,
             paths: &result.paths,
             source_facts: &result.source_facts,
+            source_provider_facts: &result.source_provider_facts,
             dynamic_boundaries: &result.dynamic_boundaries,
             diagnostics: &result.diagnostics,
         }
@@ -790,6 +1042,7 @@ pub struct ResolutionDocument {
     build_context: crate::BuildContextId,
     fact_policy: crate::ScopeFactPolicyId,
     resolution_policy: ResolutionPolicyId,
+    semantic_facts: SemanticResolutionFactDocument,
     results: Vec<ResolutionResult>,
 }
 
@@ -822,6 +1075,10 @@ impl ResolutionDocument {
         &self.resolution_policy
     }
 
+    pub fn semantic_facts(&self) -> &SemanticResolutionFactDocument {
+        &self.semantic_facts
+    }
+
     pub fn results(&self) -> &[ResolutionResult] {
         &self.results
     }
@@ -834,8 +1091,33 @@ impl ResolutionDocument {
             )));
         }
         validate_text("resolution analysis identity", &self.analysis_id)?;
+        self.semantic_facts
+            .validate()
+            .map_err(|error| ResolutionProjectionError::Invalid(error.to_string()))?;
+        if self.semantic_facts.analysis_id() != self.analysis_id
+            || self.semantic_facts.scope_graph_id() != &self.scope_graph_id
+            || self.semantic_facts.build_context() != &self.build_context
+        {
+            return Err(ResolutionProjectionError::Invalid(
+                "resolution semantic facts belong to another analysis, graph, or build context"
+                    .into(),
+            ));
+        }
         let mut references = BTreeSet::new();
         let mut keys = BTreeSet::new();
+        let semantic_facts = self
+            .semantic_facts
+            .facts()
+            .iter()
+            .map(|fact| (fact.key(), fact))
+            .collect::<BTreeMap<_, _>>();
+        let semantic_providers = self
+            .semantic_facts
+            .providers()
+            .iter()
+            .map(|provider| (provider.key(), provider))
+            .collect::<BTreeMap<_, _>>();
+        let mut used_semantic_facts = BTreeSet::new();
         for result in &self.results {
             result.validate()?;
             if !references.insert(result.reference()) {
@@ -848,6 +1130,138 @@ impl ResolutionDocument {
                     "resolution document contains duplicate result keys".into(),
                 ));
             }
+            if result
+                .conclusions()
+                .iter()
+                .filter(|conclusion| conclusion.source() == &ResolutionConclusionSource::Adapter)
+                .count()
+                != 1
+            {
+                return Err(ResolutionProjectionError::Invalid(
+                    "resolution result must retain exactly one adapter conclusion".into(),
+                ));
+            }
+            for key in result.source_provider_facts() {
+                let fact = semantic_facts.get(key).ok_or_else(|| {
+                    ResolutionProjectionError::Invalid(
+                        "resolution result references an absent semantic fact".into(),
+                    )
+                })?;
+                if fact.reference() != result.reference() {
+                    return Err(ResolutionProjectionError::Invalid(
+                        "semantic fact is attached to the wrong resolution reference".into(),
+                    ));
+                }
+                used_semantic_facts.insert(key);
+            }
+            for conclusion in result.conclusions() {
+                if let ResolutionConclusionSource::Semantic(key) = conclusion.source() {
+                    if !result.source_provider_facts().contains(key) {
+                        return Err(ResolutionProjectionError::Invalid(
+                            "semantic conclusion omits its retained provider fact".into(),
+                        ));
+                    }
+                    let fact = semantic_facts.get(key).ok_or_else(|| {
+                        ResolutionProjectionError::Invalid(
+                            "semantic conclusion references an absent fact".into(),
+                        )
+                    })?;
+                    let provider = semantic_providers.get(fact.provider()).ok_or_else(|| {
+                        ResolutionProjectionError::Invalid(
+                            "semantic conclusion references an absent provider".into(),
+                        )
+                    })?;
+                    let expected_coverage = semantic_conclusion_coverage(provider, fact)?;
+                    let expected_status = if expected_coverage.status == FactCoverage::Complete {
+                        fact.status()
+                    } else {
+                        ResolutionStatus::Unknown
+                    };
+                    if conclusion.authority() != Some(provider.authority())
+                        || conclusion.status() != expected_status
+                        || conclusion.endpoints() != fact.endpoints()
+                        || conclusion.coverage() != &expected_coverage
+                    {
+                        return Err(ResolutionProjectionError::Invalid(
+                            "semantic conclusion contradicts its pinned provider fact".into(),
+                        ));
+                    }
+                }
+            }
+            let mut provider_paths =
+                BTreeMap::<&SemanticResolutionFactKey, Vec<&ResolutionPath>>::new();
+            for path in result.paths() {
+                if path.source_provider_facts().is_empty() {
+                    continue;
+                }
+                if path.source_provider_facts().len() != 1 {
+                    return Err(ResolutionProjectionError::Invalid(
+                        "one provider path must retain exactly one semantic fact".into(),
+                    ));
+                }
+                let key = &path.source_provider_facts()[0];
+                let fact = semantic_facts.get(key).ok_or_else(|| {
+                    ResolutionProjectionError::Invalid(
+                        "provider path references an absent semantic fact".into(),
+                    )
+                })?;
+                let provider = semantic_providers.get(fact.provider()).ok_or_else(|| {
+                    ResolutionProjectionError::Invalid(
+                        "provider path references an absent semantic provider".into(),
+                    )
+                })?;
+                let expected_coverage = semantic_conclusion_coverage(provider, fact)?;
+                if path.authorities() != [provider.authority()]
+                    || path.coverage() != &expected_coverage
+                    || !path
+                        .edges()
+                        .iter()
+                        .any(|edge| edge.kind() == ResolutionPathEdgeKind::ExternalProvider)
+                {
+                    return Err(ResolutionProjectionError::Invalid(
+                        "provider path contradicts its pinned semantic fact".into(),
+                    ));
+                }
+                if expected_coverage.status == FactCoverage::Complete {
+                    if path.viability() == ResolutionPathViability::Unknown {
+                        return Err(ResolutionProjectionError::Invalid(
+                            "complete provider fact produced an unknown path".into(),
+                        ));
+                    }
+                } else if path.viability() != ResolutionPathViability::Unknown {
+                    return Err(ResolutionProjectionError::Invalid(
+                        "incomplete provider fact produced a terminal path".into(),
+                    ));
+                }
+                provider_paths.entry(key).or_default().push(path);
+            }
+            for key in result.source_provider_facts() {
+                let fact = semantic_facts[key];
+                let paths = provider_paths.get(key).ok_or_else(|| {
+                    ResolutionProjectionError::Invalid(
+                        "semantic fact has no retained provider path".into(),
+                    )
+                })?;
+                let actual = paths
+                    .iter()
+                    .map(|path| path.endpoint().cloned())
+                    .collect::<BTreeSet<_>>();
+                let expected = if fact.endpoints().is_empty() {
+                    BTreeSet::from([None])
+                } else {
+                    fact.endpoints().iter().cloned().map(Some).collect()
+                };
+                if actual != expected || paths.len() != expected.len() {
+                    return Err(ResolutionProjectionError::Invalid(
+                        "provider paths omit or invent semantic endpoints".into(),
+                    ));
+                }
+            }
+        }
+        if used_semantic_facts.len() != semantic_facts.len() {
+            return Err(ResolutionProjectionError::Invalid(
+                "resolution document omits one or more semantic facts".into(),
+            ));
         }
         Ok(())
     }
@@ -863,6 +1277,7 @@ struct ResolutionDocumentWire {
     build_context: crate::BuildContextId,
     fact_policy: crate::ScopeFactPolicyId,
     resolution_policy: ResolutionPolicyId,
+    semantic_facts: SemanticResolutionFactDocument,
     results: Vec<ResolutionResult>,
 }
 
@@ -880,6 +1295,7 @@ impl<'de> Deserialize<'de> for ResolutionDocument {
             build_context: wire.build_context,
             fact_policy: wire.fact_policy,
             resolution_policy: wire.resolution_policy,
+            semantic_facts: wire.semantic_facts,
             results: wire.results,
         };
         document.validate().map_err(D::Error::custom)?;
@@ -891,6 +1307,7 @@ impl<'de> Deserialize<'de> for ResolutionDocument {
 pub struct ResolutionProjection {
     id: ProjectionId,
     scope_graph: Arc<ScopeGraphProjection>,
+    semantic_facts: Arc<SemanticResolutionFacts>,
     resolution_policy: ResolutionPolicyId,
     results: Box<[ResolutionResultRecord]>,
     document: ResolutionDocument,
@@ -903,6 +1320,7 @@ pub enum ResolutionInvalidationReason {
     SourceFactChanged,
     ReachableScopeChanged,
     MatchingModuleAdded,
+    SemanticFactChanged,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -966,6 +1384,16 @@ impl ResolutionProjection {
         scope_graph: Arc<ScopeGraphProjection>,
         resolution_policy: ResolutionPolicyId,
     ) -> Result<Self, ResolutionProjectionError> {
+        let semantic_facts = Arc::new(SemanticResolutionFacts::empty(Arc::clone(&scope_graph))?);
+        Self::build_with_semantic_facts(scope_graph, resolution_policy, semantic_facts)
+    }
+
+    pub fn build_with_semantic_facts(
+        scope_graph: Arc<ScopeGraphProjection>,
+        resolution_policy: ResolutionPolicyId,
+        semantic_facts: Arc<SemanticResolutionFacts>,
+    ) -> Result<Self, ResolutionProjectionError> {
+        semantic_facts.validate_against(&scope_graph)?;
         let engine = ResolutionTraversalEngine::new(&scope_graph)?;
         let modules = ModuleStitchIndex::new(&scope_graph)?;
         let mut wires = Vec::new();
@@ -974,14 +1402,20 @@ impl ResolutionProjection {
                 continue;
             }
             let traversal = engine.traverse_reference(fact.id())?;
-            wires.push(build_result(&scope_graph, &modules, &traversal)?);
+            wires.push(build_result(
+                &scope_graph,
+                &modules,
+                &semantic_facts,
+                &traversal,
+            )?);
         }
-        Self::from_wires(scope_graph, resolution_policy, wires)
+        Self::from_wires(scope_graph, resolution_policy, semantic_facts, wires)
     }
 
     fn from_wires(
         scope_graph: Arc<ScopeGraphProjection>,
         resolution_policy: ResolutionPolicyId,
+        semantic_facts: Arc<SemanticResolutionFacts>,
         wires: Vec<ResolutionResult>,
     ) -> Result<Self, ResolutionProjectionError> {
         let owner = NEXT_RESOLUTION_OWNER
@@ -993,6 +1427,7 @@ impl ResolutionProjection {
             })?;
         let mut result_identity = Vec::new();
         result_identity.extend_from_slice(scope_graph.id().as_str().as_bytes());
+        result_identity.extend_from_slice(semantic_facts.id().as_str().as_bytes());
         for wire in &wires {
             result_identity.extend_from_slice(&(wire.key().as_str().len() as u64).to_le_bytes());
             result_identity.extend_from_slice(wire.key().as_str().as_bytes());
@@ -1013,6 +1448,7 @@ impl ResolutionProjection {
             build_context: scope_graph.build_context().clone(),
             fact_policy: scope_graph.fact_policy().clone(),
             resolution_policy: resolution_policy.clone(),
+            semantic_facts: semantic_facts.document().clone(),
             results: wires.clone(),
         };
         document.validate()?;
@@ -1035,6 +1471,7 @@ impl ResolutionProjection {
         Ok(Self {
             id,
             scope_graph,
+            semantic_facts,
             resolution_policy,
             results,
             document,
@@ -1047,7 +1484,34 @@ impl ResolutionProjection {
         scope_graph: Arc<ScopeGraphProjection>,
         resolution_policy: ResolutionPolicyId,
     ) -> Result<ResolutionProjectionUpdate, ResolutionProjectionError> {
-        build_resolution_successor(Arc::clone(self), scope_graph, resolution_policy)
+        if !self.semantic_facts.facts().is_empty() {
+            return Err(ResolutionProjectionError::Invalid(
+                "a resolution projection with semantic facts requires successor_with_semantic_facts"
+                    .into(),
+            ));
+        }
+        let semantic_facts = Arc::new(SemanticResolutionFacts::empty(Arc::clone(&scope_graph))?);
+        build_resolution_successor(
+            Arc::clone(self),
+            scope_graph,
+            resolution_policy,
+            semantic_facts,
+        )
+    }
+
+    pub fn successor_with_semantic_facts(
+        self: &Arc<Self>,
+        scope_graph: Arc<ScopeGraphProjection>,
+        resolution_policy: ResolutionPolicyId,
+        semantic_facts: Arc<SemanticResolutionFacts>,
+    ) -> Result<ResolutionProjectionUpdate, ResolutionProjectionError> {
+        semantic_facts.validate_against(&scope_graph)?;
+        build_resolution_successor(
+            Arc::clone(self),
+            scope_graph,
+            resolution_policy,
+            semantic_facts,
+        )
     }
 
     pub fn schema(&self) -> &'static str {
@@ -1064,6 +1528,10 @@ impl ResolutionProjection {
 
     pub fn resolution_policy(&self) -> &ResolutionPolicyId {
         &self.resolution_policy
+    }
+
+    pub fn semantic_facts(&self) -> &Arc<SemanticResolutionFacts> {
+        &self.semantic_facts
     }
 
     pub fn results(&self) -> &[ResolutionResultRecord] {
@@ -1113,6 +1581,12 @@ impl Error for ResolutionProjectionError {}
 impl From<ResolutionTraversalError> for ResolutionProjectionError {
     fn from(error: ResolutionTraversalError) -> Self {
         Self::Traversal(error.to_string())
+    }
+}
+
+impl From<SemanticResolutionFactError> for ResolutionProjectionError {
+    fn from(error: SemanticResolutionFactError) -> Self {
+        Self::Invalid(error.to_string())
     }
 }
 
@@ -1344,6 +1818,7 @@ fn build_resolution_successor(
     previous: Arc<ResolutionProjection>,
     scope_graph: Arc<ScopeGraphProjection>,
     resolution_policy: ResolutionPolicyId,
+    semantic_facts: Arc<SemanticResolutionFacts>,
 ) -> Result<ResolutionProjectionUpdate, ResolutionProjectionError> {
     if previous.scope_graph.analysis().snapshot().repository()
         != scope_graph.analysis().snapshot().repository()
@@ -1410,7 +1885,12 @@ fn build_resolution_successor(
     for reference in current_references {
         let Some(old) = previous_results.get(reference.key()).copied() else {
             let traversal = engine.traverse_reference(reference.id())?;
-            wires.push(build_result(&scope_graph, &modules, &traversal)?);
+            wires.push(build_result(
+                &scope_graph,
+                &modules,
+                &semantic_facts,
+                &traversal,
+            )?);
             added.push(reference.key().clone());
             continue;
         };
@@ -1446,12 +1926,29 @@ fn build_resolution_successor(
         }) {
             reasons.insert(ResolutionInvalidationReason::MatchingModuleAdded);
         }
+        let current_provider_facts = semantic_facts
+            .facts_for_reference(reference.key())
+            .map(|fact| fact.key().clone())
+            .collect::<BTreeSet<_>>();
+        let previous_provider_facts = old
+            .source_provider_facts()
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        if current_provider_facts != previous_provider_facts {
+            reasons.insert(ResolutionInvalidationReason::SemanticFactChanged);
+        }
         if reasons.is_empty() {
             wires.push(old.clone());
             reused.push(old.key().clone());
         } else {
             let traversal = engine.traverse_reference(reference.id())?;
-            wires.push(build_result(&scope_graph, &modules, &traversal)?);
+            wires.push(build_result(
+                &scope_graph,
+                &modules,
+                &semantic_facts,
+                &traversal,
+            )?);
             rebuilt.push(ResolutionInvalidation {
                 reference: reference.key().clone(),
                 reasons: reasons.into_iter().collect(),
@@ -1461,6 +1958,7 @@ fn build_resolution_successor(
     let current = Arc::new(ResolutionProjection::from_wires(
         scope_graph,
         resolution_policy,
+        semantic_facts,
         wires,
     )?);
     Ok(ResolutionProjectionUpdate {
@@ -1573,6 +2071,7 @@ fn result_has_matching_import(
 fn build_result(
     graph: &ScopeGraphProjection,
     modules: &ModuleStitchIndex,
+    semantic_facts: &SemanticResolutionFacts,
     traversal: &ResolutionTraversal,
 ) -> Result<ResolutionResult, ResolutionProjectionError> {
     let reference = graph
@@ -1668,20 +2167,418 @@ fn build_result(
     )?;
     let status = derive_status(coverage.status, &paths);
     let diagnostics = coverage.reasons.clone();
-    ResolutionResult {
-        key: ResolutionResultKey(String::new()),
-        reference: reference.key().clone(),
-        start_scope: start_scope.key().clone(),
-        reference_evidence: reference.evidence().clone(),
-        coverage,
-        status,
+    let endpoints = paths
+        .iter()
+        .filter(|path| path.viability == ResolutionPathViability::Viable)
+        .filter_map(|path| path.endpoint.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let adapter_conclusion = ResolutionConclusion {
+        source: ResolutionConclusionSource::Adapter,
         authority: reference.evidence().authority,
-        paths,
+        status,
+        endpoints: endpoints.clone(),
+        coverage: coverage.clone(),
+    };
+    let preferred = (coverage.status == FactCoverage::Complete
+        && !matches!(
+            status,
+            ResolutionStatus::Unknown | ResolutionStatus::Conflict
+        ))
+    .then(|| PreferredResolutionConclusion {
+        authority: reference
+            .evidence()
+            .authority
+            .expect("complete adapter resolution evidence has authority"),
+        status,
+        endpoints,
+        sources: vec![ResolutionConclusionSource::Adapter],
+    });
+    join_semantic_facts(
+        semantic_facts,
+        ResolutionResult {
+            key: ResolutionResultKey(String::new()),
+            reference: reference.key().clone(),
+            start_scope: start_scope.key().clone(),
+            reference_evidence: reference.evidence().clone(),
+            coverage,
+            status,
+            authority: preferred
+                .as_ref()
+                .map(PreferredResolutionConclusion::authority),
+            conclusions: vec![adapter_conclusion],
+            preferred,
+            paths,
+            source_facts,
+            source_provider_facts: Vec::new(),
+            dynamic_boundaries: dynamic_keys,
+            diagnostics,
+        },
+    )
+}
+
+fn join_semantic_facts(
+    semantic_facts: &SemanticResolutionFacts,
+    mut result: ResolutionResult,
+) -> Result<ResolutionResult, ResolutionProjectionError> {
+    for fact in semantic_facts.facts_for_reference(&result.reference) {
+        let provider = semantic_facts.provider(fact.provider()).ok_or_else(|| {
+            ResolutionProjectionError::Invalid(
+                "semantic resolution fact references an absent provider".into(),
+            )
+        })?;
+        let coverage = semantic_conclusion_coverage(provider, fact)?;
+        let status = if coverage.status == FactCoverage::Complete {
+            fact.status()
+        } else {
+            ResolutionStatus::Unknown
+        };
+        let conclusion = ResolutionConclusion {
+            source: ResolutionConclusionSource::Semantic(fact.key().clone()),
+            authority: Some(provider.authority()),
+            status,
+            endpoints: fact.endpoints().to_vec(),
+            coverage: coverage.clone(),
+        };
+        conclusion.validate()?;
+        let endpoints = if fact.endpoints().is_empty() {
+            vec![None]
+        } else {
+            fact.endpoints().iter().cloned().map(Some).collect()
+        };
+        for endpoint in endpoints {
+            let path = semantic_provider_path(&result, provider, fact, endpoint, coverage.clone())?;
+            for key in path.source_facts() {
+                push_unique(&mut result.source_facts, key.clone());
+            }
+            result.paths.push(path);
+        }
+        push_unique(&mut result.source_provider_facts, fact.key().clone());
+        result.conclusions.push(conclusion);
+        for diagnostic in fact.diagnostics() {
+            push_unique(&mut result.diagnostics, diagnostic.clone());
+        }
+        for reason in coverage.reasons() {
+            push_unique(&mut result.diagnostics, reason.clone());
+        }
+    }
+
+    let (status, preferred, coverage) = derive_conclusion_join(&result.conclusions)?;
+    let conflict_sources = conflicting_conclusion_sources(&result.conclusions, preferred.as_ref());
+    if !conflict_sources.is_empty() {
+        push_unique(
+            &mut result.diagnostics,
+            "static resolution providers disagree; all conclusions are retained".into(),
+        );
+        for path in &mut result.paths {
+            let belongs = if path.source_provider_facts().is_empty() {
+                conflict_sources.contains(&ResolutionConclusionSource::Adapter)
+            } else {
+                path.source_provider_facts().iter().any(|key| {
+                    conflict_sources.contains(&ResolutionConclusionSource::Semantic(key.clone()))
+                })
+            };
+            if !belongs {
+                continue;
+            }
+            push_unique(
+                &mut path.rejection_reasons,
+                ResolutionRejectionReason::ProviderConflict,
+            );
+            if !path.checks.iter().any(|check| {
+                check.kind == ResolutionCheckKind::EvidenceAuthority
+                    && check.state == ResolutionCheckState::Rejected
+            }) {
+                path.checks.push(ResolutionCheck {
+                    kind: ResolutionCheckKind::EvidenceAuthority,
+                    state: ResolutionCheckState::Rejected,
+                    detail: "static provider conclusion disagrees with retained evidence".into(),
+                    source_facts: vec![result.reference.clone()],
+                });
+            }
+            if path.viability == ResolutionPathViability::Viable {
+                path.viability = ResolutionPathViability::Rejected;
+            }
+            path.key = ResolutionPathKey(String::new());
+            *path = path.clone().finish()?;
+        }
+    }
+    result.status = status;
+    result.authority = preferred
+        .as_ref()
+        .map(PreferredResolutionConclusion::authority);
+    result.preferred = preferred;
+    result.coverage = coverage;
+    result.key = ResolutionResultKey(String::new());
+    result.finish()
+}
+
+fn semantic_conclusion_coverage(
+    provider: &SemanticProvider,
+    fact: &SemanticResolutionFact,
+) -> Result<ResolutionCoverageEvidence, ResolutionProjectionError> {
+    let mut status = FactCoverage::Complete;
+    let mut reasons = Vec::new();
+    for (label, evidence) in [
+        ("provider project model", provider.project_model_coverage()),
+        ("provider result", fact.coverage()),
+    ] {
+        if evidence.status == FactCoverage::Complete {
+            continue;
+        }
+        status = combine_coverage(status, evidence.status);
+        push_unique(
+            &mut reasons,
+            format!(
+                "{label} is {:?}: {}",
+                evidence.status,
+                evidence.reason.as_deref().unwrap_or("no reason retained")
+            ),
+        );
+    }
+    let coverage = ResolutionCoverageEvidence { status, reasons };
+    coverage.validate()?;
+    Ok(coverage)
+}
+
+fn semantic_provider_path(
+    result: &ResolutionResult,
+    provider: &SemanticProvider,
+    fact: &SemanticResolutionFact,
+    endpoint: Option<ResolutionEndpoint>,
+    coverage: ResolutionCoverageEvidence,
+) -> Result<ResolutionPath, ResolutionProjectionError> {
+    let mut source_facts = vec![result.reference.clone(), result.start_scope.clone()];
+    if let Some(endpoint) = &endpoint {
+        match endpoint {
+            ResolutionEndpoint::Declaration(key)
+            | ResolutionEndpoint::Definition(key)
+            | ResolutionEndpoint::Module(key) => push_unique(&mut source_facts, key.clone()),
+            ResolutionEndpoint::MergedDeclarations(keys) => {
+                for key in keys {
+                    push_unique(&mut source_facts, key.clone());
+                }
+            }
+            ResolutionEndpoint::External(_) => {}
+        }
+    }
+    let complete = coverage.status == FactCoverage::Complete;
+    let mut checks = vec![
+        ResolutionCheck {
+            kind: ResolutionCheckKind::ProviderIdentity,
+            state: ResolutionCheckState::Passed,
+            detail: format!(
+                "pinned {:?} provider {} {}",
+                provider.kind(),
+                provider.name(),
+                provider.version()
+            ),
+            source_facts: vec![result.reference.clone()],
+        },
+        ResolutionCheck {
+            kind: ResolutionCheckKind::ProviderArtifact,
+            state: if fact.coverage().status == FactCoverage::Complete {
+                ResolutionCheckState::Passed
+            } else {
+                ResolutionCheckState::Unknown
+            },
+            detail: format!(
+                "provider result artifact {} is retained with {:?} coverage",
+                fact.result_artifact().as_str(),
+                fact.coverage().status
+            ),
+            source_facts: vec![result.reference.clone()],
+        },
+        ResolutionCheck {
+            kind: ResolutionCheckKind::ProviderProjectModel,
+            state: if provider.project_model_coverage().status == FactCoverage::Complete {
+                ResolutionCheckState::Passed
+            } else {
+                ResolutionCheckState::Unknown
+            },
+            detail: format!(
+                "provider project model is {:?}",
+                provider.project_model_coverage().status
+            ),
+            source_facts: vec![result.reference.clone()],
+        },
+        ResolutionCheck {
+            kind: ResolutionCheckKind::EvidenceAuthority,
+            state: ResolutionCheckState::Passed,
+            detail: format!(
+                "provider contributes distinct {} static evidence",
+                provider.authority().as_str()
+            ),
+            source_facts: vec![result.reference.clone()],
+        },
+        ResolutionCheck {
+            kind: ResolutionCheckKind::BuildTarget,
+            state: ResolutionCheckState::Passed,
+            detail: "provider fact is bound to the exact resolution build context".into(),
+            source_facts: vec![result.reference.clone()],
+        },
+    ];
+    if !complete
+        && checks
+            .iter()
+            .all(|check| check.state != ResolutionCheckState::Unknown)
+    {
+        checks.push(ResolutionCheck {
+            kind: ResolutionCheckKind::ProviderArtifact,
+            state: ResolutionCheckState::Unknown,
+            detail: "provider evidence coverage is incomplete".into(),
+            source_facts: vec![result.reference.clone()],
+        });
+    }
+    ResolutionPath {
+        key: ResolutionPathKey(String::new()),
+        endpoint,
+        edges: vec![ResolutionPathEdge {
+            kind: ResolutionPathEdgeKind::ExternalProvider,
+            from: result.start_scope.clone(),
+            to: result.reference.clone(),
+            source_fact: result.reference.clone(),
+        }],
+        precedence: Vec::new(),
+        viability: if complete {
+            ResolutionPathViability::Viable
+        } else {
+            ResolutionPathViability::Unknown
+        },
+        rejection_reasons: Vec::new(),
+        checks,
         source_facts,
-        dynamic_boundaries: dynamic_keys,
-        diagnostics,
+        source_provider_facts: vec![fact.key().clone()],
+        dynamic_boundaries: Vec::new(),
+        authorities: vec![provider.authority()],
+        coverage,
     }
     .finish()
+}
+
+fn derive_conclusion_join(
+    conclusions: &[ResolutionConclusion],
+) -> Result<
+    (
+        ResolutionStatus,
+        Option<PreferredResolutionConclusion>,
+        ResolutionCoverageEvidence,
+    ),
+    ResolutionProjectionError,
+> {
+    for conclusion in conclusions {
+        conclusion.validate()?;
+    }
+    let terminal = conclusions
+        .iter()
+        .filter(|conclusion| conclusion.coverage.status == FactCoverage::Complete)
+        .collect::<Vec<_>>();
+    if terminal.is_empty() {
+        let mut status = FactCoverage::Complete;
+        let mut reasons = Vec::new();
+        for conclusion in conclusions {
+            status = combine_coverage(status, conclusion.coverage.status);
+            for reason in conclusion.coverage.reasons() {
+                push_unique(&mut reasons, reason.clone());
+            }
+        }
+        if status == FactCoverage::Complete {
+            status = FactCoverage::Partial;
+            reasons.push("no provider supplied a complete static conclusion".into());
+        }
+        let coverage = ResolutionCoverageEvidence { status, reasons };
+        coverage.validate()?;
+        return Ok((ResolutionStatus::Unknown, None, coverage));
+    }
+
+    let signatures = terminal
+        .iter()
+        .map(|conclusion| (conclusion.status, conclusion.endpoints.clone()))
+        .collect::<BTreeSet<_>>();
+    let conflict = signatures.len() > 1
+        || terminal
+            .iter()
+            .any(|conclusion| conclusion.status == ResolutionStatus::Conflict);
+    let max_authority = terminal
+        .iter()
+        .filter(|conclusion| conclusion.status != ResolutionStatus::Conflict)
+        .filter_map(|conclusion| conclusion.authority)
+        .max();
+    let preferred = max_authority.and_then(|authority| {
+        let highest = terminal
+            .iter()
+            .filter(|conclusion| {
+                conclusion.authority == Some(authority)
+                    && conclusion.status != ResolutionStatus::Conflict
+            })
+            .collect::<Vec<_>>();
+        let highest_signatures = highest
+            .iter()
+            .map(|conclusion| (conclusion.status, conclusion.endpoints.clone()))
+            .collect::<BTreeSet<_>>();
+        if highest_signatures.len() != 1 {
+            return None;
+        }
+        let (status, endpoints) = highest_signatures.into_iter().next().unwrap();
+        let mut sources = highest
+            .into_iter()
+            .map(|conclusion| conclusion.source.clone())
+            .collect::<Vec<_>>();
+        sources.sort();
+        Some(PreferredResolutionConclusion {
+            authority,
+            status,
+            endpoints,
+            sources,
+        })
+    });
+    let status = if conflict {
+        ResolutionStatus::Conflict
+    } else {
+        preferred.as_ref().map_or(
+            ResolutionStatus::Unknown,
+            PreferredResolutionConclusion::status,
+        )
+    };
+    let coverage = ResolutionCoverageEvidence {
+        status: FactCoverage::Complete,
+        reasons: Vec::new(),
+    };
+    coverage.validate()?;
+    Ok((status, preferred, coverage))
+}
+
+fn conflicting_conclusion_sources(
+    conclusions: &[ResolutionConclusion],
+    preferred: Option<&PreferredResolutionConclusion>,
+) -> BTreeSet<ResolutionConclusionSource> {
+    let terminal = conclusions
+        .iter()
+        .filter(|conclusion| conclusion.coverage.status == FactCoverage::Complete)
+        .collect::<Vec<_>>();
+    let signatures = terminal
+        .iter()
+        .map(|conclusion| (conclusion.status, conclusion.endpoints.clone()))
+        .collect::<BTreeSet<_>>();
+    let conflict = signatures.len() > 1
+        || terminal
+            .iter()
+            .any(|conclusion| conclusion.status == ResolutionStatus::Conflict);
+    if !conflict {
+        return BTreeSet::new();
+    }
+    let preferred_signature =
+        preferred.map(|preferred| (preferred.status, preferred.endpoints.clone()));
+    terminal
+        .into_iter()
+        .filter(|conclusion| {
+            preferred_signature.as_ref().is_none_or(|signature| {
+                &(conclusion.status, conclusion.endpoints.clone()) != signature
+            })
+        })
+        .map(|conclusion| conclusion.source.clone())
+        .collect()
 }
 
 fn candidate_path(
@@ -1818,6 +2715,7 @@ fn candidate_path(
         rejection_reasons: deduplicate(rejections),
         checks,
         source_facts,
+        source_provider_facts: Vec::new(),
         dynamic_boundaries: dynamic_boundaries.to_vec(),
         authorities: Vec::new(),
         coverage: ResolutionCoverageEvidence {
@@ -1931,6 +2829,7 @@ fn import_path(
         rejection_reasons: vec![ResolutionRejectionReason::ImportUnresolved],
         checks,
         source_facts,
+        source_provider_facts: Vec::new(),
         dynamic_boundaries: dynamic_boundaries.to_vec(),
         authorities: Vec::new(),
         coverage: ResolutionCoverageEvidence {
@@ -3311,23 +4210,37 @@ fn derive_status(status: FactCoverage, paths: &[ResolutionPath]) -> ResolutionSt
 }
 
 fn validate_status(result: &ResolutionResult) -> Result<(), ResolutionProjectionError> {
-    let expected = derive_status(result.coverage.status, &result.paths);
-    if result.status == ResolutionStatus::Conflict {
-        if result.paths.iter().any(|path| {
+    let (expected_status, expected_preferred, expected_coverage) =
+        derive_conclusion_join(&result.conclusions)?;
+    if result.status != expected_status {
+        return Err(ResolutionProjectionError::Invalid(
+            "resolution status contradicts its retained provider conclusions".into(),
+        ));
+    }
+    if result.preferred != expected_preferred
+        || result.authority
+            != expected_preferred
+                .as_ref()
+                .map(PreferredResolutionConclusion::authority)
+    {
+        return Err(ResolutionProjectionError::Invalid(
+            "preferred resolution conclusion contradicts retained provider conclusions".into(),
+        ));
+    }
+    if result.coverage != expected_coverage {
+        return Err(ResolutionProjectionError::Invalid(
+            "resolution coverage contradicts retained provider conclusions".into(),
+        ));
+    }
+    if result.status == ResolutionStatus::Conflict
+        && !result.paths.iter().any(|path| {
             path.rejection_reasons
                 .contains(&ResolutionRejectionReason::ProviderConflict)
-        }) {
-            return Ok(());
-        }
+        })
+    {
         return Err(ResolutionProjectionError::Invalid(
             "conflict result has no provider-conflict path".into(),
         ));
-    }
-    if result.status != expected {
-        return Err(ResolutionProjectionError::Invalid(format!(
-            "resolution status {:?} contradicts coverage and viable endpoints; expected {:?}",
-            result.status, expected
-        )));
     }
     Ok(())
 }
@@ -3459,7 +4372,9 @@ mod tests {
         DeclarationDraft, DeclarationModifier, DynamicBoundaryDraft, ExportDraft,
         FactCoverageEvidence, ImportDraft, ImportForm, Mutability, NameNamespace, NamespacePolicy,
         ProjectAnalysis, ProjectSnapshotBuilder, ReferenceDraft, ReferenceRole, RepositoryId,
-        ScopeDraft, ScopeFactPolicyId, ScopeGraphBuilder, ScopeKind, ShadowingDraft,
+        ScopeDraft, ScopeFactPolicyId, ScopeGraphBuilder, ScopeKind, SemanticArtifactId,
+        SemanticProviderDraft, SemanticProviderKind, SemanticResolutionFactBuilder,
+        SemanticResolutionFactDocument, SemanticResolutionFactDraft, ShadowingDraft,
         VisibilityDraft, VisibilityKind,
     };
 
@@ -4612,6 +5527,80 @@ fn sibling() {
         ResolutionPolicyId::from_parts(&[label]).unwrap()
     }
 
+    fn semantic_artifact(label: &[u8]) -> SemanticArtifactId {
+        SemanticArtifactId::from_parts(&[label]).unwrap()
+    }
+
+    fn module_reference(graph: &ScopeGraphProjection, spelling: &str) -> ScopeFactKey {
+        graph
+            .facts()
+            .iter()
+            .find_map(|fact| match fact.data() {
+                ScopeFactData::Reference {
+                    original_spelling, ..
+                } if original_spelling == spelling => Some(fact.key().clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing module reference {spelling}"))
+    }
+
+    fn module_declaration(graph: &ScopeGraphProjection, name: &str) -> ScopeFactKey {
+        graph
+            .facts()
+            .iter()
+            .find_map(|fact| match fact.data() {
+                ScopeFactData::Declaration { original_name, .. } if original_name == name => {
+                    Some(fact.key().clone())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing module declaration {name}"))
+    }
+
+    fn add_semantic_provider(
+        builder: &mut SemanticResolutionFactBuilder,
+        kind: SemanticProviderKind,
+        label: &str,
+        coverage: FactCoverageEvidence,
+    ) -> crate::SemanticProviderKey {
+        builder
+            .add_provider(SemanticProviderDraft {
+                kind,
+                name: label.into(),
+                version: "1.0.0".into(),
+                executable_artifact: semantic_artifact(format!("{label}-executable").as_bytes()),
+                configuration_artifact: semantic_artifact(
+                    format!("{label}-configuration").as_bytes(),
+                ),
+                project_model_artifact: (coverage.status == FactCoverage::Complete)
+                    .then(|| semantic_artifact(format!("{label}-project-model").as_bytes())),
+                project_model_coverage: coverage,
+            })
+            .unwrap()
+    }
+
+    fn add_semantic_fact(
+        builder: &mut SemanticResolutionFactBuilder,
+        provider: crate::SemanticProviderKey,
+        reference: ScopeFactKey,
+        label: &str,
+        status: ResolutionStatus,
+        endpoints: Vec<ResolutionEndpoint>,
+        coverage: FactCoverageEvidence,
+    ) -> SemanticResolutionFactKey {
+        builder
+            .add_fact(SemanticResolutionFactDraft {
+                provider,
+                reference,
+                result_artifact: semantic_artifact(format!("{label}-result").as_bytes()),
+                status,
+                endpoints,
+                coverage,
+                diagnostics: vec![format!("{label} retained diagnostic")],
+            })
+            .unwrap()
+    }
+
     #[test]
     fn complete_unique_retains_lower_precedence_and_excludes_unrelated_names() {
         let fixture = fixture(FixtureMode::Unique, false);
@@ -4656,6 +5645,423 @@ fn sibling() {
                 .all(|path| !path.source_facts().contains(&fixture.sibling))
         );
         assert!(Arc::ptr_eq(projection.scope_graph(), &fixture.graph));
+    }
+
+    #[test]
+    fn semantic_fact_document_is_strict_pinned_and_build_context_bound() {
+        let graph = module_fixture();
+        let reference = module_reference(&graph, "imported");
+        let endpoint = module_declaration(&graph, "imported");
+        let mut builder = SemanticResolutionFactBuilder::new(Arc::clone(&graph));
+        let provider = add_semantic_provider(
+            &mut builder,
+            SemanticProviderKind::LanguageServer,
+            "rust-analyzer",
+            FactCoverageEvidence::complete(),
+        );
+        add_semantic_fact(
+            &mut builder,
+            provider.clone(),
+            reference.clone(),
+            "rust-analyzer-imported",
+            ResolutionStatus::Unique,
+            vec![ResolutionEndpoint::Declaration(endpoint)],
+            FactCoverageEvidence::complete(),
+        );
+        assert!(
+            builder
+                .add_fact(SemanticResolutionFactDraft {
+                    provider,
+                    reference,
+                    result_artifact: semantic_artifact(b"duplicate-result"),
+                    status: ResolutionStatus::Unresolved,
+                    endpoints: Vec::new(),
+                    coverage: FactCoverageEvidence::complete(),
+                    diagnostics: Vec::new(),
+                })
+                .unwrap_err()
+                .to_string()
+                .contains("already emitted")
+        );
+        let facts = Arc::new(builder.finish().unwrap());
+        let json = serde_json::to_value(facts.document()).unwrap();
+        let decoded: SemanticResolutionFactDocument = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), json);
+
+        let mut unknown = json.clone();
+        unknown["winner"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<SemanticResolutionFactDocument>(unknown).is_err());
+
+        let mut forged = json;
+        forged["facts"][0]["status"] = serde_json::json!("ambiguous");
+        assert!(serde_json::from_value::<SemanticResolutionFactDocument>(forged).is_err());
+
+        let projection = ResolutionProjection::build_with_semantic_facts(
+            Arc::clone(&graph),
+            policy(b"strict-semantic-resolution"),
+            Arc::clone(&facts),
+        )
+        .unwrap();
+        let resolution_json = serde_json::to_value(projection.document()).unwrap();
+        let decoded: ResolutionDocument = serde_json::from_value(resolution_json.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), resolution_json);
+        let mut forged_conclusion = resolution_json;
+        let result = forged_conclusion["results"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|result| result["reference"] == facts.facts()[0].reference().as_str())
+            .unwrap();
+        let conclusion = result["conclusions"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|conclusion| conclusion["source"]["kind"] == "semantic")
+            .unwrap();
+        conclusion["authority"] = serde_json::json!("runtime-verification");
+        assert!(serde_json::from_value::<ResolutionDocument>(forged_conclusion).is_err());
+
+        let foreign_graph = module_fixture_with_peer("fn changed_peer() {}\n");
+        let error = ResolutionProjection::build_with_semantic_facts(
+            foreign_graph,
+            policy(b"foreign-semantic-facts"),
+            facts,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("another analysis, scope graph, or build context")
+        );
+
+        let mut incomplete_builder = SemanticResolutionFactBuilder::new(Arc::clone(&graph));
+        let incomplete = add_semantic_provider(
+            &mut incomplete_builder,
+            SemanticProviderKind::LanguageServer,
+            "incomplete-server",
+            FactCoverageEvidence::partial("workspace model is incomplete").unwrap(),
+        );
+        let error = incomplete_builder
+            .add_fact(SemanticResolutionFactDraft {
+                provider: incomplete,
+                reference: module_reference(&graph, "imported"),
+                result_artifact: semantic_artifact(b"incomplete-terminal-result"),
+                status: ResolutionStatus::Unresolved,
+                endpoints: Vec::new(),
+                coverage: FactCoverageEvidence::complete(),
+                diagnostics: Vec::new(),
+            })
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("complete provider project-model coverage")
+        );
+    }
+
+    #[test]
+    fn complete_language_server_agreement_outranks_adapter_without_erasing_it() {
+        let graph = module_fixture();
+        let reference = module_reference(&graph, "imported");
+        let endpoint = module_declaration(&graph, "imported");
+        let mut builder = SemanticResolutionFactBuilder::new(Arc::clone(&graph));
+        let provider = add_semantic_provider(
+            &mut builder,
+            SemanticProviderKind::LanguageServer,
+            "rust-analyzer",
+            FactCoverageEvidence::complete(),
+        );
+        let semantic_key = add_semantic_fact(
+            &mut builder,
+            provider,
+            reference.clone(),
+            "rust-analyzer-agreement",
+            ResolutionStatus::Unique,
+            vec![ResolutionEndpoint::Declaration(endpoint.clone())],
+            FactCoverageEvidence::complete(),
+        );
+        let projection = ResolutionProjection::build_with_semantic_facts(
+            Arc::clone(&graph),
+            policy(b"language-server-agreement"),
+            Arc::new(builder.finish().unwrap()),
+        )
+        .unwrap();
+        let result = projection
+            .results()
+            .iter()
+            .map(ResolutionResultRecord::wire)
+            .find(|result| result.reference() == &reference)
+            .unwrap();
+        assert_eq!(result.status(), ResolutionStatus::Unique);
+        assert_eq!(
+            result.authority(),
+            Some(CapabilityAuthority::LanguageServer)
+        );
+        assert_eq!(result.conclusions().len(), 2);
+        assert_eq!(
+            result.preferred().unwrap().sources(),
+            [ResolutionConclusionSource::Semantic(semantic_key.clone())]
+        );
+        assert_eq!(
+            result.preferred().unwrap().endpoints(),
+            [ResolutionEndpoint::Declaration(endpoint)]
+        );
+        assert!(result.conclusions().iter().any(|conclusion| {
+            conclusion.source() == &ResolutionConclusionSource::Adapter
+                && conclusion.authority() == Some(CapabilityAuthority::Adapter)
+        }));
+        assert!(result.paths().iter().any(|path| {
+            path.source_provider_facts() == [semantic_key.clone()]
+                && path.authorities() == [CapabilityAuthority::LanguageServer]
+                && path
+                    .edges()
+                    .iter()
+                    .any(|edge| edge.kind() == ResolutionPathEdgeKind::ExternalProvider)
+        }));
+    }
+
+    #[test]
+    fn compiler_preference_retains_lower_disagreement_and_reports_conflict() {
+        let graph = module_fixture();
+        let reference = module_reference(&graph, "imported");
+        let adapter_endpoint = module_declaration(&graph, "imported");
+        let provider_endpoint = module_declaration(&graph, "through");
+        assert_ne!(adapter_endpoint, provider_endpoint);
+        let mut builder = SemanticResolutionFactBuilder::new(Arc::clone(&graph));
+        let language_server = add_semantic_provider(
+            &mut builder,
+            SemanticProviderKind::LanguageServer,
+            "rust-analyzer",
+            FactCoverageEvidence::complete(),
+        );
+        let compiler = add_semantic_provider(
+            &mut builder,
+            SemanticProviderKind::Compiler,
+            "rustc",
+            FactCoverageEvidence::complete(),
+        );
+        let lsp_key = add_semantic_fact(
+            &mut builder,
+            language_server,
+            reference.clone(),
+            "lsp-through",
+            ResolutionStatus::Unique,
+            vec![ResolutionEndpoint::Declaration(provider_endpoint.clone())],
+            FactCoverageEvidence::complete(),
+        );
+        let compiler_key = add_semantic_fact(
+            &mut builder,
+            compiler,
+            reference.clone(),
+            "compiler-through",
+            ResolutionStatus::Unique,
+            vec![ResolutionEndpoint::Declaration(provider_endpoint.clone())],
+            FactCoverageEvidence::complete(),
+        );
+        let projection = ResolutionProjection::build_with_semantic_facts(
+            Arc::clone(&graph),
+            policy(b"provider-precedence"),
+            Arc::new(builder.finish().unwrap()),
+        )
+        .unwrap();
+        let result = projection
+            .results()
+            .iter()
+            .map(ResolutionResultRecord::wire)
+            .find(|result| result.reference() == &reference)
+            .unwrap();
+        assert_eq!(result.status(), ResolutionStatus::Conflict);
+        assert_eq!(result.coverage().status(), FactCoverage::Complete);
+        assert_eq!(result.authority(), Some(CapabilityAuthority::Compiler));
+        let preferred = result.preferred().unwrap();
+        assert_eq!(
+            preferred.sources(),
+            [ResolutionConclusionSource::Semantic(compiler_key.clone())]
+        );
+        assert_eq!(
+            preferred.endpoints(),
+            [ResolutionEndpoint::Declaration(provider_endpoint)]
+        );
+        assert!(result.paths().iter().any(|path| {
+            path.source_provider_facts().is_empty()
+                && path
+                    .rejection_reasons()
+                    .contains(&ResolutionRejectionReason::ProviderConflict)
+        }));
+        assert!(result.paths().iter().any(|path| {
+            path.source_provider_facts() == [lsp_key.clone()]
+                && !path
+                    .rejection_reasons()
+                    .contains(&ResolutionRejectionReason::ProviderConflict)
+        }));
+        assert!(result.paths().iter().any(|path| {
+            path.source_provider_facts() == [compiler_key.clone()]
+                && path.viability() == ResolutionPathViability::Viable
+        }));
+    }
+
+    #[test]
+    fn equal_compiler_disagreement_has_no_order_winner() {
+        let graph = module_fixture();
+        let reference = module_reference(&graph, "imported");
+        let left_endpoint = module_declaration(&graph, "imported");
+        let right_endpoint = module_declaration(&graph, "through");
+        let build = |reverse: bool| {
+            let mut builder = SemanticResolutionFactBuilder::new(Arc::clone(&graph));
+            let labels = if reverse {
+                ["compiler-b", "compiler-a"]
+            } else {
+                ["compiler-a", "compiler-b"]
+            };
+            for label in labels {
+                let provider = add_semantic_provider(
+                    &mut builder,
+                    SemanticProviderKind::Compiler,
+                    label,
+                    FactCoverageEvidence::complete(),
+                );
+                let endpoint = if label == "compiler-a" {
+                    left_endpoint.clone()
+                } else {
+                    right_endpoint.clone()
+                };
+                add_semantic_fact(
+                    &mut builder,
+                    provider,
+                    reference.clone(),
+                    label,
+                    ResolutionStatus::Unique,
+                    vec![ResolutionEndpoint::Declaration(endpoint)],
+                    FactCoverageEvidence::complete(),
+                );
+            }
+            ResolutionProjection::build_with_semantic_facts(
+                Arc::clone(&graph),
+                policy(b"equal-compiler-conflict"),
+                Arc::new(builder.finish().unwrap()),
+            )
+            .unwrap()
+        };
+        let forward = build(false);
+        let reverse = build(true);
+        assert_eq!(
+            serde_json::to_value(forward.document()).unwrap(),
+            serde_json::to_value(reverse.document()).unwrap()
+        );
+        let result = forward
+            .results()
+            .iter()
+            .map(ResolutionResultRecord::wire)
+            .find(|result| result.reference() == &reference)
+            .unwrap();
+        assert_eq!(result.status(), ResolutionStatus::Conflict);
+        assert_eq!(result.authority(), None);
+        assert!(result.preferred().is_none());
+        assert_eq!(
+            result
+                .conclusions()
+                .iter()
+                .filter(|conclusion| conclusion.authority() == Some(CapabilityAuthority::Compiler))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn incomplete_lsp_fact_is_retained_without_authorizing_or_conflicting() {
+        let graph = module_fixture();
+        let reference = module_reference(&graph, "imported");
+        let possible_endpoint = module_declaration(&graph, "through");
+        let mut builder = SemanticResolutionFactBuilder::new(Arc::clone(&graph));
+        let provider = add_semantic_provider(
+            &mut builder,
+            SemanticProviderKind::LanguageServer,
+            "partial-server",
+            FactCoverageEvidence::partial("workspace model omitted a target").unwrap(),
+        );
+        let key = add_semantic_fact(
+            &mut builder,
+            provider,
+            reference.clone(),
+            "partial-server-imported",
+            ResolutionStatus::Unknown,
+            vec![ResolutionEndpoint::Declaration(possible_endpoint)],
+            FactCoverageEvidence::partial("server result is not exhaustive").unwrap(),
+        );
+        let projection = ResolutionProjection::build_with_semantic_facts(
+            Arc::clone(&graph),
+            policy(b"incomplete-language-server"),
+            Arc::new(builder.finish().unwrap()),
+        )
+        .unwrap();
+        let result = projection
+            .results()
+            .iter()
+            .map(ResolutionResultRecord::wire)
+            .find(|result| result.reference() == &reference)
+            .unwrap();
+        assert_eq!(result.status(), ResolutionStatus::Unique);
+        assert_eq!(result.authority(), Some(CapabilityAuthority::Adapter));
+        assert_eq!(
+            result.preferred().unwrap().sources(),
+            [ResolutionConclusionSource::Adapter]
+        );
+        assert!(result.paths().iter().any(|path| {
+            path.source_provider_facts() == [key.clone()]
+                && path.viability() == ResolutionPathViability::Unknown
+                && path.coverage().status() == FactCoverage::Partial
+                && !path
+                    .rejection_reasons()
+                    .contains(&ResolutionRejectionReason::ProviderConflict)
+        }));
+    }
+
+    #[test]
+    fn compiler_can_retain_a_positive_external_endpoint_but_disagreement_stays_conflict() {
+        let graph = module_fixture();
+        let reference = module_reference(&graph, "imported");
+        let mut builder = SemanticResolutionFactBuilder::new(Arc::clone(&graph));
+        let provider = add_semantic_provider(
+            &mut builder,
+            SemanticProviderKind::Compiler,
+            "rustc",
+            FactCoverageEvidence::complete(),
+        );
+        let key = add_semantic_fact(
+            &mut builder,
+            provider,
+            reference.clone(),
+            "compiler-external",
+            ResolutionStatus::Unique,
+            vec![ResolutionEndpoint::External(
+                "registry://example/dependency::imported".into(),
+            )],
+            FactCoverageEvidence::complete(),
+        );
+        let projection = ResolutionProjection::build_with_semantic_facts(
+            Arc::clone(&graph),
+            policy(b"positive-external-provider"),
+            Arc::new(builder.finish().unwrap()),
+        )
+        .unwrap();
+        let result = projection
+            .results()
+            .iter()
+            .map(ResolutionResultRecord::wire)
+            .find(|result| result.reference() == &reference)
+            .unwrap();
+        assert_eq!(result.status(), ResolutionStatus::Conflict);
+        assert_eq!(result.authority(), Some(CapabilityAuthority::Compiler));
+        assert_eq!(
+            result.preferred().unwrap().endpoints(),
+            [ResolutionEndpoint::External(
+                "registry://example/dependency::imported".into()
+            )]
+        );
+        assert!(result.paths().iter().any(|path| {
+            path.source_provider_facts() == [key.clone()]
+                && matches!(path.endpoint(), Some(ResolutionEndpoint::External(symbol)) if symbol == "registry://example/dependency::imported")
+        }));
     }
 
     #[test]
@@ -4824,6 +6230,127 @@ fn sibling() {
                 .iter()
                 .map(|result| result.wire().key())
                 .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn semantic_successor_invalidates_exact_artifact_dependents_and_matches_clean_build() {
+        let graph = module_fixture();
+        let resolution_policy = policy(b"semantic-successor");
+        let imported = module_reference(&graph, "imported");
+        let through = module_reference(&graph, "through");
+        let imported_endpoint = module_declaration(&graph, "imported");
+        let through_endpoint = module_declaration(&graph, "through");
+        let facts = |configuration: &[u8], imported_result: &[u8]| {
+            let mut builder = SemanticResolutionFactBuilder::new(Arc::clone(&graph));
+            let provider = builder
+                .add_provider(SemanticProviderDraft {
+                    kind: SemanticProviderKind::Compiler,
+                    name: "rustc".into(),
+                    version: "1.90.0".into(),
+                    executable_artifact: semantic_artifact(b"rustc-executable-stable"),
+                    configuration_artifact: semantic_artifact(configuration),
+                    project_model_artifact: Some(semantic_artifact(b"cargo-model-stable")),
+                    project_model_coverage: FactCoverageEvidence::complete(),
+                })
+                .unwrap();
+            builder
+                .add_fact(SemanticResolutionFactDraft {
+                    provider: provider.clone(),
+                    reference: imported.clone(),
+                    result_artifact: semantic_artifact(imported_result),
+                    status: ResolutionStatus::Unique,
+                    endpoints: vec![ResolutionEndpoint::Declaration(imported_endpoint.clone())],
+                    coverage: FactCoverageEvidence::complete(),
+                    diagnostics: vec!["compiler imported result".into()],
+                })
+                .unwrap();
+            builder
+                .add_fact(SemanticResolutionFactDraft {
+                    provider,
+                    reference: through.clone(),
+                    result_artifact: semantic_artifact(b"through-result-stable"),
+                    status: ResolutionStatus::Unique,
+                    endpoints: vec![ResolutionEndpoint::Declaration(through_endpoint.clone())],
+                    coverage: FactCoverageEvidence::complete(),
+                    diagnostics: vec!["compiler through result".into()],
+                })
+                .unwrap();
+            Arc::new(builder.finish().unwrap())
+        };
+
+        let previous = Arc::new(
+            ResolutionProjection::build_with_semantic_facts(
+                Arc::clone(&graph),
+                resolution_policy.clone(),
+                facts(b"compiler-config-v1", b"imported-result-v1"),
+            )
+            .unwrap(),
+        );
+        assert!(
+            previous
+                .successor(Arc::clone(&graph), resolution_policy.clone())
+                .unwrap_err()
+                .to_string()
+                .contains("successor_with_semantic_facts")
+        );
+
+        let result_changed_facts = facts(b"compiler-config-v1", b"imported-result-v2");
+        let clean_result_change = ResolutionProjection::build_with_semantic_facts(
+            Arc::clone(&graph),
+            resolution_policy.clone(),
+            Arc::clone(&result_changed_facts),
+        )
+        .unwrap();
+        let result_update = previous
+            .successor_with_semantic_facts(
+                Arc::clone(&graph),
+                resolution_policy.clone(),
+                result_changed_facts,
+            )
+            .unwrap();
+        assert_eq!(result_update.reused_result_keys().len(), 4);
+        assert_eq!(result_update.rebuilt_results().len(), 1);
+        assert_eq!(result_update.rebuilt_results()[0].reference(), &imported);
+        assert_eq!(
+            result_update.rebuilt_results()[0].reasons(),
+            [ResolutionInvalidationReason::SemanticFactChanged]
+        );
+        assert_eq!(
+            serde_json::to_value(result_update.current().document()).unwrap(),
+            serde_json::to_value(clean_result_change.document()).unwrap()
+        );
+
+        let configuration_changed_facts = facts(b"compiler-config-v2", b"imported-result-v2");
+        let clean_configuration_change = ResolutionProjection::build_with_semantic_facts(
+            Arc::clone(&graph),
+            resolution_policy.clone(),
+            Arc::clone(&configuration_changed_facts),
+        )
+        .unwrap();
+        let configuration_update = result_update
+            .current()
+            .successor_with_semantic_facts(
+                Arc::clone(&graph),
+                resolution_policy,
+                configuration_changed_facts,
+            )
+            .unwrap();
+        assert_eq!(configuration_update.reused_result_keys().len(), 3);
+        assert_eq!(configuration_update.rebuilt_results().len(), 2);
+        assert!(
+            configuration_update
+                .rebuilt_results()
+                .iter()
+                .all(|invalidation| {
+                    [imported.clone(), through.clone()].contains(invalidation.reference())
+                        && invalidation.reasons()
+                            == [ResolutionInvalidationReason::SemanticFactChanged]
+                })
+        );
+        assert_eq!(
+            serde_json::to_value(configuration_update.current().document()).unwrap(),
+            serde_json::to_value(clean_configuration_change.document()).unwrap()
         );
     }
 
@@ -5099,7 +6626,7 @@ fn sibling() {
     }
 
     #[test]
-    fn viable_explicit_shadowing_and_provider_conflict_are_not_order_fallbacks() {
+    fn viable_explicit_shadowing_is_not_an_order_fallback() {
         let fixture = fixture(FixtureMode::ExplicitShadowing, false);
         let projection = ResolutionProjection::build(fixture.graph, policy(b"shadowing")).unwrap();
         let result = projection.results()[0].wire();
@@ -5116,35 +6643,6 @@ fn sibling() {
                 && check.state() == ResolutionCheckState::Rejected
                 && check.detail().contains("explicit adapter shadowing")
         }));
-
-        let mut conflict = result.clone();
-        let index = conflict
-            .paths
-            .iter()
-            .position(|path| path.viability == ResolutionPathViability::Viable)
-            .unwrap();
-        let mut path = conflict.paths[index].clone();
-        path.viability = ResolutionPathViability::Rejected;
-        path.rejection_reasons
-            .push(ResolutionRejectionReason::ProviderConflict);
-        path.checks.push(ResolutionCheck {
-            kind: ResolutionCheckKind::AdapterIdentity,
-            state: ResolutionCheckState::Rejected,
-            detail: "authoritative providers disagree on the endpoint".into(),
-            source_facts: vec![path.source_facts[0].clone()],
-        });
-        path.key = ResolutionPathKey(String::new());
-        conflict.paths[index] = path.finish().unwrap();
-        assert_eq!(
-            derive_status(conflict.coverage.status, &conflict.paths),
-            ResolutionStatus::Conflict
-        );
-        conflict.status = ResolutionStatus::Conflict;
-        conflict.key = ResolutionResultKey(String::new());
-        assert_eq!(
-            conflict.finish().unwrap().status(),
-            ResolutionStatus::Conflict
-        );
     }
 
     #[test]

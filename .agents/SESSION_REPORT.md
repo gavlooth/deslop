@@ -9003,3 +9003,161 @@ no live process, dependency, migration, reload, cache clear, or restart is requi
 module invalidation`, `clean incremental parity`, `re-export cycle unknown`, `no path stem inference`.
 
 **Signature:** Codex (GPT-5), M3.5 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M3.6 active checkpoint — provider evidence boundary audit
+
+**Date/time:** 2026-07-14T05:12:00+02:00
+
+**Objective/target:** add optional compiler/language-server resolution facts with exact artifact authority,
+retained disagreement, and incremental clean-build parity.
+
+**Changes:** planning/audit only. Opened clean jj child `rmxquklo` over terminal M3.5 `yxxzorzk`. Audited
+ADR 0002, the language capability authority catalog, strict scope/resolution documents, resolution result
+derivation/validation, M3.5 successor invalidation, and the existing external analyzer subsystem.
+
+**Commands/checks run:** M3.5 `git diff --check` and `jj status`; Hindsight M3.5 positive/negative memory
+write plus consolidation (1,232 entities, 3,277 relations, 3,473 observations); `jj new/log/status`;
+targeted Hindsight searches; targeted `rg`/`sed` over ADR 0002, deslop-lang, deslop-parse resolution/scope
+graphs, deslop-external, analyzer/protocol capability records, and public exports.
+
+**Results/failure modes:** `CapabilityAuthority` has Syntax, Adapter, Compiler, and RuntimeVerification but
+no LanguageServer despite the ADR requiring a distinct authority. `ResolutionResult.authority` is strictly
+equal to its adapter reference evidence, so it cannot represent a preferred compiler/LSP conclusion.
+`ProviderConflict` exists as a rejection reason/status guard but is exercised only by manually mutating a
+test path. Resolution paths retain only scope fact keys, and no strict provider/configuration/project-model/
+result-artifact fact set exists. Existing external analyzers return lint findings and availability notices;
+they are not binding providers and cannot be safely reused as semantic evidence.
+
+**Invalidated assumptions / negative memory:** the existing `Compiler` enum variant and `ProviderConflict`
+label do not constitute provider ingestion. Lint-provider availability is not project-model completeness,
+and a provider name/version without exact configuration/model/result artifact identity cannot authorize a
+binding. Provider authority must join completed conclusions after language lookup; it must not enter or
+overwrite adapter lookup precedence.
+
+**Current recommendation/next actions:** first add a strict semantic-resolution fact projection bound to
+the exact scope graph/build context and extend the catalog with LanguageServer. Then join immutable adapter
+and provider conclusions, retain conflicts, and add semantic dependency invalidation. Use one convergent
+two-reference fixture for stale identity, rank, equal/lower disagreement, and clean successor parity.
+
+**Blockers/dependencies/restart:** none. No dependency or external provider execution is needed; synthetic
+pinned facts are sufficient to make and verify the contract. No live process, migration, reload, cache
+clear, or restart applies.
+
+**Negative-memory status:** provisional and active. Search handles: `M3.6 provider evidence boundary`,
+`LSP distinct authority`, `pinned semantic artifact`, `provider conclusion join`, `no provider overwrite`,
+`equal authority no winner`. Recheck after strict semantic-fact adversarial tests.
+
+**Signature:** Codex (GPT-5), M3.6 integration owner, provider-boundary checkpoint, 2026-07-14.
+
+---
+
+## M3.6 schema/join/invalidation checkpoint
+
+**Date/time:** 2026-07-14T17:42:07+02:00
+
+**Objective/target:** ingest optional compiler/language-server name-resolution conclusions with exact
+artifact identity, evidence precedence, retained conflicts, and bounded incremental invalidation.
+
+**Changes:** versioned the capability authority catalog to `deslop.language-adapter-capabilities/2` and
+added distinct LanguageServer authority. Added the 827-line strict
+`deslop.semantic-resolution-facts/1` projection and public builder/drafts/IDs. Extended resolution paths,
+results, and documents with semantic fact provenance, explicit provider conclusions, a preferred diagnostic
+conclusion, provider identity/artifact/model/authority checks, and strict cross-document validation. Added
+`build_with_semantic_facts`, `successor_with_semantic_facts`, and `SemanticFactChanged` invalidation. The
+adapter-only APIs remain compatible; the old successor fails closed rather than silently dropping facts.
+
+**Commands/checks run:** repeated `cargo fmt --all`; authority catalog test and full 12-test deslop-lang
+suite; repeated focused resolution tests (24 current); `cargo check -p deslop-parse`; `cargo test -p
+deslop-parse --all-features`; focused parse/lang rustdoc; focused all-target all-feature clippy; `git diff
+--check`; targeted schema/authority/source/diff audits; `jj status/diff/wc`.
+
+**Results:** PASS at the focused checkpoint. Parse reports 128 passed, zero failed, one designated slow
+instrumentation probe ignored, and four compile-fail doctests passed. Lang reports 12 passed. Complete LSP
+agreement outranks but does not erase adapter evidence. Compiler/LSP agreement against the adapter yields
+Conflict with a retained compiler preferred conclusion. Equal compiler disagreement is Conflict with no
+winner and order-invariant JSON. Incomplete LSP facts remain Unknown provider paths without conflict or
+authority. A pinned compiler may retain a positive external endpoint, but adapter disagreement still
+blocks through Conflict. Strict fact/resolution documents reject forged or stale evidence.
+
+**Numerical incremental results:** one result-artifact revision rebuilds exactly one of five results and
+reuses four. One provider configuration revision changes both facts carrying that provider, rebuilds two,
+and reuses three. Both successor documents exactly equal clean builds and every rebuild reports
+`SemanticFactChanged`.
+
+**Invalidated assumptions / failure modes:** an enum Compiler variant and a ProviderConflict label were not
+provider ingestion. Provider output presence does not prove project-model coverage. Evidence authority is
+not lookup precedence. A higher-authority preferred diagnostic does not remove lower disagreement or make a
+conflicting result safe. Equal-authority agreement may share a conclusion; disagreement has no first/sorted
+winner. Dropping semantic facts through the legacy successor would be unsound and now fails closed.
+
+**Current recommendation/next actions:** run all workspace all-feature test/build/rustdoc/clippy/fmt/diff
+gates; audit production manifests for unchanged S1/S2 authority, ensure RuntimeVerification never enters
+the static join, and inspect the diff for provider absence/externality or order fallbacks. Close M3.6 only
+if those checks and earlier M0-M3.5 gates remain green.
+
+**Blockers/dependencies/restart:** none. No external provider process or dependency was added. These are
+immutable schemas, ingestion APIs, joins, and fixtures; no live process, migration, reload, cache clear, or
+restart applies.
+
+**Negative-memory status:** provisional constraints implemented and awaiting terminal consolidation.
+Search handles: `M3.6 pinned semantic facts`, `LSP distinct authority`, `provider conclusion join`, `equal
+compiler no winner`, `semantic artifact invalidation`, `legacy successor fail closed`.
+
+**Signature:** Codex (GPT-5), M3.6 integration owner, schema/join/invalidation checkpoint, 2026-07-14.
+
+---
+
+## M3.6 terminal checkpoint — pinned provider facts and conflict-preserving authority
+
+**Date/time:** 2026-07-14T17:46:54+02:00
+
+**Objective/target:** complete optional compiler/language-server semantic fact ingestion with higher static
+authority, retained conflicts, exact artifact invalidation, and no adapter or runtime authority leakage.
+
+**Changes:** finalized `deslop.language-adapter-capabilities/2`, distinct LanguageServer authority, strict
+`deslop.semantic-resolution-facts/1`, public fact/provider/artifact builders and IDs, semantic conclusions
+and paths inside `deslop.resolution/1`, preferred diagnostic conclusions, strict fact-to-path/result cross-
+validation, `build_with_semantic_facts`, explicit semantic successor input, and `SemanticFactChanged`.
+RuntimeVerification is rejected from static conclusions and Syntax cannot assert a terminal binding.
+
+**Commands/checks run:** repeated focused schema/join/invalidation tests; full 12-test deslop-lang suite;
+`cargo test -p deslop-parse --all-features`; focused rustdoc/clippy; two full terminal cycles including
+`cargo test --workspace --all-features`, `cargo build --workspace --all-features`, `RUSTDOCFLAGS='-D
+warnings' cargo doc --workspace --all-features --no-deps`, `cargo clippy --workspace --all-features
+--all-targets -- -D warnings`, `cargo fmt --all -- --check`, and `git diff --check`; targeted source/diff
+audits for production capability promotion, runtime/static mixing, provider-absence externality, and
+first/sorted winner behavior; `jj status/diff`.
+
+**Results:** PASS. All 24 focused resolution tests pass. Parse reports 128 passed, zero failed, one
+designated instrumentation probe ignored, and four compile-fail doctests passed. Lang reports 12 passed.
+Every workspace all-feature gate passes, including unchanged M0/M1/M2 locks and graph false-resolution
+probes. Complete LSP agreement can be preferred without removing adapter evidence. Complete compiler
+evidence is preferred over LSP/adapter, but any complete disagreement remains Conflict. Equal compiler
+disagreement is order-invariant Conflict with no preferred source. Incomplete facts remain Unknown and do
+not conflict. Explicit pinned external endpoints are retained, but disagreement still blocks.
+
+**Numerical incremental results:** changing one result artifact rebuilds exactly one of five references and
+reuses four; changing a shared provider configuration rebuilds exactly its two references and reuses three.
+Both successor documents are byte-identical to clean builds. The legacy successor fails closed if semantic
+facts would otherwise be dropped.
+
+**Invalidated assumptions / failure modes:** provider enum labels are not evidence ingestion; provider
+output is not project-model completeness; lookup precedence and evidence authority are separate domains;
+higher authority does not erase disagreement; equal authority cannot first-win; runtime observation cannot
+enter the static join; provider absence cannot manufacture externality; and a semantic projection cannot be
+silently omitted from a successor.
+
+**Current recommendation/next actions:** open M3.7 and freeze joined adversarial fixtures for duplicate
+names, nested scopes, wildcard/alias imports, re-exports, dynamic and unresolved cases, reusing M3.2-M3.6
+fixtures where their complete paths/status/reasons already cover the ADR and adding missing cross-products.
+
+**Blockers/dependencies/restart:** none.
+
+**Negative-memory status:** terminal constraints ready for Hindsight consolidation. Search handles:
+`M3.6 pinned semantic facts`, `LSP distinct authority`, `provider conclusion join`, `lower disagreement
+retained`, `equal compiler no winner`, `runtime static rejection`, `semantic artifact invalidation`,
+`legacy successor fail closed`.
+
+**Signature:** Codex (GPT-5), M3.6 integration owner, terminal checkpoint, 2026-07-14.

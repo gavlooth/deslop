@@ -37,6 +37,7 @@ mod query;
 mod resolution;
 mod resolution_traversal;
 mod scope_graph;
+mod semantic_resolution;
 mod snapshot;
 
 pub use adapter::{
@@ -79,13 +80,14 @@ pub use query::{
     SyntaxQueryPropertyPredicate,
 };
 pub use resolution::{
-    RESOLUTION_POLICY_SCHEMA, RESOLUTION_SCHEMA, ResolutionCheck, ResolutionCheckKind,
-    ResolutionCheckState, ResolutionCoverageEvidence, ResolutionDocument, ResolutionEndpoint,
-    ResolutionInvalidation, ResolutionInvalidationReason, ResolutionPath, ResolutionPathEdge,
-    ResolutionPathEdgeKind, ResolutionPathKey, ResolutionPathViability, ResolutionPolicyId,
-    ResolutionPrecedenceComponent, ResolutionProjection, ResolutionProjectionError,
-    ResolutionProjectionUpdate, ResolutionRejectionReason, ResolutionResult, ResolutionResultId,
-    ResolutionResultKey, ResolutionResultRecord, ResolutionStatus,
+    PreferredResolutionConclusion, RESOLUTION_POLICY_SCHEMA, RESOLUTION_SCHEMA, ResolutionCheck,
+    ResolutionCheckKind, ResolutionCheckState, ResolutionConclusion, ResolutionConclusionSource,
+    ResolutionCoverageEvidence, ResolutionDocument, ResolutionEndpoint, ResolutionInvalidation,
+    ResolutionInvalidationReason, ResolutionPath, ResolutionPathEdge, ResolutionPathEdgeKind,
+    ResolutionPathKey, ResolutionPathViability, ResolutionPolicyId, ResolutionPrecedenceComponent,
+    ResolutionProjection, ResolutionProjectionError, ResolutionProjectionUpdate,
+    ResolutionRejectionReason, ResolutionResult, ResolutionResultId, ResolutionResultKey,
+    ResolutionResultRecord, ResolutionStatus,
 };
 pub use resolution_traversal::{
     DeferredImportTraversal, DynamicBoundaryTraversal, ExplicitShadowing, LexicalScopeStep,
@@ -103,6 +105,12 @@ pub use scope_graph::{
     ScopeFactRecord, ScopeFactWire, ScopeGraphBuildError, ScopeGraphBuilder, ScopeGraphDocument,
     ScopeGraphProjection, ScopeKind, ShadowingDraft, SymbolKind, Visibility, VisibilityDraft,
     VisibilityKind,
+};
+pub use semantic_resolution::{
+    SEMANTIC_RESOLUTION_FACT_SCHEMA, SemanticArtifactId, SemanticProvider, SemanticProviderDraft,
+    SemanticProviderKey, SemanticProviderKind, SemanticResolutionFact,
+    SemanticResolutionFactBuilder, SemanticResolutionFactDocument, SemanticResolutionFactDraft,
+    SemanticResolutionFactError, SemanticResolutionFactKey, SemanticResolutionFacts,
 };
 
 pub use snapshot::{

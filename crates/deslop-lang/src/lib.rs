@@ -10,7 +10,7 @@ mod resolution;
 
 pub use resolution::*;
 
-pub const LANGUAGE_ADAPTER_CAPABILITY_SCHEMA: &str = "deslop.language-adapter-capabilities/1";
+pub const LANGUAGE_ADAPTER_CAPABILITY_SCHEMA: &str = "deslop.language-adapter-capabilities/2";
 pub const CANONICAL_ROLE_SCHEMA: &str = "deslop.canonical-roles/1";
 pub const LANGUAGE_QUERY_PACK_SCHEMA: &str = "deslop.language-query-pack/1";
 pub const LANGUAGE_LEXICAL_POLICY_SCHEMA: &str = "deslop.language-lexical-policy/1";
@@ -395,6 +395,7 @@ impl CapabilitySupport {
 pub enum CapabilityAuthority {
     Syntax,
     Adapter,
+    LanguageServer,
     Compiler,
     RuntimeVerification,
 }
@@ -404,6 +405,7 @@ impl CapabilityAuthority {
         match self {
             Self::Syntax => "syntax",
             Self::Adapter => "adapter",
+            Self::LanguageServer => "language-server",
             Self::Compiler => "compiler",
             Self::RuntimeVerification => "runtime-verification",
         }
@@ -5375,7 +5377,7 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&manifest).unwrap(),
             serde_json::json!({
-                "schema": "deslop.language-adapter-capabilities/1",
+                "schema": "deslop.language-adapter-capabilities/2",
                 "adapter_schema": "deslop-lang-adapter/test-1",
                 "capabilities": [
                     {"capability":"grammar-selection","support":"provided","authority":"syntax"},

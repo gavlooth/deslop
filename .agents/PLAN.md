@@ -2333,3 +2333,97 @@ live-state transition, migration, reload, cache clear, or restart applies.
 
 Next checkpoint: open M3.6 in a fresh jj child and audit the existing external-provider/artifact identity,
 authority, and conflict surfaces before designing optional compiler/LSP semantic fact ingestion.
+
+#### Active M3.6 execution plan — pinned provider conclusions without authority erasure
+
+Active hypothesis: optional compiler/language-server facts need a separate immutable evidence projection,
+not mutation of adapter scope facts. The current authority catalog has `Compiler` but no
+`LanguageServer`; `ResolutionResult.authority` is required to equal the adapter-owned reference evidence;
+and the existing provider-conflict case is a manually altered path rather than ingested evidence. The
+external analyzer subsystem emits lint findings and does not retain binding endpoints, project-model
+coverage, or exact result artifacts, so it is not a semantic-resolution provider contract.
+
+Current approach:
+
+1. Extend the versioned authority vocabulary with `LanguageServer`, ordered between Adapter and Compiler
+   for static evidence only. Runtime verification remains orthogonal and cannot enter static precedence.
+2. Add a strict `deslop.semantic-resolution-facts/1` projection bound to the exact analysis, scope graph,
+   build context, provider kind/name/version, executable/configuration/project-model/result artifacts,
+   and explicit coverage. Facts name an exact reference and retain Unique/Ambiguous/Unresolved/Unknown
+   conclusions plus every internal or positively identified external endpoint. Stale graph/build keys,
+   malformed terminal cardinality, incomplete terminal claims, duplicate provider queries, and forged
+   payload IDs fail closed.
+3. Join adapter and provider conclusions in `deslop.resolution/1` without blending lookup precedence and
+   evidence authority. Retain every conclusion/path. Complete compiler evidence outranks complete LSP and
+   adapter evidence; complete LSP outranks adapter evidence only with a complete project model and pinned
+   artifacts. Any complete lower-authority disagreement yields Conflict while preserving a higher-
+   authority preferred diagnostic conclusion. Equal-authority disagreement yields Conflict with no
+   preferred winner. Incomplete provider facts cannot assert a conflict or terminal result.
+4. Extend successor invalidation with semantic fact/artifact dependencies. A changed provider fact rebuilds
+   only its referenced result; a provider/model/artifact identity change expires every fact carrying that
+   identity; unchanged results retain exact keys. Successor and clean strict documents must be byte-equal.
+
+CONVERGENCE: one two-reference provider fixture will exercise adapter-only, complete LSP, complete compiler,
+lower-authority disagreement, equal-authority disagreement, incomplete project model, wrong build/scope
+identity, internal and external endpoints, artifact revision change, and an unrelated provider edit. Its
+terminal outcomes are: (a) stale or incomplete evidence authorizes a terminal result—schema invalid; (b)
+provider rank changes lookup candidate precedence—join invalid; (c) any disagreement is dropped or a tied
+provider wins by order—conflict model invalid; (d) successor differs from clean or rebuilds the unrelated
+reference—invalidation invalid; or (e) all exact outcomes and numerical reuse counts pass, authorizing full
+workspace gates. This single fixture collapses schema, authority, conflict, and invalidation decisions.
+
+Validation path: authority-catalog unit tests; semantic fact strict round-trip/adversarial tests; focused
+provider-join and successor parity tests with measured counts; parse/lang crate tests and doctests; all-
+feature workspace test/build/rustdoc/clippy/fmt/diff gates; unchanged M0/M1/M2 and M3.4/M3.5 regression
+probes; targeted audit that production adapters were not promoted.
+
+Negative-memory constraints: never relabel LSP evidence as Compiler or Adapter; never infer artifact or
+project-model completeness from provider output presence; never overwrite adapter conclusions; never rank
+provider evidence through language lookup precedence; never first-win equal authority; never turn provider
+absence into externality; never reuse across provider/config/model/result artifact identity changes.
+
+Agent assignment: `/root` owns schema, join, invalidation, integration, and verification. No sub-agent was
+requested, so no delegation is active.
+
+Next checkpoint: implement and strictly validate the pinned semantic fact projection before changing
+resolution outcome derivation.
+
+Provider schema/join/invalidation checkpoint (2026-07-14): focused implementation complete.
+`deslop.language-adapter-capabilities/2` adds the distinct LanguageServer authority without promoting any
+production adapter declaration. New strict `deslop.semantic-resolution-facts/1` documents bind analysis,
+scope graph, build context, provider kind/name/version, executable/configuration/project-model/result
+artifacts, exact reference/endpoints, diagnostics, and coverage. Builder and strict wire validation reject
+foreign graphs, duplicate provider queries, incomplete terminal facts, cardinality contradictions, forged
+payloads, absent internal endpoints, and complete project models without an artifact.
+
+`deslop.resolution/1` now retains one adapter conclusion plus every semantic conclusion/path. Complete LSP
+agreement becomes the preferred diagnostic authority while leaving adapter evidence present. Complete
+compiler evidence outranks LSP; any lower complete disagreement produces Conflict while retaining the
+compiler preference. Equal compiler disagreement produces Conflict with no preferred source and identical
+documents under reversed insertion order. Incomplete LSP evidence stays Unknown within its own path and
+cannot authorize or conflict. Positive external endpoints require a pinned provider fact. Strict resolution
+validation cross-checks each conclusion/path against its exact semantic fact and provider.
+
+Semantic successor measurements: changing one result artifact reuses four of five exact results and
+rebuilds one; changing the provider configuration changes both carried fact keys, reuses three, and rebuilds
+two. Both successors are byte-identical to clean builds and report `SemanticFactChanged`. The old successor
+API fails closed when a prior projection contains semantic facts. Focused status: 24 resolution tests, 128
+parse tests plus one designated instrumentation probe ignored, four compile-fail doctests, 12 lang tests,
+focused rustdoc/clippy/fmt/diff clean. Next: workspace-wide all-feature gates and production-authority/
+fallback audit before terminalizing M3.6.
+
+Terminal M3.6 checkpoint (2026-07-14): complete and verified. Versioned provider facts are immutable,
+strict, graph/build/artifact-bound inputs; resolution retains distinct adapter/LSP/compiler conclusions and
+derives Conflict without erasing disagreement or using lookup order as evidence rank. Equal-authority
+disagreement has no preferred result. RuntimeVerification and Syntax cannot assert a terminal static
+binding. Provider absence never proves externality; only an explicit pinned positive endpoint can do so.
+
+Validation: 24 focused resolution tests; 128 parse tests with one designated instrumentation probe ignored;
+four compile-fail doctests; 12 lang tests; full all-feature workspace test/build/rustdoc/clippy/fmt/diff
+gates; unchanged M0/M1/M2 definition-of-done and graph false-resolution probes. Incremental clean parity is
+exact at 4 reused/1 rebuilt for a result artifact and 3/2 for a shared configuration artifact. Production
+capability declarations and existing external/LSP execution paths are unchanged; no provider process,
+dependency, migration, reload, cache clear, or restart applies.
+
+Next checkpoint: open M3.7 in a fresh jj child, inventory the existing M3.2-M3.6 fixtures against every ADR
+adversarial dimension, and add only the missing joined cases with frozen expected paths/status/reasons.
