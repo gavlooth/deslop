@@ -9670,3 +9670,180 @@ complete control-flow schema`, `control capture not CFG`, `adapter-bound point e
 `coverage not enumeration`, `no graph2 CFG`, `production ControlFlow Unknown`.
 
 **Signature:** Codex (GPT-5), M4.1 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M4.2 active checkpoint — adapter lowering audit
+
+**Date/time:** 2026-07-14T19:00:00+02:00
+
+**Objective/target:** establish the identity and authority prerequisites for real per-adapter CFG lowering.
+
+**Commands/checks run:** Hindsight active-plan/negative-memory search; targeted `rg`/`sed` audit of all six
+production capability manifests, canonical control roles, Control query packs, construct policies, raw grammar
+kinds, metrics flow-break catalogs, snapshot adapter identity construction, and adapter schema consumers.
+
+**Results:** every production adapter still declares ControlFlow Unknown. Julia, Python, JavaScript,
+TypeScript/TSX, and Rust expose Provided syntax-level Control captures; Clojure explicitly leaves Control query
+support Unknown because reader/macro context is not a total query. These captures identify candidate constructs
+but contain no evaluation-order, successor, exception, abrupt-target, or suspension semantics. No versioned
+control-flow lowering rule pack exists in stored adapter identity. Adding it changes semantic identity and
+therefore requires an adapter schema bump and exact capability/pack/dialect coherence checks.
+
+**Invalidated assumptions / failure modes:** canonical roles plus source order are not a portable lowering
+algorithm. A Provided Control query is not a Provided ControlFlow capability. Rust calls may unwind and macros/
+unsafe constructs are opaque; those owners cannot be Complete until explicitly modeled. Clojure core/macro
+forms cannot be treated uniformly without reader/macro authority. Omitting an Unknown adapter from a project
+projection would hide a coverage gap.
+
+**Current recommendation/next actions:** first add strict `deslop.language-control-flow-rules/1`, store it in
+`LanguageAdapterIdentity`, bump adapter schema, and reject capability/rule/dialect contradictions. Then build a
+fixture-backed Rust lowering slice with explicit Partial boundaries before considering further promotions.
+
+**Blockers/dependencies/restart:** none. Existing tree-sitter and owned-arena APIs are sufficient; no new
+dependency is justified.
+
+**Negative-memory status:** provisional and active. Search handles: `M4.2 lowering rules identity`, `control
+query not ControlFlow`, `Rust unwind partial`, `Clojure macro CFG unknown`, `all-pack dispatch gap`.
+
+**Signature:** Codex (GPT-5), M4.2 integration owner, lowering-audit checkpoint, 2026-07-14.
+
+---
+
+## M4.2 checkpoint — lowering-rule identity substrate
+
+**Date/time:** 2026-07-14T19:06:04+02:00
+
+**Objective/target:** make adapter CFG behavior versioned, stored, capability-aligned, and dialect-applicable
+before implementing the lowering engine.
+
+**Changes:** added strict public `deslop.language-control-flow-rules/1` with payload-free Unknown/Unsupported
+states and canonical Provided packs. Provided payloads retain exact dialect artifacts, static authority,
+evaluation order, owner/body selectors, and typed sequence, branch, match, loop, abrupt, exceptional,
+suspension, opaque, and adapter-defined actions. Stored the pack in `LanguageAdapterIdentity`, included its
+canonical wire bytes in identity hashing, bumped adapter schema `/2`→`/3`, and made snapshot publication reject
+pack/schema, capability support/authority, and selected-dialect contradictions. Updated M2's pinned schema.
+
+**Commands/checks run:** focused rule-pack tests; focused snapshot alignment/identity test; all deslop-lang
+tests; all parse tests/doctests; focused M4.1 tests; M2 DoD; deslop-lang/deslop-parse all-target clippy and
+rustdoc with warnings denied; fmt and diff checks.
+
+**Results:** PASS. Two rule-pack strictness/corruption tests, one snapshot identity/alignment test, 14/14
+deslop-lang tests, 140 active parse tests plus one designated ignored probe and four compile-fail doctests,
+five M4.1 suites, and M2 DoD pass. Clippy, rustdoc, fmt, and diff checks pass. All production packs have
+payload-free Unknown ControlFlow rule packs matching their Unknown capability, so their highest complete tier
+remains S1.
+
+**Invalidated assumptions / failure modes:** behavior implemented only in Rust code would not invalidate
+stored adapter identity. Capability and rule support must be checked together; either one alone can lie.
+Provided rules for a different grammar version cannot lower the selected snapshot. A test-only M4.1 adapter
+that declared Provided ControlFlow needed an explicit matching rule pack once alignment became executable.
+Clippy rejected one complex mutation-vector type; a named alias fixed only test structure.
+
+**Current recommendation/next actions:** implement shared owned-arena lowering against the exact stored pack.
+Use a test-only Provided Rust catalog to establish sequence/branch/loop/abrupt edge correctness and explicit
+Partial gaps; promote the production Rust pack only after the full rule catalog and fixture gate are complete.
+
+**Blockers/dependencies/restart:** none. The adapter schema bump expires prior derived projection identities;
+fresh analyses rebuild automatically. No runtime restart or migration applies.
+
+**Negative-memory status:** provisional constraints enforced. Search handles: `M4.2 rule pack identity`,
+`adapter schema 3`, `capability rule alignment`, `dialect-applicable CFG rules`, `production remains S1`.
+
+**Signature:** Codex (GPT-5), M4.2 integration owner, rule-identity checkpoint, 2026-07-14.
+
+---
+
+## M4.2 checkpoint — production Rust lowering and all-pack dispatch
+
+**Date/time:** 2026-07-14T19:30:48+02:00
+
+**Objective/target:** implement auditable owned-arena CFG lowering at each production adapter's declared tier,
+promoting only a fixture-backed adapter and retaining explicit gaps everywhere else.
+
+**Changes:** implemented public `lower_control_flow`, `ControlFlowLoweringResult`, and
+`ControlFlowLoweringGap` over the exact stored rule pack. Added compositional owner lowering for sequence,
+if/else, loop/while/for, return/break/continue/terminate, opaque boundaries, entry/exit dispatch, coverage, and
+edge precision. Rust now declares Provided ControlFlow at Adapter authority with 17 versioned rules covering
+function/closure/const/static owners and explicit Partial boundaries for match, macro, unsafe, call unwind,
+question-mark propagation, await, and yield. Added declared label-kind handling so labeled break/continue is
+matched to the correct loop. Fixed abrupt-only sequence and branch reachability so unreachable suffixes cannot
+fabricate normal exits. The other five production packs remain Unknown and emit canonical per-file gaps.
+
+**Commands/checks run:** focused M4.2 tests throughout; full `cargo test -p deslop-parse --all-features`;
+`cargo test -p deslop-lang --all-features`; parse/lang all-feature all-target clippy with `-D warnings`;
+parse/lang rustdoc with `-D warnings`; `cargo fmt --all -- --check`; `git diff --check`.
+
+**Results:** PASS at the crate checkpoint. Eight M4.2 tests cover a test-only Provided pack, exact production
+Rust sequence/branch/loop/abrupt lowering, labeled outer breaks, while/for/continue, simple values,
+abrupt-only reachability, match and nested-control Partial boundaries, call/macro Partial boundaries, one
+Unknown adapter, and all six production adapters in one dispatch matrix. Deslop-parse reports 148 passed, zero
+failed, one designated ignored probe, and four passing compile-fail doctests. Deslop-lang reports 14/14. Focused
+clippy, rustdoc, fmt, and diff checks pass.
+
+**Invalidated assumptions/failure modes:** the first broad parse run failed because an adapter matrix assumed
+every S2 capability remained Unknown and resolution-only test adapters inherited Rust's new Provided
+ControlFlow declaration without its stored rule pack. The matrix now recognizes only Rust's promotion; the
+resolution fixtures explicitly restore Unknown. A first sequence traversal also carried unreachable suffix
+exits after `return`; it now advances only from a reachable normal predecessor. Nearest-loop consumption is
+invalid for labeled transfers; target labels are retained and matched. Simple return values do not by
+themselves imply uncertainty, while nested control in values/predicates does.
+
+**Current recommendation/next actions:** run full workspace all-feature test/build/rustdoc/clippy/fmt/diff plus
+frozen M0-M4.1 regression gates. If green, update the completion ledger, consolidate durable positive and
+negative memory, and snapshot M4.2 before beginning dominance/post-dominance work.
+
+**Blockers/dependencies/restart:** none. Adapter schema `/3` invalidates old derived identities; fresh snapshot
+construction rebuilds them. No service restart, migration, or cache clear applies.
+
+**Negative-memory status:** provisional and enforced. Search handles: `M4.2 Rust CFG promotion`, `unreachable
+suffix normal flow`, `labeled break nearest loop invalid`, `resolution test adapter capability inheritance`,
+`nested predicate control Partial`, `all-pack lowering gaps`.
+
+**Signature:** Codex (GPT-5), M4.2 integration owner, production-lowering checkpoint, 2026-07-14.
+
+---
+
+## M4.2 terminal checkpoint — complete and verified
+
+**Date/time:** 2026-07-14T19:35:57+02:00
+
+**Objective/target:** close adapter-tier CFG lowering only after production promotion, explicit gaps, identity,
+coverage, reachability, cross-crate consumers, and frozen regressions all agree.
+
+**Final changes:** stored and identity-bound strict `deslop.language-control-flow-rules/1`; bumped adapter schema
+to `/3`; enforced capability/rule/authority/dialect coherence; added shared owned-arena lowering and explicit
+gap results; promoted Rust alone to Provided/Adapter with 17 fixture-backed rules; retained Unknown for
+Clojure, Julia, Python, JavaScript, and TypeScript; integrated the new per-capability truth into adapter, M2,
+and resolution-only fixture matrices. Checked M4.2 complete in `.agents/TODO.md`.
+
+**Commands run:** `cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`;
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`;
+`git diff --check`; focused parse/lang/M4.1/M4.2/M2 gates during implementation; Hindsight remember/improve in
+`repo:/home/christos/code/deslop`.
+
+**Results:** PASS. Every workspace test target passes except the repository's two designated ignored probes;
+workspace build, rustdoc, clippy, fmt, and diff checks pass. M0/M1/M2, graph false-resolution, M3 frozen and
+adversarial resolution, M4.1 schema, and M4.2 lowering/dispatch regressions pass. Parse reports 148 active
+tests and four compile-fail doctests; language reports 14 tests. Hindsight consolidation reports 1,284
+entities, 3,493 relations, and 3,701 observations.
+
+**Invalidated assumptions/failure modes:** source-order/control captures are not CFG authority; behavior cannot
+live outside stored identity; sequence enumeration cannot imply reachability; labeled transfers cannot default
+to the nearest loop; a capability expectation cannot be generalized from semantic tier alone; test adapters
+cannot inherit manifests independently of rule payloads. These constraints are now code-, fixture-, and
+memory-enforced.
+
+**Current recommendation/next actions:** begin M4.3 from the frozen `deslop.control-flow/1` projection. Define
+dominance/post-dominance and SESE/PST identity, disconnected/nonterminating handling, and Partial-coverage
+propagation before implementing algorithms.
+
+**Blockers/dependencies/restart:** none. Fresh snapshot construction naturally expires adapter `/2` identities;
+no service restart, migration, or cache clear is required.
+
+**Negative-memory status:** durable and consolidated. Search handles: `M4.2 terminal Rust CFG`, `unreachable
+suffix normal flow`, `labeled break nearest loop invalid`, `test adapter capability inheritance`, `nested
+control Partial`, `all-pack dispatch gaps`.
+
+**Signature:** Codex (GPT-5), M4.2 integration owner, terminal checkpoint, 2026-07-14.

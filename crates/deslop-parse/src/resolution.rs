@@ -4403,7 +4403,12 @@ mod tests {
         }
 
         fn capability_manifest(&self) -> deslop_lang::LanguageAdapterCapabilityManifest {
-            let mut manifest = RUST_PACK.capability_manifest();
+            let mut manifest = RUST_PACK
+                .capability_manifest()
+                .with_declaration(CapabilityDeclaration::unknown(
+                    AdapterCapability::ControlFlow,
+                ))
+                .unwrap();
             for capability in [
                 AdapterCapability::LexicalScopes,
                 AdapterCapability::NameResolution,

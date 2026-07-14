@@ -3301,7 +3301,9 @@ mod tests {
             );
             for capability in AdapterCapability::ALL {
                 let declaration = identity.capabilities().declaration(capability);
-                let expected = if capability.tier() <= SemanticTier::S1 {
+                let expected = if capability.tier() <= SemanticTier::S1
+                    || (identity.name() == "rust" && capability == AdapterCapability::ControlFlow)
+                {
                     provided
                 } else {
                     unknown

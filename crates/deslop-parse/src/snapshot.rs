@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use anyhow::{Context, Result, bail};
 use deslop_core::{AnalysisDiagnostic, AnalysisProvenance, Lang};
 use deslop_lang::{
-    LangPack, LanguageAdapterCapabilityManifest, LanguageConstructPolicy, LanguageLexicalPolicy,
-    LanguageQueryPack, Registry,
+    AdapterCapability, LangPack, LanguageAdapterCapabilityManifest, LanguageConstructPolicy,
+    LanguageControlFlowRulePack, LanguageLexicalPolicy, LanguageQueryPack, Registry,
 };
 use ignore::WalkBuilder;
 use serde::de::Error as _;
@@ -229,6 +229,7 @@ pub struct LanguageAdapterIdentity {
     lexical: LanguageLexicalPolicy,
     constructs: LanguageConstructPolicy,
     resolution_rules: deslop_lang::LanguageResolutionRulePack,
+    control_flow_rules: LanguageControlFlowRulePack,
 }
 
 impl LanguageAdapterIdentity {
@@ -258,6 +259,10 @@ impl LanguageAdapterIdentity {
 
     pub fn resolution_rules(&self) -> &deslop_lang::LanguageResolutionRulePack {
         &self.resolution_rules
+    }
+
+    pub fn control_flow_rules(&self) -> &LanguageControlFlowRulePack {
+        &self.control_flow_rules
     }
 
     fn identity_bytes(&self) -> Vec<u8> {
@@ -434,6 +439,11 @@ impl LanguageAdapterIdentity {
                 );
             }
         }
+        push_part(
+            &mut bytes,
+            &serde_json::to_vec(&self.control_flow_rules)
+                .expect("control-flow rules have infallible JSON serialization"),
+        );
         bytes
     }
 }
@@ -563,6 +573,16 @@ fn resolve_grammar(
             descriptor.grammar_version()
         );
     }
+    let control_flow_rules = adapter.control_flow_rule_pack();
+    validate_control_flow_rule_alignment(
+        adapter.name(),
+        adapter.adapter_schema(),
+        &capabilities,
+        &control_flow_rules,
+        descriptor.dialect(),
+        descriptor.grammar_id(),
+        descriptor.grammar_version(),
+    )?;
     Ok((
         GrammarSelection::from_descriptor(descriptor),
         language,
@@ -576,9 +596,46 @@ fn resolve_grammar(
                 lexical,
                 constructs,
                 resolution_rules,
+                control_flow_rules,
             },
         },
     ))
+}
+
+fn validate_control_flow_rule_alignment(
+    adapter_name: &str,
+    adapter_schema: &str,
+    capabilities: &LanguageAdapterCapabilityManifest,
+    rules: &LanguageControlFlowRulePack,
+    dialect: &str,
+    grammar_id: &str,
+    grammar_version: &str,
+) -> Result<()> {
+    rules.validate().map_err(|error| {
+        anyhow::anyhow!(
+            "invalid control-flow rule pack for language adapter {adapter_name}: {error}"
+        )
+    })?;
+    if rules.adapter_schema() != adapter_schema {
+        bail!(
+            "language adapter {adapter_name} control-flow rules target {} but adapter schema is {adapter_schema}",
+            rules.adapter_schema()
+        );
+    }
+    let declaration = capabilities.declaration(AdapterCapability::ControlFlow);
+    if rules.support() != declaration.support() || rules.authority() != declaration.authority() {
+        bail!(
+            "language adapter {adapter_name} ControlFlow capability disagrees with its lowering rule pack"
+        );
+    }
+    if rules.support() == deslop_lang::CapabilitySupport::Provided
+        && !rules.applies_to(dialect, grammar_id, grammar_version)
+    {
+        bail!(
+            "language adapter {adapter_name} control-flow rules do not declare selected dialect {dialect}/{grammar_id}/{grammar_version}"
+        );
+    }
+    Ok(())
 }
 
 fn grammar_lang_key(lang: Lang) -> u8 {
@@ -3716,6 +3773,99 @@ mod tests {
         changed.resolution_rules =
             deslop_lang::LanguageResolutionRulePack::unknown(identity.schema());
         assert_ne!(identity.identity_bytes(), changed.identity_bytes());
+    }
+
+    #[test]
+    fn control_flow_rule_payload_is_identity_bound_and_capability_aligned() {
+        let temp = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(temp.path(), repository())
+            .unwrap()
+            .with_overlay("sample.rs", b"fn sample() {}\n".to_vec())
+            .unwrap()
+            .build()
+            .unwrap();
+        let identity = snapshot
+            .entry(Path::new("sample.rs"))
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            identity.control_flow_rules().support(),
+            deslop_lang::CapabilitySupport::Provided
+        );
+
+        let mut changed = identity.clone();
+        changed.control_flow_rules =
+            deslop_lang::LanguageControlFlowRulePack::unsupported(identity.schema());
+        assert_ne!(identity.identity_bytes(), changed.identity_bytes());
+
+        let capabilities = deslop_lang::LanguageAdapterCapabilityManifest::current_syntax(
+            "deslop-lang-adapter/test-3",
+        )
+        .with_declaration(deslop_lang::CapabilityDeclaration::provided(
+            AdapterCapability::ControlFlow,
+            deslop_lang::CapabilityAuthority::Adapter,
+        ))
+        .unwrap();
+        let unknown =
+            deslop_lang::LanguageControlFlowRulePack::unknown("deslop-lang-adapter/test-3");
+        let mismatch = validate_control_flow_rule_alignment(
+            "test",
+            "deslop-lang-adapter/test-3",
+            &capabilities,
+            &unknown,
+            "rust",
+            "tree-sitter-rust",
+            "0.24.2",
+        )
+        .unwrap_err();
+        assert!(mismatch.to_string().contains("disagrees"), "{mismatch}");
+
+        let provided = deslop_lang::LanguageControlFlowRulePack::provided(
+            "deslop-lang-adapter/test-3",
+            deslop_lang::CapabilityAuthority::Adapter,
+            vec![deslop_lang::DialectDeclaration::new(
+                "rust",
+                "tree-sitter-rust",
+                "0.24.2",
+            )],
+            deslop_lang::ControlEvaluationOrder::LeftToRight,
+            vec![deslop_lang::ControlFlowOwnerRule::new(
+                deslop_lang::ControlFlowSyntaxSelector::new("function_item", None),
+                deslop_lang::ControlFlowOwnerRuleKind::Callable,
+                "body",
+            )],
+            vec![deslop_lang::ControlFlowRule::new(
+                deslop_lang::ControlFlowSyntaxSelector::new("block", None),
+                deslop_lang::ControlFlowAction::Sequence,
+            )],
+        )
+        .unwrap();
+        validate_control_flow_rule_alignment(
+            "test",
+            "deslop-lang-adapter/test-3",
+            &capabilities,
+            &provided,
+            "rust",
+            "tree-sitter-rust",
+            "0.24.2",
+        )
+        .unwrap();
+        assert!(
+            validate_control_flow_rule_alignment(
+                "test",
+                "deslop-lang-adapter/test-3",
+                &capabilities,
+                &provided,
+                "rust",
+                "tree-sitter-rust",
+                "0.24.1",
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("do not declare selected dialect")
+        );
     }
 
     #[test]

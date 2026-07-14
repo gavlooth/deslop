@@ -1,8 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use deslop_lang::{AdapterCapability, CapabilityAuthority, CapabilitySupport};
+use deslop_lang::{
+    AdapterCapability, CapabilityAuthority, CapabilitySupport, ControlAbruptForm,
+    ControlEvaluationOrder, ControlFlowAction, ControlFlowOwnerRuleKind, ControlLoopForm,
+};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -759,6 +763,907 @@ impl ControlFlowBuilder {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ControlFlowLoweringGap {
+    path: PathBuf,
+    adapter_schema: String,
+    support: CapabilitySupport,
+    reason: String,
+}
+
+impl ControlFlowLoweringGap {
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+
+    pub fn adapter_schema(&self) -> &str {
+        &self.adapter_schema
+    }
+
+    pub fn support(&self) -> CapabilitySupport {
+        self.support
+    }
+
+    pub fn reason(&self) -> &str {
+        &self.reason
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ControlFlowLoweringResult {
+    projection: Option<ControlFlowProjection>,
+    gaps: Vec<ControlFlowLoweringGap>,
+}
+
+impl ControlFlowLoweringResult {
+    pub fn projection(&self) -> Option<&ControlFlowProjection> {
+        self.projection.as_ref()
+    }
+
+    pub fn gaps(&self) -> &[ControlFlowLoweringGap] {
+        &self.gaps
+    }
+}
+
+/// Lower every executable owner whose exact stored adapter provides an applicable rule pack.
+///
+/// Files whose adapters declare ControlFlow Unknown or Unsupported remain explicit gaps. This function never
+/// falls back to canonical roles, control-query captures, source-text heuristics, or the legacy project graph.
+pub fn lower_control_flow(
+    analysis: Arc<ProjectAnalysis>,
+    policy: ControlFlowPolicyId,
+) -> Result<ControlFlowLoweringResult, ControlFlowBuildError> {
+    let mut drafts = Vec::new();
+    let mut gaps = Vec::new();
+    for file in analysis.files() {
+        let path = file.key().path.clone();
+        let identity = analysis
+            .snapshot()
+            .entry(&path)
+            .and_then(|entry| entry.language_adapter_identity())
+            .ok_or_else(|| {
+                ControlFlowBuildError::Node(format!(
+                    "source {} has no stored adapter identity",
+                    path.display()
+                ))
+            })?;
+        let rules = identity.control_flow_rules();
+        if rules.support() != CapabilitySupport::Provided {
+            gaps.push(ControlFlowLoweringGap {
+                path,
+                adapter_schema: identity.schema().to_string(),
+                support: rules.support(),
+                reason: format!(
+                    "adapter {} declares ControlFlow {}",
+                    identity.name(),
+                    rules.support().as_str()
+                ),
+            });
+            continue;
+        }
+        for owner in analysis.node_ids().filter(|node| {
+            analysis.node(*node).is_ok_and(|view| {
+                view.path() == path && rules.owner_rule(view.raw_kind(), view.text()).is_some()
+            })
+        }) {
+            drafts.push(lower_owner(&analysis, owner, rules)?);
+        }
+    }
+    gaps.sort();
+    let projection = if drafts.is_empty() {
+        None
+    } else {
+        let mut builder = ControlFlowBuilder::new(Arc::clone(&analysis), policy);
+        for draft in drafts {
+            builder.add_graph(draft)?;
+        }
+        Some(builder.build()?)
+    };
+    Ok(ControlFlowLoweringResult { projection, gaps })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PendingExitKind {
+    Normal,
+    Return,
+    Break(Option<String>),
+    Continue(Option<String>),
+    Terminate,
+}
+
+#[derive(Debug, Clone)]
+struct PendingExit {
+    point: usize,
+    kind: PendingExitKind,
+    source: NodeId,
+    precision: ControlEdgePrecision,
+}
+
+#[derive(Debug)]
+struct LoweredFragment {
+    start: usize,
+    exits: Vec<PendingExit>,
+}
+
+struct OwnerLowerer<'a> {
+    analysis: &'a ProjectAnalysis,
+    rules: &'a deslop_lang::LanguageControlFlowRulePack,
+    owner: NodeId,
+    points: Vec<ControlPointDraft>,
+    edges: Vec<ControlEdgeDraft>,
+    uncertainty: BTreeSet<String>,
+}
+
+impl<'a> OwnerLowerer<'a> {
+    fn push_point(&mut self, kind: ControlPointKind, source: Option<NodeId>) -> usize {
+        let index = self.points.len();
+        let ordinal = if matches!(kind, ControlPointKind::Entry | ControlPointKind::Exit) {
+            0
+        } else {
+            self.points
+                .iter()
+                .filter(|point| point.kind == kind && point.source == source)
+                .count() as u32
+        };
+        self.points.push(ControlPointDraft {
+            kind,
+            source,
+            ordinal,
+        });
+        index
+    }
+
+    fn push_edge(
+        &mut self,
+        from: usize,
+        to: usize,
+        kind: ControlEdgeKind,
+        source: NodeId,
+        predicate: Option<NodeId>,
+        precision: ControlEdgePrecision,
+    ) {
+        self.edges.push(ControlEdgeDraft {
+            from,
+            to,
+            kind,
+            source,
+            predicate,
+            precision,
+        });
+    }
+
+    fn lower(&mut self, node: NodeId) -> Result<LoweredFragment, ControlFlowBuildError> {
+        let view = self
+            .analysis
+            .node(node)
+            .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+        if view.has_error() || view.is_error() || view.is_missing() {
+            self.uncertainty
+                .insert(format!("recovered syntax intersects {}", view.raw_kind()));
+        }
+        if node != self.owner
+            && self
+                .rules
+                .owner_rule(view.raw_kind(), view.text())
+                .is_some()
+        {
+            return Ok(self.leaf(node, ControlEdgePrecision::Exact));
+        }
+        let Some(rule) = self.rules.rule(view.raw_kind(), view.text()) else {
+            return Ok(self.leaf(node, ControlEdgePrecision::Exact));
+        };
+        match rule.action() {
+            ControlFlowAction::Sequence => self.lower_sequence(node),
+            ControlFlowAction::Branch {
+                condition_field,
+                consequence_field,
+                alternative_field,
+            } => self.lower_branch(
+                node,
+                condition_field,
+                consequence_field,
+                alternative_field.as_deref(),
+            ),
+            ControlFlowAction::Loop {
+                form,
+                condition_field,
+                body_field,
+                alternative_field,
+                label_kind,
+            } => self.lower_loop(
+                node,
+                *form,
+                condition_field.as_deref(),
+                body_field,
+                alternative_field.as_deref(),
+                label_kind.as_deref(),
+            ),
+            ControlFlowAction::Abrupt {
+                form,
+                value_field,
+                label_kind,
+            } => self.lower_abrupt(node, form, value_field.as_deref(), label_kind.as_deref()),
+            ControlFlowAction::OpaqueBoundary { reason } => {
+                self.uncertainty.insert(reason.clone());
+                let precision = ControlEdgePrecision::conservative(reason.clone())?;
+                Ok(self.leaf(node, precision))
+            }
+            ControlFlowAction::Match { .. }
+            | ControlFlowAction::Exceptional { .. }
+            | ControlFlowAction::Suspension { .. }
+            | ControlFlowAction::AdapterDefined { .. } => {
+                let reason = format!(
+                    "{} lowering is retained but not implemented by the shared M4.2 traversal",
+                    view.raw_kind()
+                );
+                self.uncertainty.insert(reason.clone());
+                Ok(self.leaf(node, ControlEdgePrecision::conservative(reason)?))
+            }
+        }
+    }
+
+    fn scan_uncertainty(&mut self, node: NodeId) -> Result<(), ControlFlowBuildError> {
+        let view = self
+            .analysis
+            .node(node)
+            .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+        if view.has_error() || view.is_error() || view.is_missing() {
+            self.uncertainty
+                .insert(format!("recovered syntax intersects {}", view.raw_kind()));
+        }
+        if node != self.owner
+            && self
+                .rules
+                .owner_rule(view.raw_kind(), view.text())
+                .is_some()
+        {
+            return Ok(());
+        }
+        if let Some(rule) = self.rules.rule(view.raw_kind(), view.text()) {
+            match rule.action() {
+                ControlFlowAction::OpaqueBoundary { reason } => {
+                    self.uncertainty.insert(reason.clone());
+                }
+                ControlFlowAction::Match { .. }
+                | ControlFlowAction::Exceptional { .. }
+                | ControlFlowAction::Suspension { .. }
+                | ControlFlowAction::AdapterDefined { .. } => {
+                    self.uncertainty.insert(format!(
+                        "{} lowering is retained but not implemented by the shared M4.2 traversal",
+                        view.raw_kind()
+                    ));
+                }
+                _ => {}
+            }
+        }
+        let children = view.children().collect::<Vec<_>>();
+        for child in children {
+            self.scan_uncertainty(child)?;
+        }
+        Ok(())
+    }
+
+    fn contains_unlowered_control(&self, node: NodeId) -> Result<bool, ControlFlowBuildError> {
+        let view = self
+            .analysis
+            .node(node)
+            .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+        if node != self.owner
+            && self
+                .rules
+                .owner_rule(view.raw_kind(), view.text())
+                .is_some()
+        {
+            return Ok(false);
+        }
+        if self
+            .rules
+            .rule(view.raw_kind(), view.text())
+            .is_some_and(|rule| {
+                matches!(
+                    rule.action(),
+                    ControlFlowAction::Branch { .. }
+                        | ControlFlowAction::Match { .. }
+                        | ControlFlowAction::Loop { .. }
+                        | ControlFlowAction::Abrupt { .. }
+                        | ControlFlowAction::Exceptional { .. }
+                        | ControlFlowAction::Suspension { .. }
+                        | ControlFlowAction::AdapterDefined { .. }
+                )
+            })
+        {
+            return Ok(true);
+        }
+        for child in view.children() {
+            if self.contains_unlowered_control(child)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn leaf(&mut self, node: NodeId, precision: ControlEdgePrecision) -> LoweredFragment {
+        let point = self.push_point(ControlPointKind::Syntax, Some(node));
+        LoweredFragment {
+            start: point,
+            exits: vec![PendingExit {
+                point,
+                kind: PendingExitKind::Normal,
+                source: node,
+                precision,
+            }],
+        }
+    }
+
+    fn lower_sequence(&mut self, node: NodeId) -> Result<LoweredFragment, ControlFlowBuildError> {
+        let children = named_children(self.analysis, node)?;
+        if children.is_empty() {
+            let point = self.push_point(
+                ControlPointKind::Synthetic(ControlSyntheticPointKind::NoOp),
+                Some(node),
+            );
+            return Ok(LoweredFragment {
+                start: point,
+                exits: vec![PendingExit {
+                    point,
+                    kind: PendingExitKind::Normal,
+                    source: node,
+                    precision: ControlEdgePrecision::Exact,
+                }],
+            });
+        }
+        let mut fragments = children
+            .into_iter()
+            .map(|child| self.lower(child))
+            .collect::<Result<Vec<_>, _>>()?;
+        let start = fragments[0].start;
+        let mut carried = Vec::new();
+        let mut current = fragments.remove(0);
+        for next in fragments {
+            let mut reached_next = false;
+            for exit in current.exits {
+                if exit.kind == PendingExitKind::Normal {
+                    reached_next = true;
+                    self.push_edge(
+                        exit.point,
+                        next.start,
+                        ControlEdgeKind::Normal,
+                        exit.source,
+                        None,
+                        exit.precision,
+                    );
+                } else {
+                    carried.push(exit);
+                }
+            }
+            current = if reached_next {
+                next
+            } else {
+                LoweredFragment {
+                    start: next.start,
+                    exits: Vec::new(),
+                }
+            };
+        }
+        carried.extend(current.exits);
+        Ok(LoweredFragment {
+            start,
+            exits: carried,
+        })
+    }
+
+    fn lower_branch(
+        &mut self,
+        node: NodeId,
+        condition_field: &str,
+        consequence_field: &str,
+        alternative_field: Option<&str>,
+    ) -> Result<LoweredFragment, ControlFlowBuildError> {
+        let condition = required_child(self.analysis, node, condition_field)?;
+        if self.contains_unlowered_control(condition)? {
+            self.uncertainty
+                .insert("nested control in branch condition is not lowered yet".into());
+        }
+        let consequence = required_child(self.analysis, node, consequence_field)?;
+        let alternative = alternative_field
+            .map(|field| child_by_field(self.analysis, node, field))
+            .transpose()?
+            .flatten();
+        let dispatch = self.push_point(
+            ControlPointKind::Synthetic(ControlSyntheticPointKind::BranchDispatch),
+            Some(node),
+        );
+        let merge = self.push_point(
+            ControlPointKind::Synthetic(ControlSyntheticPointKind::Merge),
+            Some(node),
+        );
+        let then_fragment = self.lower(consequence)?;
+        self.push_edge(
+            dispatch,
+            then_fragment.start,
+            ControlEdgeKind::Branch(ControlBranchKind::True),
+            node,
+            Some(condition),
+            ControlEdgePrecision::Exact,
+        );
+        let mut exits = Vec::new();
+        let mut merge_reachable = self.join_branch_exits(then_fragment.exits, merge, &mut exits);
+        if let Some(alternative) = alternative {
+            let else_fragment = self.lower(alternative)?;
+            self.push_edge(
+                dispatch,
+                else_fragment.start,
+                ControlEdgeKind::Branch(ControlBranchKind::False),
+                node,
+                Some(condition),
+                ControlEdgePrecision::Exact,
+            );
+            merge_reachable |= self.join_branch_exits(else_fragment.exits, merge, &mut exits);
+        } else {
+            self.push_edge(
+                dispatch,
+                merge,
+                ControlEdgeKind::Branch(ControlBranchKind::False),
+                node,
+                Some(condition),
+                ControlEdgePrecision::Exact,
+            );
+            merge_reachable = true;
+        }
+        if merge_reachable {
+            exits.push(PendingExit {
+                point: merge,
+                kind: PendingExitKind::Normal,
+                source: node,
+                precision: ControlEdgePrecision::Exact,
+            });
+        }
+        Ok(LoweredFragment {
+            start: dispatch,
+            exits,
+        })
+    }
+
+    fn join_branch_exits(
+        &mut self,
+        branch_exits: Vec<PendingExit>,
+        merge: usize,
+        carried: &mut Vec<PendingExit>,
+    ) -> bool {
+        let mut merge_reachable = false;
+        for exit in branch_exits {
+            if exit.kind == PendingExitKind::Normal {
+                merge_reachable = true;
+                self.push_edge(
+                    exit.point,
+                    merge,
+                    ControlEdgeKind::Normal,
+                    exit.source,
+                    None,
+                    exit.precision,
+                );
+            } else {
+                carried.push(exit);
+            }
+        }
+        merge_reachable
+    }
+
+    fn lower_loop(
+        &mut self,
+        node: NodeId,
+        form: ControlLoopForm,
+        condition_field: Option<&str>,
+        body_field: &str,
+        alternative_field: Option<&str>,
+        label_kind: Option<&str>,
+    ) -> Result<LoweredFragment, ControlFlowBuildError> {
+        let condition = condition_field
+            .map(|field| required_child(self.analysis, node, field))
+            .transpose()?;
+        if let Some(condition) = condition
+            && self.contains_unlowered_control(condition)?
+        {
+            self.uncertainty
+                .insert("nested control in loop condition is not lowered yet".into());
+        }
+        let body = required_child(self.analysis, node, body_field)?;
+        let alternative = alternative_field
+            .map(|field| child_by_field(self.analysis, node, field))
+            .transpose()?
+            .flatten();
+        let loop_label = label_kind
+            .map(|kind| child_text_by_kind(self.analysis, node, kind))
+            .transpose()?
+            .flatten();
+        let header = self.push_point(
+            ControlPointKind::Synthetic(ControlSyntheticPointKind::LoopHeader),
+            Some(node),
+        );
+        let after = self.push_point(
+            ControlPointKind::Synthetic(ControlSyntheticPointKind::Merge),
+            Some(node),
+        );
+        let body_fragment = self.lower(body)?;
+        self.push_edge(
+            header,
+            body_fragment.start,
+            ControlEdgeKind::Loop(ControlLoopKind::Body),
+            node,
+            condition,
+            ControlEdgePrecision::Exact,
+        );
+        let mut exits = Vec::new();
+        let mut has_break = false;
+        for exit in body_fragment.exits {
+            match exit.kind {
+                PendingExitKind::Normal => self.push_edge(
+                    exit.point,
+                    header,
+                    ControlEdgeKind::Loop(ControlLoopKind::Back),
+                    exit.source,
+                    None,
+                    exit.precision,
+                ),
+                PendingExitKind::Continue(ref label)
+                    if label.is_none() || label.as_ref() == loop_label.as_ref() =>
+                {
+                    self.push_edge(
+                        exit.point,
+                        header,
+                        ControlEdgeKind::Abrupt(ControlAbruptKind::Continue {
+                            label: label.clone(),
+                        }),
+                        exit.source,
+                        None,
+                        exit.precision,
+                    );
+                }
+                PendingExitKind::Break(ref label)
+                    if label.is_none() || label.as_ref() == loop_label.as_ref() =>
+                {
+                    has_break = true;
+                    self.push_edge(
+                        exit.point,
+                        after,
+                        ControlEdgeKind::Abrupt(ControlAbruptKind::Break {
+                            label: label.clone(),
+                        }),
+                        exit.source,
+                        None,
+                        exit.precision,
+                    );
+                }
+                _ => exits.push(exit),
+            }
+        }
+        if form != ControlLoopForm::Infinite {
+            if let Some(alternative) = alternative {
+                let alternative_fragment = self.lower(alternative)?;
+                self.push_edge(
+                    header,
+                    alternative_fragment.start,
+                    ControlEdgeKind::Loop(ControlLoopKind::ConditionFalse),
+                    node,
+                    condition,
+                    ControlEdgePrecision::Exact,
+                );
+                for exit in alternative_fragment.exits {
+                    if exit.kind == PendingExitKind::Normal {
+                        self.push_edge(
+                            exit.point,
+                            after,
+                            ControlEdgeKind::Normal,
+                            exit.source,
+                            None,
+                            exit.precision,
+                        );
+                    } else {
+                        exits.push(exit);
+                    }
+                }
+            } else {
+                self.push_edge(
+                    header,
+                    after,
+                    ControlEdgeKind::Loop(ControlLoopKind::ConditionFalse),
+                    node,
+                    condition,
+                    ControlEdgePrecision::Exact,
+                );
+            }
+        }
+        if form != ControlLoopForm::Infinite || has_break {
+            exits.push(PendingExit {
+                point: after,
+                kind: PendingExitKind::Normal,
+                source: node,
+                precision: ControlEdgePrecision::Exact,
+            });
+        }
+        Ok(LoweredFragment {
+            start: header,
+            exits,
+        })
+    }
+
+    fn lower_abrupt(
+        &mut self,
+        node: NodeId,
+        form: &ControlAbruptForm,
+        value_field: Option<&str>,
+        label_kind: Option<&str>,
+    ) -> Result<LoweredFragment, ControlFlowBuildError> {
+        let point = self.push_point(ControlPointKind::Syntax, Some(node));
+        let label = label_kind
+            .map(|kind| child_text_by_kind(self.analysis, node, kind))
+            .transpose()?
+            .flatten();
+        let declared_value = value_field
+            .map(|field| child_by_field(self.analysis, node, field))
+            .transpose()?
+            .flatten();
+        let value_children = if let Some(value) = declared_value {
+            vec![value]
+        } else {
+            named_children(self.analysis, node)?
+                .into_iter()
+                .filter(|child| {
+                    self.analysis
+                        .node(*child)
+                        .is_ok_and(|view| label_kind.is_none_or(|kind| view.raw_kind() != kind))
+                })
+                .collect()
+        };
+        let mut has_unlowered_value_control = false;
+        for value in value_children {
+            has_unlowered_value_control |= self.contains_unlowered_control(value)?;
+        }
+        let precision = if has_unlowered_value_control {
+            let reason = format!(
+                "nested control in {} value is not lowered yet",
+                self.analysis
+                    .node(node)
+                    .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?
+                    .raw_kind()
+            );
+            self.uncertainty.insert(reason.clone());
+            ControlEdgePrecision::conservative(reason)?
+        } else {
+            ControlEdgePrecision::Exact
+        };
+        let kind = match form {
+            ControlAbruptForm::Return => PendingExitKind::Return,
+            ControlAbruptForm::Break => PendingExitKind::Break(label),
+            ControlAbruptForm::Continue => PendingExitKind::Continue(label),
+            ControlAbruptForm::Terminate => PendingExitKind::Terminate,
+            ControlAbruptForm::Goto | ControlAbruptForm::AdapterDefined { .. } => {
+                let reason = format!(
+                    "{} abrupt target is not statically modeled",
+                    self.analysis
+                        .node(node)
+                        .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?
+                        .raw_kind()
+                );
+                self.uncertainty.insert(reason.clone());
+                return Ok(LoweredFragment {
+                    start: point,
+                    exits: vec![PendingExit {
+                        point,
+                        kind: PendingExitKind::Normal,
+                        source: node,
+                        precision: ControlEdgePrecision::conservative(reason)?,
+                    }],
+                });
+            }
+        };
+        Ok(LoweredFragment {
+            start: point,
+            exits: vec![PendingExit {
+                point,
+                kind,
+                source: node,
+                precision,
+            }],
+        })
+    }
+}
+
+fn lower_owner(
+    analysis: &ProjectAnalysis,
+    owner: NodeId,
+    rules: &deslop_lang::LanguageControlFlowRulePack,
+) -> Result<ControlFlowGraphDraft, ControlFlowBuildError> {
+    let owner_view = analysis
+        .node(owner)
+        .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+    let owner_rule = rules
+        .owner_rule(owner_view.raw_kind(), owner_view.text())
+        .ok_or_else(|| ControlFlowBuildError::Invalid("missing exact owner rule".into()))?;
+    let body = required_child(analysis, owner, owner_rule.body_field())?;
+    let mut lowerer = OwnerLowerer {
+        analysis,
+        rules,
+        owner,
+        points: Vec::new(),
+        edges: Vec::new(),
+        uncertainty: BTreeSet::new(),
+    };
+    if matches!(
+        rules.evaluation_order(),
+        Some(ControlEvaluationOrder::Unspecified)
+    ) {
+        lowerer
+            .uncertainty
+            .insert("adapter evaluation order is unspecified".into());
+    }
+    let entry = lowerer.push_point(ControlPointKind::Entry, None);
+    let exit = lowerer.push_point(ControlPointKind::Exit, None);
+    lowerer.scan_uncertainty(body)?;
+    let fragment = lowerer.lower(body)?;
+    lowerer.push_edge(
+        entry,
+        fragment.start,
+        ControlEdgeKind::Entry,
+        owner,
+        None,
+        ControlEdgePrecision::Exact,
+    );
+    let mut dispatches = BTreeMap::new();
+    for pending in fragment.exits {
+        let outcome = match pending.kind {
+            PendingExitKind::Normal => ControlExitOutcome::Normal,
+            PendingExitKind::Return | PendingExitKind::Terminate => ControlExitOutcome::Abrupt,
+            PendingExitKind::Break(_) | PendingExitKind::Continue(_) => {
+                let reason = "break/continue escaped its owning loop".to_string();
+                lowerer.uncertainty.insert(reason.clone());
+                ControlExitOutcome::Abrupt
+            }
+        };
+        let dispatch = *dispatches.entry(outcome).or_insert_with(|| {
+            lowerer.push_point(
+                ControlPointKind::Synthetic(ControlSyntheticPointKind::ExitDispatch),
+                Some(owner),
+            )
+        });
+        let kind = match pending.kind {
+            PendingExitKind::Normal => ControlEdgeKind::Normal,
+            PendingExitKind::Return => ControlEdgeKind::Abrupt(ControlAbruptKind::Return),
+            PendingExitKind::Terminate => ControlEdgeKind::Abrupt(ControlAbruptKind::Terminate),
+            PendingExitKind::Break(label) => {
+                ControlEdgeKind::Abrupt(ControlAbruptKind::Break { label })
+            }
+            PendingExitKind::Continue(label) => {
+                ControlEdgeKind::Abrupt(ControlAbruptKind::Continue { label })
+            }
+        };
+        lowerer.push_edge(
+            pending.point,
+            dispatch,
+            kind,
+            pending.source,
+            None,
+            pending.precision,
+        );
+    }
+    if dispatches.is_empty() {
+        let reason = "executable owner has no modeled exit path".to_string();
+        lowerer.uncertainty.insert(reason.clone());
+        let dispatch = lowerer.push_point(
+            ControlPointKind::Synthetic(ControlSyntheticPointKind::ExitDispatch),
+            Some(owner),
+        );
+        dispatches.insert(ControlExitOutcome::Normal, dispatch);
+    }
+    for (outcome, dispatch) in dispatches {
+        lowerer.push_edge(
+            dispatch,
+            exit,
+            ControlEdgeKind::Exit(outcome),
+            owner,
+            None,
+            ControlEdgePrecision::Exact,
+        );
+    }
+    let coverage = if lowerer.uncertainty.is_empty() {
+        ControlFlowCoverageEvidence::complete()
+    } else {
+        ControlFlowCoverageEvidence::partial(lowerer.uncertainty.into_iter().collect())?
+    };
+    let owner_kind = match owner_rule.kind() {
+        ControlFlowOwnerRuleKind::Callable => ControlFlowOwnerKind::Callable,
+        ControlFlowOwnerRuleKind::Initializer => ControlFlowOwnerKind::Initializer,
+        ControlFlowOwnerRuleKind::ModuleInitializer => ControlFlowOwnerKind::ModuleInitializer,
+        ControlFlowOwnerRuleKind::AdapterDefined { schema, name } => {
+            ControlFlowOwnerKind::AdapterDefined {
+                schema: schema.clone(),
+                name: name.clone(),
+            }
+        }
+    };
+    Ok(ControlFlowGraphDraft {
+        owner,
+        owner_kind,
+        coverage,
+        points: lowerer.points,
+        edges: lowerer.edges,
+    })
+}
+
+fn named_children(
+    analysis: &ProjectAnalysis,
+    node: NodeId,
+) -> Result<Vec<NodeId>, ControlFlowBuildError> {
+    let view = analysis
+        .node(node)
+        .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+    let mut children = Vec::new();
+    for child in view.children() {
+        let child_view = analysis
+            .node(child)
+            .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+        if child_view.is_named() && !child_view.is_extra() {
+            children.push(child);
+        }
+    }
+    Ok(children)
+}
+
+fn child_by_field(
+    analysis: &ProjectAnalysis,
+    node: NodeId,
+    field: &str,
+) -> Result<Option<NodeId>, ControlFlowBuildError> {
+    let view = analysis
+        .node(node)
+        .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+    for child in view.children() {
+        let child_view = analysis
+            .node(child)
+            .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+        if child_view.field() == Some(field) {
+            return Ok(Some(child));
+        }
+    }
+    Ok(None)
+}
+
+fn child_text_by_kind(
+    analysis: &ProjectAnalysis,
+    node: NodeId,
+    raw_kind: &str,
+) -> Result<Option<String>, ControlFlowBuildError> {
+    let view = analysis
+        .node(node)
+        .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+    for child in view.children() {
+        let child_view = analysis
+            .node(child)
+            .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+        if child_view.raw_kind() == raw_kind {
+            return Ok(Some(child_view.text().to_string()));
+        }
+    }
+    Ok(None)
+}
+
+fn required_child(
+    analysis: &ProjectAnalysis,
+    node: NodeId,
+    field: &str,
+) -> Result<NodeId, ControlFlowBuildError> {
+    child_by_field(analysis, node, field)?.ok_or_else(|| {
+        let raw_kind = analysis
+            .node(node)
+            .map(|view| view.raw_kind().to_string())
+            .unwrap_or_else(|_| "<foreign>".into());
+        ControlFlowBuildError::Invalid(format!(
+            "control-flow rule expected field {field} on {raw_kind}"
+        ))
+    })
+}
+
 #[derive(Debug, Clone)]
 struct NodeEvidence {
     key: NodeKey,
@@ -1434,9 +2339,11 @@ mod tests {
     use super::*;
     use deslop_core::Lang;
     use deslop_lang::{
-        CLOJURE_PACK, CapabilityDeclaration, GrammarDescriptor, JAVASCRIPT_PACK, JULIA_PACK,
-        LangPack, LanguageAdapterCapabilityManifest, PYTHON_PACK, RUST_PACK, RegionSpan, Registry,
-        TYPESCRIPT_PACK,
+        CLOJURE_PACK, CapabilityDeclaration, ControlEvaluationOrder, ControlFlowAction,
+        ControlFlowOwnerRule, ControlFlowOwnerRuleKind, ControlFlowRule, ControlFlowSyntaxSelector,
+        DialectDeclaration, GrammarDescriptor, JAVASCRIPT_PACK, JULIA_PACK, LangPack,
+        LanguageAdapterCapabilityManifest, LanguageControlFlowRulePack, PYTHON_PACK, RUST_PACK,
+        RegionSpan, Registry, TYPESCRIPT_PACK,
     };
     use serde_json::Value;
     use std::path::Path;
@@ -1467,6 +2374,79 @@ mod tests {
                     CapabilityAuthority::Adapter,
                 ))
                 .unwrap()
+        }
+
+        fn control_flow_rule_pack(&self) -> LanguageControlFlowRulePack {
+            LanguageControlFlowRulePack::provided(
+                self.adapter_schema(),
+                CapabilityAuthority::Adapter,
+                vec![DialectDeclaration::new(
+                    "rust",
+                    "tree-sitter-rust",
+                    "0.24.0",
+                )],
+                ControlEvaluationOrder::LeftToRight,
+                vec![ControlFlowOwnerRule::new(
+                    ControlFlowSyntaxSelector::new("function_item", None),
+                    ControlFlowOwnerRuleKind::Callable,
+                    "body",
+                )],
+                vec![
+                    ControlFlowRule::new(
+                        ControlFlowSyntaxSelector::new("block", None),
+                        ControlFlowAction::Sequence,
+                    ),
+                    ControlFlowRule::new(
+                        ControlFlowSyntaxSelector::new("if_expression", None),
+                        ControlFlowAction::Branch {
+                            condition_field: "condition".into(),
+                            consequence_field: "consequence".into(),
+                            alternative_field: Some("alternative".into()),
+                        },
+                    ),
+                    ControlFlowRule::new(
+                        ControlFlowSyntaxSelector::new("loop_expression", None),
+                        ControlFlowAction::Loop {
+                            form: ControlLoopForm::Infinite,
+                            condition_field: None,
+                            body_field: "body".into(),
+                            alternative_field: None,
+                            label_kind: Some("label".into()),
+                        },
+                    ),
+                    ControlFlowRule::new(
+                        ControlFlowSyntaxSelector::new("macro_invocation", None),
+                        ControlFlowAction::OpaqueBoundary {
+                            reason: "Rust macro expansion is unavailable".into(),
+                        },
+                    ),
+                    ControlFlowRule::new(
+                        ControlFlowSyntaxSelector::new("break_expression", None),
+                        ControlFlowAction::Abrupt {
+                            form: ControlAbruptForm::Break,
+                            value_field: None,
+                            label_kind: Some("label".into()),
+                        },
+                    ),
+                    ControlFlowRule::new(
+                        ControlFlowSyntaxSelector::new("expression_statement", None),
+                        ControlFlowAction::Sequence,
+                    ),
+                    ControlFlowRule::new(
+                        ControlFlowSyntaxSelector::new("else_clause", None),
+                        ControlFlowAction::Sequence,
+                    ),
+                    ControlFlowRule::new(
+                        ControlFlowSyntaxSelector::new("return_expression", None),
+                        ControlFlowAction::Abrupt {
+                            form: ControlAbruptForm::Return,
+                            value_field: None,
+                            label_kind: None,
+                        },
+                    ),
+                ],
+            )
+            .unwrap()
         }
 
         fn lang(&self) -> Lang {
@@ -1525,24 +2505,52 @@ mod tests {
     }
 
     fn analysis(provided: bool) -> Arc<ProjectAnalysis> {
-        let root = tempfile::tempdir().unwrap();
-        let mut registry = Registry::default();
-        let (path, source) = if provided {
-            registry.register(&CONTROL_FLOW_TEST_PACK);
-            (
-                "flow.cflow",
+        if provided {
+            return provided_analysis(
                 "fn run(x: bool) { if x { loop { break; } } else { return; } }\n",
-            )
-        } else {
-            ("flow.rs", "fn run() {}\n")
-        };
+            );
+        }
+        let root = tempfile::tempdir().unwrap();
+        let registry = Registry::default();
         let snapshot = crate::ProjectSnapshotBuilder::new(
             root.path(),
             crate::RepositoryId::explicit("control-flow-schema-test").unwrap(),
         )
         .unwrap()
         .with_registry(registry)
-        .with_overlay(path, source.as_bytes().to_vec())
+        .with_overlay("flow.py", b"def run():\n    pass\n".to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+        ProjectAnalysis::build(snapshot).unwrap()
+    }
+
+    fn provided_analysis(source: &str) -> Arc<ProjectAnalysis> {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::default();
+        registry.register(&CONTROL_FLOW_TEST_PACK);
+        let snapshot = crate::ProjectSnapshotBuilder::new(
+            root.path(),
+            crate::RepositoryId::explicit("control-flow-schema-test").unwrap(),
+        )
+        .unwrap()
+        .with_registry(registry)
+        .with_overlay("flow.cflow", source.as_bytes().to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+        ProjectAnalysis::build(snapshot).unwrap()
+    }
+
+    fn production_rust_analysis(source: &str) -> Arc<ProjectAnalysis> {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = crate::ProjectSnapshotBuilder::new(
+            root.path(),
+            crate::RepositoryId::explicit("control-flow-production-rust-test").unwrap(),
+        )
+        .unwrap()
+        .with_registry(Registry::default())
+        .with_overlay("flow.rs", source.as_bytes().to_vec())
         .unwrap()
         .build()
         .unwrap();
@@ -2040,7 +3048,7 @@ mod tests {
     #[test]
     fn m4_1_production_unknown_capability_cannot_claim_complete_flow() {
         let analysis = analysis(false);
-        let owner = node_by_kind(&analysis, "function_item");
+        let owner = node_by_kind(&analysis, "function_definition");
         let policy = ControlFlowPolicyId::from_parts(&[b"production-unknown/1"]).unwrap();
         let points = vec![
             ControlPointDraft {
@@ -2108,7 +3116,6 @@ mod tests {
             &PYTHON_PACK,
             &JAVASCRIPT_PACK,
             &TYPESCRIPT_PACK,
-            &RUST_PACK,
         ] {
             let declaration = pack
                 .capability_manifest()
@@ -2122,6 +3129,11 @@ mod tests {
             );
             assert_eq!(declaration.authority(), None, "{}", pack.name());
         }
+        let rust = RUST_PACK.capability_manifest();
+        let declaration = rust.declaration(AdapterCapability::ControlFlow);
+        assert_eq!(declaration.support(), CapabilitySupport::Provided);
+        assert_eq!(declaration.authority(), Some(CapabilityAuthority::Adapter));
+        assert_eq!(RUST_PACK.control_flow_rule_pack().rules().len(), 17);
         let source = include_str!("control_flow.rs")
             .split("#[cfg(test)]")
             .next()
@@ -2129,5 +3141,338 @@ mod tests {
         assert!(!source.contains("deslop_graph"));
         assert!(!source.contains("GraphProjection"));
         assert!(!source.contains("deslop.graph/2"));
+    }
+
+    #[test]
+    fn m4_2_stored_rule_pack_lowers_owned_sequence_branch_loop_and_abrupt_flow() {
+        let analysis = analysis(true);
+        let policy = ControlFlowPolicyId::from_parts(&[b"m4.2-owned-rule-lowering/1"]).unwrap();
+        let lowered = lower_control_flow(Arc::clone(&analysis), policy).unwrap();
+        assert!(lowered.gaps().is_empty());
+        let projection = lowered.projection().expect("provided test adapter graph");
+        assert_eq!(projection.analysis().id(), analysis.id());
+        let graph = &projection.document().graphs()[0];
+        assert_eq!(graph.coverage().status(), FactCoverage::Complete);
+        assert_eq!(graph.points().len(), 10, "{graph:#?}");
+        assert_eq!(graph.edges().len(), 10);
+        let mut counts = BTreeMap::new();
+        for edge in graph.edges() {
+            let family = match edge.kind() {
+                ControlEdgeKind::Entry => "entry",
+                ControlEdgeKind::Exit(_) => "exit",
+                ControlEdgeKind::Normal => "normal",
+                ControlEdgeKind::Branch(_) => "branch",
+                ControlEdgeKind::Loop(_) => "loop",
+                ControlEdgeKind::Exceptional(_) => "exceptional",
+                ControlEdgeKind::Abrupt(_) => "abrupt",
+                ControlEdgeKind::Suspension(_) => "suspension",
+            };
+            *counts.entry(family).or_insert(0usize) += 1;
+        }
+        assert_eq!(
+            counts,
+            BTreeMap::from([
+                ("abrupt", 2),
+                ("branch", 2),
+                ("entry", 1),
+                ("exit", 2),
+                ("loop", 1),
+                ("normal", 2),
+            ])
+        );
+        assert!(graph.edges().iter().any(|edge| {
+            edge.kind() == &ControlEdgeKind::Abrupt(ControlAbruptKind::Break { label: None })
+        }));
+        assert!(
+            graph
+                .edges()
+                .iter()
+                .any(|edge| { edge.kind() == &ControlEdgeKind::Abrupt(ControlAbruptKind::Return) })
+        );
+        assert_eq!(analysis.parse_counts().len(), 1);
+        assert_eq!(
+            serde_json::to_vec(projection.document()).unwrap(),
+            serde_json::to_vec(
+                lower_control_flow(
+                    analysis,
+                    ControlFlowPolicyId::from_parts(&[b"m4.2-owned-rule-lowering/1"]).unwrap(),
+                )
+                .unwrap()
+                .projection()
+                .unwrap()
+                .document()
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn m4_2_production_rust_rules_lower_exact_fixture_and_labeled_outer_break() {
+        let exact = production_rust_analysis(
+            "fn run(x: bool) { if x { loop { break; } } else { return; } }\n",
+        );
+        let identity = exact
+            .snapshot()
+            .entry(Path::new("flow.rs"))
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap();
+        assert_eq!(identity.schema(), "deslop-lang-adapter/3");
+        assert_eq!(identity.control_flow_rules().rules().len(), 17);
+        let lowered = lower_control_flow(
+            Arc::clone(&exact),
+            ControlFlowPolicyId::from_parts(&[b"m4.2-production-rust-exact/1"]).unwrap(),
+        )
+        .unwrap();
+        assert!(lowered.gaps().is_empty());
+        let graph = &lowered.projection().unwrap().document().graphs()[0];
+        assert_eq!(graph.coverage().status(), FactCoverage::Complete);
+        assert_eq!(graph.points().len(), 10);
+        assert_eq!(graph.edges().len(), 10);
+
+        let labeled =
+            production_rust_analysis("fn run() { 'outer: loop { loop { break 'outer; } } }\n");
+        let lowered = lower_control_flow(
+            labeled,
+            ControlFlowPolicyId::from_parts(&[b"m4.2-production-rust-label/1"]).unwrap(),
+        )
+        .unwrap();
+        let graph = &lowered.projection().unwrap().document().graphs()[0];
+        assert_eq!(graph.coverage().status(), FactCoverage::Complete);
+        assert!(graph.edges().iter().any(|edge| {
+            edge.kind()
+                == &ControlEdgeKind::Abrupt(ControlAbruptKind::Break {
+                    label: Some("'outer".into()),
+                })
+        }));
+    }
+
+    #[test]
+    fn m4_2_production_rust_unmodeled_values_and_calls_are_partial() {
+        for (source, expected_reason) in [
+            (
+                "fn run(flag: bool) -> i32 { return if flag { 1 } else { 2 }; }\n",
+                "nested control in return_expression value is not lowered yet",
+            ),
+            (
+                "fn run() { helper(); }\n",
+                "Rust call unwind behavior requires callee effects and panic strategy",
+            ),
+            (
+                "fn run() { println!(\"x\"); }\n",
+                "Rust macro expansion is unavailable",
+            ),
+        ] {
+            let analysis = production_rust_analysis(source);
+            let lowered = lower_control_flow(
+                analysis,
+                ControlFlowPolicyId::from_parts(&[expected_reason.as_bytes()]).unwrap(),
+            )
+            .unwrap();
+            let graph = &lowered.projection().unwrap().document().graphs()[0];
+            assert_eq!(graph.coverage().status(), FactCoverage::Partial);
+            assert!(
+                graph
+                    .coverage()
+                    .reasons()
+                    .iter()
+                    .any(|reason| reason == expected_reason),
+                "{:#?}",
+                graph.coverage()
+            );
+        }
+
+        let simple_value = production_rust_analysis("fn run() -> i32 { return 1; }\n");
+        let lowered = lower_control_flow(
+            simple_value,
+            ControlFlowPolicyId::from_parts(&[b"m4.2-production-rust-simple-return/1"]).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            lowered.projection().unwrap().document().graphs()[0]
+                .coverage()
+                .status(),
+            FactCoverage::Complete
+        );
+    }
+
+    #[test]
+    fn m4_2_production_rust_does_not_fabricate_normal_flow_after_abrupt_paths() {
+        for source in [
+            "fn run() { return; 42; }\n",
+            "fn run(x: bool) { if x { return; } else { return; } }\n",
+        ] {
+            let analysis = production_rust_analysis(source);
+            let lowered = lower_control_flow(
+                analysis,
+                ControlFlowPolicyId::from_parts(&[source.as_bytes()]).unwrap(),
+            )
+            .unwrap();
+            let graph = &lowered.projection().unwrap().document().graphs()[0];
+            assert_eq!(graph.coverage().status(), FactCoverage::Complete);
+            assert!(
+                graph.edges().iter().any(|edge| {
+                    edge.kind() == &ControlEdgeKind::Exit(ControlExitOutcome::Abrupt)
+                })
+            );
+            assert!(
+                !graph.edges().iter().any(|edge| {
+                    edge.kind() == &ControlEdgeKind::Exit(ControlExitOutcome::Normal)
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn m4_2_production_rust_covers_while_for_match_and_nested_predicate_boundaries() {
+        let loops = production_rust_analysis(
+            "fn run(flag: bool, xs: [i32; 0]) { while flag { continue; } for _x in xs { break; } }\n",
+        );
+        let lowered = lower_control_flow(
+            loops,
+            ControlFlowPolicyId::from_parts(&[b"m4.2-production-rust-loop-forms/1"]).unwrap(),
+        )
+        .unwrap();
+        let graph = &lowered.projection().unwrap().document().graphs()[0];
+        assert_eq!(graph.coverage().status(), FactCoverage::Complete);
+        assert!(graph.edges().iter().any(|edge| {
+            edge.kind() == &ControlEdgeKind::Abrupt(ControlAbruptKind::Continue { label: None })
+        }));
+        assert!(graph.edges().iter().any(|edge| {
+            edge.kind() == &ControlEdgeKind::Abrupt(ControlAbruptKind::Break { label: None })
+        }));
+        assert_eq!(
+            graph
+                .edges()
+                .iter()
+                .filter(|edge| {
+                    edge.kind() == &ControlEdgeKind::Loop(ControlLoopKind::ConditionFalse)
+                })
+                .count(),
+            2
+        );
+
+        for (source, expected_reason) in [
+            (
+                "fn run(flag: bool) { match flag { true => return, false => {} } }\n",
+                "match_expression lowering is retained but not implemented by the shared M4.2 traversal",
+            ),
+            (
+                "fn run(a: bool, b: bool) { if if a { b } else { false } {} }\n",
+                "nested control in branch condition is not lowered yet",
+            ),
+        ] {
+            let analysis = production_rust_analysis(source);
+            let lowered = lower_control_flow(
+                analysis,
+                ControlFlowPolicyId::from_parts(&[expected_reason.as_bytes()]).unwrap(),
+            )
+            .unwrap();
+            let graph = &lowered.projection().unwrap().document().graphs()[0];
+            assert_eq!(graph.coverage().status(), FactCoverage::Partial);
+            assert!(
+                graph
+                    .coverage()
+                    .reasons()
+                    .iter()
+                    .any(|reason| reason == expected_reason),
+                "{:#?}",
+                graph.coverage()
+            );
+        }
+    }
+
+    #[test]
+    fn m4_2_unknown_production_adapter_is_an_explicit_gap_without_projection() {
+        let analysis = analysis(false);
+        let policy = ControlFlowPolicyId::from_parts(&[b"m4.2-production-gap/1"]).unwrap();
+        let lowered = lower_control_flow(analysis, policy).unwrap();
+        assert!(lowered.projection().is_none());
+        assert_eq!(lowered.gaps().len(), 1);
+        assert_eq!(lowered.gaps()[0].path(), Path::new("flow.py"));
+        assert_eq!(lowered.gaps()[0].support(), CapabilitySupport::Unknown);
+        assert!(
+            lowered.gaps()[0]
+                .reason()
+                .contains("declares ControlFlow unknown")
+        );
+    }
+
+    #[test]
+    fn m4_2_default_registry_dispatches_every_production_pack_at_its_declared_tier() {
+        let root = tempfile::tempdir().unwrap();
+        let mut builder = crate::ProjectSnapshotBuilder::new(
+            root.path(),
+            crate::RepositoryId::explicit("control-flow-all-pack-dispatch-test").unwrap(),
+        )
+        .unwrap()
+        .with_registry(Registry::default());
+        for (path, source) in [
+            ("flow.clj", "(defn run [] nil)\n"),
+            ("flow.jl", "function run()\nend\n"),
+            ("flow.py", "def run():\n    pass\n"),
+            ("flow.js", "function run() {}\n"),
+            ("flow.ts", "function run(): void {}\n"),
+            ("flow.rs", "fn run() {}\n"),
+        ] {
+            builder = builder
+                .with_overlay(path, source.as_bytes().to_vec())
+                .unwrap();
+        }
+        let analysis = ProjectAnalysis::build(builder.build().unwrap()).unwrap();
+        let lowered = lower_control_flow(
+            analysis,
+            ControlFlowPolicyId::from_parts(&[b"m4.2-all-pack-dispatch/1"]).unwrap(),
+        )
+        .unwrap();
+        let projection = lowered.projection().expect("Rust Provided graph");
+        assert_eq!(projection.document().graphs().len(), 1);
+        assert_eq!(
+            projection.document().graphs()[0].coverage().status(),
+            FactCoverage::Complete
+        );
+        assert_eq!(
+            lowered
+                .gaps()
+                .iter()
+                .map(|gap| gap.path().to_path_buf())
+                .collect::<Vec<_>>(),
+            ["flow.clj", "flow.jl", "flow.js", "flow.py", "flow.ts"]
+                .into_iter()
+                .map(PathBuf::from)
+                .collect::<Vec<_>>()
+        );
+        assert!(lowered.gaps().iter().all(|gap| {
+            gap.support() == CapabilitySupport::Unknown
+                && gap.reason().contains("declares ControlFlow unknown")
+        }));
+    }
+
+    #[test]
+    fn m4_2_opaque_rule_downgrades_coverage_and_retains_conservative_edge() {
+        let analysis = provided_analysis("fn run() { println!(\"x\"); }\n");
+        let policy = ControlFlowPolicyId::from_parts(&[b"m4.2-opaque-boundary/1"]).unwrap();
+        let lowered = lower_control_flow(analysis, policy).unwrap();
+        let graph = &lowered.projection().unwrap().document().graphs()[0];
+        assert_eq!(graph.coverage().status(), FactCoverage::Partial);
+        assert_eq!(
+            graph.coverage().reasons(),
+            ["Rust macro expansion is unavailable"]
+        );
+        assert_eq!(
+            graph
+                .edges()
+                .iter()
+                .filter(|edge| matches!(edge.precision(), ControlEdgePrecision::Conservative(_)))
+                .count(),
+            1
+        );
+        assert!(graph.edges().iter().any(|edge| {
+            matches!(
+                edge.precision(),
+                ControlEdgePrecision::Conservative(reason)
+                    if reason == "Rust macro expansion is unavailable"
+            )
+        }));
     }
 }

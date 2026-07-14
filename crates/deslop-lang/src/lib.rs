@@ -6,8 +6,10 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use tree_sitter::Node;
 
+mod control_flow;
 mod resolution;
 
+pub use control_flow::*;
 pub use resolution::*;
 
 pub const LANGUAGE_ADAPTER_CAPABILITY_SCHEMA: &str = "deslop.language-adapter-capabilities/2";
@@ -1929,7 +1931,7 @@ pub trait LangPack: Send + Sync {
     /// Versioned identity for the semantic hooks implemented by this adapter.
     /// Implementations must bump this value whenever hook behavior changes.
     fn adapter_schema(&self) -> &'static str {
-        "deslop-lang-adapter/2"
+        "deslop-lang-adapter/3"
     }
     fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest;
     fn query_pack(&self) -> LanguageQueryPack {
@@ -1943,6 +1945,9 @@ pub trait LangPack: Send + Sync {
     }
     fn resolution_rule_pack(&self) -> LanguageResolutionRulePack {
         LanguageResolutionRulePack::unknown(self.adapter_schema())
+    }
+    fn control_flow_rule_pack(&self) -> LanguageControlFlowRulePack {
+        LanguageControlFlowRulePack::unknown(self.adapter_schema())
     }
     fn canonical_roles(&self, _node: Node<'_>, _text: &str) -> CanonicalRoleSet {
         CanonicalRoleSet::default()
@@ -4583,6 +4588,161 @@ fn rust_construct_policy(adapter_schema: &str) -> LanguageConstructPolicy {
     .expect("the Rust construct policy is valid")
 }
 
+fn rust_control_flow_rule_pack(adapter_schema: &str) -> LanguageControlFlowRulePack {
+    let selector = |raw_kind| ControlFlowSyntaxSelector::new(raw_kind, None);
+    LanguageControlFlowRulePack::provided(
+        adapter_schema,
+        CapabilityAuthority::Adapter,
+        vec![DialectDeclaration::new(
+            "rust",
+            "tree-sitter-rust",
+            "0.24.2",
+        )],
+        ControlEvaluationOrder::LeftToRight,
+        vec![
+            ControlFlowOwnerRule::new(
+                selector("function_item"),
+                ControlFlowOwnerRuleKind::Callable,
+                "body",
+            ),
+            ControlFlowOwnerRule::new(
+                selector("closure_expression"),
+                ControlFlowOwnerRuleKind::Callable,
+                "body",
+            ),
+            ControlFlowOwnerRule::new(
+                selector("const_item"),
+                ControlFlowOwnerRuleKind::Initializer,
+                "value",
+            ),
+            ControlFlowOwnerRule::new(
+                selector("static_item"),
+                ControlFlowOwnerRuleKind::Initializer,
+                "value",
+            ),
+        ],
+        vec![
+            ControlFlowRule::new(selector("block"), ControlFlowAction::Sequence),
+            ControlFlowRule::new(
+                selector("expression_statement"),
+                ControlFlowAction::Sequence,
+            ),
+            ControlFlowRule::new(selector("else_clause"), ControlFlowAction::Sequence),
+            ControlFlowRule::new(
+                selector("if_expression"),
+                ControlFlowAction::Branch {
+                    condition_field: "condition".into(),
+                    consequence_field: "consequence".into(),
+                    alternative_field: Some("alternative".into()),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("match_expression"),
+                ControlFlowAction::Match {
+                    subject_field: "value".into(),
+                    arm_kind: "match_arm".into(),
+                    arm_body_field: Some("value".into()),
+                    guard_field: None,
+                },
+            ),
+            ControlFlowRule::new(
+                selector("loop_expression"),
+                ControlFlowAction::Loop {
+                    form: ControlLoopForm::Infinite,
+                    condition_field: None,
+                    body_field: "body".into(),
+                    alternative_field: None,
+                    label_kind: Some("label".into()),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("while_expression"),
+                ControlFlowAction::Loop {
+                    form: ControlLoopForm::PreTest,
+                    condition_field: Some("condition".into()),
+                    body_field: "body".into(),
+                    alternative_field: None,
+                    label_kind: Some("label".into()),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("for_expression"),
+                ControlFlowAction::Loop {
+                    form: ControlLoopForm::Iterator,
+                    condition_field: Some("value".into()),
+                    body_field: "body".into(),
+                    alternative_field: None,
+                    label_kind: Some("label".into()),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("return_expression"),
+                ControlFlowAction::Abrupt {
+                    form: ControlAbruptForm::Return,
+                    value_field: None,
+                    label_kind: None,
+                },
+            ),
+            ControlFlowRule::new(
+                selector("break_expression"),
+                ControlFlowAction::Abrupt {
+                    form: ControlAbruptForm::Break,
+                    value_field: None,
+                    label_kind: Some("label".into()),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("continue_expression"),
+                ControlFlowAction::Abrupt {
+                    form: ControlAbruptForm::Continue,
+                    value_field: None,
+                    label_kind: Some("label".into()),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("macro_invocation"),
+                ControlFlowAction::OpaqueBoundary {
+                    reason: "Rust macro expansion is unavailable".into(),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("unsafe_block"),
+                ControlFlowAction::OpaqueBoundary {
+                    reason: "Rust unsafe control effects are not classified".into(),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("call_expression"),
+                ControlFlowAction::OpaqueBoundary {
+                    reason: "Rust call unwind behavior requires callee effects and panic strategy"
+                        .into(),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("try_expression"),
+                ControlFlowAction::OpaqueBoundary {
+                    reason: "Rust question-mark propagation is not lowered yet".into(),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("await_expression"),
+                ControlFlowAction::Suspension {
+                    form: ControlSuspensionForm::Await,
+                    operand_field: Some("value".into()),
+                },
+            ),
+            ControlFlowRule::new(
+                selector("yield_expression"),
+                ControlFlowAction::Suspension {
+                    form: ControlSuspensionForm::Yield,
+                    operand_field: Some("value".into()),
+                },
+            ),
+        ],
+    )
+    .expect("the Rust control-flow rule pack is valid")
+}
+
 impl LangPack for RustPack {
     fn name(&self) -> &'static str {
         "rust"
@@ -4595,6 +4755,11 @@ impl LangPack for RustPack {
                 CapabilityAuthority::Adapter,
             ))
             .expect("the Rust S0 capability declaration is valid")
+            .with_declaration(CapabilityDeclaration::provided(
+                AdapterCapability::ControlFlow,
+                CapabilityAuthority::Adapter,
+            ))
+            .expect("the Rust ControlFlow capability declaration is valid")
     }
 
     fn canonical_roles(&self, node: Node<'_>, text: &str) -> CanonicalRoleSet {
@@ -4618,6 +4783,10 @@ impl LangPack for RustPack {
             self.adapter_schema(),
             crate::resolution::BuiltinResolutionFamily::Rust,
         )
+    }
+
+    fn control_flow_rule_pack(&self) -> LanguageControlFlowRulePack {
+        rust_control_flow_rule_pack(self.adapter_schema())
     }
 
     fn lang(&self) -> Lang {
@@ -5531,6 +5700,23 @@ mod tests {
                 };
                 section.support() == expected_section
             }));
+            let control_flow = pack.control_flow_rule_pack();
+            control_flow.validate().unwrap();
+            assert_eq!(control_flow.adapter_schema(), pack.adapter_schema());
+            let declaration = manifest.declaration(AdapterCapability::ControlFlow);
+            assert_eq!(control_flow.support(), declaration.support());
+            assert_eq!(control_flow.authority(), declaration.authority());
+            if pack.lang() == Lang::Rust {
+                assert_eq!(control_flow.support(), CapabilitySupport::Provided);
+                assert_eq!(control_flow.authority(), Some(CapabilityAuthority::Adapter));
+                assert_eq!(control_flow.dialects().len(), 1);
+                assert_eq!(control_flow.owners().len(), 4);
+                assert_eq!(control_flow.rules().len(), 17);
+            } else {
+                assert!(control_flow.dialects().is_empty());
+                assert!(control_flow.owners().is_empty());
+                assert!(control_flow.rules().is_empty());
+            }
         }
     }
 }

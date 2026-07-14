@@ -429,7 +429,12 @@ reports, benchmark records, and work orders.
   keys. Eight typed edge families and 35 portable sub-kind instances round-trip strictly; malformed topology,
   stale keys, incomplete authority/coverage, conservative/recovered evidence, and graph/2 fallback fail closed.
   All workspace all-feature gates pass; production ControlFlow authority remains Unknown pending M4.2.
-- [ ] M4.2 Implement CFG lowering for each adapter at its declared capability tier.
+- [x] M4.2 Implement CFG lowering for each adapter at its declared capability tier.
+  Strict stored `deslop.language-control-flow-rules/1` packs and adapter schema `/3` bind lowering behavior to
+  snapshot identity, capability authority, and exact grammar dialect. Rust is Provided/Adapter with a
+  fixture-backed 17-rule catalog and explicit Partial boundaries; Clojure, Julia, Python, JavaScript, and
+  TypeScript remain honest Unknown gaps. Shared owned-arena lowering preserves labeled abrupt targets,
+  reachability, coverage reasons, and deterministic graph identity. All workspace gates pass.
 - [ ] M4.3 Compute dominance/post-dominance and hierarchical SESE/PST regions.
 - [ ] M4.4 Preserve irreducible control regions as explicit non-structured/unknown facts.
 - [ ] M4.5 Implement def/use, reaching definitions, liveness, parameter/output, and conservative effect facts.

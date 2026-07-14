@@ -2714,3 +2714,108 @@ probe, and four compile-fail doctests; full workspace all-feature test/build/rus
 unchanged M0/M1/M2 and graph false-resolution regressions; no `deslop-graph` dependency; and no production
 ControlFlow capability promotion. M4.1 is complete. Next is M4.2 adapter lowering at each adapter's honestly
 declared capability tier.
+
+#### Active M4.2 execution plan — adapter-owned lowering rules and honest tier dispatch
+
+Active hypothesis: M4.1 supplies the graph contract, but production lowering cannot be identified or audited
+until a versioned control-flow rule pack is stored in every `LanguageAdapterIdentity`. Existing control query
+captures and canonical roles are candidate discovery only. The first vertical slice should make rule identity,
+dialect applicability, capability alignment, and fail-closed gaps executable before adding lowering algorithms.
+
+Current approach:
+
+1. Add strict `deslop.language-control-flow-rules/1` to `deslop-lang` and store it in snapshot adapter identity.
+   The pack declares exact dialect artifacts, support/authority, callable/initializer owners, sequence bodies,
+   branch/loop/match forms, abrupt transfers, exceptional forms, suspension forms, opaque boundaries, and
+   evaluation-order policy. Unknown/unsupported packs carry no executable payload.
+2. Bump the adapter schema because stored identity bytes change. Validate total correspondence among the
+   ControlFlow capability declaration, rule-pack support/authority, adapter schema, and exact selected dialect.
+   A Provided capability without a valid applicable pack, or executable rules under Unknown/Unsupported, fails
+   snapshot construction.
+3. Implement shared lowering in `deslop-parse` from the exact stored pack and owned arena. Begin with one
+   fixture-backed Rust slice covering sequence, if/else, match, loop/while/for, return/break/continue, and
+   explicit opaque/macro boundaries. Functions with unresolved call-unwind, async/yield, macro, unsafe, or
+   other uncovered semantics remain Partial with exact reasons; do not call them Complete.
+4. Route every other production adapter through its declared pack tier. Unknown adapters must retain an
+   explicit lowering gap rather than fabricate edges. Promote another adapter only with its own complete rule
+   catalog and gold fixture. M4.2 closes only when every registered pack's dispatch is tested and every
+   promotion is backed by exact edge fixtures.
+
+CONVERGENCE: a rule-pack/capability/dialect truth table plus one end-to-end Rust graph fixture resolves the
+architecture. Terminal outcomes are: (a) identity can change without projection invalidation—storage invalid;
+(b) capability and pack disagree without rejection—authority invalid; (c) uncovered constructs produce
+Complete—coverage invalid; (d) exact Rust edges and explicit gaps pass, then extend the same table to remaining
+adapters until M4.2's all-pack dispatch gate closes.
+
+Validation path: strict rule-pack round-trip/corruption tests; snapshot identity/capability/dialect mismatch
+tests; Rust hand-labelled edge matrix and partial-boundary counterexamples; registered-pack dispatch matrix;
+parse/workspace all-feature test/build/rustdoc/clippy/fmt/diff and unchanged M0-M4.1 gates.
+
+Negative-memory constraints: do not promote from control captures or roles; do not hash behavior only in code;
+do not call an edge list Complete when exception/evaluation/opaque behavior is uncovered; do not use generic
+source order across grammars; do not silently omit Unknown adapters; do not make M4.8 advanced constructs look
+implemented early; do not alter the frozen M4.1 schema to fit one adapter.
+
+Agent assignment: `/root` owns rule schema, identity integration, lowering, fixtures, and terminal verification.
+No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: implement and freeze the strict rule-pack wire model plus snapshot identity/capability
+coherence before writing the lowering traversal.
+
+M4.2 rule-identity checkpoint (2026-07-14): the public strict
+`deslop.language-control-flow-rules/1` model is implemented in `deslop-lang`. It stores exact dialects, static
+authority, evaluation order, executable owner/body selectors, and typed sequence/branch/match/loop/abrupt/
+exceptional/suspension/opaque actions. Unknown and Unsupported packs are payload-free; Provided packs require
+canonical distinct dialects/owners/rules and static Adapter/LSP/Compiler authority.
+
+`LanguageAdapterIdentity` now stores and hashes the rule pack, and the adapter schema is `/3`. Snapshot
+construction validates rule schema, adapter schema, exact ControlFlow capability support/authority, and the
+selected grammar dialect/version before publication. Rule payload changes alter identity bytes. Two strict
+rule-pack tests, one identity/alignment test, all 14 deslop-lang tests, all 140 active parse tests plus four
+compile-fail doctests, M2 DoD, focused M4.1 gates, clippy, rustdoc, fmt, and diff checks pass. All production
+packs intentionally retain payload-free Unknown packs and S1 highest complete tier. Next: implement the owned-
+arena lowering traversal and a test-only Provided Rust rule pack before considering production promotion.
+
+M4.2 production-lowering checkpoint (2026-07-14): shared lowering now consumes only the exact rule pack stored
+in `LanguageAdapterIdentity`, walks executable owners in the owned arena without reparsing, and returns both a
+revision-bound projection and canonical per-file gaps. The Rust adapter is promoted to Provided/Adapter with a
+17-rule catalog for functions, closures, const/static initializers, sequence, if/else, match, loop/while/for,
+return/break/continue, and explicit macro/unsafe/call/try/await/yield boundaries. Clojure, Julia, Python,
+JavaScript, and TypeScript remain payload-free Unknown and surface explicit lowering gaps.
+
+Exact Rust fixtures prove sequence/branch/loop/while/for, return/break/continue, labeled outer-loop transfer,
+simple return values, abrupt-only reachability, and deterministic graph identity. Match, nested predicate/value
+control, call unwind, macro expansion, unsafe, try, await, yield, and recovery downgrade graph coverage with
+canonical reasons and conservative edges where represented. The sequence traversal no longer fabricates a
+normal path after an abrupt-only prefix, and labels are matched against declared loop/abrupt label kinds rather
+than consumed by the nearest loop. One default-registry matrix proves the Rust graph plus explicit gaps for all
+five other production packs.
+
+Focused validation passes: 14 deslop-lang tests; 148 active deslop-parse tests, one designated ignored probe,
+and four compile-fail doctests; eight M4.2 suites; parse/lang all-target clippy and rustdoc with warnings denied;
+fmt and diff checks. The broader parse run initially exposed and then closed two integration assumptions: an old
+adapter matrix expected all S2 capabilities Unknown, and resolution-only Rust-derived test packs inherited the
+new ControlFlow declaration without a matching pack. Next checkpoint: run the full workspace and frozen M0-M4.1
+regression gates, then close M4.2 only if no cross-crate consumer or schema pin remains stale.
+
+#### M4.2 terminal checkpoint — complete and verified
+
+The accepted implementation satisfies honest per-adapter lowering dispatch. `LanguageAdapterIdentity` stores
+and hashes a strict, dialect-applicable control-flow rule pack under adapter schema `/3`; snapshot construction
+rejects pack/capability/authority/dialect disagreement. The shared lowerer consumes only that stored payload and
+the owned parse arena. It emits deterministic revision-bound graphs for Provided owners and canonical explicit
+gaps for Unknown/Unsupported files, with no role/query/source-text/project-graph fallback.
+
+Rust is the sole production promotion: Provided at Adapter authority with 17 rules for callable/initializer
+owners, sequence, if/else, match, loop/while/for, abrupt transfer, and named opaque/suspension boundaries. Gold
+fixtures prove exact sequence/branch/loop/while/for, return/break/continue, labeled outer transfers, simple
+values, and abrupt-only reachability. Unimplemented match/nested-control/call-unwind/macro/unsafe/try/await/
+yield/recovery behavior remains Partial with canonical reasons. The other five production packs retain
+payload-free Unknown declarations and appear as explicit gaps in the all-pack matrix.
+
+Terminal validation passes: all workspace all-feature tests and build; rustdoc and clippy with warnings denied;
+fmt and diff checks; M0/M1/M2 definition-of-done gates; graph false-resolution regressions; M3 frozen/adversarial
+resolution gates; M4.1 schema/adversarial gates; 14 deslop-lang tests; and 148 active deslop-parse tests plus one
+designated ignored probe and four compile-fail doctests. Hindsight consolidation records 1,284 entities, 3,493
+relations, and 3,701 observations. M4.2 is complete. Next is M4.3 dominance, post-dominance, and hierarchical
+SESE/PST regions over the frozen control-flow projection.
