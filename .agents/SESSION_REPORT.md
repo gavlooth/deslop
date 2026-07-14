@@ -10087,3 +10087,120 @@ block or explicitly handle intersecting M4.4 facts.
 `control-regions/1 frozen`.
 
 **Signature:** Codex (GPT-5), M4.4 integration owner, terminal checkpoint, 2026-07-14.
+
+### M4.5 start checkpoint — resolved dataflow and conservative effects
+
+**Date/time:** 2026-07-14, Europe/Madrid.
+
+**Objective:** advance the active M4 milestone by implementing M4.5 def/use, reaching definitions, liveness,
+parameter/output, and conservative effect facts as the prerequisite for M4.6 PDGs.
+
+**Target:** accepted ADR 0006 and strict `deslop.data-flow/1`, joining exact M3 scope/resolution evidence to
+exact M4 CFG points and retaining independent DefUse/Effects capability truth.
+
+**Commands run:** `jj status`; targeted Hindsight recall/search; targeted `rg`/`sed` audit of the M4 roadmap,
+adapter capability catalog, scope-fact/reference/binding model, resolution endpoints/results, CFG/region APIs,
+and current production manifests. Serena remains active but is registered for Python only and cannot
+symbolically inspect the Rust implementation, so local Rust symbol reads are the explicit fallback.
+
+**Results:** M4.5 starts from clean change `e31c1e47`. The capability catalog already separates DefUse and
+Effects at S2, while every production adapter still declares both Unknown. Scope facts retain exact
+declaration/definition/binding/reference evidence and resolution retains typed endpoints/coverage/authority.
+These are sufficient for a source-validated builder and hand-labelled Provided-capability gold corpus; they do
+not authorize name-based production inference.
+
+**Invalidated assumptions / negative-memory constraint:** canonical Read/Write roles and same-spelled names do
+not identify symbols; deterministic equations do not upgrade extraction coverage; liveness at exit does not
+prove a return or mutation output; a virtual exit does not terminate an SCC.
+
+**Current recommendation / next actions:** implement the strict dataflow wire/builder surface, then add the
+reaching-definition/liveness engine and convergent fixtures before changing any production capability.
+
+**Blockers/dependencies/restart:** none.
+
+**Signature:** Codex (GPT-5), M4.5 integration owner, start checkpoint, 2026-07-14.
+
+#### M4.5 implementation checkpoint — ordered fixed points compile and pass
+
+**Date/time:** 2026-07-14, Europe/Madrid.
+
+**Changes:** added and exported `data_flow.rs` with strict `deslop.data-flow/1` document/projection/graph,
+policy and payload identities, normalized symbols, ordered definitions/accesses, explicit parameter/output
+boundaries, conservative effects, per-point reaching/liveness sets, source-validated drafts, capability-aware
+coverage, strict deserialization and corruption-resistant payload/closure validation. Implemented forward
+reaching definitions and backward liveness over entry-reachable CFG points.
+
+**Commands run:** repeated `cargo check -p deslop-parse --all-features`; `cargo fmt --all`; focused
+`cargo test -p deslop-parse --all-features m4_5_ -- --nocapture`; parse all-target clippy with warnings denied.
+
+**Results:** PASS for the current five numerical suites. Linear transfer kills the prior same-symbol
+definition; a branch join retains both reaching definitions; loop liveness converges without an exit path;
+dead points have empty execution relations; and a same-point access sees only definitions with a lower event
+ordinal. The public module compiles warning-free under clippy.
+
+**Invalidated assumptions/failure modes:** a point-level unordered set is insufficient because compound writes
+read before defining; write accesses and their definition occurrence are one shared event ordinal rather than
+two arbitrarily ordered events. Provided Effects cannot call omitted reachable points pure. These corrections
+are encoded in the builder and tests.
+
+**Current recommendation/next actions:** build the end-to-end Provided-capability fixture joining real scope,
+resolution, CFG, and regions; assert parameter/return/mutation/effect facts; add ambiguity, Partial coverage,
+identity, and wire-corruption cases; then run full M4.5 gates.
+
+**Blockers/dependencies/restart:** none. Production adapters remain honestly Unknown for DefUse/Effects and
+will not be promoted by the fixture.
+
+**Negative-memory status:** provisional local record. Search handles: `M4.5 ordered dataflow events`,
+`compound write reads before definition`, `Provided Effects total reachable points`, `unreachable dataflow`.
+
+**Signature:** Codex (GPT-5), M4.5 integration owner, ordered-engine checkpoint, 2026-07-14.
+
+#### M4.5 terminal checkpoint — complete and verified
+
+**Date/time:** 2026-07-14 21:49:03 CEST (Europe/Madrid).
+
+**Objective/target:** close M4.5 with a strict, deployable local dataflow projection that joins exact M3
+symbols/resolution to exact M4 CFG/region points and exposes honest def/use, liveness, boundary, and effect
+evidence for M4.6 PDGs.
+
+**Changes:** accepted ADR 0006; added and exported strict `deslop.data-flow/1` and policy/key families;
+implemented source-validated graph drafts, normalized resolved symbols, ordered definition/access events,
+entry-reachable reaching definitions and liveness, explicit parameter/return/mutation/exception/suspension
+boundaries, conservative per-point effects, coverage/capability propagation, strict deserialization, payload
+identity, and closure validation. Source facts must be inside the CFG owner. Parameter inputs require a
+Parameter binding and its definition at virtual entry; symbol-bearing boundaries must normalize to the cited
+symbol. Production adapters remain honestly Unknown for DefUse and Effects.
+
+**Commands run:** focused `cargo test -p deslop-parse --all-features m4_5_ -- --nocapture`; focused
+`cargo clippy -p deslop-parse --all-features --all-targets -- -D warnings`; `cargo test --workspace
+--all-features`; `cargo build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace
+--all-features --no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt
+--all -- --check`; `git diff --check`.
+
+**Results:** PASS. Eight focused M4.5 tests pass. The numerical gold sets cover linear same-symbol kill/gen,
+two-arm joins, nonterminating cyclic liveness, unreachable-point isolation, same-point read-before-write, and
+resolved-shadow isolation. Integration fixtures prove Complete scope/resolution/CFG joins, parameter/return/
+mutation/effect preservation, ambiguity remaining unknown and Partial, missing reachable effect evidence
+forcing Partial, malformed boundaries and owner-foreign sources failing closed, deterministic repeat identity,
+policy-sensitive identity, strict wire round-trip, and schema/unknown-field/payload corruption rejection. All
+workspace targets pass except the two designated ignored instrumentation probes; parse reports 172 active
+passing tests, one designated ignored probe, and four passing compile-fail doctests.
+
+**Invalidated assumptions/failure modes:** declarations without Binding facts are not visible resolver
+candidates, so a duplicate-declaration ambiguity fixture initially produced Unknown; explicit bindings are
+required to test ambiguity. Same spelling and canonical roles never identify a symbol. Compound writes read
+before their paired definition. Liveness does not infer outputs. Empty effects are pure only under complete
+Effects coverage. Unreachable points carry no execution relations. Deterministic equations and manual
+fixtures do not promote production adapter authority.
+
+**Current recommendation/next actions:** begin M4.6 by deriving local PDGs from M4.3 post-dominance/control
+dependence and M4.5 reaching-definition/access links, while retaining M4.4 non-structured and all M4.5 gaps as
+consumer blockers.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, cache clear, or runtime restart applies.
+
+**Negative-memory status:** local durable lesson recorded; Hindsight consolidation follows this snapshot.
+Search handles: `M4.5 declarations need bindings`, `ambiguous resolution fixture Unknown`, `ordered compound
+write`, `Provided Effects reachable totality`, `parameter definition at entry`, `dataflow owner containment`.
+
+**Signature:** Codex (GPT-5), M4.5 integration owner, terminal checkpoint, 2026-07-14.

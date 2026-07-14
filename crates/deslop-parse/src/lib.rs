@@ -35,6 +35,7 @@ mod arena;
 mod containment;
 mod control_flow;
 mod control_regions;
+mod data_flow;
 mod identity;
 mod incremental;
 mod instrumentation;
@@ -78,6 +79,15 @@ pub use control_regions::{
     ControlRegionPolicyId, ControlRegionProjection, ControlRegionResidual,
     ControlRegionResidualKey, StructuredControlRegion, StructuredControlRegionKind,
     derive_control_regions,
+};
+pub use data_flow::{
+    DATA_FLOW_POLICY_SCHEMA, DATA_FLOW_SCHEMA, DataFlowAccess, DataFlowAccessDraft,
+    DataFlowAccessKey, DataFlowAccessKind, DataFlowBoundary, DataFlowBoundaryDraft,
+    DataFlowBoundaryKey, DataFlowBoundaryKind, DataFlowBuildError, DataFlowBuilder,
+    DataFlowCoverageEvidence, DataFlowDefinition, DataFlowDefinitionDraft, DataFlowDefinitionKey,
+    DataFlowDocument, DataFlowEffect, DataFlowEffectDraft, DataFlowEffectKey, DataFlowEffectKind,
+    DataFlowGraph, DataFlowGraphDraft, DataFlowGraphKey, DataFlowPointFacts, DataFlowPointKey,
+    DataFlowPolicyId, DataFlowProjection, DataFlowSymbol, DataFlowSymbolKey,
 };
 pub use identity::{
     NODE_BASELINE_SCHEMA, NODE_KEY_SCHEMA, NodeAnchor, NodeBaselineFingerprint, NodeId, NodeKey,

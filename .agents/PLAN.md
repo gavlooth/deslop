@@ -2988,3 +2988,73 @@ identity. All workspace all-feature tests and build, rustdoc/clippy with warning
 pass. Parse reports 164 active passing tests, one designated ignored probe, and four compile-fail doctests.
 Hindsight consolidation reports 1,305 entities, 3,549 relations, and 3,760 observations. M4.4 is complete.
 Next is M4.5 def/use, reaching definitions, liveness, parameter/output, and conservative effect facts.
+
+### Active plan — M4.5 resolved dataflow and conservative effects
+
+Active hypothesis: M4.5 must join exact M3 symbols/resolution to exact M4 CFG points before running equations;
+syntax names or roles cannot supply the missing identity. Because production adapters still declare DefUse and
+Effects Unknown, the first complete implementation is a strict evidence builder plus fixed-point engine proven
+with a Provided-capability adapter fixture, while production graphs retain explicit unsupported/unknown gaps.
+
+Current approach:
+
+1. Accept ADR 0006 and define strict `deslop.data-flow/1`, bound to the exact analysis, CFG/region, scope,
+   resolution/provider, adapter capability, and dataflow policy identities.
+2. Implement source-validated symbol/access/definition/boundary/effect drafts. Resolved accesses require a
+   Complete Unique resolution result to the same normalized symbol; all weaker evidence remains explicit.
+3. Compute forward reaching definitions and backward liveness only over entry-reachable points. Retain local
+   facts but empty execution relations for dead points; do not force nonterminating SCCs to virtual exit.
+4. Freeze numerical linear, branch-join, loop, shadowing, parameter/return/mutation, dead-code, ambiguous,
+   nonterminating, Partial-effect, identity, and corruption fixtures.
+
+CONVERGENCE: one hand-labelled capability-provided corpus runs extraction validation, both fixed points,
+boundary/effect preservation, identity, and corruption in one build. Terminal outcomes are: (a) a use reaches
+the wrong/shadowed definition—invalid; (b) branch/loop fixed points disagree with gold sets—invalid; (c) dead
+or ambiguous evidence gains executable/Complete facts—invalid; (d) effect or output uncertainty disappears—
+invalid; or (e) focused and workspace gates pass, authorizing M4.6 PDG construction.
+
+Validation path: exact set assertions at every point; resolution/source-closure and capability matrices;
+strict round-trip/mutation; policy/source identity; focused parse tests, clippy, rustdoc, fmt, diff; full
+workspace gates and unchanged M3/M4.1-M4.4 regressions.
+
+Negative-memory constraints: do not resolve by spelling, source order, roles, or graph/2; do not infer outputs
+from liveness; do not call empty effects pure under incomplete coverage; do not assign reaching/liveness to
+unreachable points; do not force nonterminating flow to exit; do not upgrade Unknown adapter capabilities
+because manual fixtures or equations are complete.
+
+Agent assignment: `/root` owns schema, builder, equations, fixtures, integration, and verification. No
+sub-agent was requested, so no delegation is active.
+
+Next checkpoint: implement the strict public wire types and source-validated builder skeleton before adding
+the fixed-point equations.
+
+M4.5 implementation checkpoint (2026-07-14): public `deslop.data-flow/1` wire types, policy and payload key
+families, source projection links, explicit ordered drafts, strict document deserialization, payload/closure
+validation, and the first builder/fixed-point engine are implemented in `deslop-parse`. Symbols normalize to
+retained Declaration facts; accesses cite exact Reference and ResolutionResult facts; only Complete Unique
+single-endpoint resolution becomes a symbol. Definitions, accesses, boundaries, and conservative effect sets
+bind exact CFG points and event ordinals.
+
+Forward reaching definitions and backward liveness operate only on M4.3 entry-reachable points. Same-point
+events are ordered: a read-write access observes the prior definition at its ordinal, its paired definition
+kills on transfer, and only later accesses see it. Provided Effects coverage requires evidence for every
+reachable point; capability, region, scope-fact, unresolved-access, and effect uncertainty all downgrade
+coverage explicitly.
+
+Five numerical equation suites pass for linear kill/gen, two-definition branch joins, cyclic liveness without
+a forced exit, unreachable-point isolation, and same-point ordering. Parse compilation and all-target clippy
+with warnings denied pass. Next checkpoint: add a capability-provided end-to-end scope/resolution/CFG fixture,
+parameter/output/effect assertions, and strict corruption/identity matrices before the full M4.5 gate.
+
+M4.5 terminal checkpoint (2026-07-14): the end-to-end Provided-capability fixture now joins retained scope
+facts, Complete Unique resolution, exact CFG/region points, ordered definitions/accesses, explicit parameter,
+return, and mutation boundaries, and total reachable-point effect evidence. Builder source closure rejects
+facts outside the CFG owner; parameter inputs require their Parameter binding and definition at virtual entry;
+symbol-bearing outputs require a source that normalizes to that symbol.
+
+Eight M4.5 suites pass: linear kill/gen, branch joins, nonterminating-loop liveness, dead-point isolation,
+same-point read/write ordering, resolved-shadow isolation, ambiguity remaining unknown/Partial, and the full
+projection fixture. The fixture also locks missing-effect Partial coverage, malformed boundary/source
+rejection, deterministic repeat identity, policy-sensitive identity, strict round-trip, unknown-field,
+schema, and payload-corruption rejection. All six workspace terminal gates pass. M4.5 is complete; next is
+M4.6 local PDGs from M4.3 control dependence and M4.5 reaching-definition links.

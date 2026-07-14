@@ -446,7 +446,11 @@ reports, benchmark records, and work orders.
   typed residual provenance, inherited coverage, and payload identities. Multi-entry irreducibility,
   exit-unreachable nontermination, and incomplete-flow unknown facts remain outside the structured PST. Eight
   numerical/adversarial suites and all workspace gates pass.
-- [ ] M4.5 Implement def/use, reaching definitions, liveness, parameter/output, and conservative effect facts.
+- [x] M4.5 Implement def/use, reaching definitions, liveness, parameter/output, and conservative effect facts.
+  Accepted ADR 0006 and strict `deslop.data-flow/1` join exact Complete Unique M3 resolution evidence to
+  exact M4 CFG points. Ordered def/use events drive entry-reachable reaching definitions and liveness;
+  parameter/return/mutation boundaries and conservative effects remain explicit, capability-bound facts.
+  Eight numerical/integration/adversarial suites and all workspace all-feature gates pass.
 - [ ] M4.6 Build local PDGs from control and data dependence.
 - [ ] M4.7 Build call/parameter/return/global summaries and SDG edges where resolution authority permits.
 - [ ] M4.8 Add exception, async/yield, closure, mutation, alias uncertainty, and early-exit fixtures.
