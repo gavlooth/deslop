@@ -2045,6 +2045,52 @@ capabilities remain Unknown and extraction remains Unknown/payload-free. M3.3 is
 fresh M3.4 change to define strict retained candidate paths, rejection evidence, coverage, and terminal
 outcomes on top of this non-selecting traversal; do not retrofit status or Serde into the M3.3 types.
 
+#### Active M3.4 execution plan — complete retained paths and coverage-bounded outcomes
+
+Active hypothesis: M3.4 is complete when every reference result stores all attempted reachable paths,
+including lower-precedence and rejected attempts, and derives status only after structured precedence,
+endpoint equivalence, evidence authority, and coverage are evaluated independently. No repository-global
+name match, deterministic sort, or candidate count may manufacture binding authority.
+
+Current approach: add a strict `deslop.resolution/1` projection in `deslop-parse`, retaining its
+`Arc<ProjectAnalysis>`, M3.2 projection identity/build context/fact policy, exact reference and source
+facts, stored adapter/rule/grammar identity, every traversal edge and endpoint, structured precedence,
+visibility/namespace/timing/condition/build checks, rejection/shadow reasons, dynamic observations,
+coverage, authority, and diagnostics. Derive maximum-precedence viable endpoint sets without discarding
+paths. Status is `Unique` only for complete authoritative coverage and one distinct maximum endpoint,
+`Ambiguous` only for complete coverage and multiple maximum endpoints, `Unresolved` only for complete
+zero-candidate coverage, and `Unknown` for every incomplete/provider-conflict/dynamic case.
+
+Validation path: strict schema/Serde/identity tests; duplicate paths converging on one endpoint; equal
+maximum paths to distinct endpoints; lower-precedence retention; declared-later/wrong-namespace/not-
+visible/shadowed/dynamic/deferred-import rejection or incompleteness; zero-candidate complete versus
+incomplete cases; no-global-name and stable-order invariance; then unchanged M0/M1/M2/M3.2/M3.3 authority
+gates and full workspace checks.
+
+Next checkpoint: audit ADR 0002's exact path, coverage, authority, and status contract against the
+transient engine and M3.2 coverage fields, then freeze the strict schema before implementation.
+
+Negative-memory constraints: do not add Serde/status to M3.3 traversal; do not collapse paths sharing an
+endpoint; do not discard rejected or shadowed paths; do not let source/fact order break semantic ties;
+do not call zero candidates Unresolved or one candidate Unique under incomplete coverage; do not resolve
+deferred imports/modules without exact build/export paths; do not promote production S2/S3 capabilities.
+
+Agent assignment: `/root` owns M3.4 schema, outcome derivation, integration, and verification; no
+concurrent edits are assigned.
+
+Schema/derivation checkpoint (2026-07-14T04:06:33+02:00): `deslop.resolution/1` is implemented as a
+strict immutable projection over `Arc<ScopeGraphProjection>`. The 2,563-line module supplies
+payload-bound `rp1_` path and `rr1_` result keys, non-Serde dense result handles, resolution-policy and
+projection identity, complete edges/checks/source-fact provenance, structured precedence, rejection
+reasons, dynamic observations, coverage, authority, and status. Derivation keeps every reachable path,
+marks only lower declared precedence as shadowed, compares distinct maximum endpoints, and gates all
+terminal statuses on Complete coverage. Eight focused tests prove Unique/Ambiguous/Unresolved/Unknown,
+same-endpoint multi-path uniqueness, lower/rejected retention, unrelated-name exclusion, stable-order
+non-authority, namespace/visibility/timing rejection, dynamic/import incompleteness, strict round-trip,
+payload-key/status corruption rejection, policy identity, and owner checking. Focused parse tests,
+clippy, rustdoc, fmt, and diff checks pass. Next: adversarial validation audit, full workspace gates, and
+terminal M3.4 checkpoint if no uncovered contract remains.
+
 ### M4 — CFG, PST, PDG, and SDG
 
 Lower control flow per adapter; compute dominance/post-dominance and SESE/PST regions; add liveness,
@@ -2173,3 +2219,28 @@ checked only after its listed evidence exists.
     pre/post differential tests to find unsound refactorings; passing tests remain evidence, not proof.
 
 Signature: Codex (GPT-5), ultimate generic deslop roadmap, 2026-07-12.
+
+### Terminal M3.4 checkpoint — complete path storage before outcomes
+
+Status: complete and verified on 2026-07-14. `deslop.resolution/1` stores every reachable candidate
+attempt before deriving status, including lower-precedence and rejected paths, complete edge/check/source
+fact provenance, endpoint equivalence, directional precedence, per-path and result coverage, explicit
+authority, and dynamic observations. Terminal status is allowed only under Complete coverage; incomplete
+imports, qualifications, rule dimensions, dynamic boundaries, and duplicate rejection remain Unknown.
+
+Validation: 12 focused resolution tests; 115 parse tests with one designated slow probe ignored; four
+compile-fail doctests; full workspace all-feature test/build/rustdoc/clippy/fmt/diff gates. M0/M1/M2
+definition-of-done and graph false-resolution probes remain green. Production adapter capabilities stay
+at S1 with name resolution Unknown. No repository-global bare-name index, sorted/first winner, dependency,
+live-state transition, migration, reload, or restart was introduced.
+
+Negative constraints carried into M3.5: a result cannot claim Complete while any retained path is
+incomplete; canonical identities use lowercase digests; exact result keys participate in projection
+identity; a qualification prefix cannot stand in for an unresolved tail; explicit shadowing edges retain
+their declaration facts; equal latest-visible positions remain tied; adapter duplicate rejection cannot
+fall through to an outer candidate. M3.5 owns module/package/build-target stitching and must extend the
+retained path graph rather than introduce an alternate lookup surface.
+
+Next checkpoint: audit exact module/import/export facts, build-context identities, and invalidation APIs;
+design one convergent stitching fixture that measures alias, wildcard, re-export, package, build-target,
+and single-file invalidation behavior before implementing M3.5.

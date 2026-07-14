@@ -34,6 +34,7 @@ mod incremental;
 mod instrumentation;
 mod planner;
 mod query;
+mod resolution;
 mod resolution_traversal;
 mod scope_graph;
 mod snapshot;
@@ -76,6 +77,14 @@ pub use query::{
     SyntaxQuery, SyntaxQueryCompileErrorKind, SyntaxQueryError, SyntaxQueryId, SyntaxQueryPattern,
     SyntaxQueryPredicate, SyntaxQueryPredicateArgument, SyntaxQueryProperty,
     SyntaxQueryPropertyPredicate,
+};
+pub use resolution::{
+    RESOLUTION_POLICY_SCHEMA, RESOLUTION_SCHEMA, ResolutionCheck, ResolutionCheckKind,
+    ResolutionCheckState, ResolutionCoverageEvidence, ResolutionDocument, ResolutionEndpoint,
+    ResolutionPath, ResolutionPathEdge, ResolutionPathEdgeKind, ResolutionPathKey,
+    ResolutionPathViability, ResolutionPolicyId, ResolutionPrecedenceComponent,
+    ResolutionProjection, ResolutionProjectionError, ResolutionRejectionReason, ResolutionResult,
+    ResolutionResultId, ResolutionResultKey, ResolutionResultRecord, ResolutionStatus,
 };
 pub use resolution_traversal::{
     DeferredImportTraversal, DynamicBoundaryTraversal, ExplicitShadowing, LexicalScopeStep,

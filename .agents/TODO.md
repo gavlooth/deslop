@@ -373,7 +373,15 @@ reports, benchmark records, and work orders.
   still exclusively owns executable resolution rules and capability promotion. Every workspace gate and
   the unchanged M0/M1/M2 definition-of-done tests pass.
 - [x] M3.3 Implement per-language declarative resolution rules or an explicitly equivalent adapter.
-- [ ] M3.4 Store all candidate paths and unique/ambiguous/unresolved status; prohibit bare-name resolution.
+- [x] M3.4 Store all candidate paths and unique/ambiguous/unresolved status; prohibit bare-name resolution.
+  Strict `deslop.resolution/1` documents now retain every viable, rejected, and unknown path with exact
+  edges, checks, precedence, endpoint, source-fact closure, per-path/result coverage and authority, then
+  derive coverage-bounded Unique/Ambiguous/Unresolved/Unknown/Conflict status by distinct maximum
+  endpoints. Deferred imports, unresolved qualifications, dynamic boundaries, missing precedence, and
+  adapter-rejected duplicates remain Unknown; lower-precedence paths remain stored. Payload-bound keys,
+  owner-checked dense handles, strict wire validation, 12 focused cases, 115 parse tests plus four
+  compile-fail doctests, and every all-feature workspace gate pass. Production capability declarations
+  remain unchanged and repository-global bare-name lookup/order-based selection is absent.
 - [ ] M3.5 Stitch file/module/package/build-target names incrementally.
 - [ ] M3.6 Add optional compiler/LSP semantic facts with higher authority and conflict reporting.
 - [ ] M3.7 Add duplicate-name, nested scope, wildcard/alias import, re-export, dynamic, and unresolved fixtures.

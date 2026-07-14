@@ -8684,3 +8684,149 @@ persistent schema consumer yet, so no migration, cache clear, service reload, or
 staged/directional implementation and remain negative constraints.
 
 **Signature:** Codex (GPT-5), M3.3 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M3.4 active checkpoint — retained resolution paths and outcomes
+
+**Date/time:** 2026-07-14T03:48:55+02:00
+
+**Objective/target:** implement strict complete candidate-path storage and coverage-bounded resolution
+status on top of M3.3's non-selecting traversal.
+
+**Changes:** planning only. Opened clean jj child `oyrvxomo` over terminal M3.3 `xupxwnxm` and recorded
+the local/UI execution plan. The design boundary keeps M3.3 transient and assigns all Serde, path
+retention, endpoint equivalence, coverage, authority, rejection evidence, and terminal status to M3.4.
+
+**Commands/checks run:** terminal M3.3 `jj status`; `jj new -m 'Store complete resolution paths'`;
+Hindsight checkpoint/negative-memory writes and consolidation (1,217 entities, 3,203 relations, 3,394
+observations); execution-plan update.
+
+**Results/failure modes:** clean child created with no inherited working-copy changes. M3.3 remains fully
+verified and described. No M3.4 source/schema edit exists yet. The primary failure modes to exclude are
+first/sorted winner selection, endpoint-only deduplication that loses paths, status from candidate count
+without coverage, and treating deferred import/module syntax as a resolved endpoint.
+
+**Invalidated assumptions:** lookup precedence and evidence authority are separate; a maximum candidate
+under an incomplete rule/build/provider surface cannot yield a terminal authoritative status. Stable
+ordering is serialization determinism only. One endpoint reached by multiple paths is not ambiguity, but
+the paths must still remain distinct.
+
+**Current recommendation/next actions:** audit ADR 0002 and current fact/traversal fields, then define the
+strict path/result/coverage/authority schemas and identity inputs before implementing derivation.
+
+**Blockers/dependencies/restart:** none. No live state or dependency change applies.
+
+**Negative-memory status:** active M3.3 constraints were consolidated successfully. M3.4 search handles:
+`complete candidate paths`, `coverage before status`, `same endpoint multiple paths`, `no stable winner`.
+
+**Signature:** Codex (GPT-5), M3.4 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M3.4 schema/derivation checkpoint — complete paths before status
+
+**Date/time:** 2026-07-14T04:06:33+02:00
+
+**Objective/target:** make the frozen ADR path, coverage, precedence, authority, and status contract
+executable without implementing later module stitching or external-provider ingestion.
+
+**Changes:** added the 2,563-line `crates/deslop-parse/src/resolution.rs` and exported its public API.
+`deslop.resolution/1` retains its `Arc<ScopeGraphProjection>`, exact analysis/scope-graph/build/fact/rule
+policy identities, strict result/path documents, non-Serde dense result handles, payload-bound `rr1_` and
+`rp1_` keys, reference evidence (including grammar/adapter/rules/capability/authority), every traversed
+edge, endpoint, structured directional precedence component, independent namespace/visibility/timing/
+condition/adapter check, rejection reason, exact source facts, dynamic boundaries, coverage reasons,
+diagnostics, and status. Deferred imports are stored as unknown endpoint-free paths. Cross-field
+validation requires every edge/check/boundary key to be retained and Complete coverage to have explicit
+authority. Production manifests and the M3.3 traversal are unchanged.
+
+**Commands/checks run:** repeated `cargo fmt --all`; `cargo check -p deslop-parse`; eight focused M3.4
+tests with and without `--nocapture`; full `cargo test -p deslop-parse`; `cargo clippy -p deslop-parse
+--all-targets -- -D warnings`; `RUSTDOCFLAGS='-D warnings' cargo doc -p deslop-parse --no-deps`; `git
+diff --check`; targeted ADR/source/public-vocabulary audits.
+
+**Results:** PASS. Complete fixtures produce Unique for one distinct maximum endpoint, Ambiguous for two
+equal maximum endpoints, and Unresolved for zero viable endpoints. Partial zero-candidate, dynamic, and
+deferred-import cases produce Unknown. Two distinct retained paths converging on one endpoint remain
+Unique; reversing ambiguous path order cannot choose a winner. Lower-precedence, wrong-namespace,
+not-visible, and declared-later paths remain stored with exact reasons. An unrelated same-name sibling
+never enters a path. Strict documents reject status contradictions, corrupt payload keys, and unknown
+fields. Policy changes alter projection identity and foreign dense IDs fail. The parse crate reports 111
+passed/one designated slow probe ignored and four compile-fail doctests; focused clippy/rustdoc are clean.
+
+**Invalidated assumptions / failure modes:** a missing precedence relation cannot fail the entire
+projection or default to viable; it is now an explicit unknown check. Edge endpoints alone were not
+sufficient provenance; validation now requires every edge endpoint/source, check source, and dynamic
+boundary to occur in the retained source-fact closure. Candidate order is never consulted for status.
+
+**Current recommendation/next actions:** audit wire validation and coverage dominance against all ADR
+terminal combinations, run full workspace all-feature gates, and check M3.4 only if unchanged authority
+gates and the no-bare-name boundary remain green.
+
+**Blockers/dependencies/restart:** none. No dependency, live process, migration, reload, or cache action
+applies; this is the first unused resolution document schema.
+
+**Negative-memory status:** active constraints are implemented. Search handles: `rp1 complete payload`,
+`coverage before status`, `same endpoint multiple paths`, `missing precedence unknown`, `source fact
+closure`. No fallback or authority promotion was introduced.
+
+**Signature:** Codex (GPT-5), M3.4 integration owner, schema/derivation checkpoint, 2026-07-14.
+
+---
+
+## M3.4 terminal checkpoint — complete retained resolution paths
+
+**Date/time:** 2026-07-14T04:25:20+02:00
+
+**Objective/target:** store every candidate resolution path with sufficient provenance to derive
+coverage-bounded terminal outcomes without bare-name or stable-order fallbacks.
+
+**Changes:** added and exported the 3,225-line `crates/deslop-parse/src/resolution.rs`. The strict
+`deslop.resolution/1` projection retains the exact scope graph, build/fact/rule/policy identities,
+reference evidence, all viable/rejected/unknown paths, edges, checks, directional precedence components,
+endpoint equivalence, source-fact closure, dynamic boundaries, diagnostics, per-path/result coverage and
+authority, payload-bound `rp1_`/`rr1_` keys, policy-bound projection identity, and non-Serde owner-checked
+dense result handles. Status is derived from distinct viable maximum endpoints only after coverage:
+Unique, Ambiguous, Unresolved, Unknown, or Conflict. Duplicate rules execute per language; deferred
+imports and unresolved qualification tails remain endpoint-free Unknown. Strict validation now also
+rejects uppercase/noncanonical digests and a Complete result containing any incomplete path.
+
+**Commands/checks run:** repeated `cargo fmt --all`; 12 focused `resolution::tests`; `cargo test -p
+deslop-parse --all-features`; two terminal runs of `cargo test --workspace --all-features`, `cargo build
+--workspace --all-features`, `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`,
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`, `cargo fmt --all -- --check`, and
+`git diff --check`; targeted no-global/no-first-winner and capability-manifest diffs; `jj status` and
+`jj diff --stat`.
+
+**Results:** PASS. All 12 focused cases pass. The parse crate reports 115 passed, one designated slow
+probe ignored, and four compile-fail doctests passed. Every all-feature workspace gate passes, including
+unchanged M0/M1/M2 definition-of-done and graph false-resolution probes. Complete fixtures distinguish
+one maximum endpoint, multiple equal endpoints, multiple paths to one endpoint, and no viable endpoints.
+Incomplete dynamic/import/qualification/precedence cases remain Unknown. Lower-precedence and rejected
+paths retain exact reasons. Reversing path order cannot choose a winner. Production adapters remain S1
+and name-resolution capability remains Unknown. Disk state contains the schema/API only; no live process,
+migration, rebuild deployment, reload, cache clear, dependency, or restart is required.
+
+**Invalidated assumptions / failure modes:** missing precedence cannot fail construction or become viable;
+it is explicit Unknown. Candidate count alone cannot assign status without result and per-path coverage.
+Projection identity must bind exact result keys, not only graph and policy. A qualified root match cannot
+promote an unresolved tail. Equal latest-visible positions remain tied; adapter duplicate rejection
+cannot fall through outward. During validation, an explicit-shadowing edge initially omitted the
+shadowing declaration from its retained source-fact closure; strict validation caught it and the path now
+retains that fact. Path authority/coverage cannot be implicit behind result-level evidence. Hex-looking
+but uppercase identities are noncanonical and rejected.
+
+**Current recommendation/next actions:** open a fresh M3.5 jj child and design module/package/build-target
+stitching around exact existing fact and build-context identities. The implementation must append module,
+import/export/re-export/package edges to retained paths, preserve file-local invalidation, and never add a
+repository-global bare-name lookup surface.
+
+**Blockers/dependencies/restart:** none.
+
+**Negative-memory status:** terminal constraints are ready for Hindsight consolidation. Search handles:
+`M3.4 complete retained paths`, `coverage dominance`, `explicit shadowing source closure`, `no first
+winner`, `qualification tail unknown`, `projection identity result keys`, `canonical resolution ids`,
+`duplicate rejection no fallthrough`.
+
+**Signature:** Codex (GPT-5), M3.4 integration owner, terminal checkpoint, 2026-07-14.
