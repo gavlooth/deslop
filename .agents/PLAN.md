@@ -3236,3 +3236,59 @@ exact unresolved-access gap. The two-callable M4.7 integration now also retains 
 outputs and advanced effects while its exact call/parameter/return/parameter-out edge count remains four;
 effects alone create no extra SDG/global edge. All 57 M4 tests and all six workspace terminal gates pass.
 M4.8 is complete; next is M4.9 comparison against hand-labelled gold and compiler facts where available.
+
+### Active plan — M4.9 frozen graph gold and compiler-evidence comparison
+
+Active hypothesis: stable graph validation must compare normalized semantic vectors, not content-addressed IDs
+whose exact bytes legitimately change with source/policy identity. Hand-labelled CFG/PST/PDG gold can be
+frozen now. Compiler comparison is permitted only for an explicit compiler graph artifact; existing compiler
+semantic facts authorize name resolution, not CFG/PST/PDG truth.
+
+Current approach:
+
+1. Add strict external `deslop.m4-graph-gold/1` JSON with human-readable point ordinals, typed CFG edge
+   vectors, dominance/post-dominance and structured/residual region vectors, PDG control/flow vectors, and
+   oracle provenance.
+2. Normalize actual M4.1/M4.3/M4.6 outputs by exact retained point/evidence relationships, compare the complete
+   vector against gold, and report numerical case/vector agreement rather than only `assert!(passed)`.
+3. Add a compiler-evidence availability matrix over production adapter capabilities and retained semantic
+   provider kinds. Accept compiler comparison only where an explicit graph artifact, dependency identity, and
+   compiler authority exist; otherwise freeze an exact unavailable reason.
+4. Add mutation tests proving a changed typed edge, region fact, or PDG dependency fails the comparison while
+   source/policy IDs remain outside the normalized oracle.
+5. Run focused comparison suites, aggregate M4 tests, and all workspace terminal gates.
+
+CONVERGENCE: one gold load and normalization pass answers CFG, PST, and PDG exactness together, while one
+capability/provider audit terminates the compiler branch. Terminal outcomes are: (a) normalized actual differs
+from hand gold—implementation or gold must be adjudicated; (b) an ID-only change creates a semantic mismatch—
+normalizer invalid; (c) compiler authority is claimed without a graph artifact—invalid; (d) a semantic
+mutation still compares exact—comparator invalid; or (e) exact numerical agreement plus honest compiler
+availability and all gates pass, authorizing M4.DoD.
+
+Validation path: strict schema/unknown-field checks, exact normalized vector equality, measured per-layer and
+total agreement counts, adversarial vector mutation, compiler capability/provider matrix, focused parse tests/
+clippy, then full workspace test, build, rustdoc, clippy, fmt, and diff gates.
+
+Negative-memory constraints: do not freeze content-addressed keys as semantic gold; do not call resolver
+compiler facts graph facts; do not invoke or scrape a compiler without version/config/dependency identity; do
+not use source order as a point mapping unless the fixture explicitly assigns its own stable ordinal; do not
+accept count-only agreement when typed endpoints differ.
+
+Agent assignment: `/root` owns gold schema/data, normalization, compiler-availability audit, integration, and
+verification. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: implement the strict gold wire and normalized CFG/PST/PDG extractor, then generate a candidate
+vector for manual inspection before freezing it.
+
+M4.9 terminal checkpoint (2026-07-14): strict external `deslop.m4-graph-gold/1` now stores fixture-local,
+semantically sorted point/edge/region labels and exact typed evidence while excluding content-addressed IDs.
+The manually inspected oracle freezes 50 vectors: 11 CFG points, 14 typed CFG edges, 11 dominance records, two
+structured regions, zero residuals, nine PDG control edges with inducing CFG witnesses, two multi-definition
+flow edges, and one unresolved-access gap. Actual normalization matches exactly.
+
+Strict parsing rejects unknown fields, wrong schema versions, duplicate/dangling labels, and adversarial CFG,
+PST, or PDG semantic mutations. The production capability audit confirms all six adapters lack Provided
+CompilerTypeEvidence and the repo retains no version/configuration/dependency-bound compiler CFG/PST/PDG
+artifact. Compiler graph comparison is therefore frozen as explicitly unavailable; compiler-backed M3 name
+resolution is not reused as graph truth. Four M4.9 suites, all 61 aggregate M4 suites, and all six workspace
+terminal gates pass. M4.9 is complete; only M4.DoD remains.

@@ -1410,6 +1410,572 @@ fn derive_id(domain: &str, prefix: &str, parts: &[&[u8]]) -> String {
 mod tests {
     use super::*;
 
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldM4Corpus {
+        schema: String,
+        oracle: GoldOracle,
+        cfg: GoldCfg,
+        pst: GoldPst,
+        pdg: GoldPdg,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldOracle {
+        hand_labelled: String,
+        compiler_graph_status: String,
+        compiler_graph_reason: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldCfg {
+        points: Vec<GoldCfgPoint>,
+        edges: Vec<GoldCfgEdge>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldCfgPoint {
+        label: String,
+        kind: crate::ControlPointKind,
+        source_kind: Option<String>,
+        ordinal: u32,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldCfgEdge {
+        label: String,
+        from: String,
+        to: String,
+        kind: crate::ControlEdgeKind,
+        source_kind: String,
+        predicate_kind: Option<String>,
+        precision: crate::ControlEdgePrecision,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldPst {
+        points: Vec<GoldRegionPoint>,
+        regions: Vec<GoldRegion>,
+        residuals: Vec<GoldResidual>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldRegionPoint {
+        point: String,
+        reachable: bool,
+        exit_reachable: bool,
+        dominators: Vec<String>,
+        immediate_dominator: Option<String>,
+        dominator_depth: Option<u32>,
+        post_dominators: Vec<String>,
+        immediate_post_dominator: Option<String>,
+        post_dominator_depth: Option<u32>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldRegion {
+        label: String,
+        kind: crate::StructuredControlRegionKind,
+        entry: String,
+        exit: String,
+        points: Vec<String>,
+        parent: Option<String>,
+        children: Vec<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldResidual {
+        kind: crate::StructuredControlRegionKind,
+        entry: String,
+        exit: String,
+        points: Vec<String>,
+        reason: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldPdg {
+        control_edges: Vec<GoldPdgControlEdge>,
+        flow_edges: Vec<GoldPdgFlowEdge>,
+        unresolved_accesses: Vec<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldPdgControlEdge {
+        from: String,
+        to: String,
+        inducing_cfg_edges: Vec<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldPdgFlowEdge {
+        from: String,
+        to: String,
+        symbol: String,
+        definition: String,
+        access: String,
+    }
+
+    struct NormalizedCfg {
+        gold: GoldCfg,
+        point_labels: BTreeMap<ControlPointKey, String>,
+        edge_labels: BTreeMap<ControlEdgeKey, String>,
+    }
+
+    fn normalize_cfg(graph: &crate::ControlFlowGraph) -> NormalizedCfg {
+        let mut points = graph.points().iter().collect::<Vec<_>>();
+        points.sort_by_key(|point| {
+            (
+                serde_json::to_string(point.kind()).unwrap(),
+                point
+                    .source()
+                    .map(|source| source.raw_grammar_kind().to_string()),
+                point.ordinal(),
+            )
+        });
+        let point_labels = points
+            .iter()
+            .enumerate()
+            .map(|(index, point)| (point.key().clone(), format!("p{index:02}")))
+            .collect::<BTreeMap<_, _>>();
+        let points = points
+            .into_iter()
+            .map(|point| GoldCfgPoint {
+                label: point_labels[point.key()].clone(),
+                kind: point.kind().clone(),
+                source_kind: point
+                    .source()
+                    .map(|source| source.raw_grammar_kind().to_string()),
+                ordinal: point.ordinal(),
+            })
+            .collect::<Vec<_>>();
+        let mut edges = graph.edges().iter().collect::<Vec<_>>();
+        edges.sort_by_key(|edge| {
+            (
+                point_labels[edge.from()].clone(),
+                point_labels[edge.to()].clone(),
+                serde_json::to_string(edge.kind()).unwrap(),
+                edge.source().raw_grammar_kind().to_string(),
+                edge.predicate()
+                    .map(|node| node.raw_grammar_kind().to_string()),
+            )
+        });
+        let edge_labels = edges
+            .iter()
+            .enumerate()
+            .map(|(index, edge)| (edge.key().clone(), format!("e{index:02}")))
+            .collect::<BTreeMap<_, _>>();
+        let edges = edges
+            .into_iter()
+            .map(|edge| GoldCfgEdge {
+                label: edge_labels[edge.key()].clone(),
+                from: point_labels[edge.from()].clone(),
+                to: point_labels[edge.to()].clone(),
+                kind: edge.kind().clone(),
+                source_kind: edge.source().raw_grammar_kind().to_string(),
+                predicate_kind: edge
+                    .predicate()
+                    .map(|node| node.raw_grammar_kind().to_string()),
+                precision: edge.precision().clone(),
+            })
+            .collect();
+        NormalizedCfg {
+            gold: GoldCfg { points, edges },
+            point_labels,
+            edge_labels,
+        }
+    }
+
+    fn sorted_labels<'a>(
+        keys: impl IntoIterator<Item = &'a ControlPointKey>,
+        labels: &BTreeMap<ControlPointKey, String>,
+    ) -> Vec<String> {
+        let mut values = keys
+            .into_iter()
+            .map(|key| labels[key].clone())
+            .collect::<Vec<_>>();
+        values.sort();
+        values
+    }
+
+    fn normalize_pst(
+        graph: &crate::ControlRegionGraph,
+        point_labels: &BTreeMap<ControlPointKey, String>,
+    ) -> GoldPst {
+        let mut points = graph
+            .points()
+            .iter()
+            .map(|point| GoldRegionPoint {
+                point: point_labels[point.point()].clone(),
+                reachable: point.reachable(),
+                exit_reachable: point.exit_reachable(),
+                dominators: sorted_labels(point.dominators(), point_labels),
+                immediate_dominator: point
+                    .immediate_dominator()
+                    .map(|key| point_labels[key].clone()),
+                dominator_depth: point.dominator_depth(),
+                post_dominators: sorted_labels(point.post_dominators(), point_labels),
+                immediate_post_dominator: point
+                    .immediate_post_dominator()
+                    .map(|key| point_labels[key].clone()),
+                post_dominator_depth: point.post_dominator_depth(),
+            })
+            .collect::<Vec<_>>();
+        points.sort_by(|left, right| left.point.cmp(&right.point));
+
+        let mut source_regions = graph.regions().iter().collect::<Vec<_>>();
+        source_regions.sort_by_key(|region| {
+            (
+                region.kind(),
+                point_labels[region.entry()].clone(),
+                point_labels[region.exit()].clone(),
+            )
+        });
+        let region_labels = source_regions
+            .iter()
+            .enumerate()
+            .map(|(index, region)| (region.key().clone(), format!("r{index:02}")))
+            .collect::<BTreeMap<_, _>>();
+        let regions = source_regions
+            .into_iter()
+            .map(|region| GoldRegion {
+                label: region_labels[region.key()].clone(),
+                kind: region.kind(),
+                entry: point_labels[region.entry()].clone(),
+                exit: point_labels[region.exit()].clone(),
+                points: sorted_labels(region.points(), point_labels),
+                parent: region.parent().map(|key| region_labels[key].clone()),
+                children: {
+                    let mut children = region
+                        .children()
+                        .iter()
+                        .map(|key| region_labels[key].clone())
+                        .collect::<Vec<_>>();
+                    children.sort();
+                    children
+                },
+            })
+            .collect();
+        let mut residuals = graph
+            .residuals()
+            .iter()
+            .map(|residual| GoldResidual {
+                kind: residual.kind(),
+                entry: point_labels[residual.entry()].clone(),
+                exit: point_labels[residual.exit()].clone(),
+                points: sorted_labels(residual.points(), point_labels),
+                reason: residual.reason().into(),
+            })
+            .collect::<Vec<_>>();
+        residuals
+            .sort_by_key(|residual| (residual.kind, residual.entry.clone(), residual.exit.clone()));
+        GoldPst {
+            points,
+            regions,
+            residuals,
+        }
+    }
+
+    fn actual_m4_gold() -> GoldM4Corpus {
+        let flow = Arc::new(crate::control_flow::tests::complete_projection());
+        let flow_graph = &flow.document().graphs()[0];
+        let normalized = normalize_cfg(flow_graph);
+        let regions = crate::derive_control_regions(
+            Arc::clone(&flow),
+            crate::ControlRegionPolicyId::from_parts(&[b"m4.9-gold-regions/1"]).unwrap(),
+        )
+        .unwrap();
+        let region_graph = &regions.document().graphs()[0];
+        let pst = normalize_pst(region_graph, &normalized.point_labels);
+
+        let control_facts = region_graph
+            .points()
+            .iter()
+            .map(|point| {
+                (
+                    point.point().clone(),
+                    ControlFact {
+                        reachable: point.reachable(),
+                        exit_reachable: point.exit_reachable(),
+                        post_dominators: point.post_dominators().iter().cloned().collect(),
+                        immediate_post_dominator: point.immediate_post_dominator().cloned(),
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let witnesses = flow_graph
+            .edges()
+            .iter()
+            .map(|edge| ControlWitness {
+                edge: edge.key().clone(),
+                from: edge.from().clone(),
+                to: edge.to().clone(),
+            })
+            .collect::<Vec<_>>();
+        let (control_dependencies, control_gaps) =
+            derive_control_dependencies(&control_facts, &witnesses);
+        assert!(control_gaps.is_empty());
+        let mut control_edges = control_dependencies
+            .into_iter()
+            .map(|((from, to), inducing)| GoldPdgControlEdge {
+                from: normalized.point_labels[&from].clone(),
+                to: normalized.point_labels[&to].clone(),
+                inducing_cfg_edges: {
+                    let mut labels = inducing
+                        .iter()
+                        .map(|edge| normalized.edge_labels[edge].clone())
+                        .collect::<Vec<_>>();
+                    labels.sort();
+                    labels
+                },
+            })
+            .collect::<Vec<_>>();
+        control_edges.sort_by(|left, right| {
+            (&left.from, &left.to, &left.inducing_cfg_edges).cmp(&(
+                &right.from,
+                &right.to,
+                &right.inducing_cfg_edges,
+            ))
+        });
+
+        let value = symbol(0);
+        let left = definition(0);
+        let right = definition(1);
+        let resolved = access(0);
+        let unresolved = access(1);
+        let definitions = BTreeMap::from([
+            (
+                left.clone(),
+                FlowDefinitionFact {
+                    point: point(0),
+                    symbol: value.clone(),
+                },
+            ),
+            (
+                right.clone(),
+                FlowDefinitionFact {
+                    point: point(1),
+                    symbol: value.clone(),
+                },
+            ),
+        ]);
+        let accesses = vec![
+            FlowAccessFact {
+                key: resolved.clone(),
+                point: point(2),
+                symbol: Some(value),
+                reaching_definitions: vec![left, right],
+            },
+            FlowAccessFact {
+                key: unresolved,
+                point: point(2),
+                symbol: None,
+                reaching_definitions: vec![],
+            },
+        ];
+        let (flow_dependencies, unresolved_accesses) =
+            derive_flow_dependencies(&definitions, &accesses).unwrap();
+        let flow_edges = flow_dependencies
+            .iter()
+            .map(|dependency| GoldPdgFlowEdge {
+                from: if dependency.from == point(0) {
+                    "q0".into()
+                } else {
+                    "q1".into()
+                },
+                to: "q2".into(),
+                symbol: "s0".into(),
+                definition: if dependency.definition == definition(0) {
+                    "d0".into()
+                } else {
+                    "d1".into()
+                },
+                access: "a0".into(),
+            })
+            .collect();
+        let unresolved_accesses = unresolved_accesses
+            .iter()
+            .map(|key| {
+                if key == &access(1) {
+                    "a1".into()
+                } else {
+                    panic!("unexpected unresolved gold access")
+                }
+            })
+            .collect();
+        GoldM4Corpus {
+            schema: "deslop.m4-graph-gold/1".into(),
+            oracle: GoldOracle {
+                hand_labelled: "m4.9-complete-advanced-cfg-plus-multidef-flow/1".into(),
+                compiler_graph_status: "unavailable".into(),
+                compiler_graph_reason: "no retained compiler-authoritative CFG/PST/PDG artifact with version, configuration, and dependency identity".into(),
+            },
+            cfg: normalized.gold,
+            pst,
+            pdg: GoldPdg {
+                control_edges,
+                flow_edges,
+                unresolved_accesses,
+            },
+        }
+    }
+
+    fn frozen_m4_gold() -> GoldM4Corpus {
+        parse_m4_gold(include_str!("../../../tests/fixtures/m4_graph_gold.json")).unwrap()
+    }
+
+    fn parse_m4_gold(input: &str) -> Result<GoldM4Corpus, String> {
+        let gold =
+            serde_json::from_str::<GoldM4Corpus>(input).map_err(|error| error.to_string())?;
+        if gold.schema != "deslop.m4-graph-gold/1" {
+            return Err("unsupported M4 graph gold schema".into());
+        }
+        if gold.oracle.hand_labelled.trim().is_empty()
+            || gold.oracle.compiler_graph_status != "unavailable"
+            || gold.oracle.compiler_graph_reason.trim().is_empty()
+        {
+            return Err("M4 graph gold oracle provenance is incomplete".into());
+        }
+        let points = gold
+            .cfg
+            .points
+            .iter()
+            .map(|point| point.label.as_str())
+            .collect::<BTreeSet<_>>();
+        let edges = gold
+            .cfg
+            .edges
+            .iter()
+            .map(|edge| edge.label.as_str())
+            .collect::<BTreeSet<_>>();
+        if points.len() != gold.cfg.points.len()
+            || edges.len() != gold.cfg.edges.len()
+            || gold.cfg.edges.iter().any(|edge| {
+                !points.contains(edge.from.as_str()) || !points.contains(edge.to.as_str())
+            })
+            || gold.pst.points.iter().any(|point| {
+                !points.contains(point.point.as_str())
+                    || point
+                        .dominators
+                        .iter()
+                        .chain(&point.post_dominators)
+                        .any(|label| !points.contains(label.as_str()))
+            })
+            || gold.pdg.control_edges.iter().any(|edge| {
+                !points.contains(edge.from.as_str())
+                    || !points.contains(edge.to.as_str())
+                    || edge
+                        .inducing_cfg_edges
+                        .iter()
+                        .any(|label| !edges.contains(label.as_str()))
+            })
+        {
+            return Err("M4 graph gold contains duplicate or dangling labels".into());
+        }
+        Ok(gold)
+    }
+
+    #[test]
+    fn m4_9_cfg_pst_and_pdg_match_frozen_hand_gold_exactly() {
+        let expected = frozen_m4_gold();
+        let actual = actual_m4_gold();
+        if expected != actual {
+            panic!(
+                "M4.9 gold candidate:\n{}",
+                serde_json::to_string_pretty(&actual).unwrap()
+            );
+        }
+        assert_eq!(
+            [
+                actual.cfg.points.len(),
+                actual.cfg.edges.len(),
+                actual.pst.points.len(),
+                actual.pst.regions.len(),
+                actual.pst.residuals.len(),
+                actual.pdg.control_edges.len(),
+                actual.pdg.flow_edges.len(),
+                actual.pdg.unresolved_accesses.len(),
+            ],
+            [11, 14, 11, 2, 0, 9, 2, 1]
+        );
+        assert_eq!(
+            actual.cfg.points.len()
+                + actual.cfg.edges.len()
+                + actual.pst.points.len()
+                + actual.pst.regions.len()
+                + actual.pst.residuals.len()
+                + actual.pdg.control_edges.len()
+                + actual.pdg.flow_edges.len()
+                + actual.pdg.unresolved_accesses.len(),
+            50
+        );
+    }
+
+    #[test]
+    fn m4_9_gold_schema_rejects_unknown_fields_wrong_versions_and_dangling_labels() {
+        let source = include_str!("../../../tests/fixtures/m4_graph_gold.json");
+        let mut unknown = serde_json::from_str::<serde_json::Value>(source).unwrap();
+        unknown["untrusted"] = true.into();
+        assert!(parse_m4_gold(&serde_json::to_string(&unknown).unwrap()).is_err());
+        let mut wrong_schema = serde_json::from_str::<serde_json::Value>(source).unwrap();
+        wrong_schema["schema"] = "deslop.m4-graph-gold/999".into();
+        assert!(parse_m4_gold(&serde_json::to_string(&wrong_schema).unwrap()).is_err());
+        let mut dangling = serde_json::from_str::<serde_json::Value>(source).unwrap();
+        dangling["cfg"]["edges"][0]["to"] = "p99".into();
+        assert!(parse_m4_gold(&serde_json::to_string(&dangling).unwrap()).is_err());
+    }
+
+    #[test]
+    fn m4_9_semantic_mutation_cannot_pass_exact_gold_comparison() {
+        let actual = actual_m4_gold();
+        let mut changed = actual.clone();
+        changed.cfg.edges[0].kind = crate::ControlEdgeKind::Normal;
+        assert_ne!(changed, actual);
+        let mut changed = actual.clone();
+        changed.pst.points[0].post_dominators.clear();
+        assert_ne!(changed, actual);
+        let mut changed = actual.clone();
+        changed.pdg.flow_edges[0].from = "q9".into();
+        assert_ne!(changed, actual);
+    }
+
+    #[test]
+    fn m4_9_production_adapters_have_no_compiler_graph_oracle_to_compare() {
+        let registry = deslop_lang::Registry::default();
+        for language in [
+            deslop_core::Lang::Clojure,
+            deslop_core::Lang::Julia,
+            deslop_core::Lang::Python,
+            deslop_core::Lang::JavaScript,
+            deslop_core::Lang::TypeScript,
+            deslop_core::Lang::Rust,
+        ] {
+            let declaration = registry
+                .pack_for_lang(language)
+                .capability_manifest()
+                .declaration(crate::AdapterCapability::CompilerTypeEvidence)
+                .clone();
+            assert_ne!(declaration.support(), crate::CapabilitySupport::Provided);
+            assert_eq!(declaration.authority(), None);
+        }
+        let gold = frozen_m4_gold();
+        assert_eq!(gold.oracle.compiler_graph_status, "unavailable");
+        assert_eq!(
+            gold.oracle.compiler_graph_reason,
+            "no retained compiler-authoritative CFG/PST/PDG artifact with version, configuration, and dependency identity"
+        );
+    }
+
     fn point(index: usize) -> ControlPointKey {
         serde_json::from_str(&format!("\"cpt1_{:064x}\"", index + 1)).unwrap()
     }

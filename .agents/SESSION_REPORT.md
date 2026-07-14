@@ -10476,3 +10476,73 @@ not lowered`, `await yield honest Partial`, `ambiguous Capture PDG gap`, `early 
 flags no SDG edge`.
 
 **Signature:** Codex (GPT-5), M4.8 integration owner, terminal checkpoint, 2026-07-14.
+
+### M4.9 start checkpoint — frozen graph gold and compiler evidence
+
+**Date/time:** 2026-07-14 23:00:18 CEST (Europe/Madrid).
+
+**Objective/target:** compare normalized CFG/PST/PDG outputs with external hand-labelled gold and with compiler
+facts only where a compiler-authoritative graph artifact actually exists.
+
+**Changes:** created a new jj change and wrote the convergent M4.9 plan. The comparison will exclude
+content-addressed projection/node/edge IDs and retain typed endpoints/evidence under fixture-local ordinals.
+
+**Commands run:** `jj new -m 'Freeze M4 graph gold comparisons'`; targeted audit of the existing M3 frozen
+resolution-gold pattern and compiler semantic-provider tests.
+
+**Results:** M3 has compiler-backed resolution facts, but the current M4 stack has no compiler CFG/PST/PDG
+artifact/provider contract. Those resolution facts cannot be promoted into graph oracle authority. M4.9 will
+therefore freeze hand gold and an explicit compiler-graph-unavailable matrix unless the source audit finds a
+versioned graph artifact.
+
+**Invalidated assumptions / negative-memory constraint:** compiler-backed name resolution is not compiler-
+backed control/region/dependence evidence; content-addressed identities are not stable semantic oracle labels.
+
+**Current recommendation / next actions:** implement strict external gold plus normalization and mutation
+tests; audit production `CompilerTypeEvidence` and semantic provider capabilities before finalizing the
+compiler-availability result.
+
+**Blockers/dependencies/restart:** none.
+
+**Signature:** Codex (GPT-5), M4.9 integration owner, start checkpoint, 2026-07-14.
+
+#### M4.9 terminal checkpoint — exact gold agreement and honest compiler availability
+
+**Date/time:** 2026-07-14 23:13:06 CEST (Europe/Madrid).
+
+**Objective/target:** close M4.9 with exact normalized CFG/PST/PDG comparison against external hand gold and
+compiler graph comparison only when explicit compiler-authoritative evidence exists.
+
+**Changes:** added strict external `tests/fixtures/m4_graph_gold.json` under
+`deslop.m4-graph-gold/1`; normalized M4 point, edge, predicate/source, dominance/post-dominance, structured
+region, control-dependence witness, flow-dependence, and unresolved-gap evidence into fixture-local labels;
+excluded source/policy-dependent content hashes; added strict schema/oracle/label closure validation, exact
+comparison, three-layer semantic mutation tests, numerical vector assertions, and a six-adapter compiler-
+evidence availability audit.
+
+**Commands run:** repeated focused `cargo test -p deslop-parse --all-features m4_9_ -- --nocapture`; aggregate
+M4 suite; focused parse clippy/diff; `cargo test --workspace --all-features`; `cargo build --workspace
+--all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`; `cargo clippy
+--workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`; `git diff --check`.
+
+**Results:** PASS. Four M4.9 suites compare 50 exact semantic vectors: `[11 CFG points, 14 CFG edges, 11 PST
+point facts, 2 regions, 0 residuals, 9 PDG control edges, 2 PDG flow edges, 1 unresolved gap]`. Wrong schema,
+unknown fields, dangling labels, and CFG/PST/PDG mutations fail. Aggregate M4 is 61/61; parse is 196 active
+passing tests plus one designated ignored instrumentation probe; all workspace gates pass.
+
+**Invalidated assumptions/failure modes:** content-addressed IDs are not semantic gold labels; algorithm map
+order by hashed keys is not oracle order and was replaced with fixture-local semantic sorting; compiler-backed
+resolution is not compiler graph evidence; no production adapter currently provides a version/configuration/
+dependency-bound compiler graph artifact, so compiler graph comparison is unavailable rather than inferred.
+
+**Current recommendation/next actions:** implement M4.DoD as one frozen consumer-eligibility gate that joins
+CFG, PST/non-structured, dataflow, PDG, and SDG coverage/capability/gap evidence and proves every missing or
+uncertain fact blocks graph-dependent recipe eligibility.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, cache clear, or runtime restart applies.
+
+**Negative-memory status:** durable checkpoint pending Hindsight write. Search handles: `M4.9 semantic labels
+not hashes`, `compiler resolution not graph oracle`, `compiler graph unavailable`, `50 exact gold vectors`,
+`semantic mutation comparator`.
+
+**Signature:** Codex (GPT-5), M4.9 integration owner, terminal checkpoint, 2026-07-14.

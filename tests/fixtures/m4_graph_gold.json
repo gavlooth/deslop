@@ -1,0 +1,77 @@
+{
+  "schema": "deslop.m4-graph-gold/1",
+  "oracle": {
+    "hand_labelled": "m4.9-complete-advanced-cfg-plus-multidef-flow/1",
+    "compiler_graph_status": "unavailable",
+    "compiler_graph_reason": "no retained compiler-authoritative CFG/PST/PDG artifact with version, configuration, and dependency identity"
+  },
+  "cfg": {
+    "points": [
+      { "label": "p00", "kind": { "kind": "entry" }, "source_kind": null, "ordinal": 0 },
+      { "label": "p01", "kind": { "kind": "exit" }, "source_kind": null, "ordinal": 0 },
+      { "label": "p02", "kind": { "kind": "syntax" }, "source_kind": "break_expression", "ordinal": 0 },
+      { "label": "p03", "kind": { "kind": "syntax" }, "source_kind": "identifier", "ordinal": 0 },
+      { "label": "p04", "kind": { "kind": "syntax" }, "source_kind": "return_expression", "ordinal": 0 },
+      { "label": "p05", "kind": { "kind": "synthetic", "detail": "branch-dispatch" }, "source_kind": "if_expression", "ordinal": 0 },
+      { "label": "p06", "kind": { "kind": "synthetic", "detail": "exit-dispatch" }, "source_kind": "function_item", "ordinal": 0 },
+      { "label": "p07", "kind": { "kind": "synthetic", "detail": "handler-dispatch" }, "source_kind": "function_item", "ordinal": 0 },
+      { "label": "p08", "kind": { "kind": "synthetic", "detail": "loop-header" }, "source_kind": "loop_expression", "ordinal": 0 },
+      { "label": "p09", "kind": { "kind": "synthetic", "detail": "resume" }, "source_kind": "function_item", "ordinal": 0 },
+      { "label": "p10", "kind": { "kind": "synthetic", "detail": "suspension" }, "source_kind": "function_item", "ordinal": 0 }
+    ],
+    "edges": [
+      { "label": "e00", "from": "p00", "to": "p05", "kind": { "family": "entry" }, "source_kind": "function_item", "predicate_kind": null, "precision": { "precision": "exact" } },
+      { "label": "e01", "from": "p02", "to": "p06", "kind": { "family": "abrupt", "detail": { "break": { "label": null } } }, "source_kind": "break_expression", "predicate_kind": null, "precision": { "precision": "exact" } },
+      { "label": "e02", "from": "p02", "to": "p08", "kind": { "family": "loop", "detail": "back" }, "source_kind": "break_expression", "predicate_kind": null, "precision": { "precision": "exact" } },
+      { "label": "e03", "from": "p03", "to": "p04", "kind": { "family": "branch", "detail": "false" }, "source_kind": "identifier", "predicate_kind": "identifier", "precision": { "precision": "exact" } },
+      { "label": "e04", "from": "p03", "to": "p08", "kind": { "family": "branch", "detail": "true" }, "source_kind": "identifier", "predicate_kind": "identifier", "precision": { "precision": "exact" } },
+      { "label": "e05", "from": "p04", "to": "p06", "kind": { "family": "abrupt", "detail": "return" }, "source_kind": "return_expression", "predicate_kind": null, "precision": { "precision": "exact" } },
+      { "label": "e06", "from": "p05", "to": "p03", "kind": { "family": "normal" }, "source_kind": "if_expression", "predicate_kind": null, "precision": { "precision": "exact" } },
+      { "label": "e07", "from": "p05", "to": "p07", "kind": { "family": "exceptional", "detail": "handler" }, "source_kind": "if_expression", "predicate_kind": null, "precision": { "precision": "exact" } },
+      { "label": "e08", "from": "p05", "to": "p10", "kind": { "family": "suspension", "detail": "suspend" }, "source_kind": "function_item", "predicate_kind": null, "precision": { "precision": "exact" } },
+      { "label": "e09", "from": "p06", "to": "p01", "kind": { "family": "exit", "detail": "normal" }, "source_kind": "function_item", "predicate_kind": null, "precision": { "precision": "exact" } },
+      { "label": "e10", "from": "p07", "to": "p06", "kind": { "family": "exceptional", "detail": "propagate" }, "source_kind": "function_item", "predicate_kind": null, "precision": { "precision": "exact" } },
+      { "label": "e11", "from": "p08", "to": "p02", "kind": { "family": "loop", "detail": "body" }, "source_kind": "loop_expression", "predicate_kind": "loop_expression", "precision": { "precision": "exact" } },
+      { "label": "e12", "from": "p09", "to": "p06", "kind": { "family": "normal" }, "source_kind": "function_item", "predicate_kind": null, "precision": { "precision": "exact" } },
+      { "label": "e13", "from": "p10", "to": "p09", "kind": { "family": "suspension", "detail": "resume" }, "source_kind": "function_item", "predicate_kind": null, "precision": { "precision": "exact" } }
+    ]
+  },
+  "pst": {
+    "points": [
+      { "point": "p00", "reachable": true, "exit_reachable": true, "dominators": ["p00"], "immediate_dominator": null, "dominator_depth": 0, "post_dominators": ["p00", "p01", "p05", "p06"], "immediate_post_dominator": "p05", "post_dominator_depth": 3 },
+      { "point": "p01", "reachable": true, "exit_reachable": true, "dominators": ["p00", "p01", "p05", "p06"], "immediate_dominator": "p06", "dominator_depth": 3, "post_dominators": ["p01"], "immediate_post_dominator": null, "post_dominator_depth": 0 },
+      { "point": "p02", "reachable": true, "exit_reachable": true, "dominators": ["p00", "p02", "p03", "p05", "p08"], "immediate_dominator": "p08", "dominator_depth": 4, "post_dominators": ["p01", "p02", "p06"], "immediate_post_dominator": "p06", "post_dominator_depth": 2 },
+      { "point": "p03", "reachable": true, "exit_reachable": true, "dominators": ["p00", "p03", "p05"], "immediate_dominator": "p05", "dominator_depth": 2, "post_dominators": ["p01", "p03", "p06"], "immediate_post_dominator": "p06", "post_dominator_depth": 2 },
+      { "point": "p04", "reachable": true, "exit_reachable": true, "dominators": ["p00", "p03", "p04", "p05"], "immediate_dominator": "p03", "dominator_depth": 3, "post_dominators": ["p01", "p04", "p06"], "immediate_post_dominator": "p06", "post_dominator_depth": 2 },
+      { "point": "p05", "reachable": true, "exit_reachable": true, "dominators": ["p00", "p05"], "immediate_dominator": "p00", "dominator_depth": 1, "post_dominators": ["p01", "p05", "p06"], "immediate_post_dominator": "p06", "post_dominator_depth": 2 },
+      { "point": "p06", "reachable": true, "exit_reachable": true, "dominators": ["p00", "p05", "p06"], "immediate_dominator": "p05", "dominator_depth": 2, "post_dominators": ["p01", "p06"], "immediate_post_dominator": "p01", "post_dominator_depth": 1 },
+      { "point": "p07", "reachable": true, "exit_reachable": true, "dominators": ["p00", "p05", "p07"], "immediate_dominator": "p05", "dominator_depth": 2, "post_dominators": ["p01", "p06", "p07"], "immediate_post_dominator": "p06", "post_dominator_depth": 2 },
+      { "point": "p08", "reachable": true, "exit_reachable": true, "dominators": ["p00", "p03", "p05", "p08"], "immediate_dominator": "p03", "dominator_depth": 3, "post_dominators": ["p01", "p02", "p06", "p08"], "immediate_post_dominator": "p02", "post_dominator_depth": 3 },
+      { "point": "p09", "reachable": true, "exit_reachable": true, "dominators": ["p00", "p05", "p09", "p10"], "immediate_dominator": "p10", "dominator_depth": 3, "post_dominators": ["p01", "p06", "p09"], "immediate_post_dominator": "p06", "post_dominator_depth": 2 },
+      { "point": "p10", "reachable": true, "exit_reachable": true, "dominators": ["p00", "p05", "p10"], "immediate_dominator": "p05", "dominator_depth": 2, "post_dominators": ["p01", "p06", "p09", "p10"], "immediate_post_dominator": "p09", "post_dominator_depth": 3 }
+    ],
+    "regions": [
+      { "label": "r00", "kind": "root", "entry": "p00", "exit": "p01", "points": ["p00", "p01", "p02", "p03", "p04", "p05", "p06", "p07", "p08", "p09", "p10"], "parent": null, "children": ["r01"] },
+      { "label": "r01", "kind": "branch", "entry": "p05", "exit": "p06", "points": ["p02", "p03", "p04", "p05", "p06", "p07", "p08", "p09", "p10"], "parent": "r00", "children": [] }
+    ],
+    "residuals": []
+  },
+  "pdg": {
+    "control_edges": [
+      { "from": "p02", "to": "p02", "inducing_cfg_edges": ["e02"] },
+      { "from": "p02", "to": "p08", "inducing_cfg_edges": ["e02"] },
+      { "from": "p03", "to": "p02", "inducing_cfg_edges": ["e04"] },
+      { "from": "p03", "to": "p04", "inducing_cfg_edges": ["e03"] },
+      { "from": "p03", "to": "p08", "inducing_cfg_edges": ["e04"] },
+      { "from": "p05", "to": "p03", "inducing_cfg_edges": ["e06"] },
+      { "from": "p05", "to": "p07", "inducing_cfg_edges": ["e07"] },
+      { "from": "p05", "to": "p09", "inducing_cfg_edges": ["e08"] },
+      { "from": "p05", "to": "p10", "inducing_cfg_edges": ["e08"] }
+    ],
+    "flow_edges": [
+      { "from": "q0", "to": "q2", "symbol": "s0", "definition": "d0", "access": "a0" },
+      { "from": "q1", "to": "q2", "symbol": "s0", "definition": "d1", "access": "a0" }
+    ],
+    "unresolved_accesses": ["a1"]
+  }
+}

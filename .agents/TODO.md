@@ -466,7 +466,11 @@ reports, benchmark records, and work orders.
   honest production await/yield/closure Partial coverage, no early-return fallthrough, conservative Capture/
   Borrow/ReadWrite semantics, advanced outputs/effects, ambiguous-capture PDG gaps, and SDG retention without
   fabricated interprocedural edges. All workspace all-feature gates pass.
-- [ ] M4.9 Compare graph edges/regions with hand-labelled gold fixtures and compiler facts where available.
+- [x] M4.9 Compare graph edges/regions with hand-labelled gold fixtures and compiler facts where available.
+  Strict external `deslop.m4-graph-gold/1` freezes 50 normalized semantic vectors across CFG, PST, and PDG;
+  exact comparison, schema/dangling validation, and three semantic mutation classes pass. All six production
+  adapters explicitly lack a retained compiler-authoritative graph oracle, so compiler comparison remains an
+  exact unavailable result rather than borrowed resolution authority. All workspace gates pass.
 - [ ] M4.DoD Pass frozen CFG/PST/PDG gold gates and propagate every missing/uncertain semantic fact into
   recipe eligibility.
 
