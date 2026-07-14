@@ -1,0 +1,2 @@
+@generatedExtra
+class Example {}

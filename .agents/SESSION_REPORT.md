@@ -8025,3 +8025,97 @@ Hindsight storage. Search handles: `M2.10 Julia golden`, `Julia argument_list si
 `Julia named operator assignment fallback`.
 
 **Signature:** Codex (GPT-5), M2.10 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2.11 active checkpoint — cross-adapter construct and capability leakage
+
+**Date/time:** 2026-07-14T02:30:00+02:00
+
+**Objective/target:** prove in one registry-wide oracle that production dialect, construct, query,
+recovery, and semantic-tier authority cannot migrate between Rust, JavaScript, TypeScript, TSX,
+Python, Clojure, and Julia.
+
+**Changes:** planning/audit only. Opened a clean `jj` change, persisted the M2.10 terminal checkpoint,
+loaded relevant leakage and dialect negative memories, and inventoried all production goldens plus the
+public manifest/construct/query projection surfaces. Defined one convergent table-driven validation
+matrix rather than another sequence of language-specific probes.
+
+**Commands/checks run:** targeted Hindsight search/remember; `jj status`/log/new; targeted TODO, plan,
+report, adapter-test, capability-manifest, construct-policy, and projection API reads.
+
+**Results:** ACTIVE / UNVERIFIED. All seven production dialects already expose frozen local goldens.
+M2.11 can therefore be implemented as a retained-analysis integration oracle without expanding any
+adapter's authority.
+
+**Invalidated assumptions / negative memory:** a uniform cross-language table must not force uniform
+support: ECMAScript/Python macros are Unsupported, Clojure contextual declaration/reference/control
+queries are Unknown, and Rust/Clojure/Julia macro syntax is Provided but opaque. Public TypeScript
+language identity also does not erase TypeScript-versus-TSX grammar provenance. Generated markers are
+exact-text facts, and malformed syntax cannot create construct or semantic authority.
+
+**Current recommendation/next actions:** implement the table-driven production matrix, run its focused
+test, correct only demonstrated leakage, then execute full workspace gates. Audit M2.DoD separately.
+
+**Blockers/dependencies/restart:** Serena cannot expose Rust symbols in this project, so targeted local
+reads/compiler/runtime checks remain the documented fallback. No functional blocker, dependency,
+migration, restart, or cache action applies.
+
+**Negative-memory status:** existing dialect, query-role, Clojure contextual-query, exact-marker, and
+Julia syntax-boundary memories are loaded. No new failure is established yet. Search handles: `M2.11
+cross adapter leakage`, `construct support matrix`, `Clojure quoted query unknown`, `TypeScript TSX
+dialect provenance`.
+
+**Signature:** Codex (GPT-5), M2.11 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M2.11 terminal checkpoint — cross-adapter construct and capability leakage
+
+**Date/time:** 2026-07-14T02:31:00+02:00
+
+**Objective/target:** prove that production adapter dialect, construct, query, recovery, generated,
+and semantic-tier authority remains exact across every registered production grammar variant.
+
+**Changes:** added one table-driven retained-analysis integration oracle over 21 sources: valid,
+malformed, and near-marker inputs for Rust, JavaScript, TypeScript, TSX, Python, Clojure, and Julia.
+The matrix locks dialect triples; adapter-schema ownership; full manifest support/authority; exact
+query and construct section support plus unavailable-payload hygiene; construct counts, handling, and
+generated texts; malformed recovery facts; quoted Clojure control non-leakage; near-marker rejection;
+and parse-once preservation. Added the JavaScript malformed fixture and seven language/dialect-specific
+near-marker fixtures. No production policy or dependency changed.
+
+**Commands/checks run:** focused matrix test (after correcting an over-specific test-name filter);
+`cargo test -p deslop-lang -p deslop-parse`; affected all-feature/all-target strict clippy; format and
+diff checks; then `cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`; `cargo clippy --workspace
+--all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`; and `git diff --check`.
+
+**Results:** PASS. The convergent oracle covers 21 files and preserves exactly one parser invocation
+per file before and after all projections. Every adapter provides all S0/S1 capabilities and reports
+every S2-S4 capability Unknown with no authority. All six query families are Provided except Clojure
+declarations/references/control, which remain payload-free Unknown. Macro policy is payload-free
+Unsupported for JavaScript/TypeScript/TSX/Python and Provided opaque for Rust/Clojure/Julia. Exact
+valid construct vectors `[unsupported, macro, generated]` are Rust `[1,3,2]`, JavaScript `[1,0,1]`,
+TypeScript `[0,0,2]`, TSX `[0,0,0]`, Python `[2,0,2]`, Clojure `[1,6,2]`, and Julia `[1,2,2]`.
+All seven malformed fixtures emit one exact syntax-authority `ERROR` with file-incomplete handling and
+no construct authority; all seven near-marker fixtures emit zero generated facts. All workspace gates
+pass; only the two repository-designated slow probes are ignored.
+
+**Invalidated assumptions / negative memory:** uniform matrix shape does not imply uniform support.
+Forcing all query/macro families to Provided would leak authority; the oracle instead pins each honest
+Unknown/Unsupported boundary and requires unavailable declarations to carry no source, captures,
+rules, or authority. TypeScript and TSX remain one public language family but distinct grammar/dialect
+provenance. Parse errors and spelling-near generated annotations remain syntax only.
+
+**Current recommendation/next actions:** audit and close M2.DoD only if every emitted adapter fact has
+version/capability/provenance and no confirmed consumer output exceeds the stored manifest tier.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, service restart, cache clear, or
+live-state activation applies.
+
+**Negative-memory status:** no new production failure was found. Existing dialect/query/marker
+constraints are now executable in the cross-adapter matrix. Search handles: `M2.11 terminal`,
+`production adapter leakage matrix`, `21 source construct query authority`.
+
+**Signature:** Codex (GPT-5), M2.11 integration owner, terminal checkpoint, 2026-07-14.

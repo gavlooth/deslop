@@ -338,7 +338,12 @@ reports, benchmark records, and work orders.
   consistency, and one parse per file. Call argument lists are not mislabeled parameters; exact named
   assignment operators do not fall through. S2-S4 and StaticLint/JET authority remain unknown. All
   workspace gates pass.
-- [ ] M2.11 Add cross-adapter construct matrices and unsupported-capability leakage tests.
+- [x] M2.11 Add cross-adapter construct matrices and unsupported-capability leakage tests.
+  One retained-analysis oracle now spans Rust, JavaScript, TypeScript, TSX, Python, Clojure, and
+  Julia with 21 valid/malformed/near-marker sources. It pins exact dialect triples, query and
+  construct support/payload matrices, construct counts and generated texts, syntax-only malformed
+  recovery, contextual Clojure non-leakage, S1 ceilings with every S2-S4 capability unknown, and one
+  parse per source. All workspace gates pass.
 - [ ] M2.DoD Every emitted fact declares adapter/version/capability/provenance, and no confirmed output
   requires a higher tier than the adapter supplies.
 

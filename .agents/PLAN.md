@@ -1743,6 +1743,55 @@ assignment operators classify exactly. Every query capture carries its declared 
 parses once, and all workspace gates pass. Next: M2.11 cross-adapter construct and capability-leakage
 matrix.
 
+#### Active M2.11 execution plan — cross-adapter construct and capability-leakage matrix
+
+Active hypothesis: each production adapter is locally correct, but only a registry-wide retained-analysis
+oracle can prove that dialect, construct, recovery, query, and semantic-tier authority does not leak from
+one language or dialect into another.
+
+CONVERGENCE: build one table-driven snapshot spanning Rust, JavaScript, TypeScript, TSX, Python,
+Clojure, and Julia valid/malformed sources. In one run, assert exact grammar dialect triples, the
+adapter-specific support matrix for unsupported constructs/macros/generated code and query families,
+the absence of near-marker facts, exact malformed recovery authority/handling, no fabricated
+constructs from malformed input, no S2-S4 capability promotion, and one parse per source. A single
+passing oracle plus the existing language goldens and full workspace gates terminates M2.11.
+
+Current approach: reuse the frozen production fixtures and public projection APIs inside a table-driven
+`deslop-parse` test. Each row owns its exact path, expected dialect, construct-section support,
+construct counts, query-family support, and malformed recovery facts. Add explicit negative probes for
+Clojure's quoted contextual forms, unsupported macro policies in ECMAScript/Python, exact generated
+markers versus near markers, and syntax-only malformed errors. Do not add semantic capability or alter
+production policies merely to make the matrix uniform.
+
+Validation path: run the new focused cross-adapter test first; then affected crate tests and strict
+clippy; finally workspace test/build/doc/clippy/fmt/diff gates. Audit M2.DoD separately after M2.11;
+do not infer it from matrix success.
+
+Next checkpoint: the single matrix passes numerically for all seven grammar dialects without changing
+production authority, and all workspace gates pass.
+
+Negative-memory constraints: public `Lang` remains a language family while grammar dialect remains
+path-selected provenance; query compilation is insufficient without capture-role checks; Clojure
+contextual declaration/reference/control stays Unknown until a versioned ancestry filter exists;
+unsupported/unknown sections must carry no payload; generated markers require exact text; parse errors
+are syntax facts and cannot fabricate constructs or grant higher-tier authority.
+
+Agent assignment: `/root` owns the M2.11 oracle, integration, and verification; no concurrent file
+edits are assigned.
+
+Current checkpoint (2026-07-14T02:30:00+02:00): M2.10 terminal memory is durable and M2.11 has a clean
+`jj` working change. The production goldens and policy APIs provide all inputs needed for the convergent
+matrix; no production implementation change is expected unless the matrix exposes a real leak.
+
+Terminal checkpoint (2026-07-14T02:31:00+02:00): M2.11 is complete. One 21-source snapshot covers all
+seven production grammar dialects with valid, malformed, and near-generated-marker inputs. The matrix
+pins each exact dialect triple, construct-section and query-family support/payload, construct counts and
+generated text sets, full S0/S1 manifests, absent S2-S4 authority, file-incomplete syntax recovery,
+Clojure quoted-control non-leakage, and unchanged one-parse instrumentation after every projection.
+Malformed files emit only their exact syntax-authority `ERROR`; near markers emit no generated facts.
+No production adapter policy changed, and all workspace gates pass. Next: audit M2.DoD independently
+against every emitted fact/projection and confirmed-output tier boundary.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link

@@ -950,12 +950,12 @@ mod tests {
     use deslop_core::Lang;
     use deslop_lang::{
         AdapterCapability, CanonicalRole, CapabilityAuthority, CapabilityDeclaration,
-        ConstructHandling, ConstructPolicyKind, ConstructPolicySection, ConstructRule,
-        DialectDeclaration, DialectPolicy, GENERIC_PACK, GrammarDescriptor, IdentifierCasePolicy,
-        LangPack, LanguageConstructPolicy, LanguageLexicalPolicy, LanguageQueryPack,
-        LexicalClassification, LexicalOperatorClass, LexicalRule, LexicalTokenClass,
-        ParseRecoveryHandling, ParseRecoveryPolicy, QueryCaptureDeclaration, QueryFamily,
-        QueryFamilyDeclaration, RUST_PACK, Registry, SemanticTier,
+        CapabilitySupport, ConstructHandling, ConstructPolicyKind, ConstructPolicySection,
+        ConstructRule, DialectDeclaration, DialectPolicy, GENERIC_PACK, GrammarDescriptor,
+        IdentifierCasePolicy, LangPack, LanguageConstructPolicy, LanguageLexicalPolicy,
+        LanguageQueryPack, LexicalClassification, LexicalOperatorClass, LexicalRule,
+        LexicalTokenClass, ParseRecoveryHandling, ParseRecoveryPolicy, QueryCaptureDeclaration,
+        QueryFamily, QueryFamilyDeclaration, RUST_PACK, Registry, SemanticTier,
     };
 
     use crate::{ProjectSnapshotBuilder, RepositoryId};
@@ -3084,6 +3084,438 @@ mod tests {
                 .values()
                 .all(|count| count.parser_invocations == 1)
         );
+    }
+
+    #[test]
+    fn production_adapters_do_not_leak_construct_query_or_semantic_authority() {
+        struct AdapterRow {
+            path: &'static str,
+            dialect: &'static str,
+            grammar_id: &'static str,
+            grammar_version: &'static str,
+            construct_support: [CapabilitySupport; 3],
+            construct_counts: [usize; 3],
+            query_support: [CapabilitySupport; 6],
+            generated_texts: &'static [&'static str],
+        }
+
+        let provided = CapabilitySupport::Provided;
+        let unsupported = CapabilitySupport::Unsupported;
+        let unknown = CapabilitySupport::Unknown;
+        let all_queries = [provided; 6];
+        let rows = [
+            AdapterRow {
+                path: "adapter_matrix.rs",
+                dialect: "rust",
+                grammar_id: "tree-sitter-rust",
+                grammar_version: "0.24.2",
+                construct_support: [provided, provided, provided],
+                construct_counts: [1, 3, 2],
+                query_support: all_queries,
+                generated_texts: &["#[automatically_derived]", "#[generated]"],
+            },
+            AdapterRow {
+                path: "adapter_matrix.js",
+                dialect: "javascript",
+                grammar_id: "tree-sitter-javascript",
+                grammar_version: "0.25.0",
+                construct_support: [provided, unsupported, provided],
+                construct_counts: [1, 0, 1],
+                query_support: all_queries,
+                generated_texts: &["/* @generated */"],
+            },
+            AdapterRow {
+                path: "adapter_matrix.ts",
+                dialect: "typescript",
+                grammar_id: "tree-sitter-typescript/typescript",
+                grammar_version: "0.23.2",
+                construct_support: [provided, unsupported, provided],
+                construct_counts: [0, 0, 2],
+                query_support: all_queries,
+                generated_texts: &["/* @generated */", "@generated"],
+            },
+            AdapterRow {
+                path: "adapter_matrix.tsx",
+                dialect: "tsx",
+                grammar_id: "tree-sitter-typescript/tsx",
+                grammar_version: "0.23.2",
+                construct_support: [provided, unsupported, provided],
+                construct_counts: [0, 0, 0],
+                query_support: all_queries,
+                generated_texts: &[],
+            },
+            AdapterRow {
+                path: "adapter_matrix.py",
+                dialect: "python",
+                grammar_id: "tree-sitter-python",
+                grammar_version: "0.25.0",
+                construct_support: [provided, unsupported, provided],
+                construct_counts: [2, 0, 2],
+                query_support: all_queries,
+                generated_texts: &["# @generated", "@generated"],
+            },
+            AdapterRow {
+                path: "adapter_matrix.clj",
+                dialect: "clojure",
+                grammar_id: "tree-sitter-clojure",
+                grammar_version: "0.1.0",
+                construct_support: [provided, provided, provided],
+                construct_counts: [1, 6, 2],
+                query_support: [unknown, unknown, provided, unknown, provided, provided],
+                generated_texts: &[";; @generated\n", "^:generated"],
+            },
+            AdapterRow {
+                path: "adapter_matrix.jl",
+                dialect: "julia",
+                grammar_id: "tree-sitter-julia",
+                grammar_version: "0.23.1",
+                construct_support: [provided, provided, provided],
+                construct_counts: [1, 2, 2],
+                query_support: all_queries,
+                generated_texts: &["# @generated", "@generated"],
+            },
+        ];
+        let overlays: [(&str, &[u8]); 21] = [
+            (
+                "adapter_matrix.rs",
+                include_bytes!("../../../tests/fixtures/rust/adapter_matrix.rs"),
+            ),
+            (
+                "adapter_matrix.js",
+                include_bytes!("../../../tests/fixtures/typescript/adapter_matrix.js"),
+            ),
+            (
+                "adapter_matrix.ts",
+                include_bytes!("../../../tests/fixtures/typescript/adapter_matrix.ts"),
+            ),
+            (
+                "adapter_matrix.tsx",
+                include_bytes!("../../../tests/fixtures/typescript/adapter_matrix.tsx"),
+            ),
+            (
+                "adapter_matrix.py",
+                include_bytes!("../../../tests/fixtures/python/adapter_matrix.py"),
+            ),
+            (
+                "adapter_matrix.clj",
+                include_bytes!("../../../tests/fixtures/clojure/adapter_matrix.clj"),
+            ),
+            (
+                "adapter_matrix.jl",
+                include_bytes!("../../../tests/fixtures/julia/adapter_matrix.jl"),
+            ),
+            (
+                "malformed.rs",
+                include_bytes!("../../../tests/fixtures/rust/malformed.rs"),
+            ),
+            (
+                "malformed.js",
+                include_bytes!("../../../tests/fixtures/typescript/malformed.js"),
+            ),
+            (
+                "malformed.ts",
+                include_bytes!("../../../tests/fixtures/typescript/malformed.ts"),
+            ),
+            (
+                "malformed.tsx",
+                include_bytes!("../../../tests/fixtures/typescript/malformed.tsx"),
+            ),
+            (
+                "malformed.py",
+                include_bytes!("../../../tests/fixtures/python/malformed.py"),
+            ),
+            (
+                "malformed.clj",
+                include_bytes!("../../../tests/fixtures/clojure/malformed.clj"),
+            ),
+            (
+                "malformed.jl",
+                include_bytes!("../../../tests/fixtures/julia/malformed.jl"),
+            ),
+            (
+                "near_marker.rs",
+                include_bytes!("../../../tests/fixtures/rust/near_marker.rs"),
+            ),
+            (
+                "near_marker.js",
+                include_bytes!("../../../tests/fixtures/typescript/near_marker.js"),
+            ),
+            (
+                "near_marker.ts",
+                include_bytes!("../../../tests/fixtures/typescript/near_marker.ts"),
+            ),
+            (
+                "near_marker.tsx",
+                include_bytes!("../../../tests/fixtures/typescript/near_marker.tsx"),
+            ),
+            (
+                "near_marker.py",
+                include_bytes!("../../../tests/fixtures/python/near_marker.py"),
+            ),
+            (
+                "near_marker.clj",
+                include_bytes!("../../../tests/fixtures/clojure/near_marker.clj"),
+            ),
+            (
+                "near_marker.jl",
+                include_bytes!("../../../tests/fixtures/julia/near_marker.jl"),
+            ),
+        ];
+        let root = tempfile::tempdir().unwrap();
+        let mut builder = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("production-adapter-leakage-matrix").unwrap(),
+        )
+        .unwrap();
+        for (path, bytes) in overlays {
+            builder = builder.with_overlay(path, bytes.to_vec()).unwrap();
+        }
+        let analysis = ProjectAnalysis::build(builder.build().unwrap()).unwrap();
+        let parse_counts = analysis.parse_counts();
+        assert_eq!(parse_counts.len(), 21);
+        assert!(
+            parse_counts
+                .values()
+                .all(|count| count.parser_invocations == 1)
+        );
+
+        for row in rows {
+            let path = Path::new(row.path);
+            let entry = analysis.snapshot().entry(path).unwrap();
+            let identity = entry.language_adapter_identity().unwrap();
+            assert_eq!(identity.capabilities().adapter_schema(), identity.schema());
+            assert_eq!(identity.queries().adapter_schema(), identity.schema());
+            assert_eq!(
+                identity.lexical_policy().adapter_schema(),
+                identity.schema()
+            );
+            assert_eq!(
+                identity.construct_policy().adapter_schema(),
+                identity.schema()
+            );
+            assert_eq!(
+                identity.capabilities().highest_complete_tier(),
+                Some(SemanticTier::S1),
+                "{} semantic tier",
+                row.path,
+            );
+            for capability in AdapterCapability::ALL {
+                let declaration = identity.capabilities().declaration(capability);
+                let expected = if capability.tier() <= SemanticTier::S1 {
+                    provided
+                } else {
+                    unknown
+                };
+                assert_eq!(
+                    declaration.support(),
+                    expected,
+                    "{} capability {}",
+                    row.path,
+                    capability.as_str(),
+                );
+                assert_eq!(
+                    declaration.authority().is_some(),
+                    expected == provided,
+                    "{} capability {} authority",
+                    row.path,
+                    capability.as_str(),
+                );
+            }
+
+            let constructs = analysis.construct_policy_projection(path).unwrap();
+            assert!(Arc::ptr_eq(constructs.analysis(), &analysis));
+            assert_eq!(constructs.dialect().dialect(), row.dialect);
+            assert_eq!(constructs.dialect().grammar_id(), row.grammar_id);
+            assert_eq!(constructs.dialect().grammar_version(), row.grammar_version);
+            assert_eq!(constructs.dialect().support(), provided);
+            assert_eq!(
+                constructs.dialect().authority(),
+                Some(CapabilityAuthority::Syntax)
+            );
+            assert_eq!(constructs.policy().parse_recovery().support(), provided);
+            assert_eq!(
+                constructs.policy().parse_recovery().authority(),
+                Some(CapabilityAuthority::Syntax)
+            );
+            assert_eq!(
+                constructs.policy().parse_recovery().handling(),
+                Some(ParseRecoveryHandling::FileIncomplete)
+            );
+            for (kind, expected) in ConstructPolicyKind::ALL
+                .into_iter()
+                .zip(row.construct_support)
+            {
+                let section = constructs.policy().construct(kind);
+                assert_eq!(
+                    section.support(),
+                    expected,
+                    "{} {}",
+                    row.path,
+                    kind.as_str()
+                );
+                assert_eq!(
+                    section.authority().is_some(),
+                    expected == provided,
+                    "{} {} authority",
+                    row.path,
+                    kind.as_str(),
+                );
+                assert_eq!(
+                    section.rules().is_empty(),
+                    expected != provided,
+                    "{} {} payload",
+                    row.path,
+                    kind.as_str(),
+                );
+            }
+            let construct_counts = ConstructPolicyKind::ALL.map(|kind| {
+                constructs
+                    .facts()
+                    .iter()
+                    .filter(|fact| fact.kind() == ConstructPolicyFactKind::from(kind))
+                    .count()
+            });
+            assert_eq!(construct_counts, row.construct_counts, "{} facts", row.path);
+            for fact in constructs.facts() {
+                assert_eq!(fact.authority(), CapabilityAuthority::Adapter);
+                let expected_handling = match fact.kind() {
+                    ConstructPolicyFactKind::UnsupportedConstruct
+                    | ConstructPolicyFactKind::Macro => ConstructHandling::Opaque,
+                    ConstructPolicyFactKind::GeneratedCode => ConstructHandling::SurfaceSyntax,
+                    unexpected => panic!("unexpected valid construct fact {unexpected:?}"),
+                };
+                assert_eq!(fact.construct_handling(), Some(expected_handling));
+                assert_eq!(fact.parse_handling(), None);
+            }
+            let generated = constructs
+                .facts()
+                .iter()
+                .filter(|fact| fact.kind() == ConstructPolicyFactKind::GeneratedCode)
+                .map(ConstructPolicyFact::text)
+                .collect::<std::collections::BTreeSet<_>>();
+            assert_eq!(
+                generated,
+                row.generated_texts.iter().copied().collect(),
+                "{} generated markers",
+                row.path,
+            );
+
+            let queries = analysis.compile_language_query_pack(path).unwrap();
+            assert!(Arc::ptr_eq(queries.analysis(), &analysis));
+            for (family, expected) in QueryFamily::ALL.into_iter().zip(row.query_support) {
+                let declaration = identity.queries().declaration(family);
+                assert_eq!(
+                    declaration.support(),
+                    expected,
+                    "{} {}",
+                    row.path,
+                    family.as_str()
+                );
+                assert_eq!(
+                    declaration.authority().is_some(),
+                    expected == provided,
+                    "{} {} authority",
+                    row.path,
+                    family.as_str(),
+                );
+                assert_eq!(
+                    declaration.source().is_some(),
+                    expected == provided,
+                    "{} {} source",
+                    row.path,
+                    family.as_str(),
+                );
+                assert_eq!(
+                    declaration.captures().is_empty(),
+                    expected != provided,
+                    "{} {} captures",
+                    row.path,
+                    family.as_str(),
+                );
+                assert_eq!(
+                    queries.query(family).is_some(),
+                    expected == provided,
+                    "{} {} compiled query",
+                    row.path,
+                    family.as_str(),
+                );
+            }
+        }
+
+        let clojure_roles = analysis
+            .canonical_role_projection(Path::new("adapter_matrix.clj"))
+            .unwrap();
+        assert!(clojure_roles.facts().iter().any(|fact| {
+            let view = analysis.node(fact.node()).unwrap();
+            view.text().starts_with("(if quoted")
+                && !fact.roles().contains(CanonicalRole::Branch)
+                && !fact.roles().contains(CanonicalRole::Call)
+        }));
+
+        let malformed = [
+            ("malformed.rs", "="),
+            ("malformed.js", "="),
+            ("malformed.ts", "."),
+            (
+                "malformed.tsx",
+                "export const Broken = (): JSX.Element => (\n  <section>{items.map((item) => <span>{item}</span>)}",
+            ),
+            ("malformed.py", "return value +"),
+            ("malformed.clj", "(defn broken [value]\n  (+ value 1)\n"),
+            (
+                "malformed.jl",
+                "function broken(value)\n    return value +\nend\n",
+            ),
+        ];
+        for (path, expected_text) in malformed {
+            let projection = analysis
+                .construct_policy_projection(Path::new(path))
+                .unwrap();
+            assert_eq!(projection.facts().len(), 1, "{path} recovery facts");
+            let fact = &projection.facts()[0];
+            assert_eq!(fact.kind(), ConstructPolicyFactKind::ParseError, "{path}");
+            assert_eq!(fact.raw().raw_kind(), "ERROR", "{path}");
+            assert_eq!(fact.text(), expected_text, "{path}");
+            assert_eq!(fact.authority(), CapabilityAuthority::Syntax, "{path}");
+            assert_eq!(
+                fact.parse_handling(),
+                Some(ParseRecoveryHandling::FileIncomplete),
+                "{path}",
+            );
+            assert_eq!(fact.construct_handling(), None, "{path}");
+        }
+
+        for path in [
+            "near_marker.rs",
+            "near_marker.js",
+            "near_marker.ts",
+            "near_marker.tsx",
+            "near_marker.py",
+            "near_marker.clj",
+            "near_marker.jl",
+        ] {
+            let projection = analysis
+                .construct_policy_projection(Path::new(path))
+                .unwrap();
+            assert!(
+                projection
+                    .facts()
+                    .iter()
+                    .all(|fact| fact.kind() != ConstructPolicyFactKind::GeneratedCode),
+                "near marker leaked generated authority for {path}: {:?}",
+                projection.facts(),
+            );
+            assert!(
+                projection.facts().iter().all(|fact| !matches!(
+                    fact.kind(),
+                    ConstructPolicyFactKind::ParseError | ConstructPolicyFactKind::MissingSyntax
+                )),
+                "near marker fixture is malformed for {path}: {:?}",
+                projection.facts(),
+            );
+        }
+
+        assert_eq!(analysis.parse_counts(), parse_counts);
     }
 
     #[test]
