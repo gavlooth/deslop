@@ -49,6 +49,7 @@ mod resolution_traversal;
 mod scope_graph;
 mod semantic_resolution;
 mod snapshot;
+mod system_dependence;
 
 pub use adapter::{
     CANONICAL_ROLE_PROJECTION_SCHEMA, CONSTRUCT_POLICY_PROJECTION_SCHEMA, CanonicalNodeRoles,
@@ -179,6 +180,16 @@ pub use snapshot::{
     ProjectAnalysis, ProjectAnalysisId, ProjectSnapshot, ProjectSnapshotBuilder, ProjectSnapshotId,
     ProjectionId, RepositoryId, ScopeEntry, ScopeEntryKind, ScopeSpec, SnapshotEntry,
     SnapshotEntryKind, SourceRevision, SourceStore, StoredSource, SyntaxOwner, SyntaxPointContext,
+};
+pub use system_dependence::{
+    CallSite, CallSiteDraft, CallSiteKey, CallableSummary, CallableSummaryDraft,
+    CallableSummaryKey, GlobalSummary, GlobalSummaryDraft, GlobalSummaryKey, OutputBinding,
+    OutputBindingDraft, ParameterBinding, ParameterBindingDraft, SYSTEM_DEPENDENCE_POLICY_SCHEMA,
+    SYSTEM_DEPENDENCE_SCHEMA, SystemDependenceBuildError, SystemDependenceBuilder,
+    SystemDependenceCapabilityEvidence, SystemDependenceCoverageEvidence, SystemDependenceDocument,
+    SystemDependenceEdge, SystemDependenceEdgeKey, SystemDependenceEdgeKind,
+    SystemDependenceEndpoint, SystemDependenceGap, SystemDependenceGapKey, SystemDependenceGapKind,
+    SystemDependencePolicyId, SystemDependenceProjection,
 };
 
 thread_local! {

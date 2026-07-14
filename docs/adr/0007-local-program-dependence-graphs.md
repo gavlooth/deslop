@@ -50,8 +50,9 @@ edges for that witness. Unreachable CFG edges emit no execution dependence.
 
 ### Coverage and validation
 
-Complete PDG coverage requires Complete control-region, non-structured-control, and dataflow coverage and no
-typed gaps. Incomplete upstream evidence and every typed local gap propagate exact canonical reasons. Strict
+Complete PDG coverage requires the adapter's `LocalPdg` capability to be Provided, Complete control-region,
+non-structured-control, and dataflow coverage, and no typed gaps. Incomplete capability/upstream evidence and
+every typed local gap propagate exact canonical reasons. Strict
 deserialization validates source closure, canonicality, payload keys, edge endpoints, evidence keys, and graph
 identity. Policy or any exact source projection change changes PDG identity.
 

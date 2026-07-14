@@ -456,7 +456,11 @@ reports, benchmark records, and work orders.
   sources. Direct control edges require complete post-dominator chains; flow edges require exact reaching
   definitions; unresolved/nonterminating evidence becomes typed gaps. Eight focused suites and all workspace
   all-feature gates pass.
-- [ ] M4.7 Build call/parameter/return/global summaries and SDG edges where resolution authority permits.
+- [x] M4.7 Build call/parameter/return/global summaries and SDG edges where resolution authority permits.
+  Accepted ADR 0008 and strict `deslop.system-dependence/1` bind exact M3/M4.5/M4.6 sources, one callable
+  summary per local PDG, graph-specific CallGraph/Sdg support plus authority, explicit actual/formal and
+  output/receiver bindings, exact local-callee resolution, global summaries, four interprocedural edge kinds,
+  and typed gaps. Eight focused suites and all workspace all-feature gates pass.
 - [ ] M4.8 Add exception, async/yield, closure, mutation, alias uncertainty, and early-exit fixtures.
 - [ ] M4.9 Compare graph edges/regions with hand-labelled gold fixtures and compiler facts where available.
 - [ ] M4.DoD Pass frozen CFG/PST/PDG gold gates and propagate every missing/uncertain semantic fact into

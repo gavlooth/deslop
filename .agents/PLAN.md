@@ -3124,3 +3124,59 @@ All six workspace terminal gates pass. Parse reports 178 active passing tests pl
 doctests and one designated ignored instrumentation probe. M4.6 is complete. Next is M4.7 call/parameter/
 return/global summaries and SDG edges, gated by exact M3 resolution, M4.5 boundaries/effects, M4.6 local PDGs,
 and all retained M4.4/M4.6 gaps.
+
+### Active plan — M4.7 explicit summaries and system dependence
+
+Active hypothesis: M3/M4.5 can authorize one exact local call target, but no current fact authorizes
+argument/formal order, return destinations, or global flow. M4.7 therefore needs explicit S3 binding drafts
+validated against exact resolution, boundary, definition, access, and local-PDG evidence. CallGraph and Sdg
+capabilities are independent gates.
+
+Current approach:
+
+1. Correct the M4.6 prerequisite so Complete PDG coverage explicitly requires `LocalPdg: Provided`; keep
+   production adapters Unknown and declare Provided only in the capability fixture.
+2. Accept ADR 0008 and define strict `deslop.system-dependence/1`, binding exact M3-M4.6 projection/policy and
+   participant capability identities.
+3. Implement one callable summary per PDG graph with ordered formal-input boundaries, typed outputs, and
+   source-validated global read/write/mutation summaries.
+4. Implement call-site drafts whose call access derives exactly one local callee from Complete Unique
+   resolution and whose explicit actual/formal and output/receiving-definition pairs produce call,
+   parameter-in, return, and parameter-out SDG edges.
+5. Freeze a two-function Provided-capability corpus plus unresolved, external, ambiguous, default/variadic,
+   missing-binding, global-summary, Partial capability, identity, and corruption cases.
+
+CONVERGENCE: one two-function corpus runs scope/resolution, CFG/regions/non-structured, dataflow, local PDG,
+summary validation, call-target mapping, and all v1 SDG edge families in one build. Terminal outcomes are: (a)
+callee mapping uses anything except one exact Complete Unique owner endpoint—invalid; (b) argument/return order
+is inferred rather than explicit—invalid; (c) a global summary cites another declaration—invalid; (d) any
+capability/gap disappears—invalid; or (e) exact edges and all workspace gates pass, authorizing M4.8.
+
+Validation path: exact call/parameter/return edge sets and summary contents; capability/coverage matrices;
+strict source closure, round-trip/mutation, source/policy identity; focused parse tests/clippy; full workspace
+test, build, rustdoc, clippy, fmt, and diff gates.
+
+Negative-memory constraints: do not zip arguments/parameters by syntax order; do not resolve callees by name,
+type label, containment, or graph/2; do not infer returns from liveness; do not create global flow without
+memory-order/alias evidence; do not conflate CallGraph and Sdg capabilities.
+
+Agent assignment: `/root` owns schema, builder, summaries, SDG edges, fixtures, integration, and verification.
+No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: implement strict summary/call-site draft and wire types plus exact local-callee mapping before
+emitting any SDG edge.
+
+M4.7 terminal checkpoint (2026-07-14): accepted ADR 0008 and added/exported strict
+`deslop.system-dependence/1`. One callable summary closes over every local PDG; formal inputs, outputs, and
+global read/write/mutation facts cite exact M4.5 evidence. Call sites derive a local callee only from a
+Complete Unique preferred Declaration/Definition endpoint whose retained node exactly equals one CFG owner.
+Explicit binding drafts emit call, parameter-in, return, and parameter-out edges; missing bindings,
+unresolved/non-local callees, unsupported outputs, and participant-specific capability insufficiency remain
+typed gaps.
+
+Eight focused suites pass, including a full two-callable scope/resolution/CFG/region/dataflow/PDG/SDG corpus,
+all four edge families, exact global evidence, missing parameter/output matrices, graph-specific capability
+authority, deterministic and changed-policy identity, strict round-trip, and corruption/schema/unknown-field
+rejection. Strict wire validation checks call-site membership and graph direction for edges/gaps, not merely
+their content hashes. All six workspace terminal gates pass. M4.7 is complete; next is M4.8 advanced
+exception, async/yield, closure, mutation, alias-uncertainty, and early-exit fixtures.

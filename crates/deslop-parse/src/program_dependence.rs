@@ -6,12 +6,13 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
-    ControlEdgeKey, ControlFlowGraph, ControlFlowGraphKey, ControlFlowPolicyId, ControlPointKey,
-    ControlRegionGraph, ControlRegionGraphKey, ControlRegionPointKey, ControlRegionPolicyId,
-    DataFlowAccessKey, DataFlowDefinitionKey, DataFlowGraph, DataFlowGraphKey, DataFlowPointKey,
-    DataFlowPolicyId, DataFlowProjection, DataFlowSymbolKey, FactCoverage, NodeKey,
-    NonStructuredControlFactKey, NonStructuredControlGraph, NonStructuredControlGraphKey,
-    NonStructuredControlPolicyId, NonStructuredControlProjection, ProjectionId, ResolutionPolicyId,
+    AdapterCapability, CapabilityAuthority, CapabilitySupport, ControlEdgeKey, ControlFlowGraph,
+    ControlFlowGraphKey, ControlFlowPolicyId, ControlPointKey, ControlRegionGraph,
+    ControlRegionGraphKey, ControlRegionPointKey, ControlRegionPolicyId, DataFlowAccessKey,
+    DataFlowDefinitionKey, DataFlowGraph, DataFlowGraphKey, DataFlowPointKey, DataFlowPolicyId,
+    DataFlowProjection, DataFlowSymbolKey, FactCoverage, NodeKey, NonStructuredControlFactKey,
+    NonStructuredControlGraph, NonStructuredControlGraphKey, NonStructuredControlPolicyId,
+    NonStructuredControlProjection, ProjectionId, ResolutionPolicyId,
 };
 
 pub const PROGRAM_DEPENDENCE_SCHEMA: &str = "deslop.program-dependence/1";
@@ -69,6 +70,8 @@ impl ProgramDependencePolicyId {
 #[serde(deny_unknown_fields)]
 pub struct ProgramDependenceCoverageEvidence {
     status: FactCoverage,
+    local_pdg_support: CapabilitySupport,
+    local_pdg_authority: Option<CapabilityAuthority>,
     reasons: Vec<String>,
 }
 
@@ -81,13 +84,37 @@ impl ProgramDependenceCoverageEvidence {
         &self.reasons
     }
 
+    pub fn local_pdg_support(&self) -> CapabilitySupport {
+        self.local_pdg_support
+    }
+
+    pub fn local_pdg_authority(&self) -> Option<CapabilityAuthority> {
+        self.local_pdg_authority
+    }
+
     fn validate(&self) -> Result<(), ProgramDependenceBuildError> {
         validate_canonical("program-dependence coverage reasons", &self.reasons)?;
         for reason in &self.reasons {
             validate_text(reason)?;
         }
+        match (self.local_pdg_support, self.local_pdg_authority) {
+            (CapabilitySupport::Provided, Some(_))
+            | (CapabilitySupport::Unsupported | CapabilitySupport::Unknown, None) => {}
+            _ => {
+                return Err(ProgramDependenceBuildError::Invalid(
+                    "LocalPdg capability support and authority disagree".into(),
+                ));
+            }
+        }
         match (self.status, self.reasons.is_empty()) {
-            (FactCoverage::Complete, true) => Ok(()),
+            (FactCoverage::Complete, true)
+                if self.local_pdg_support == CapabilitySupport::Provided =>
+            {
+                Ok(())
+            }
+            (FactCoverage::Complete, true) => Err(ProgramDependenceBuildError::Invalid(
+                "Complete program-dependence coverage requires Provided LocalPdg capability".into(),
+            )),
             (FactCoverage::Complete, false) => Err(ProgramDependenceBuildError::Invalid(
                 "Complete program-dependence coverage cannot carry uncertainty reasons".into(),
             )),
@@ -965,6 +992,16 @@ fn derive_graph(
             .iter()
             .map(|reason| format!("dataflow: {reason}")),
     );
+    let local_pdg = flow
+        .adapter()
+        .capabilities()
+        .declaration(AdapterCapability::LocalPdg);
+    if local_pdg.support() != CapabilitySupport::Provided {
+        reasons.push(format!(
+            "adapter LocalPdg capability is {}",
+            local_pdg.support().as_str()
+        ));
+    }
     for gap in &gaps {
         reasons.push(gap_reason(&gap.kind));
     }
@@ -974,6 +1011,7 @@ fn derive_graph(
         && regions.coverage().status() == FactCoverage::Complete
         && non_structured.coverage().status() == FactCoverage::Complete
         && data.coverage().status() == FactCoverage::Complete
+        && local_pdg.support() == CapabilitySupport::Provided
     {
         FactCoverage::Complete
     } else if regions.coverage().status() == FactCoverage::Failed
@@ -981,14 +1019,17 @@ fn derive_graph(
         || data.coverage().status() == FactCoverage::Failed
     {
         FactCoverage::Failed
-    } else if regions.coverage().status() == FactCoverage::Unsupported
-        && data.coverage().status() == FactCoverage::Unsupported
-    {
+    } else if local_pdg.support() == CapabilitySupport::Unsupported {
         FactCoverage::Unsupported
     } else {
         FactCoverage::Partial
     };
-    let coverage = ProgramDependenceCoverageEvidence { status, reasons };
+    let coverage = ProgramDependenceCoverageEvidence {
+        status,
+        local_pdg_support: local_pdg.support(),
+        local_pdg_authority: local_pdg.authority(),
+        reasons,
+    };
     coverage.validate()?;
 
     let mut control_edges = flow

@@ -10318,3 +10318,85 @@ handles: `M4.6 reachability domains independent`, `CFG adjacency not control dep
 exit`, `typed PDG gaps`, `exact reaching definition only`.
 
 **Signature:** Codex (GPT-5), M4.6 integration owner, terminal checkpoint, 2026-07-14.
+
+### M4.7 start checkpoint — explicit summaries and system dependence
+
+**Date/time:** 2026-07-14 22:23:12 CEST (Europe/Madrid).
+
+**Objective/target:** implement M4.7 call/parameter/return/global summaries and SDG edges only where exact
+resolution, local-PDG, explicit binding, and S3 capability authority permit.
+
+**Changes:** corrected the M4.6 coverage prerequisite so Complete local PDGs bind `LocalPdg: Provided` and its
+authority; the Provided fixture now declares it while production adapters remain Unknown. Accepted ADR 0008
+and wrote the convergent M4.7 plan around explicit callable-summary and call-site binding drafts.
+
+**Commands run:** targeted `rg`/`sed` audit of the S2/S3 capability catalog, M3 preferred endpoints, M4.5 call
+accesses/boundaries/effects, M4.6 nodes/edges/gaps, scope kinds, and the milestone contract; focused M4.6 tests
+and parse all-target clippy after the capability correction. M4.6 Hindsight consolidation completed with 1,312
+entities, 3,588 relations, and 3,803 observations.
+
+**Results:** M3/M4 facts can map a Complete Unique Declaration/Definition endpoint to a local CFG only when its
+retained node exactly equals one owner. They cannot encode actual/formal order, return destination, default/
+variadic/receiver mapping, or exact global identity from an effect flag. M4.7 will require explicit drafts and
+Provided CallGraph/Sdg capability for Complete edges.
+
+**Invalidated assumptions / negative-memory constraint:** call syntax order is not parameter binding; call
+resolution is not SDG parameter/return authority; `GlobalState` does not identify a global declaration;
+LocalPdg output coverage must bind its explicit capability rather than only prerequisite fact coverage.
+
+**Current recommendation / next actions:** implement strict summary/call-site wire and draft types, then exact
+local-callee mapping, before adding any interprocedural edge.
+
+**Blockers/dependencies/restart:** none.
+
+**Signature:** Codex (GPT-5), M4.7 integration owner, start checkpoint, 2026-07-14.
+
+#### M4.7 terminal checkpoint — complete and verified
+
+**Date/time:** 2026-07-14 22:50:06 CEST (Europe/Madrid).
+
+**Objective/target:** close M4.7 with strict callable/global summaries and interprocedural dependence edges
+that require exact local resolution, explicit bindings, complete local PDG evidence, and graph-specific S3
+capability authority.
+
+**Changes:** accepted ADR 0008; added and exported `deslop.system-dependence/1` plus its policy and stable
+summary/call/edge/gap identities; required one callable summary per local PDG; retained ordered formal inputs,
+typed outputs, and source-validated global reads/writes/mutation outputs; mapped callees only from Complete
+Unique preferred Declaration/Definition endpoints at exact local CFG owners; emitted call, parameter-in,
+return, and parameter-out edges only from explicit drafts; retained unresolved/non-local, missing-binding,
+unsupported-output, and participant-specific capability gaps. Corrected M4.6 Complete coverage to bind
+`LocalPdg` support and authority. M4.7 now retains per-graph CallGraph/Sdg support and authority and strictly
+checks edge/gap semantics against their call-site evidence during deserialization.
+
+**Commands run:** repeated focused `cargo test -p deslop-parse --all-features m4_7_ -- --nocapture`; focused
+parse all-target clippy; `cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`; `cargo clippy --workspace
+--all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`; `git diff --check`.
+
+**Results:** PASS. Eight M4.7 suites cover policy identity, malformed digest rejection, fail-closed coverage,
+support/authority alignment, participant-specific capability-gap identity, one-to-one bindings, directional
+edge identity, and a two-callable end-to-end corpus. The corpus numerically locks two summaries, one call,
+one explicit global summary, and four edges (one each call/parameter-in/return/parameter-out); missing
+parameter and output drafts produce exact typed gaps without guessed edges. Full workspace tests pass with
+186 active parse tests and one designated ignored instrumentation probe; all build, rustdoc, clippy, format,
+and diff gates pass.
+
+**Invalidated assumptions/failure modes:** declaration spelling or containment cannot identify a callee;
+declarations without binding-timing evidence are not Complete Unique resolution; CallGraph support does not
+authorize parameter/return dependence without Sdg; aggregate coverage cannot replace graph-specific support
+and authority; `GlobalState` effects do not identify a global; missing one binding does not invalidate another
+independently explicit binding, but coverage remains incomplete; wire payload hashes alone do not prove
+call-site membership or graph direction.
+
+**Current recommendation/next actions:** start M4.8 with a frozen advanced-semantics fixture matrix for
+exceptional exits, async/yield suspension, closures/captures, mutation/alias uncertainty, and early exits.
+Reuse the strict M4.1-M4.7 schemas; add facts only where an existing contract cannot express the fixture,
+and require every unavailable semantic to remain a typed coverage or dependence gap.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, cache clear, or runtime restart applies.
+
+**Negative-memory status:** durable checkpoint pending Hindsight write. Search handles: `M4.7 exact owner
+callee`, `binding timing required for unique resolution`, `participant capability authority`, `no global
+effect identity`, `strict edge gap call-site semantics`.
+
+**Signature:** Codex (GPT-5), M4.7 integration owner, terminal checkpoint, 2026-07-14.

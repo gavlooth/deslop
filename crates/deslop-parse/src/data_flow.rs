@@ -1854,7 +1854,7 @@ fn derive_id(domain: &str, prefix: &str, parts: &[&[u8]]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::Path;
 
     use deslop_core::Lang;
@@ -1878,9 +1878,9 @@ mod tests {
         ScopeKind, VisibilityDraft, VisibilityKind, derive_control_regions,
     };
 
-    struct DataFlowTestPack;
+    pub(crate) struct DataFlowTestPack;
 
-    static DATA_FLOW_TEST_PACK: DataFlowTestPack = DataFlowTestPack;
+    pub(crate) static DATA_FLOW_TEST_PACK: DataFlowTestPack = DataFlowTestPack;
 
     impl LangPack for DataFlowTestPack {
         fn name(&self) -> &'static str {
@@ -1898,6 +1898,9 @@ mod tests {
                 AdapterCapability::NameResolution,
                 AdapterCapability::DefUse,
                 AdapterCapability::Effects,
+                AdapterCapability::LocalPdg,
+                AdapterCapability::CallGraph,
+                AdapterCapability::Sdg,
             ] {
                 manifest = manifest
                     .with_declaration(CapabilityDeclaration::provided(
