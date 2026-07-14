@@ -34,6 +34,7 @@ mod aggregation;
 mod arena;
 mod containment;
 mod control_flow;
+mod control_regions;
 mod identity;
 mod incremental;
 mod instrumentation;
@@ -68,6 +69,14 @@ pub use control_flow::{
     ControlFlowPolicyId, ControlFlowProjection, ControlLoopKind, ControlPoint, ControlPointDraft,
     ControlPointKey, ControlPointKind, ControlSuspensionKind, ControlSyntheticPointKind,
     lower_control_flow,
+};
+pub use control_regions::{
+    CONTROL_REGION_POLICY_SCHEMA, CONTROL_REGION_SCHEMA, ControlPointRelations,
+    ControlRegionBuildError, ControlRegionCoverageEvidence, ControlRegionDocument,
+    ControlRegionGraph, ControlRegionGraphKey, ControlRegionKey, ControlRegionPointKey,
+    ControlRegionPolicyId, ControlRegionProjection, ControlRegionResidual,
+    ControlRegionResidualKey, StructuredControlRegion, StructuredControlRegionKind,
+    derive_control_regions,
 };
 pub use identity::{
     NODE_BASELINE_SCHEMA, NODE_KEY_SCHEMA, NodeAnchor, NodeBaselineFingerprint, NodeId, NodeKey,

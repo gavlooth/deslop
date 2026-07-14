@@ -2819,3 +2819,93 @@ resolution gates; M4.1 schema/adversarial gates; 14 deslop-lang tests; and 148 a
 designated ignored probe and four compile-fail doctests. Hindsight consolidation records 1,284 entities, 3,493
 relations, and 3,701 observations. M4.2 is complete. Next is M4.3 dominance, post-dominance, and hierarchical
 SESE/PST regions over the frozen control-flow projection.
+
+#### Active M4.3 execution plan — dominance, post-dominance, and structured regions
+
+Active hypothesis: dominance is defined only on points reachable from the virtual entry, while post-dominance
+is defined only on points that can reach the virtual exit. Treating unreachable suffixes or nonterminating
+cycles as ordinary members of both trees would fabricate semantic structure. M4.3 therefore needs a versioned
+derived projection that records both reachability domains, inherits CFG uncertainty, and forms regions only
+inside the terminating core.
+
+Current approach:
+
+1. Accept ADR 0004 and define strict `deslop.control-regions/1`, bound to the exact control-flow projection,
+   graph keys, point keys, algorithm policy, and payload-derived keys. Per-point facts retain reachability,
+   exit-reachability, canonical dominator/post-dominator sets, and immediate parent links.
+2. Compute forward reachability, reverse exit reachability, fixed-point dominators, fixed-point post-dominators,
+   and unique immediate parents. Unreachable points have no dominators; exit-unreachable points have no
+   post-dominators. A reachable point that cannot reach the virtual exit downgrades derived coverage with an
+   exact nontermination/unknown-exit reason.
+3. Build a root terminating-core region plus canonical nontrivial hammock candidates at branch/loop entries,
+   using immediate post-dominators. Validate point-based single-entry/single-exit boundaries and strict set
+   nesting; overlapping non-laminar candidates remain explicit non-structured evidence for M4.4 rather than
+   being ordered arbitrarily.
+4. Freeze exact linear, diamond, nested branch, loop, abrupt-only, unreachable-suffix, nonterminating, and
+   Partial-CFG fixtures. Add strict round-trip/corruption tests for relation closure, immediate-parent truth,
+   coverage propagation, region containment, keys, and cross-projection links.
+
+CONVERGENCE: one instrumented graph corpus computes reachability, both fixed points, parent relations, region
+boundaries, nesting, and uncertainty in one pass. Terminal outcomes are: (a) a point outside the relevant
+reachability domain receives a dominance claim—invalid; (b) immediate parents disagree with the full relation—
+invalid; (c) a region has a second entry/exit or non-laminar overlap but is called structured—invalid; (d)
+Partial/nonterminating input produces Complete region evidence—invalid; or (e) the full corpus and workspace
+gates pass, authorizing M4.4 irreducible-region classification.
+
+Validation path: strict schema round-trip and mutation matrix; numerical set/parent/region assertions for each
+gold graph; deterministic rebuild; focused parse clippy/rustdoc/fmt/diff; full workspace gates; unchanged
+M0-M4.2 regressions.
+
+Negative-memory constraints: do not assign universal dominators to unreachable points; do not seed
+post-dominance with nodes that cannot reach exit; do not let the forced virtual exit edge make a disconnected
+nonterminating cycle look terminating; do not equate graph-theoretic determinism with Complete semantic
+coverage; do not choose a parent for overlapping regions by stable order; do not use syntax nesting or
+`deslop.graph/2` as region authority.
+
+Agent assignment: `/root` owns ADR/schema, algorithms, fixtures, integration, and verification. No sub-agent
+was requested, so no delegation is active.
+
+Next checkpoint: freeze ADR 0004's reachability-domain, immediate-parent, SESE-boundary, nesting, identity, and
+coverage invariants before implementing the fixed-point algorithms.
+
+M4.3 implementation checkpoint (2026-07-14): ADR 0004 and public strict `deslop.control-regions/1` are
+implemented. The projection binds the exact CFG projection/policy, analysis, region policy, source graph/owner/
+boundaries, derived coverage, full per-point dominance and post-dominance relations, immediate parents/depths,
+structured regions, residual candidates, and payload-derived projection/graph/point/region/residual keys.
+
+Forward entry reachability and reverse exit reachability are computed before independent fixed points.
+Unreachable points carry no dominance facts; exit-unreachable points carry no post-dominance facts. Structured
+root/branch/loop point hammocks are admitted only inside the terminating core, after both boundary checks, and
+must form one reciprocal laminar hierarchy. Equal point sets and overlapping non-contained candidates are
+residuals, never stable-order siblings. Source Partial reasons propagate; entry-reachable exit-unreachable
+points add an exact derived reason.
+
+Six numerical suites pass for a four-point linear dual tree; nested diamonds and immediate merge
+post-dominators; normal/abrupt outcomes joining only at virtual exit; unreachable suffixes versus a
+nonterminating cycle's disjoint domains; while/for loop regions; Partial macro coverage; strict stable
+round-trip and corruption. Parse has 154 active passing tests, one designated ignored probe, and four passing
+compile-fail doctests. Parse clippy/rustdoc with warnings denied, fmt, and diff checks pass. Next: adversarially
+audit source-graph closure, policy/projection identity, malformed region hierarchy, and non-laminar residual
+behavior; then run full workspace and prior-milestone gates before considering M4.3 complete.
+
+#### M4.3 terminal checkpoint — complete and verified
+
+ADR 0004 and `deslop.control-regions/1` now provide the frozen dominance/PST substrate. Every projection binds
+the exact analysis, CFG projection and lowering policy, region policy, source graphs, point relations,
+coverage, regions, residuals, and payload identities. Independent forward/reverse reachability prevents facts
+from leaking into dead or nonterminating domains. Full relations determine unique immediate parents and
+depths; structured root/branch/loop hammocks require both SESE boundary directions, one root, strict laminar
+containment, smallest parents, and reciprocal children.
+
+Eight suites numerically prove the four-point linear dual trees; nested diamond hierarchy; while/for regions;
+normal/abrupt outcomes joining only at virtual exit; one dead suffix with empty relations; an all-
+nonterminating graph with disjoint domains; a Complete source CFG whose mixed terminating/infinite branch is
+correctly downgraded with a residual root; Partial macro propagation; deterministic rebuild; independent
+region-policy/source-CFG identity; and strict corruption rejection.
+
+Terminal validation passes: all workspace all-feature tests and build; rustdoc and clippy with warnings denied;
+fmt and diff checks; M0/M1/M2 definition-of-done, graph false-resolution, M3 frozen/adversarial resolution, and
+M4.1-M4.2 regressions. Parse reports 156 active tests, one designated ignored probe, and four compile-fail
+doctests. Hindsight consolidation records 1,298 entities, 3,525 relations, and 3,735 observations. M4.3 is
+complete. Next is M4.4: classify and preserve irreducible/non-structured regions using the residual boundary
+without weakening structured-region truth.

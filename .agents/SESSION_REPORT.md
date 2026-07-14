@@ -9847,3 +9847,129 @@ suffix normal flow`, `labeled break nearest loop invalid`, `test adapter capabil
 control Partial`, `all-pack dispatch gaps`.
 
 **Signature:** Codex (GPT-5), M4.2 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M4.3 active checkpoint — dominance and region contract audit
+
+**Date/time:** 2026-07-14T19:37:43+02:00
+
+**Objective/target:** define the semantic boundary for dominance, post-dominance, and hierarchical SESE/PST
+regions over the frozen M4.2 control-flow projection.
+
+**Commands/checks run:** targeted Hindsight active-plan and negative-memory search; local audit of
+`ControlFlowProjection`, graph/point/edge identity, coverage, virtual boundaries, and lowering behavior for
+unreachable suffixes and nonterminating owners.
+
+**Results:** the CFG schema intentionally retains all syntax points, including unreachable suffixes, and forces
+at least one explicit virtual-exit edge. Dominance must therefore be restricted to entry-reachable points;
+post-dominance must be restricted independently to points with a path to the virtual exit. Their intersection
+is the terminating core on which point-hammock SESE regions can be claimed. Partial CFG coverage and reachable
+exit-unreachable points must downgrade the region projection rather than disappear.
+
+**Invalidated assumptions/failure modes:** initializing dominators for every retained point assigns facts to
+dead code. Initializing post-dominators for every point makes disconnected/nonterminating regions look as if
+they terminate. A stable-order choice among overlapping candidate regions is not hierarchy. Syntax nesting is
+not a substitute for graph boundaries, and the project dependency graph remains out of scope.
+
+**Current recommendation/next actions:** accept ADR 0004; add strict projection identity and per-point full/
+immediate relations; compute forward/reverse reachability before fixed points; form only boundary-valid,
+laminar nontrivial regions; retain overlaps for M4.4; prove with one numerical corpus before workspace gates.
+
+**Blockers/dependencies/restart:** none. Existing immutable CFG keys and standard-library ordered collections
+are sufficient; no dependency is justified.
+
+**Negative-memory status:** provisional constraints active. Search handles: `M4.3 unreachable dominance`,
+`postdom exit reachability`, `nonterminating virtual exit`, `SESE overlap no stable winner`, `Partial CFG
+region coverage`.
+
+**Signature:** Codex (GPT-5), M4.3 integration owner, contract-audit checkpoint, 2026-07-14.
+
+---
+
+## M4.3 checkpoint — dual fixed points and laminar SESE regions
+
+**Date/time:** 2026-07-14T19:50:53+02:00
+
+**Objective/target:** implement the accepted reachability-bounded dominance/post-dominance and hierarchical
+structured-region contract without granting facts to dead or nonterminating points.
+
+**Changes:** accepted ADR 0004; added strict public `deslop.control-regions/1`, region-policy and payload key
+types, coverage, per-point full/immediate relations and depths, structured root/branch/loop regions, residuals,
+document/projection/error APIs, and `derive_control_regions`. Implemented forward/reverse reachability,
+independent fixed points, unique immediate-parent derivation, terminating-core hammock candidates, two-way SESE
+boundary validation, equal/overlap rejection, smallest-container parents, reciprocal children, identity
+binding, and strict deserialization validation. Re-exported the complete surface from `deslop-parse`.
+
+**Commands/checks run:** six focused M4.3 numerical/corruption tests; full
+`cargo test -p deslop-parse --all-features`; parse all-feature all-target clippy with `-D warnings`; parse
+rustdoc with `-D warnings`; `cargo fmt --all -- --check`; `git diff --check`.
+
+**Results:** PASS at the parse checkpoint. Numerical vectors include a four-point linear graph with dual depths
+`[0,1,2,3]`; three nested root/branch regions; two loop regions; normal/abrupt branch post-dominance at the
+virtual exit; one unreachable suffix with empty relations; and a nonterminating graph with three entry-
+reachable, two exit-reachable, and zero terminating-core points. Parse reports 154 passed, zero failed, one
+designated ignored probe, and four passing compile-fail doctests. Focused clippy/rustdoc/fmt/diff pass.
+
+**Invalidated assumptions/failure modes:** Rust's eager `bool::then_some` evaluated a depth subtraction even for
+an out-of-domain point and underflowed; lazy `then` now preserves empty relations. Equal candidate point sets
+cannot be treated as nested merely because each is a subset of the other; both now become residual. A
+structured forest without a valid root is not a PST and is demoted to residual evidence.
+
+**Current recommendation/next actions:** expand the corruption matrix for source graph/projection/policy links
+and hierarchy closure, audit an explicit non-laminar graph, then run full workspace and frozen regression gates.
+Keep M4.3 open until those pass.
+
+**Blockers/dependencies/restart:** none. The projection uses standard-library ordered collections and the
+existing immutable CFG; no dependency, restart, migration, or cache clear applies.
+
+**Negative-memory status:** provisional and enforced. Search handles: `then_some eager dominance underflow`,
+`equal region point sets not nested`, `structured forest no root`, `entry reachability domain`, `exit
+post-dominance domain`.
+
+**Signature:** Codex (GPT-5), M4.3 integration owner, implementation checkpoint, 2026-07-14.
+
+---
+
+## M4.3 terminal checkpoint — complete and verified
+
+**Date/time:** 2026-07-14T19:58:37+02:00
+
+**Objective/target:** close dominance, post-dominance, and hierarchical SESE/PST regions only after independent
+reachability domains, structure, uncertainty, identity, corruption, and all prior regressions agree.
+
+**Final changes:** accepted ADR 0004; implemented and exported strict `deslop.control-regions/1`, dual fixed
+points, full/immediate relation facts and depths, structured root/branch/loop hammocks, residuals, coverage and
+payload identity. Added policy/source-CFG identity matrices, hierarchy/relation corruption cases, and a mixed
+terminating/infinite branch proving a Complete source CFG can yield Partial region coverage. Checked M4.3
+complete in `.agents/TODO.md`.
+
+**Commands run:** `cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`;
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`;
+`git diff --check`; eight focused M4.3 suites and focused parse gates during implementation; Hindsight
+remember/improve in `repo:/home/christos/code/deslop`.
+
+**Results:** PASS. Every workspace target passes except the two designated ignored probes. Parse reports 156
+active passing tests plus four compile-fail doctests. Exact numerical results include linear dual depths
+`[0,1,2,3]`, three nested diamond regions, two loop regions, one dead suffix, zero terminating-core points for
+an infinite owner, and one residual root for mixed terminating/nonterminating control. Hindsight consolidation
+reports 1,298 entities, 3,525 relations, and 3,735 observations.
+
+**Invalidated assumptions/failure modes:** eager `then_some` can execute invalid out-of-domain arithmetic;
+serialized points do not share one dominance universe; virtual exit existence does not imply termination;
+equal point sets are not strict nesting; stable order cannot resolve crossing regions; a forest without one
+root is not a PST; deterministic fixed points cannot upgrade source coverage. All are now code-, fixture-, and
+memory-enforced.
+
+**Current recommendation/next actions:** begin M4.4 by versioning irreducible/non-structured classification on
+top of existing residuals. Distinguish crossing entry/exit, multi-entry SCC, exit-unreachable/nonterminating,
+and invalid boundary causes without reclassifying them as structured.
+
+**Blockers/dependencies/restart:** none. No restart, migration, cache clear, or dependency applies.
+
+**Negative-memory status:** durable and consolidated. Search handles: `M4.3 terminal dominance postdominance`,
+`then_some eager dominance underflow`, `unreachable dominance`, `postdom exit reachability`, `nonterminating
+virtual exit`, `equal region sets not nested`, `structured forest no root`.
+
+**Signature:** Codex (GPT-5), M4.3 integration owner, terminal checkpoint, 2026-07-14.

@@ -435,7 +435,11 @@ reports, benchmark records, and work orders.
   fixture-backed 17-rule catalog and explicit Partial boundaries; Clojure, Julia, Python, JavaScript, and
   TypeScript remain honest Unknown gaps. Shared owned-arena lowering preserves labeled abrupt targets,
   reachability, coverage reasons, and deterministic graph identity. All workspace gates pass.
-- [ ] M4.3 Compute dominance/post-dominance and hierarchical SESE/PST regions.
+- [x] M4.3 Compute dominance/post-dominance and hierarchical SESE/PST regions.
+  Accepted ADR 0004 and strict `deslop.control-regions/1` bind exact CFG/projection/policy identity, independent
+  entry/exit reachability domains, full and immediate dominance relations, coverage, structured root/branch/
+  loop hammocks, laminar hierarchy, and residual candidates. Eight numerical/adversarial suites and all
+  workspace gates pass.
 - [ ] M4.4 Preserve irreducible control regions as explicit non-structured/unknown facts.
 - [ ] M4.5 Implement def/use, reaching definitions, liveness, parameter/output, and conservative effect facts.
 - [ ] M4.6 Build local PDGs from control and data dependence.
