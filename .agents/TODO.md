@@ -440,7 +440,12 @@ reports, benchmark records, and work orders.
   entry/exit reachability domains, full and immediate dominance relations, coverage, structured root/branch/
   loop hammocks, laminar hierarchy, and residual candidates. Eight numerical/adversarial suites and all
   workspace gates pass.
-- [ ] M4.4 Preserve irreducible control regions as explicit non-structured/unknown facts.
+- [x] M4.4 Preserve irreducible control regions as explicit non-structured/unknown facts.
+  Accepted ADR 0005 and strict `deslop.non-structured-control-regions/1` bind exact M4.1/M4.3 source
+  projections and policies, iterative entry-reachable SCC classification, canonical external boundaries,
+  typed residual provenance, inherited coverage, and payload identities. Multi-entry irreducibility,
+  exit-unreachable nontermination, and incomplete-flow unknown facts remain outside the structured PST. Eight
+  numerical/adversarial suites and all workspace gates pass.
 - [ ] M4.5 Implement def/use, reaching definitions, liveness, parameter/output, and conservative effect facts.
 - [ ] M4.6 Build local PDGs from control and data dependence.
 - [ ] M4.7 Build call/parameter/return/global summaries and SDG edges where resolution authority permits.

@@ -2909,3 +2909,82 @@ M4.1-M4.2 regressions. Parse reports 156 active tests, one designated ignored pr
 doctests. Hindsight consolidation records 1,298 entities, 3,525 relations, and 3,735 observations. M4.3 is
 complete. Next is M4.4: classify and preserve irreducible/non-structured regions using the residual boundary
 without weakening structured-region truth.
+
+### Active plan — M4.4 explicit non-structured control regions
+
+Active hypothesis: M4.3's frozen `/1` payload is the authoritative structured PST and residual substrate;
+M4.4 must add a separate strict overlay rather than changing that wire contract. The overlay will classify
+entry-reachable cyclic SCCs with multiple entry points as irreducible, entry-reachable cyclic SCCs without an
+exit path as nonterminating, and every M4.3 residual by its exact boundary/overlap/root cause. None of these
+facts may enter the structured-region hierarchy.
+
+Current approach:
+
+1. Accept ADR 0005 and define strict `deslop.non-structured-control-regions/1`, bound to the exact M4.3 and
+   M4.1 projections, both policies, source graph keys, residual keys, and payload-derived identities.
+2. Compute deterministic SCCs over entry-reachable CFG points, retain only cyclic components, and derive their
+   distinct external entry and exit boundary points. Classify multi-entry components as irreducible and
+   exit-unreachable cyclic components as nonterminating; one component may carry both independent facts.
+3. Translate every frozen M4.3 residual reason into a typed non-structured classification while preserving its
+   exact point closure and source residual key. Unknown reason text fails closed instead of being guessed.
+4. Freeze synthetic multi-entry, reducible-loop, and nonterminating gold graphs plus production residual,
+   strict round-trip, mutation, policy/source identity, and deterministic rebuild suites.
+
+CONVERGENCE: one synthetic graph corpus resolves the complete M4.4 decision. Terminal outcomes are: (a) a
+multi-entry cyclic SCC is absent or becomes structured—invalid; (b) a one-entry reducible loop is called
+irreducible—invalid; (c) an exit-unreachable cycle is treated as terminating—invalid; (d) a residual loses
+typed provenance or payload identity—invalid; or (e) all focused and workspace gates pass, authorizing M4.5.
+
+Validation path: numerical SCC/boundary assertions; structured-PST non-membership; strict schema round-trip and
+corruption matrix; independent policy/source identity; focused parse tests, clippy, rustdoc, fmt, and diff;
+then full workspace gates and unchanged M4.1-M4.3 regressions.
+
+Negative-memory constraints: do not mutate `deslop.control-regions/1`; do not infer irreducibility from syntax
+nesting or a generic residual reason; do not call every cyclic SCC irreducible; do not require a terminating
+exit from a nonterminating SCC; do not stable-order crossing candidates into the PST; do not upgrade Partial
+source authority because SCC computation is deterministic.
+
+Agent assignment: `/root` owns ADR/schema, implementation, fixtures, integration, and verification. No
+sub-agent was requested, so no delegation is active.
+
+Next checkpoint: freeze the overlay identity, SCC boundary, typed classification, and fail-closed validation
+in ADR 0005 before implementing the classifier.
+
+M4.4 implementation checkpoint (2026-07-14): ADR 0005 and public strict
+`deslop.non-structured-control-regions/1` are implemented without changing M4.3 `/1`. The overlay binds the
+exact analysis, control-flow and control-region projections/policies, source graphs, inherited coverage,
+classification policy, source provenance, and payload-derived projection/graph/fact identities.
+
+An iterative linear-time SCC pass operates only on entry-reachable points. Cyclic components retain exact
+external entry/exit point sets; two or more entry targets produce an irreducible fact, and no member path to
+virtual exit independently produces a nonterminating fact. Frozen M4.3 residual reasons map fail-closed to
+typed invalid-boundary, incoming/outgoing bypass, crossing, or missing-root facts with exact residual keys. A
+non-Complete source CFG additionally produces an explicit unknown-coverage fact over that graph.
+
+Eight focused suites pass for a three-point/two-entry terminating irreducible SCC; a one-entry reducible loop;
+a production infinite loop; one SCC that is both irreducible and nonterminating; a typed mixed-branch residual;
+explicit Partial macro uncertainty; strict corruption; and deterministic policy/source identity. Parse has
+164 active passing tests, one designated ignored probe, and four passing compile-fail doctests. Parse clippy
+and rustdoc with warnings denied, fmt, and diff checks pass. Next checkpoint: run all workspace all-feature
+terminal gates and prior M4 regressions, then close M4.4 if clean.
+
+#### M4.4 terminal checkpoint — complete and verified
+
+ADR 0005 and `deslop.non-structured-control-regions/1` now provide the frozen non-structured control overlay.
+Every projection binds the exact analysis, M4.1 CFG projection/policy, M4.3 region projection/policy, M4.4
+classification policy, source graphs and residuals, inherited coverage, typed provenance, canonical point and
+boundary sets, and payload-derived projection/graph/fact identities. M4.3 `/1` remains unchanged.
+
+The iterative SCC pass is restricted to entry-reachable points. It distinguishes a cyclic component with two
+or more external entry targets from a one-entry reducible loop, and independently classifies cyclic components
+whose members cannot reach virtual exit. Known residual causes map fail-closed to typed boundary, crossing, or
+missing-root facts. Non-Complete source CFGs carry explicit unknown facts, so absence of a fact is meaningful
+only with Complete coverage. No overlay fact enters the structured PST.
+
+Eight suites prove exact three-point/two-entry/one-exit irreducibility; zero non-structured facts for a Complete
+reducible loop; production nontermination; simultaneous irreducibility and nontermination; exact M4.3 residual
+provenance; explicit Partial macro uncertainty; strict corruption rejection; and deterministic policy/source
+identity. All workspace all-feature tests and build, rustdoc/clippy with warnings denied, fmt, and diff checks
+pass. Parse reports 164 active passing tests, one designated ignored probe, and four compile-fail doctests.
+Hindsight consolidation reports 1,305 entities, 3,549 relations, and 3,760 observations. M4.4 is complete.
+Next is M4.5 def/use, reaching definitions, liveness, parameter/output, and conservative effect facts.

@@ -38,6 +38,7 @@ mod control_regions;
 mod identity;
 mod incremental;
 mod instrumentation;
+mod non_structured_control;
 mod planner;
 mod query;
 mod resolution;
@@ -92,6 +93,14 @@ pub use instrumentation::{
     ProjectAnalysisInstrumentation, ProjectAnalysisUpdateInstrumentation,
     SyntaxPointContextInstrumentation, SyntaxQueryInstrumentation,
     SyntaxQueryResultsInstrumentation,
+};
+pub use non_structured_control::{
+    NON_STRUCTURED_CONTROL_POLICY_SCHEMA, NON_STRUCTURED_CONTROL_SCHEMA,
+    NonStructuredControlBuildError, NonStructuredControlClassification,
+    NonStructuredControlCoverageEvidence, NonStructuredControlDocument, NonStructuredControlFact,
+    NonStructuredControlFactKey, NonStructuredControlFactSource, NonStructuredControlGraph,
+    NonStructuredControlGraphKey, NonStructuredControlPolicyId, NonStructuredControlProjection,
+    derive_non_structured_control_regions,
 };
 pub use planner::{
     ProjectSnapshotPlanner, ProjectSnapshotRequest, RepositorySpec, RootSpec, SnapshotBuild,

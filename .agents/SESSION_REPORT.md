@@ -9973,3 +9973,117 @@ and invalid boundary causes without reclassifying them as structured.
 virtual exit`, `equal region sets not nested`, `structured forest no root`.
 
 **Signature:** Codex (GPT-5), M4.3 integration owner, terminal checkpoint, 2026-07-14.
+
+### M4.4 start checkpoint — explicit non-structured control regions
+
+**Date/time:** 2026-07-14, Europe/Madrid.
+
+**Objective:** Preserve irreducible, nonterminating, and rejected SESE candidates as typed non-structured
+control facts without weakening or version-mutating M4.3's structured PST.
+
+**Target:** a separate strict `deslop.non-structured-control-regions/1` overlay over the exact M4.3 projection
+and source CFG. Deterministic SCC analysis will distinguish multi-entry irreducibility from ordinary reducible
+cycles and from exit-unreachable nontermination. Existing residuals will retain exact typed provenance.
+
+**Commands run:** `jj status`; targeted `rg`/`sed` audit of control-region residual derivation, control-flow
+builder/validation, public exports, M4 plan/TODO, and ADR 0004. Serena is active but registered for Python only
+and cannot symbolically inspect the Rust module, so targeted local Rust reads are the explicit fallback.
+
+**Results:** the M4.4 working change is clean and based on verified M4.3. M4.3's `/1` residual payload has
+free-text reasons and cannot be extended with typed fields without a wire break. The source CFG public API is
+sufficient for a separate overlay and synthetic adversarial graphs. No dependency or runtime restart applies.
+
+**Invalidated assumptions / negative-memory constraint:** adding typed fields directly to
+`deslop.control-regions/1` would silently change a frozen schema. A cyclic SCC alone does not prove
+irreducibility; multiple distinct external entry points are required. Virtual exit existence does not prove
+that a cycle terminates.
+
+**Current recommendation / next actions:** accept ADR 0005, implement the overlay and SCC classifier, add the
+convergent gold/corruption suites, then run focused and full gates.
+
+**Blockers/dependencies/restart:** none.
+
+**Signature:** Codex (GPT-5), M4.4 integration owner, start checkpoint, 2026-07-14.
+
+#### M4.4 implementation checkpoint — focused gates pass
+
+**Date/time:** 2026-07-14, Europe/Madrid.
+
+**Objective/target:** implement ADR 0005 as a strict source-bound overlay that preserves irreducible,
+nonterminating, rejected SESE, and incomplete-flow evidence without modifying M4.3's structured schema.
+
+**Changes:** added and exported `deslop.non-structured-control-regions/1`; added policy, projection, graph, and
+fact identities; implemented iterative SCC discovery over entry-reachable points; retained canonical external
+entry/exit boundaries; classified multi-entry irreducibility and exit-unreachable nontermination independently;
+typed every known M4.3 residual cause with exact residual provenance; emitted explicit unknown facts for
+non-Complete source CFGs; accepted ADR 0005; added eight numerical, adversarial, identity, and corruption tests.
+
+**Commands run:** focused `cargo test -p deslop-parse --all-features m4_4_ -- --nocapture`; full
+`cargo test -p deslop-parse --all-features`; parse all-target clippy with warnings denied; parse rustdoc with
+warnings denied; `cargo fmt --all -- --check`; `git diff --check`.
+
+**Results:** PASS. Parse reports 164 active passing tests, one designated ignored probe, and four passing
+compile-fail doctests. Numerical fixtures retain one 3-point irreducible SCC with two entry targets and one
+exit origin; zero facts for a Complete one-entry reducible loop; one nonterminating production cycle; two
+independent facts for a multi-entry nonterminating SCC; exact residual point/boundary provenance; and one
+unknown fact for Partial macro lowering.
+
+**Invalidated assumptions/failure modes:** changing M4.3 `/1` is a wire break; cyclic does not imply
+irreducible; a nonterminating SCC can have an outgoing edge to another exit-unreachable component, so an empty
+external exit boundary is not required; deterministic SCC output does not upgrade source coverage; absence of
+facts on a Partial source CFG cannot prove reducibility. The implementation and ADR encode each correction.
+
+**Current recommendation/next actions:** run all workspace all-feature terminal gates and explicit M4.1-M4.3
+regressions, update TODO/report, consolidate Hindsight, and snapshot M4.4 if clean.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, rebuild outside normal compilation, or
+runtime restart applies.
+
+**Negative-memory status:** local checkpoint recorded; durable Hindsight consolidation remains for terminal
+close. Search handles: `M4.4 multi-entry SCC`, `cycle not irreducible`, `nonterminating SCC external exit`,
+`Partial CFG explicit unknown fact`, `do not mutate control-regions/1`.
+
+**Signature:** Codex (GPT-5), M4.4 integration owner, focused checkpoint, 2026-07-14.
+
+#### M4.4 terminal checkpoint — complete and verified
+
+**Date/time:** 2026-07-14, Europe/Madrid.
+
+**Objective/target:** close M4.4 with a deployable, strict representation for irreducible, nonterminating,
+rejected structured-candidate, and incomplete-flow control evidence while preserving M4.3's PST truth.
+
+**Final changes:** accepted ADR 0005; implemented and exported strict
+`deslop.non-structured-control-regions/1`; added exact M4.1/M4.3 projection and policy links, classification
+policy, graph/fact identities, iterative entry-reachable SCC analysis, canonical component boundaries, typed
+multi-entry and nontermination facts, fail-closed residual classification, and explicit incomplete-CFG unknown
+facts. Checked M4.4 complete in `.agents/TODO.md`.
+
+**Commands run:** `cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`;
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`;
+`git diff --check`; focused M4.4 and full parse gates during implementation.
+
+**Results:** PASS. All workspace targets pass except the two designated ignored probes. Parse reports 164
+active passing tests plus four compile-fail doctests. Exact M4.4 results are one three-point SCC with two entry
+targets and one exit origin; no facts for a Complete one-entry reducible loop; one exit-unreachable production
+cycle; two independent facts for a multi-entry nonterminating SCC; one typed source-bound residual; and one
+owner-level unknown fact for Partial macro lowering.
+
+**Invalidated assumptions/failure modes:** a frozen M4.3 schema cannot be extended in place; cyclic does not
+mean irreducible; virtual exit existence does not mean a cycle terminates; a nonterminating SCC may exit to
+another nonterminating component; stable order cannot place irreducible/crossing facts into a PST; deterministic
+SCC computation cannot upgrade Partial source coverage; no emitted fact on incomplete input cannot prove
+reducibility. ADR, code, fixtures, and durable memory enforce these boundaries.
+
+**Current recommendation/next actions:** begin M4.5 with versioned def/use, reaching-definition, liveness,
+parameter/output, and conservative-effect facts layered on authoritative CFG/region evidence. Consumers must
+block or explicitly handle intersecting M4.4 facts.
+
+**Blockers/dependencies/restart:** none. No restart, migration, cache clear, or dependency applies.
+
+**Negative-memory status:** durable and consolidated under `repo:/home/christos/code/deslop`; Hindsight reports
+1,305 entities, 3,549 relations, and 3,760 observations. Search handles: `M4.4 terminal irreducible SCC`,
+`cycle not irreducible`, `nonterminating SCC external exit`, `Partial CFG explicit unknown`,
+`control-regions/1 frozen`.
+
+**Signature:** Codex (GPT-5), M4.4 integration owner, terminal checkpoint, 2026-07-14.
