@@ -329,7 +329,15 @@ reports, benchmark records, and work orders.
   Tree-sitter queries cannot exclude arbitrary quoted ancestors; scope/comment/reader queries are
   provided. Grammar-field head extraction also repairs metadata-prefixed metric/region forms. All
   workspace gates pass.
-- [ ] M2.10 Implement/repair Julia adapter and golden fixtures.
+- [x] M2.10 Implement/repair Julia adapter and golden fixtures.
+  Evidence: production `JuliaPack` now derives S1 with canonical roles, all six direct grammar queries,
+  total Unicode/comment/operator lexical ownership, file-incomplete recovery, opaque macros/quoted ASTs,
+  exact generated markers, and `julia/tree-sitter-julia/0.23.1` provenance. Valid/malformed goldens lock
+  95 CST facts, 61 token owners, 94 role assignments across 18 roles, query captures `[2,4,2,2,3,3]`,
+  five exact construct facts, one exact whole-file `ERROR`, interpolation ownership, query-role
+  consistency, and one parse per file. Call argument lists are not mislabeled parameters; exact named
+  assignment operators do not fall through. S2-S4 and StaticLint/JET authority remain unknown. All
+  workspace gates pass.
 - [ ] M2.11 Add cross-adapter construct matrices and unsupported-capability leakage tests.
 - [ ] M2.DoD Every emitted fact declares adapter/version/capability/provenance, and no confirmed output
   requires a higher tier than the adapter supplies.

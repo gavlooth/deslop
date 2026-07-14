@@ -1634,22 +1634,25 @@ mod tests {
     #[test]
     fn canonical_role_projection_rejects_unknown_capability() {
         let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::new(&GENERIC_PACK);
+        registry.register(&LEFT_PACK);
         let snapshot = ProjectSnapshotBuilder::new(
             root.path(),
             RepositoryId::explicit("canonical-role-unavailable-test").unwrap(),
         )
         .unwrap()
-        .with_overlay("unknown.jl", b"function sample()\nend\n".to_vec())
+        .with_registry(registry)
+        .with_overlay("unknown.left", b"fn sample() {}\n".to_vec())
         .unwrap()
         .build()
         .unwrap();
         let analysis = ProjectAnalysis::build(snapshot).unwrap();
         assert_eq!(
             analysis
-                .canonical_role_projection(Path::new("unknown.jl"))
+                .canonical_role_projection(Path::new("unknown.left"))
                 .unwrap_err(),
             CanonicalRoleProjectionError::CapabilityUnavailable {
-                path: PathBuf::from("unknown.jl"),
+                path: PathBuf::from("unknown.left"),
                 support: CapabilitySupport::Unknown,
             }
         );
@@ -2835,6 +2838,244 @@ mod tests {
                 "parse-error",
                 "ERROR",
                 "(defn broken [value]\n  (+ value 1)\n",
+            )]
+        );
+        assert!(
+            analysis
+                .parse_counts()
+                .values()
+                .all(|count| count.parser_invocations == 1)
+        );
+    }
+
+    #[test]
+    fn julia_production_adapter_golden_matrix_is_owned_and_parse_once() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("julia-production-adapter-golden").unwrap(),
+        )
+        .unwrap()
+        .with_overlay(
+            "adapter_matrix.jl",
+            include_bytes!("../../../tests/fixtures/julia/adapter_matrix.jl").to_vec(),
+        )
+        .unwrap()
+        .with_overlay(
+            "malformed.jl",
+            include_bytes!("../../../tests/fixtures/julia/malformed.jl").to_vec(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let analysis = ProjectAnalysis::build(snapshot).unwrap();
+        let path = Path::new("adapter_matrix.jl");
+        let identity = analysis
+            .snapshot()
+            .entry(path)
+            .unwrap()
+            .language_adapter_identity()
+            .unwrap();
+        assert_eq!(
+            identity.capabilities().highest_complete_tier(),
+            Some(SemanticTier::S1)
+        );
+
+        let roles = analysis.canonical_role_projection(path).unwrap();
+        let lexical = analysis.lexical_token_projection(path).unwrap();
+        let constructs = analysis.construct_policy_projection(path).unwrap();
+        let queries = analysis.compile_language_query_pack(path).unwrap();
+        for owner in [
+            roles.analysis(),
+            lexical.analysis(),
+            constructs.analysis(),
+            queries.analysis(),
+        ] {
+            assert!(Arc::ptr_eq(owner, &analysis));
+        }
+        assert_eq!(constructs.dialect().dialect(), "julia");
+        assert_eq!(constructs.dialect().grammar_id(), "tree-sitter-julia");
+        assert_eq!(constructs.dialect().grammar_version(), "0.23.1");
+
+        let mut role_counts = std::collections::BTreeMap::new();
+        for fact in roles.facts() {
+            for role in fact.roles().iter() {
+                *role_counts.entry(role.as_str()).or_insert(0_usize) += 1;
+            }
+        }
+        let mut lexical_counts = std::collections::BTreeMap::new();
+        for fact in lexical.facts() {
+            *lexical_counts
+                .entry(fact.classification().token_class().as_str())
+                .or_insert(0_usize) += 1;
+        }
+        let root_node = analysis.file_node_ids(path).unwrap().next().unwrap();
+        let query_counts = QueryFamily::ALL.map(|family| {
+            let compiled = queries.query(family).unwrap();
+            analysis
+                .syntax_query_matches(compiled.query(), root_node)
+                .unwrap()
+                .iter()
+                .map(|matched| matched.captures().len())
+                .sum::<usize>()
+        });
+        let mut construct_counts = std::collections::BTreeMap::new();
+        for fact in constructs.facts() {
+            *construct_counts
+                .entry(fact.kind().as_str())
+                .or_insert(0_usize) += 1;
+        }
+        assert_eq!(roles.facts().len(), 95);
+        assert_eq!(
+            role_counts,
+            std::collections::BTreeMap::from([
+                ("block", 1),
+                ("branch", 1),
+                ("call", 4),
+                ("callable", 1),
+                ("comment", 3),
+                ("declaration", 2),
+                ("export", 1),
+                ("expression", 37),
+                ("generated", 2),
+                ("literal", 3),
+                ("loop", 1),
+                ("module", 2),
+                ("opaque-region", 3),
+                ("parameter", 1),
+                ("project", 1),
+                ("read", 26),
+                ("statement", 1),
+                ("write", 4),
+            ])
+        );
+        assert_eq!(lexical.facts().len(), 61);
+        assert_eq!(
+            lexical_counts,
+            std::collections::BTreeMap::from([
+                ("comment", 3),
+                ("delimiter", 8),
+                ("identifier", 24),
+                ("keyword", 12),
+                ("literal", 3),
+                ("operator", 6),
+                ("other", 1),
+                ("punctuation", 4),
+            ])
+        );
+        assert_eq!(query_counts, [2, 4, 2, 2, 3, 3]);
+        assert_eq!(
+            construct_counts,
+            std::collections::BTreeMap::from([
+                ("generated-code", 2),
+                ("macro", 2),
+                ("unsupported-construct", 1),
+            ])
+        );
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "π"
+                && fact.classification().token_class() == LexicalTokenClass::Identifier
+        }));
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "*"
+                && fact.classification().operator_class() == Some(LexicalOperatorClass::Arithmetic)
+        }));
+        assert!(lexical.facts().iter().any(|fact| {
+            fact.text() == "+="
+                && fact.classification().operator_class() == Some(LexicalOperatorClass::Assignment)
+        }));
+        for comment in ["# @generated", "# line comment", "#= block comment =#"] {
+            assert!(lexical.facts().iter().any(|fact| {
+                fact.text() == comment
+                    && fact.classification().token_class() == LexicalTokenClass::Comment
+            }));
+        }
+        assert!(!lexical.facts().iter().any(|fact| {
+            fact.text() == "\"total = $total\""
+                && fact.classification().token_class() == LexicalTokenClass::Literal
+        }));
+        assert!(lexical.facts().iter().any(|fact| {
+            if fact.text() != "total"
+                || fact.classification().token_class() != LexicalTokenClass::Identifier
+            {
+                return false;
+            }
+            let mut ancestor = analysis.node(fact.node()).unwrap().parent();
+            while let Some(parent) = ancestor {
+                let view = analysis.node(parent).unwrap();
+                if matches!(
+                    view.raw_kind(),
+                    "string_interpolation" | "interpolation_expression"
+                ) {
+                    return true;
+                }
+                ancestor = view.parent();
+            }
+            false
+        }));
+        assert_eq!(
+            constructs
+                .facts()
+                .iter()
+                .map(|fact| (fact.kind().as_str(), fact.raw().raw_kind(), fact.text()))
+                .collect::<Vec<_>>(),
+            [
+                ("generated-code", "line_comment", "# @generated"),
+                ("macro", "macrocall_expression", "@generated"),
+                ("generated-code", "macrocall_expression", "@generated"),
+                (
+                    "unsupported-construct",
+                    "quote_statement",
+                    "quote\n        hidden(total)\n    end",
+                ),
+                ("macro", "macrocall_expression", "@time helper(total)"),
+            ]
+        );
+
+        for compiled in queries.compiled() {
+            let declarations = compiled.declaration().captures();
+            for matched in analysis
+                .syntax_query_matches(compiled.query(), root_node)
+                .unwrap()
+                .iter()
+            {
+                for capture in matched.captures() {
+                    let declaration = declarations
+                        .iter()
+                        .find(|declared| declared.name() == capture.capture_name())
+                        .unwrap();
+                    let fact = roles
+                        .facts()
+                        .iter()
+                        .find(|fact| fact.node() == capture.node())
+                        .unwrap();
+                    for required in declaration.roles().iter() {
+                        assert!(
+                            fact.roles().contains(required),
+                            "{} capture {} lacks role {} on raw kind {}",
+                            compiled.declaration().family().as_str(),
+                            capture.capture_name(),
+                            required.as_str(),
+                            fact.raw().raw_kind(),
+                        );
+                    }
+                }
+            }
+        }
+
+        let malformed = analysis
+            .construct_policy_projection(Path::new("malformed.jl"))
+            .unwrap();
+        assert_eq!(
+            malformed
+                .facts()
+                .iter()
+                .map(|fact| (fact.kind().as_str(), fact.raw().raw_kind(), fact.text()))
+                .collect::<Vec<_>>(),
+            [(
+                "parse-error",
+                "ERROR",
+                "function broken(value)\n    return value +\nend\n",
             )]
         );
         assert!(

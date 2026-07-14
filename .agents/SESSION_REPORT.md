@@ -7933,3 +7933,95 @@ storage. Search handles: `M2.9 Clojure golden`, `Clojure quoted ancestor query l
 metadata list head value name fields`.
 
 **Signature:** Codex (GPT-5), M2.9 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M2.10 active checkpoint — Julia macro/quote policy and goldens
+
+**Date/time:** 2026-07-14T02:10:50+02:00
+
+**Objective/target:** complete the Julia production adapter over its direct typed grammar while keeping
+macros, quoted ASTs, and external analyzer evidence outside unsupported authority.
+
+**Changes:** planning/audit only. Inspected `JuliaPack`, exact grammar/version, existing region and
+StaticLint/JET integration, installed node catalog, and relevant cross-adapter negative memories.
+Defined a convergent direct-query and numerical golden matrix.
+
+**Commands/checks run:** targeted Hindsight retrieval; targeted Julia pack/analyzer/metrics/fixture
+inventory reads; complete node-kind catalog extraction with `jq`; dependency/version audit.
+
+**Results:** ACTIVE / UNVERIFIED. Julia remains default unknown for all frozen M2 policy surfaces. The
+grammar exposes direct definition, statement, call, control, macro, quote, comment, literal, and
+operator nodes, so every query family should be expressible without contextual post-filtering.
+
+**Invalidated assumptions / negative memory:** external StaticLint/JET capability is separate,
+configuration-gated evidence and cannot promote this syntax adapter. Interpolated string composites
+must not be classified as one literal if that would suppress embedded expressions. Existing
+query-role, exact-operator, and implementation-anchor constraints carry forward.
+
+**Current recommendation/next actions:** implement Julia canonical/query/lexical/construct policy in
+small compile-checked groups, then create and measure the valid/malformed golden matrix.
+
+**Blockers/dependencies/restart:** Serena Rust symbols remain unavailable; local compiler/query/runtime
+oracles are the fallback. No functional blocker or dependency change applies.
+
+**Negative-memory status:** existing constraints loaded and carried locally; no new failure yet.
+Search handles: `M2.10 Julia golden`, `Julia interpolation composite lexical`, `Julia macro quote
+authority`.
+
+**Signature:** Codex (GPT-5), M2.10 integration owner, active checkpoint, 2026-07-14.
+
+---
+
+## M2.10 terminal checkpoint — Julia macro/quote policy and goldens
+
+**Date/time:** 2026-07-14T02:22:20+02:00
+
+**Objective/target:** complete all frozen production adapter policy surfaces for Julia while keeping
+macros, quoted ASTs, interpolation, and external analyzers inside their exact authority boundaries.
+
+**Changes:** `JuliaPack` now provides source/module/function/type/import/export/parameter/scope/control/
+call/write/read/literal/comment/error canonical roles; all six direct grammar query families; total
+case-sensitive Unicode lexical classification with exact named operators; file-incomplete recovery;
+opaque quote expressions/statements; opaque macro definitions/calls; exact generated comment/macro
+markers; and `julia/tree-sitter-julia/0.23.1` dialect provenance. The manifest derives S1 and leaves
+S2-S4 unknown. Added valid/malformed fixtures and a retained-analysis oracle with numerical projections,
+query-role checks, interpolation ownership, exact construct facts, and parse-once assertions. The
+production-unknown rejection oracle now uses its dedicated custom test pack rather than migrating
+between production languages.
+
+**Commands/checks run:** focused language schema/check/test cycles; diagnostic then pinned Julia
+golden; complete affected `cargo test -p deslop-lang -p deslop-parse -p deslop-metrics`; affected
+strict clippy, format, and whitespace checks; then `cargo test --workspace --all-features`; `cargo
+build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features
+--no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all
+-- --check`; and `git diff --check`.
+
+**Results:** PASS. Valid golden: 95 CST role facts, 94 assignments across 18 roles; 61 token owners
+with comment 3, delimiter 8, identifier 24, keyword 12, literal 3, operator 6, other 1, punctuation 4;
+query captures `[2,4,2,2,3,3]`; exact constructs generated 2 / macro 2 / unsupported quote 1.
+Unicode `π`, arithmetic `*`, assignment `+=`, full line/block comments, standalone `@generated`,
+`@time`, quoted AST, and embedded `$total` identifier ownership are pinned. The whole interpolated
+string is not collapsed into one literal owner. Malformed input emits one whole-file `ERROR`. Every
+query capture carries its declared role, every file parses once, and all workspace gates pass; only
+the two repository-designated slow probes are ignored.
+
+**Invalidated assumptions / negative memory:** (1) `argument_list` is shared by function signatures
+and ordinary calls; raw-kind classification labeled every call argument list as Parameter. Correct
+boundary: traverse ancestry and require `signature`/macro-definition before a body boundary. (2) Julia
+assignment spellings are named `operator` nodes in this grammar, so anonymous raw `=` rules alone left
+`=`, `+=`, and peers as Other. Exact named-operator rules now classify them as Assignment. (3) string
+literal composites remain unclassified intentionally so interpolation identifiers survive. Macro and
+quote facts grant no expansion, resolution, CFG, effects, compiler, StaticLint, or JET authority.
+
+**Current recommendation/next actions:** execute M2.11 as one cross-adapter construct/support matrix,
+including explicit Clojure contextual-query unknowns and S2-S4 leakage rejection.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, service restart, or live-state
+activation applies.
+
+**Negative-memory status:** Julia signature/call and named-operator distinctions require durable
+Hindsight storage. Search handles: `M2.10 Julia golden`, `Julia argument_list signature parameter`,
+`Julia named operator assignment fallback`.
+
+**Signature:** Codex (GPT-5), M2.10 integration owner, terminal checkpoint, 2026-07-14.

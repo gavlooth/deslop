@@ -1695,6 +1695,54 @@ once and all workspace gates pass. Deferred boundary: ancestry-aware contextual 
 in M2.11 or a versioned query schema; it must not be approximated by leaking quoted forms. Next: M2.10
 Julia production policy/goldens.
 
+#### Active M2.10 execution plan — Julia macro/quote policy and goldens
+
+Active hypothesis: Julia’s typed grammar nodes can provide all six S1 query families directly while
+keeping macro calls/definitions and quoted ASTs opaque. Syntax annotations and external StaticLint/JET
+availability do not add compiler/type authority to the adapter.
+
+CONVERGENCE: compile all six query families against `tree-sitter-julia` 0.23.1; run all four retained
+projections over fixed valid/malformed goldens; pin numerical vectors, exact dialect, Unicode/comments/
+operators/interpolation ownership, macro/quote/generated facts, query-role consistency, and one parse
+per file. If Julia derives S1, macros/quotes stay opaque, malformed recovery is exact, and all workspace
+gates pass, M2.10 is done.
+
+Current approach: classify source/module/function/type/import/export/parameter/block/control/call/
+write/read/literal/comment/error roles by raw grammar kind. Provide direct grammar queries for all six
+families. Build a total Unicode-aware lexical policy using exact `operator` text before identifier/
+literal/keyword/delimiter rules, while leaving interpolated string composites unclaimed so embedded
+expressions retain token ownership. Recovery is file-incomplete; quote expressions/statements are
+opaque unsupported constructs; macro definitions/calls are opaque macro facts; exact `# @generated`
+comments and `@generated` macro calls are generated markers. Declare only Julia 0.23.1 and retain S2+
+unknown.
+
+Validation path: schema/S1 checks; actual query compilation; numerical valid/malformed matrix; macro/
+quote and interpolation spot checks; query-role audit; ownership/no-reparse; affected strict checks;
+full workspace gates.
+
+Negative-memory constraints: query compilation alone does not prove capture-role agreement; composite
+string ownership must not suppress interpolation; repeated `LangPack` methods require Julia-specific
+anchors; exact operators must precede raw-kind fallback; macro/quote syntax grants no expansion,
+resolution, CFG, effects, compiler, StaticLint, or JET authority.
+
+Agent assignment: `/root` owns M2.10 policy, fixtures, integration, and verification; no concurrent
+file edits are assigned.
+
+Current checkpoint (2026-07-14T02:10:50+02:00): audited `JuliaPack`, its exact descriptor, existing
+region/analyzer integration, and the installed grammar catalog. Production M2 policy remains unknown;
+the grammar provides direct definitions, calls, control, comments, macro, quote, and recovery kinds,
+so no Clojure-style contextual query downgrade is expected.
+
+Terminal checkpoint (2026-07-14T02:22:20+02:00): M2.10 is complete. Julia derives S1 with all six
+queries compiled against `tree-sitter-julia` 0.23.1, exact role/lexical/recovery/construct/dialect
+policy, and no S2+ or external-analyzer promotion. The valid golden locks 95 CST facts, 61 token
+owners, 94 role assignments across 18 roles, query vector `[2,4,2,2,3,3]`, two generated / two macro /
+one opaque quote facts, and independent interpolation identifiers. The malformed golden locks one
+whole-file `ERROR`. Signature-only argument lists are parameters; call arguments are not. Named
+assignment operators classify exactly. Every query capture carries its declared roles, every file
+parses once, and all workspace gates pass. Next: M2.11 cross-adapter construct and capability-leakage
+matrix.
+
 ### M3 — Scope and project-name graph
 
 Add lexical scopes, bindings, references, imports/exports, ambiguity, and resolution provenance; then link

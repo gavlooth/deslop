@@ -2647,6 +2647,365 @@ fn clojure_form_is_evaluated(node: Node<'_>) -> bool {
     node.kind() == "list_lit" && clojure_node_is_evaluated(node)
 }
 
+fn julia_canonical_roles(node: Node<'_>, text: &str) -> CanonicalRoleSet {
+    let roles = match node.kind() {
+        "source_file" => vec![CanonicalRole::Project, CanonicalRole::Module],
+        "function_definition" => vec![
+            CanonicalRole::Declaration,
+            CanonicalRole::Callable,
+            CanonicalRole::Block,
+        ],
+        "arrow_function_expression" | "do_clause" => vec![CanonicalRole::Callable],
+        "struct_definition" | "abstract_definition" | "primitive_definition" => {
+            vec![CanonicalRole::Declaration, CanonicalRole::Type]
+        }
+        "module_definition" => vec![CanonicalRole::Declaration, CanonicalRole::Module],
+        "macro_definition" => vec![
+            CanonicalRole::Declaration,
+            CanonicalRole::Callable,
+            CanonicalRole::OpaqueRegion,
+        ],
+        "import_statement" | "using_statement" => {
+            vec![CanonicalRole::Declaration, CanonicalRole::Import]
+        }
+        "export_statement" | "public_statement" => vec![CanonicalRole::Export],
+        "const_statement" => vec![CanonicalRole::Declaration],
+        "argument_list" | "macro_argument_list" if julia_is_signature_arguments(node) => {
+            vec![CanonicalRole::Parameter]
+        }
+        "compound_statement" | "let_statement" => vec![CanonicalRole::Block],
+        "return_statement" | "break_statement" | "continue_statement" | "global_statement"
+        | "local_statement" => vec![CanonicalRole::Statement],
+        "if_statement" | "elseif_clause" | "if_clause" | "try_statement" => {
+            vec![CanonicalRole::Branch]
+        }
+        "catch_clause" | "else_clause" | "finally_clause" => vec![CanonicalRole::Case],
+        "for_statement" | "for_clause" | "while_statement" => vec![CanonicalRole::Loop],
+        "call_expression" | "broadcast_call_expression" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Call]
+        }
+        "assignment" | "compound_assignment_expression" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Write]
+        }
+        "identifier" | "scoped_identifier" | "field_expression" | "macro_identifier" => {
+            vec![CanonicalRole::Expression, CanonicalRole::Read]
+        }
+        "boolean_literal"
+        | "character_literal"
+        | "command_literal"
+        | "float_literal"
+        | "integer_literal"
+        | "prefixed_command_literal"
+        | "prefixed_string_literal"
+        | "string_literal" => vec![CanonicalRole::Expression, CanonicalRole::Literal],
+        "vector_expression"
+        | "matrix_expression"
+        | "tuple_expression"
+        | "comprehension_expression"
+        | "range_expression" => vec![CanonicalRole::Expression],
+        "line_comment" if text.get(node.start_byte()..node.end_byte()) == Some("# @generated") => {
+            vec![CanonicalRole::Comment, CanonicalRole::Generated]
+        }
+        "line_comment" | "block_comment" => vec![CanonicalRole::Comment],
+        "ERROR" => vec![CanonicalRole::Error],
+        "quote_expression" | "quote_statement" => vec![CanonicalRole::OpaqueRegion],
+        "macrocall_expression"
+            if text.get(node.start_byte()..node.end_byte()) == Some("@generated") =>
+        {
+            vec![CanonicalRole::Generated, CanonicalRole::OpaqueRegion]
+        }
+        "macrocall_expression" => vec![CanonicalRole::OpaqueRegion],
+        _ => Vec::new(),
+    };
+    CanonicalRoleSet::from_roles(roles)
+}
+
+fn julia_is_signature_arguments(node: Node<'_>) -> bool {
+    let mut ancestor = node.parent();
+    while let Some(parent) = ancestor {
+        match parent.kind() {
+            "signature" | "macro_definition" => return true,
+            "compound_statement" | "function_definition" | "do_clause" => return false,
+            _ => ancestor = parent.parent(),
+        }
+    }
+    false
+}
+
+fn julia_query_pack(adapter_schema: &str) -> LanguageQueryPack {
+    let capture = |name, roles: &[CanonicalRole]| {
+        QueryCaptureDeclaration::new(name, CanonicalRoleSet::from_roles(roles.iter().copied()))
+            .expect("the Julia query capture is valid")
+    };
+    LanguageQueryPack::new(
+        adapter_schema,
+        vec![
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Declarations,
+                CapabilityAuthority::Adapter,
+                "[(function_definition) (struct_definition) (abstract_definition) (primitive_definition) (module_definition) (macro_definition) (import_statement) (using_statement) (const_statement)] @declaration",
+                vec![capture("declaration", &[CanonicalRole::Declaration])],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::References,
+                CapabilityAuthority::Adapter,
+                "(call_expression . (_) @reference)",
+                vec![capture(
+                    "reference",
+                    &[CanonicalRole::Expression, CanonicalRole::Read],
+                )],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Scopes,
+                CapabilityAuthority::Adapter,
+                "(source_file) @scope.module\n[(function_definition) (let_statement)] @scope.block",
+                vec![
+                    capture("scope.module", &[CanonicalRole::Module]),
+                    capture("scope.block", &[CanonicalRole::Block]),
+                ],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Control,
+                CapabilityAuthority::Adapter,
+                "[(if_statement) (elseif_clause) (if_clause) (try_statement)] @control.branch\n[(for_statement) (for_clause) (while_statement)] @control.loop",
+                vec![
+                    capture("control.branch", &[CanonicalRole::Branch]),
+                    capture("control.loop", &[CanonicalRole::Loop]),
+                ],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Comments,
+                CapabilityAuthority::Adapter,
+                "[(line_comment) (block_comment)] @comment",
+                vec![capture("comment", &[CanonicalRole::Comment])],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::OpaqueGenerated,
+                CapabilityAuthority::Adapter,
+                "[(macro_definition) (macrocall_expression) (quote_expression) (quote_statement)] @opaque",
+                vec![capture("opaque", &[CanonicalRole::OpaqueRegion])],
+            ),
+        ],
+    )
+    .expect("the Julia query pack is valid")
+}
+
+fn julia_lexical_policy(adapter_schema: &str) -> LanguageLexicalPolicy {
+    let token =
+        |raw_kind, class| LexicalRule::new(raw_kind, None, LexicalClassification::token(class));
+    let operator = |text: &'static str, class: LexicalOperatorClass| {
+        LexicalRule::new(
+            "operator",
+            Some(text.to_string()),
+            LexicalClassification::operator(class),
+        )
+    };
+    let mut rules = vec![
+        operator("+", LexicalOperatorClass::Arithmetic),
+        operator("-", LexicalOperatorClass::Arithmetic),
+        operator("*", LexicalOperatorClass::Arithmetic),
+        operator("/", LexicalOperatorClass::Arithmetic),
+        operator("÷", LexicalOperatorClass::Arithmetic),
+        operator("%", LexicalOperatorClass::Arithmetic),
+        operator("^", LexicalOperatorClass::Arithmetic),
+        operator("==", LexicalOperatorClass::Comparison),
+        operator("!=", LexicalOperatorClass::Comparison),
+        operator("===", LexicalOperatorClass::Comparison),
+        operator("!==", LexicalOperatorClass::Comparison),
+        operator("<", LexicalOperatorClass::Comparison),
+        operator(">", LexicalOperatorClass::Comparison),
+        operator("<=", LexicalOperatorClass::Comparison),
+        operator(">=", LexicalOperatorClass::Comparison),
+        operator("&&", LexicalOperatorClass::Logical),
+        operator("||", LexicalOperatorClass::Logical),
+        operator("!", LexicalOperatorClass::Logical),
+        operator("&", LexicalOperatorClass::Bitwise),
+        operator("|", LexicalOperatorClass::Bitwise),
+        operator("⊻", LexicalOperatorClass::Bitwise),
+        operator("~", LexicalOperatorClass::Bitwise),
+        operator("<<", LexicalOperatorClass::Bitwise),
+        operator(">>", LexicalOperatorClass::Bitwise),
+        operator(">>>", LexicalOperatorClass::Bitwise),
+        operator(":", LexicalOperatorClass::Range),
+        operator(".", LexicalOperatorClass::MemberAccess),
+        operator("=", LexicalOperatorClass::Assignment),
+        operator("+=", LexicalOperatorClass::Assignment),
+        operator("-=", LexicalOperatorClass::Assignment),
+        operator("*=", LexicalOperatorClass::Assignment),
+        operator("/=", LexicalOperatorClass::Assignment),
+        operator("\\=", LexicalOperatorClass::Assignment),
+        operator("÷=", LexicalOperatorClass::Assignment),
+        operator("%=", LexicalOperatorClass::Assignment),
+        operator("^=", LexicalOperatorClass::Assignment),
+        operator("&=", LexicalOperatorClass::Assignment),
+        operator("|=", LexicalOperatorClass::Assignment),
+        operator("⊻=", LexicalOperatorClass::Assignment),
+        operator("<<=", LexicalOperatorClass::Assignment),
+        operator(">>=", LexicalOperatorClass::Assignment),
+        operator(">>>=", LexicalOperatorClass::Assignment),
+    ];
+    rules.extend([
+        LexicalRule::new(
+            "=",
+            None,
+            LexicalClassification::operator(LexicalOperatorClass::Assignment),
+        ),
+        LexicalRule::new(
+            ".=",
+            None,
+            LexicalClassification::operator(LexicalOperatorClass::Assignment),
+        ),
+        LexicalRule::new(
+            ":=",
+            None,
+            LexicalClassification::operator(LexicalOperatorClass::Assignment),
+        ),
+    ]);
+    rules.extend(
+        ["identifier", "macro_identifier"]
+            .into_iter()
+            .map(|kind| token(kind, LexicalTokenClass::Identifier)),
+    );
+    rules.extend(
+        [
+            "boolean_literal",
+            "character_literal",
+            "command_literal",
+            "content",
+            "escape_sequence",
+            "float_literal",
+            "integer_literal",
+            "true",
+            "false",
+        ]
+        .into_iter()
+        .map(|kind| token(kind, LexicalTokenClass::Literal)),
+    );
+    rules.extend(
+        [
+            "abstract",
+            "baremodule",
+            "begin",
+            "catch",
+            "const",
+            "do",
+            "else",
+            "elseif",
+            "end",
+            "export",
+            "finally",
+            "for",
+            "function",
+            "global",
+            "if",
+            "import",
+            "let",
+            "local",
+            "macro",
+            "module",
+            "mutable",
+            "outer",
+            "primitive",
+            "public",
+            "quote",
+            "return",
+            "struct",
+            "try",
+            "using",
+            "where",
+            "while",
+        ]
+        .into_iter()
+        .map(|kind| token(kind, LexicalTokenClass::Keyword)),
+    );
+    rules.extend(
+        ["(", ")", "[", "]", "{", "}"]
+            .into_iter()
+            .map(|kind| token(kind, LexicalTokenClass::Delimiter)),
+    );
+    rules.extend(
+        [
+            "\"", "\"\"\"", "'", "`", "```", "$", ",", ";", "::", "->", "...", "@", "?",
+        ]
+        .into_iter()
+        .map(|kind| token(kind, LexicalTokenClass::Punctuation)),
+    );
+    rules.extend([
+        token("line_comment", LexicalTokenClass::Comment),
+        token("block_comment", LexicalTokenClass::Comment),
+        token("operator", LexicalTokenClass::Other),
+        token("ERROR", LexicalTokenClass::Error),
+        token("*", LexicalTokenClass::Other),
+    ]);
+    LanguageLexicalPolicy::provided(
+        adapter_schema,
+        CapabilityAuthority::Adapter,
+        IdentifierCasePolicy::Sensitive,
+        true,
+        vec!["#".to_string()],
+        vec![BlockCommentDelimiter::new("#=", "=#", true)],
+        rules,
+    )
+    .expect("the Julia lexical policy is valid")
+}
+
+fn julia_construct_policy(adapter_schema: &str) -> LanguageConstructPolicy {
+    LanguageConstructPolicy::new(
+        adapter_schema,
+        ParseRecoveryPolicy::provided(
+            CapabilityAuthority::Syntax,
+            ParseRecoveryHandling::FileIncomplete,
+        ),
+        vec![
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::UnsupportedConstruct,
+                CapabilityAuthority::Adapter,
+                vec![
+                    ConstructRule::new("quote_expression", None, ConstructHandling::Opaque),
+                    ConstructRule::new("quote_statement", None, ConstructHandling::Opaque),
+                ],
+            )
+            .expect("the Julia unsupported policy is valid"),
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::Macro,
+                CapabilityAuthority::Adapter,
+                vec![
+                    ConstructRule::new("macro_definition", None, ConstructHandling::Opaque),
+                    ConstructRule::new("macrocall_expression", None, ConstructHandling::Opaque),
+                ],
+            )
+            .expect("the Julia macro policy is valid"),
+            ConstructPolicySection::provided(
+                ConstructPolicyKind::GeneratedCode,
+                CapabilityAuthority::Adapter,
+                vec![
+                    ConstructRule::new(
+                        "line_comment",
+                        Some("# @generated".to_string()),
+                        ConstructHandling::SurfaceSyntax,
+                    ),
+                    ConstructRule::new(
+                        "macrocall_expression",
+                        Some("@generated".to_string()),
+                        ConstructHandling::SurfaceSyntax,
+                    ),
+                ],
+            )
+            .expect("the Julia generated policy is valid"),
+        ],
+        DialectPolicy::provided(
+            CapabilityAuthority::Syntax,
+            vec![DialectDeclaration::new(
+                "julia",
+                "tree-sitter-julia",
+                "0.23.1",
+            )],
+        )
+        .expect("the Julia dialect policy is valid"),
+    )
+    .expect("the Julia construct policy is valid")
+}
+
 impl LangPack for JuliaPack {
     fn name(&self) -> &'static str {
         "julia"
@@ -2654,6 +3013,27 @@ impl LangPack for JuliaPack {
 
     fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest {
         LanguageAdapterCapabilityManifest::current_syntax(self.adapter_schema())
+            .with_declaration(CapabilityDeclaration::provided(
+                AdapterCapability::CanonicalRoles,
+                CapabilityAuthority::Adapter,
+            ))
+            .expect("the Julia S1 capability declaration is valid")
+    }
+
+    fn canonical_roles(&self, node: Node<'_>, text: &str) -> CanonicalRoleSet {
+        julia_canonical_roles(node, text)
+    }
+
+    fn query_pack(&self) -> LanguageQueryPack {
+        julia_query_pack(self.adapter_schema())
+    }
+
+    fn lexical_policy(&self) -> LanguageLexicalPolicy {
+        julia_lexical_policy(self.adapter_schema())
+    }
+
+    fn construct_policy(&self) -> LanguageConstructPolicy {
+        julia_construct_policy(self.adapter_schema())
     }
 
     fn lang(&self) -> Lang {
@@ -5026,7 +5406,12 @@ mod tests {
             assert_eq!(manifest.capabilities().len(), 23);
             let production_policy = matches!(
                 pack.lang(),
-                Lang::JavaScript | Lang::TypeScript | Lang::Python | Lang::Clojure | Lang::Rust
+                Lang::JavaScript
+                    | Lang::TypeScript
+                    | Lang::Python
+                    | Lang::Clojure
+                    | Lang::Julia
+                    | Lang::Rust
             );
             assert_eq!(
                 manifest.highest_complete_tier(),
