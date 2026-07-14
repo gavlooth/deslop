@@ -9549,3 +9549,124 @@ consumer gate complete`, `WorkOrder is not semantic recipe`, `capability-specifi
 Conflict blocks`, `projection-bound dependencies`, `no graph2 fallback`.
 
 **Signature:** Codex (GPT-5), M3.DoD integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M4.1 active checkpoint — control-flow schema audit
+
+**Date/time:** 2026-07-14T18:38:00+02:00
+
+**Objective/target:** define the versioned control-flow edge contract before any adapter-specific CFG lowering.
+
+**Commands/checks run:** targeted Hindsight active-plan/negative-memory search; `rg`/`sed` audit across the M4
+roadmap, ADRs 0001/0002, `deslop-parse` identity/scope/resolution overlays, `deslop-lang` capability tiers and
+production manifests, and `deslop-graph` projection/types/tests.
+
+**Results:** `AdapterCapability::ControlFlow` already exists at S2, while every production adapter honestly
+reports it Unknown. `deslop.graph/2` is explicitly a syntactic project dependency view and cannot own CFG
+semantics. The shared immutable `ProjectAnalysis`, revision-bound `NodeKey`, stored grammar/adapter identity,
+and projection-ID machinery provide the correct substrate. No control-flow schema exists yet.
+
+**Invalidated assumptions / failure modes:** query `@control` captures and canonical branch/loop roles are
+syntax seeds, not control-flow transitions. Enumerating edges does not prove complete CFG coverage. Runtime
+observations cannot serve as exhaustive static authority. Entry/exit virtual points cannot be inferred from
+source spans, and exceptional, abrupt, or suspension transitions cannot be flattened into normal flow.
+
+**Current recommendation/next actions:** add ADR 0003 and strict `deslop.control-flow/1` types in
+`deslop-parse`; bind graph/point/edge keys to payloads, retain exact capability/coverage/uncertainty evidence,
+and validate every boundary/topology invariant. Exercise all eight edge families in one complete synthetic
+fixture and add a corruption matrix. Leave production adapter lowering and capability promotion to M4.2.
+
+**Blockers/dependencies/restart:** none. No new dependency is expected.
+
+**Negative-memory status:** provisional and active. Search handles: `M4.1 CFG schema`, `control capture not CFG`,
+`no graph2 CFG`, `virtual entry exit`, `static ControlFlow authority`, `coverage not edge enumeration`.
+
+**Signature:** Codex (GPT-5), M4.1 integration owner, schema-audit checkpoint, 2026-07-14.
+
+---
+
+## M4.1 implementation checkpoint — strict control-flow schema
+
+**Date/time:** 2026-07-14T18:52:55+02:00
+
+**Objective/target:** implement the M4.1 schema boundary without prematurely lowering production adapters.
+
+**Changes:** added accepted ADR 0003 and public `deslop.control-flow/1` types/builders in `deslop-parse`.
+Graphs retain exact analysis/projection/policy, executable owner, grammar, adapter manifest, ControlFlow
+support/authority, coverage reasons, one virtual entry/exit, owner-contained syntax/synthetic points, and
+payload-bound graph/point/edge keys. Added typed entry, exit, normal, branch, loop, exceptional, abrupt, and
+suspension families with 35 exercised portable sub-kind instances. Complete coverage rejects non-static,
+unknown/unsupported, conservative, recovered, cross-file, outside-owner, or uncertain evidence.
+
+**Commands/checks run:** repeated focused `cargo test -p deslop-parse 'control_flow::tests::m4_1_'`; `cargo
+check -p deslop-parse --all-features`; `cargo test -p deslop-parse --all-features`; parse all-target clippy and
+rustdoc with warnings denied; `cargo fmt --all`; `git diff --check`; cargo-tree and source audits for graph/2
+independence and production capability non-promotion.
+
+**Results:** PASS. Five focused schema/adversarial suites pass. Full parse result is 139 passed, zero failed,
+one designated ignored latency/memory probe, and four passing compile-fail doctests. Parse check, clippy,
+rustdoc, fmt, and diff checks pass. `deslop-parse` has no `deslop-graph` dependency. All six production language
+packs still declare ControlFlow Unknown with no authority and cannot build Complete CFG evidence.
+
+**Invalidated assumptions / failure modes:** an initial review found point/edge keys were revision/policy-bound
+but not adapter-manifest-bound; the exact adapter identity is now part of both key payloads. Same-file evidence
+alone was also too broad; every non-virtual point, edge source, and predicate must fall inside the executable
+owner region. Clippy rejected two complex test tuple types; named aliases corrected the test structure without
+changing the contract.
+
+**Current recommendation/next actions:** run full workspace all-feature test/build/rustdoc/clippy/fmt/diff
+gates and unchanged M0-M3 regressions. If green, check M4.1, consolidate negative memory, and snapshot before
+beginning M4.2 adapter lowering.
+
+**Blockers/dependencies/restart:** none. No new dependency or live-state transition applies.
+
+**Negative-memory status:** provisional constraints implemented. Search handles: `M4.1 strict CFG schema`,
+`adapter-bound control keys`, `owner-contained CFG evidence`, `35 edge sub-kinds`, `production ControlFlow
+Unknown`, `no graph2 dependency`.
+
+**Signature:** Codex (GPT-5), M4.1 integration owner, schema implementation checkpoint, 2026-07-14.
+
+---
+
+## M4.1 terminal checkpoint — complete
+
+**Date/time:** 2026-07-14T18:52:55+02:00
+
+**Objective/target:** close the control-flow schema milestone only after full workspace regression gates.
+
+**Changes:** checked M4.1 in the durable TODO and finalized the active plan. The delivered boundary consists of
+accepted ADR 0003, public strict `deslop.control-flow/1` types/builders/exports, adapter- and revision-bound
+graph/point/edge identities, virtual boundaries, typed flow families, explicit coverage/precision, and
+fail-closed topology/authority validation. Production lowering and capability promotion remain deferred to
+their explicit M4.2 owner.
+
+**Commands/checks run:** focused five-suite M4.1 matrix; full parse tests/check/clippy/rustdoc; cargo-tree/source
+authority audits; `cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`; `cargo clippy --workspace
+--all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`; `git diff --check`.
+
+**Results:** PASS. Five M4.1 suites cover eight families, 35 portable sub-kind instances, stable strict wire
+round-trip, corruption, topology, precision, owner containment, and production non-promotion. Parse reports
+139 passed, zero failed, one designated ignored instrumentation probe, and four passing compile-fail doctests.
+All workspace terminal gates and unchanged M0/M1/M2 plus graph false-resolution probes pass. No new dependency
+was introduced, `deslop-parse` does not depend on `deslop-graph`, and all six production adapters remain
+ControlFlow Unknown with no authority.
+
+**Invalidated assumptions / failure modes:** query captures/canonical roles are lowering seeds, not CFG edges;
+same-file evidence is insufficient without owner containment; point/edge identity must bind the adapter
+manifest; enumerated edges do not prove complete coverage; RuntimeVerification is not exhaustive static CFG
+authority; exceptional/abrupt/suspension flow cannot collapse into normal; deterministic ordering does not
+resolve uncertainty. Two test-only complex tuple types were replaced with aliases after clippy rejection.
+
+**Current recommendation/next actions:** snapshot M4.1, consolidate its positive/negative memory, then begin
+M4.2 by defining versioned adapter lowering rules and capability declarations before promoting any production
+language.
+
+**Blockers/dependencies/restart:** none. No runtime restart, migration, or cache clear applies.
+
+**Negative-memory status:** terminal constraints ready for durable consolidation. Search handles: `M4.1
+complete control-flow schema`, `control capture not CFG`, `adapter-bound point edge keys`, `owner containment`,
+`coverage not enumeration`, `no graph2 CFG`, `production ControlFlow Unknown`.
+
+**Signature:** Codex (GPT-5), M4.1 integration owner, terminal checkpoint, 2026-07-14.

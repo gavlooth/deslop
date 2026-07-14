@@ -29,6 +29,7 @@ mod aggregation;
 #[allow(dead_code)]
 mod arena;
 mod containment;
+mod control_flow;
 mod identity;
 mod incremental;
 mod instrumentation;
@@ -54,6 +55,15 @@ pub use aggregation::{
     SyntaxAggregationInstrumentation, SyntaxNodeAggregate,
 };
 pub use arena::{SourcePoint, SyntaxSpan};
+pub use control_flow::{
+    CONTROL_FLOW_POLICY_SCHEMA, CONTROL_FLOW_SCHEMA, ControlAbruptKind, ControlBranchKind,
+    ControlEdge, ControlEdgeDraft, ControlEdgeKey, ControlEdgeKind, ControlEdgePrecision,
+    ControlExceptionalKind, ControlExitOutcome, ControlFlowBuildError, ControlFlowBuilder,
+    ControlFlowCoverageEvidence, ControlFlowDocument, ControlFlowGraph, ControlFlowGraphDraft,
+    ControlFlowGraphKey, ControlFlowOwnerKind, ControlFlowPolicyId, ControlFlowProjection,
+    ControlLoopKind, ControlPoint, ControlPointDraft, ControlPointKey, ControlPointKind,
+    ControlSuspensionKind, ControlSyntheticPointKind,
+};
 pub use identity::{
     NODE_BASELINE_SCHEMA, NODE_KEY_SCHEMA, NodeAnchor, NodeBaselineFingerprint, NodeId, NodeKey,
     NodeKeyLookupError, NodeLookupError,

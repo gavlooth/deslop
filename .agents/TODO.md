@@ -423,7 +423,12 @@ reports, benchmark records, and work orders.
 
 ## M4 — CFG, PST, PDG, and SDG
 
-- [ ] M4.1 Define the control-edge schema for entry/exit, normal, branch, loop, exceptional, abrupt, and suspension flow.
+- [x] M4.1 Define the control-edge schema for entry/exit, normal, branch, loop, exceptional, abrupt, and suspension flow.
+  Accepted ADR 0003 and public `deslop.control-flow/1` bind exact analysis/projection/policy, owner/grammar/
+  adapter capability evidence, virtual entry/exit, owner-contained points, and payload-bound graph/point/edge
+  keys. Eight typed edge families and 35 portable sub-kind instances round-trip strictly; malformed topology,
+  stale keys, incomplete authority/coverage, conservative/recovered evidence, and graph/2 fallback fail closed.
+  All workspace all-feature gates pass; production ControlFlow authority remains Unknown pending M4.2.
 - [ ] M4.2 Implement CFG lowering for each adapter at its declared capability tier.
 - [ ] M4.3 Compute dominance/post-dominance and hierarchical SESE/PST regions.
 - [ ] M4.4 Preserve irreducible control regions as explicit non-structured/unknown facts.

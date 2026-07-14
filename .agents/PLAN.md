@@ -2637,3 +2637,80 @@ false-resolution regressions pass.
 
 Terminal outcome: M3.DoD is complete. The next active milestone is M4.1: define the versioned control-edge
 schema and its fail-closed capability/authority boundary before adapter lowering begins.
+
+#### Active M4.1 execution plan — versioned control-flow edge contract
+
+Active hypothesis: CFG is a revision-bound local-semantic overlay over `ProjectAnalysis`, not an extension
+of the syntactic project dependency `deslop.graph/2`. M4.1 must freeze enough identity, endpoint, transition,
+coverage, uncertainty, and authority semantics that M4.2 adapter lowering cannot invent an ambiguous wire
+shape or promote S0/S1 syntax observations to S2 ControlFlow evidence.
+
+Current approach:
+
+1. Add ADR 0003 and `deslop.control-flow/1` in `deslop-parse`. Represent each callable/initializer CFG with
+   one virtual entry and one virtual exit, revision-bound syntax/synthetic points, stable payload-bound graph/
+   point/edge keys, exact analysis/projection/policy identity, grammar/adapter identity, and the stored
+   ControlFlow capability declaration.
+2. Define disjoint typed transition families for entry, exit, normal, branch, loop, exceptional, abrupt,
+   and suspension flow. Branch/loop/exception/abrupt/suspension sub-kinds and adapter-defined extensions are
+   structured rather than free-form labels. Entry and exit boundary invariants are executable.
+3. Separate graph coverage (`Complete`, `Partial`, `Unsupported`, `Failed`) from edge precision (`Exact` or
+   conservative with an exact reason). Complete coverage requires provided ControlFlow capability at static
+   Adapter/LanguageServer/Compiler authority, no recovered owner, and no unresolved uncertainty. Incomplete
+   coverage retains canonical distinct reasons. Syntax and RuntimeVerification cannot authorize a CFG.
+4. Add a frozen all-edge-family round-trip plus corruption/adversarial tests for stale keys, duplicate or
+   dangling endpoints, boundary misuse, foreign-file nodes, invalid authority/support/coverage combinations,
+   unknown fields, noncanonical ordering, and hidden graph/2 coupling. Do not implement production lowering or
+   promote adapter manifests in M4.1; those are M4.2 responsibilities.
+
+CONVERGENCE: one complete synthetic-adapter graph exercising every transition family plus one mutation matrix
+resolves the schema decision. Terminal outcomes are: (a) malformed identity/topology/authority deserializes—
+schema invalid; (b) every required edge family cannot round-trip distinctly—catalog invalid; (c) a current
+production adapter can claim complete CFG evidence—authority boundary invalid; or (d) exact/adversarial matrices
+and workspace gates pass, authorizing M4.2 to lower against the frozen contract.
+
+Validation path: focused control-flow schema tests; strict JSON round-trip/corruption matrix; production
+manifest non-promotion and graph/2 independence source audit; parse tests/doctests/rustdoc/clippy; workspace
+all-feature test/build/rustdoc/clippy/fmt/diff gates; unchanged M0-M3 regression gates.
+
+Negative-memory constraints: canonical/query control captures are syntax seeds, never CFG edges; do not merge
+CFG with graph/2; do not infer complete coverage from enumerated edges; do not use runtime observations as
+static CFG authority; do not collapse exceptional/abrupt/suspension edges into `normal`; do not omit virtual
+boundaries or represent them as syntax nodes; do not let deterministic order resolve semantic uncertainty.
+
+Agent assignment: `/root` owns schema design, implementation, adversarial tests, integration, and verification.
+No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: write ADR 0003's normative invariants, then implement the strict schema and make the complete
+all-family fixture round-trip before adding corruption cases.
+
+M4.1 implementation checkpoint (2026-07-14): ADR 0003 and the public `deslop.control-flow/1` substrate are
+implemented in `deslop-parse`. Each graph binds one exact executable owner, grammar, stored adapter identity,
+ControlFlow support/authority, coverage, virtual entry/exit, canonical points/edges, and graph/point/edge keys.
+Point and edge identities include the exact adapter manifest as well as revision and lowering policy. Syntax
+and synthetic points must remain inside the owner's source region; cross-file or outside-owner evidence fails.
+
+The edge catalog retains eight disjoint families and 35 distinct portable sub-kind instances. Complete graphs
+require Provided ControlFlow at Adapter/LSP/Compiler authority, exact non-recovered edge evidence, and no
+uncertainty reasons. Five focused tests pass: complete all-family stable round-trip, all-sub-kind non-collapse,
+strict payload/topology/authority corruption, direct boundary/duplicate/conservative/outside-owner rejection,
+and production Unknown non-promotion. Parse has 139 passing tests, one designated ignored probe, and four
+passing compile-fail doctests; parse check/clippy/rustdoc/fmt/diff pass. Cargo-tree audit confirms no
+`deslop-graph` dependency. Next: full workspace all-feature terminal gates, then close M4.1 if regressions remain
+green.
+
+#### M4.1 terminal checkpoint — complete and verified
+
+The accepted ADR 0003 and `deslop.control-flow/1` implementation satisfy the frozen schema contract. Every
+graph retains exact immutable provenance and static capability truth; one virtual entry/exit; owner-contained,
+adapter-bound, payload-keyed points and edges; explicit complete/partial/unsupported/failed coverage; exact or
+reasoned-conservative precision; and eight disjoint edge families with 35 exercised portable sub-kind values.
+The strict document rejects schema/ID/key corruption, unknown fields, noncanonical order, duplicate/dangling
+topology, boundary misuse, cross-file/outside-owner evidence, invalid support/authority/coverage combinations,
+recovery, and conservative Complete claims.
+
+Terminal validation passes: five focused M4.1 suites; parse 139 passed, zero failed, one designated ignored
+probe, and four compile-fail doctests; full workspace all-feature test/build/rustdoc/clippy/fmt/diff gates;
+unchanged M0/M1/M2 and graph false-resolution regressions; no `deslop-graph` dependency; and no production
+ControlFlow capability promotion. M4.1 is complete. Next is M4.2 adapter lowering at each adapter's honestly
+declared capability tier.
