@@ -2427,3 +2427,72 @@ dependency, migration, reload, cache clear, or restart applies.
 
 Next checkpoint: open M3.7 in a fresh jj child, inventory the existing M3.2-M3.6 fixtures against every ADR
 adversarial dimension, and add only the missing joined cases with frozen expected paths/status/reasons.
+
+#### Active M3.7 execution plan — frozen joined adversarial resolution corpus
+
+Active hypothesis: M3.2-M3.6 already exercise each named adversarial behavior, but the evidence is spread
+across independent tests and does not yet constitute one frozen gold corpus. M3.7 is complete only when a
+joined, hand-labelled matrix locks the exact result and path surface for duplicate names, nested lexical
+scope, alias/selective/glob imports, re-exports, dynamic boundaries, and terminal versus non-terminal
+absence without adding any repository-global or ordering fallback.
+
+Current approach:
+
+1. Add test-only gold summaries over the strict public resolution surface: result status and coverage;
+   path viability, endpoint kind, edge kinds, rejection reasons, check kind/state pairs, and dynamic-
+   boundary counts. Keep opaque revision keys out of the labels while retaining exact semantic structure.
+2. Reuse the executable nested-scope and multi-module fixtures in one joined matrix. Freeze complete
+   duplicate ambiguity and language-specific duplicate handling, nearest-scope shadowing, selective/alias/
+   glob/re-export paths including wrong-target rejection, dynamic and deferred unknown cases, complete
+   zero-candidate unresolved, and partial zero-candidate unknown.
+3. Run the joined gold test first, repair only measured contract gaps, then run the complete parse crate and
+   workspace all-feature terminal gates. Leave M3.8 precision/recall measurement separate; M3.7 establishes
+   the frozen labelled cases that M3.8 will score.
+
+CONVERGENCE: one matrix test enumerates every named M3.7 case and compares its exact semantic summary. Its
+terminal outcomes are: (a) a label disagrees because the expected fixture contract was wrong—correct the
+hand label from retained path evidence; (b) the implementation drops or misclassifies evidence—repair that
+single semantic boundary; or (c) all labels match, authorizing the full gates. The matrix collapses the
+adversarial breadth into one run and gives M3.8 a stable denominator rather than a percentage-only claim.
+
+Validation path: focused joined-gold test with exact case count; existing focused resolution tests; full
+parse tests and compile-fail doctests; workspace all-feature test, build, rustdoc, clippy, fmt, and diff
+checks; unchanged M0/M1/M2 and graph false-resolution gates.
+
+Negative-memory constraints: no global spelling lookup; no path-stem module inference; no first/sorted
+winner; no terminal result from incomplete reference/module/export/dynamic evidence; no omission of
+rejected or unknown paths; no conversion of re-export cycles or deferred imports into absence proof; no
+production capability promotion from synthetic fixtures.
+
+Agent assignment: `/root` owns the gold schema, fixture integration, and verification. No sub-agent was
+requested, so no delegation is active.
+
+Next checkpoint: implement the test-only semantic summaries and run the single joined matrix to capture the
+exact measured labels before any production-code change.
+
+Joined-gold checkpoint (2026-07-14): focused implementation complete. A versioned
+`deslop.resolution-adversarial-gold/1` artifact freezes 16 cases through semantic endpoint labels rather
+than opaque revision keys. Every result locks status, coverage, authority, dynamic-boundary count, and all
+paths; every path locks endpoint, viability, ordered traversal edges, rejection reasons, check states,
+source-fact kinds, provider-fact count, authorities, and coverage. The executable matrix includes unrelated
+same-spelled declarations in separate file scopes, equal-precedence duplicates, explicit nested shadowing,
+namespace/visibility/timing rejections, selective/alias/glob/re-export paths, a re-export cycle, conditional
+and mapped deferred imports, unresolved qualification, dynamic evidence, and complete/partial zero-
+candidate cases.
+
+Measured focused result: 16/16 gold labels match. The complete parse package reports 129 passed, zero
+failed, one designated instrumentation probe ignored, and four compile-fail doctests passed. Focused
+rustdoc, all-target clippy, fmt, and diff checks pass. No production resolution algorithm, schema, adapter,
+or capability declaration changed. Next: run all workspace all-feature terminal gates and targeted audits
+for matrix denominator, opaque-key absence, no global-name leakage, and unchanged prior gates.
+
+Terminal M3.7 checkpoint (2026-07-14): complete and verified. The frozen 16-case corpus contains exactly 36
+retained paths—13 viable, 18 rejected, and 5 unknown—with status counts 7 Unique, 1 Ambiguous, 2
+Unresolved, and 6 Unknown. Semantic labels bind exact source spans or package/target/module identities while
+excluding opaque revision keys. Full workspace all-feature test/build/rustdoc/clippy/fmt/diff gates pass,
+including M0/M1/M2 locks and graph false-resolution probes. Targeted diff/source audits confirm the change
+is test-only and introduces no global lookup, first/sorted winner, resolver/schema change, or production
+capability promotion.
+
+Next checkpoint: open M3.8 in a fresh jj child and design the exact confusion-matrix and incremental-
+isolation scorer over the frozen M3.7 cases without changing or re-labelling the corpus.

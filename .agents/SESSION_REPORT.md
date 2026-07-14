@@ -9161,3 +9161,138 @@ retained`, `equal compiler no winner`, `runtime static rejection`, `semantic art
 `legacy successor fail closed`.
 
 **Signature:** Codex (GPT-5), M3.6 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M3.7 active checkpoint — joined adversarial gold audit
+
+**Date/time:** 2026-07-14T17:51:32+02:00
+
+**Objective/target:** freeze executable adversarial resolution fixtures for duplicate names, nested scopes,
+alias/wildcard imports, re-exports, dynamic boundaries, and unresolved/unknown absence.
+
+**Changes:** planning and fixture audit only. Opened clean jj child `nzytmqrp` over terminal M3.6
+`rmxquklo`. Audited ADR 0002 acceptance dimensions, the existing nested lexical fixture, the multi-file/
+multi-target module fixture, duplicate-definition policies, dynamic/deferred/qualified/missing cases, and
+the exact retained `ResolutionResult`/`ResolutionPath` inspection surface.
+
+**Commands/checks run:** `jj status`; targeted `rg`/`sed` over scope fact accessors, resolution fixtures and
+tests, ADR 0002, TODO/plan/session artifacts; targeted Hindsight searches for the M3.7 area during session
+continuation.
+
+**Results/failure modes:** every named behavior has executable coverage, but the assertions are distributed
+and often check only one property. There is no single frozen, hand-labelled corpus that locks status,
+coverage, path viability, endpoint kind, traversal edges, rejection reasons, check states, and dynamic
+boundaries together. Opaque fact keys are revision-bound and unsuitable as semantic gold labels; public
+fact/path accessors are sufficient to label the meaningful structure without weakening provenance.
+
+**Invalidated assumptions / negative memory:** isolated behavior tests are not yet the M3.7 frozen corpus.
+Adding another production resolver path would be unjustified; the gap is joined executable evidence. Gold
+serialization must not bake in opaque keys or use sorted order as a winner, and incomplete/dynamic cases
+must remain represented as expected Unknown rather than disappearing from the matrix.
+
+**Current recommendation/next actions:** add test-only semantic result/path summaries and one exact joined
+matrix over existing executable fixtures. Run that focused matrix first; change production code only if a
+measured retained-path mismatch exposes a real contract defect. Then run parse and workspace terminal gates.
+
+**Blockers/dependencies/restart:** none. No dependency, live process, migration, reload, cache clear, or
+restart applies.
+
+**Negative-memory status:** provisional and active. Search handles: `M3.7 joined adversarial gold`,
+`semantic labels not opaque keys`, `dynamic unknown denominator`, `no isolated-test relabel`, `no stable
+winner`.
+
+**Signature:** Codex (GPT-5), M3.7 integration owner, joined-gold audit checkpoint, 2026-07-14.
+
+---
+
+## M3.7 joined-gold implementation checkpoint
+
+**Date/time:** 2026-07-14T17:58:43+02:00
+
+**Objective/target:** make the named adversarial fixture breadth one exact executable contract while
+preserving all retained resolution evidence.
+
+**Changes:** added test-only semantic result/path summaries in `resolution.rs`; generalized the peer-module
+fixture to construct a local binding/reference for an `imported` spelling when present; added a 16-case
+joined test; and added versioned `tests/fixtures/resolution_m3_7_adversarial_gold.json`. Semantic endpoint
+labels use endpoint kind, namespace/name or exact package/target/module path, source path, and source span;
+opaque fact/result keys are intentionally excluded from the labels.
+
+**Commands/checks run:** two instrumentation passes to measure the complete summaries; exact focused gold
+test; `cargo test -p deslop-parse --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc -p deslop-parse
+--all-features --no-deps`; `cargo clippy -p deslop-parse --all-features --all-targets -- -D warnings`;
+`cargo fmt --all -- --check`; `git diff --check`; `jj status/diff --stat`.
+
+**Results:** PASS. The frozen matrix matches all 16 labels. It contains 36 retained paths: 13 viable, 18
+rejected, and 5 unknown; two complete zero/fully-rejected cases are Unresolved, while six incomplete,
+dynamic, deferred, qualified, or cyclic cases are Unknown. Same-spelled `imported` references in importer
+and peer files resolve only through their declared module/export and local lexical paths respectively.
+Parse reports 129 passed, zero failed, one designated instrumentation probe ignored, and four compile-fail
+doctests passed. Focused rustdoc/clippy/fmt/diff gates pass.
+
+**Invalidated assumptions / failure modes:** isolated assertions were insufficient as a frozen corpus. The
+measured gold also shows why endpoint-only snapshots are insufficient: several Unique results retain both
+viable explicit and glob paths to one endpoint plus rejected wrong-target attempts. Opaque revision keys
+would make unrelated edits churn the gold and remain excluded. No production resolver defect was found, so
+no resolver behavior or capability authority changed.
+
+**Current recommendation/next actions:** run the workspace all-feature terminal gates; audit exact case/path
+counts from the artifact and ensure previous resolution/provider and M0-M2 gates remain green. Close M3.7
+only after terminal success, then open M3.8 to score this frozen corpus rather than re-labelling it.
+
+**Blockers/dependencies/restart:** none. This is test-only fixture evidence; no live-state transition,
+dependency, migration, reload, cache clear, or restart applies.
+
+**Negative-memory status:** provisional constraints implemented and awaiting terminal consolidation.
+Search handles: `M3.7 16-case gold`, `36 retained paths`, `unrelated imported peer`, `semantic labels not
+opaque keys`, `dynamic unknown denominator`.
+
+**Signature:** Codex (GPT-5), M3.7 integration owner, joined-gold implementation checkpoint, 2026-07-14.
+
+---
+
+## M3.7 terminal checkpoint — frozen adversarial resolution corpus
+
+**Date/time:** 2026-07-14T18:01:30+02:00
+
+**Objective/target:** complete M3.7 with executable, versioned adversarial fixtures spanning every named
+resolution boundary and retaining exact evidence rather than endpoint-only snapshots.
+
+**Changes:** finalized the 16-case `deslop.resolution-adversarial-gold/1` fixture and joined executable test.
+The test derives stable semantic endpoint labels from declaration namespace/name/source span or exact
+package/target/module identity, then locks result status/coverage/authority/dynamic boundaries and every
+path's endpoint, viability, ordered edges, rejection reasons, check states, source-fact kinds, provider-fact
+count, authority, and coverage. The peer fixture can now create a same-spelled local `imported` binding to
+prove repository-global uniqueness never leaks across file scopes. M3.7 is checked in `.agents/TODO.md`.
+
+**Commands/checks run:** exact focused M3.7 gold test; `jq` denominator/status/path measurement; `cargo test
+-p deslop-parse --all-features`; focused parse rustdoc/clippy/fmt/diff; full `cargo test --workspace
+--all-features`; `cargo build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace
+--all-features --no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo
+fmt --all -- --check`; `git diff --check`; targeted `jj diff` and `rg` audits.
+
+**Results:** PASS. The artifact has exactly 16 cases and 36 retained paths: 13 viable, 18 rejected, and 5
+unknown. Status counts are 7 Unique, 1 Ambiguous, 2 Unresolved, and 6 Unknown. Parse reports 129 passed,
+zero failed, one designated instrumentation probe ignored, and four compile-fail doctests passed. Every
+workspace all-feature terminal gate passes, including unchanged M0/M1/M2 numerical/authority locks and all
+three graph false-resolution probes.
+
+**Invalidated assumptions / failure modes:** separate behavioral tests were not a frozen gold corpus;
+endpoint-only gold would have dropped explicit/glob alternate paths and wrong-target rejection evidence;
+opaque keys would have made fixtures revision-churn-sensitive; and a same-spelled peer declaration must not
+be omitted when proving absence of global-name fallback. These constraints are now executable. No production
+defect was found and no production behavior was changed.
+
+**Current recommendation/next actions:** open M3.8 from this frozen checkpoint. Score exact case/status/path/
+endpoint agreement and publish confusion matrices plus unsupported/Unknown denominators and incremental
+isolation counts. M3.8 must consume the corpus without re-labelling it.
+
+**Blockers/dependencies/restart:** none. No dependency, runtime process, migration, reload, cache clear, or
+restart applies.
+
+**Negative-memory status:** terminal constraints ready for Hindsight consolidation. Search handles: `M3.7
+16-case gold`, `36 retained paths`, `13 viable 18 rejected 5 unknown`, `unrelated imported peer`, `semantic
+labels not opaque keys`, `M3.8 frozen denominator`.
+
+**Signature:** Codex (GPT-5), M3.7 integration owner, terminal checkpoint, 2026-07-14.

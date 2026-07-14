@@ -400,7 +400,13 @@ reports, benchmark records, and work orders.
   rebuild exactly their references (4 reused/1 rebuilt for one result artifact; 3/2 for shared provider
   configuration) with byte-identical clean successors. All workspace gates pass; runtime evidence remains
   orthogonal and production adapter authority is unchanged.
-- [ ] M3.7 Add duplicate-name, nested scope, wildcard/alias import, re-export, dynamic, and unresolved fixtures.
+- [x] M3.7 Add duplicate-name, nested scope, wildcard/alias import, re-export, dynamic, and unresolved fixtures.
+  A versioned 16-case adversarial gold corpus freezes 36 retained paths (13 viable, 18 rejected, 5
+  unknown) with exact semantic endpoint labels, traversal edges, rejection/check evidence, provenance
+  kinds, authority, coverage, and dynamic boundaries. It includes unrelated same-spelled declarations,
+  equal-precedence duplicates, nested explicit shadowing, namespace/visibility/timing rejection, selective/
+  alias/glob imports, re-exports and cycles, dynamic/deferred/qualified unknowns, and complete versus partial
+  zero-candidate absence. All workspace all-feature gates pass; production resolution authority is unchanged.
 - [ ] M3.8 Measure resolution precision/recall and incremental file-isolation behavior.
 - [ ] M3.DoD Meet the frozen gold-corpus resolution gate and block semantic recipes wherever authority is
   incomplete or ambiguous.

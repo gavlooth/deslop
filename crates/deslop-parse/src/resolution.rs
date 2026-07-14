@@ -4622,6 +4622,143 @@ fn sibling() {
         sibling: ScopeFactKey,
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+    struct GoldResolutionPath {
+        endpoint: Option<String>,
+        viability: ResolutionPathViability,
+        edges: Vec<ResolutionPathEdgeKind>,
+        rejection_reasons: Vec<ResolutionRejectionReason>,
+        checks: Vec<(ResolutionCheckKind, ResolutionCheckState)>,
+        source_fact_kinds: Vec<crate::ScopeFactKind>,
+        provider_fact_count: usize,
+        dynamic_boundary_count: usize,
+        authorities: Vec<CapabilityAuthority>,
+        coverage: FactCoverage,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+    struct GoldResolutionResult {
+        status: ResolutionStatus,
+        coverage: FactCoverage,
+        authority: Option<CapabilityAuthority>,
+        dynamic_boundary_count: usize,
+        paths: Vec<GoldResolutionPath>,
+    }
+
+    fn gold_endpoint(graph: &ScopeGraphProjection, endpoint: &ResolutionEndpoint) -> String {
+        fn fact_label(graph: &ScopeGraphProjection, key: &ScopeFactKey) -> String {
+            let fact = fact_by_key(graph, key).unwrap();
+            let node = graph.analysis().node(fact.node()).unwrap();
+            let span = node.span();
+            match fact.data() {
+                ScopeFactData::Declaration {
+                    original_name,
+                    namespace,
+                    ..
+                } => format!(
+                    "declaration:{namespace:?}:{original_name}:{}:{}..{}",
+                    node.path().display(),
+                    span.start_byte(),
+                    span.end_byte()
+                ),
+                ScopeFactData::Definition { symbol_kind, .. } => format!(
+                    "definition:{symbol_kind:?}:{}:{}..{}",
+                    node.path().display(),
+                    span.start_byte(),
+                    span.end_byte()
+                ),
+                ScopeFactData::BuildModule {
+                    package_id,
+                    target_id,
+                    module_path,
+                    ..
+                } => format!("module:{package_id}:{target_id}:{}", module_path.join("::")),
+                other => panic!("resolution endpoint names non-endpoint fact {other:?}"),
+            }
+        }
+
+        match endpoint {
+            ResolutionEndpoint::Declaration(key)
+            | ResolutionEndpoint::Definition(key)
+            | ResolutionEndpoint::Module(key) => fact_label(graph, key),
+            ResolutionEndpoint::MergedDeclarations(keys) => {
+                let mut labels = keys
+                    .iter()
+                    .map(|key| fact_label(graph, key))
+                    .collect::<Vec<_>>();
+                labels.sort();
+                format!("merged:[{}]", labels.join(","))
+            }
+            ResolutionEndpoint::External(symbol) => format!("external:{symbol}"),
+        }
+    }
+
+    fn gold_result(
+        graph: &ScopeGraphProjection,
+        result: &ResolutionResult,
+    ) -> GoldResolutionResult {
+        let mut paths = result
+            .paths()
+            .iter()
+            .map(|path| {
+                let mut source_fact_kinds = path
+                    .source_facts()
+                    .iter()
+                    .map(|key| fact_by_key(graph, key).unwrap().data().kind())
+                    .collect::<Vec<_>>();
+                source_fact_kinds.sort();
+                GoldResolutionPath {
+                    endpoint: path
+                        .endpoint()
+                        .map(|endpoint| gold_endpoint(graph, endpoint)),
+                    viability: path.viability(),
+                    edges: path.edges().iter().map(ResolutionPathEdge::kind).collect(),
+                    rejection_reasons: path.rejection_reasons().to_vec(),
+                    checks: path
+                        .checks()
+                        .iter()
+                        .map(|check| (check.kind(), check.state()))
+                        .collect(),
+                    source_fact_kinds,
+                    provider_fact_count: path.source_provider_facts().len(),
+                    dynamic_boundary_count: path.dynamic_boundaries().len(),
+                    authorities: path.authorities().to_vec(),
+                    coverage: path.coverage().status(),
+                }
+            })
+            .collect::<Vec<_>>();
+        paths.sort_by_key(|path| format!("{path:?}"));
+        GoldResolutionResult {
+            status: result.status(),
+            coverage: result.coverage().status(),
+            authority: result.authority(),
+            dynamic_boundary_count: result.dynamic_boundaries().len(),
+            paths,
+        }
+    }
+
+    fn module_result<'a>(
+        graph: &ScopeGraphProjection,
+        projection: &'a ResolutionProjection,
+        path: &str,
+        spelling: &str,
+    ) -> &'a ResolutionResult {
+        projection
+            .results()
+            .iter()
+            .map(ResolutionResultRecord::wire)
+            .find(|result| {
+                let fact = fact_by_key(graph, result.reference()).unwrap();
+                matches!(
+                    fact.data(),
+                    ScopeFactData::Reference { original_spelling, .. }
+                        if original_spelling == spelling
+                            && graph.analysis().node(fact.node()).unwrap().path() == Path::new(path)
+                )
+            })
+            .unwrap()
+    }
+
     fn analysis(pack: &'static dyn LangPack) -> Arc<ProjectAnalysis> {
         let root = tempfile::tempdir().unwrap();
         let mut registry = Registry::new(&GENERIC_PACK);
@@ -4802,16 +4939,19 @@ fn sibling() {
         let cycle_scope = add_file(cycle_root);
         let wrong_scope = add_file(wrong_root);
         let peer_scope = add_file(peer_root);
-        let independent = nodes_by_path_text(&analysis, "peer.resolutionrs", "independent");
-        if independent.len() >= 2 {
+        for name in ["independent", "imported"] {
+            let matches = nodes_by_path_text(&analysis, "peer.resolutionrs", name);
+            if matches.len() < 2 {
+                continue;
+            }
             let declaration = builder
                 .add_declaration(
-                    independent[0],
-                    roles(&analysis, independent[0]),
+                    matches[0],
+                    roles(&analysis, matches[0]),
                     complete.clone(),
                     DeclarationDraft {
-                        original_name: "independent".into(),
-                        lookup_key: "independent".into(),
+                        original_name: name.into(),
+                        lookup_key: name.into(),
                         namespace: NameNamespace::Value,
                         scope: peer_scope,
                         visibility: VisibilityDraft {
@@ -4825,8 +4965,8 @@ fn sibling() {
                 .unwrap();
             builder
                 .add_binding(
-                    independent[0],
-                    roles(&analysis, independent[0]),
+                    matches[0],
+                    roles(&analysis, matches[0]),
                     complete.clone(),
                     BindingDraft {
                         target: BindingTargetDraft::Declaration(declaration),
@@ -4836,15 +4976,15 @@ fn sibling() {
                     },
                 )
                 .unwrap();
-            let reference = *independent.last().unwrap();
+            let reference = *matches.last().unwrap();
             builder
                 .add_reference(
                     reference,
                     roles(&analysis, reference),
                     complete.clone(),
                     ReferenceDraft {
-                        original_spelling: "independent".into(),
-                        segments: vec!["independent".into()],
+                        original_spelling: name.into(),
+                        segments: vec![name.into()],
                         namespace: NameNamespace::Value,
                         scope: peer_scope,
                         role: ReferenceRole::Read,
@@ -6062,6 +6202,85 @@ fn sibling() {
             path.source_provider_facts() == [key.clone()]
                 && matches!(path.endpoint(), Some(ResolutionEndpoint::External(symbol)) if symbol == "registry://example/dependency::imported")
         }));
+    }
+
+    #[test]
+    fn m3_7_adversarial_resolution_matrix_matches_frozen_gold() {
+        let mut actual = BTreeMap::new();
+        for (label, mode, partial) in [
+            ("duplicate-equal-precedence", FixtureMode::Ambiguous, false),
+            (
+                "nested-explicit-shadowing",
+                FixtureMode::ExplicitShadowing,
+                false,
+            ),
+            (
+                "namespace-visibility-timing-rejections",
+                FixtureMode::Rejected,
+                false,
+            ),
+            ("dynamic-boundary", FixtureMode::Dynamic, false),
+            (
+                "conditional-deferred-import",
+                FixtureMode::DeferredImport,
+                false,
+            ),
+            (
+                "mapped-deferred-import",
+                FixtureMode::DeferredMappedImport,
+                false,
+            ),
+            ("unresolved-qualification", FixtureMode::Qualified, false),
+            ("complete-zero-candidate", FixtureMode::Missing, false),
+            ("partial-zero-candidate", FixtureMode::Missing, true),
+        ] {
+            let fixture = fixture(mode, partial);
+            let graph = Arc::clone(&fixture.graph);
+            let projection =
+                ResolutionProjection::build(fixture.graph, policy(label.as_bytes())).unwrap();
+            actual.insert(label, gold_result(&graph, projection.results()[0].wire()));
+        }
+
+        let graph = module_fixture();
+        let projection =
+            ResolutionProjection::build(Arc::clone(&graph), policy(b"m3-7-module-gold")).unwrap();
+        for (label, spelling) in [
+            ("selective-import", "imported"),
+            ("alias-import", "alias"),
+            ("re-export", "through"),
+            ("wildcard-import", "globbed"),
+            ("re-export-cycle", "looped"),
+        ] {
+            actual.insert(
+                label,
+                gold_result(
+                    &graph,
+                    module_result(&graph, &projection, "importer.resolutionrs", spelling),
+                ),
+            );
+        }
+
+        let graph = module_fixture_with_peer("fn imported() {} fn peer() { imported; }\n");
+        let projection =
+            ResolutionProjection::build(Arc::clone(&graph), policy(b"m3-7-unrelated-duplicate"))
+                .unwrap();
+        for (label, path) in [
+            ("unrelated-importer-name", "importer.resolutionrs"),
+            ("unrelated-peer-name", "peer.resolutionrs"),
+        ] {
+            actual.insert(
+                label,
+                gold_result(&graph, module_result(&graph, &projection, path, "imported")),
+            );
+        }
+
+        let expected: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/resolution_m3_7_adversarial_gold.json"
+        ))
+        .unwrap();
+        assert_eq!(expected["schema"], "deslop.resolution-adversarial-gold/1");
+        assert_eq!(actual.len(), 16);
+        assert_eq!(expected["cases"], serde_json::to_value(actual).unwrap());
     }
 
     #[test]
