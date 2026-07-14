@@ -407,7 +407,13 @@ reports, benchmark records, and work orders.
   equal-precedence duplicates, nested explicit shadowing, namespace/visibility/timing rejection, selective/
   alias/glob imports, re-exports and cycles, dynamic/deferred/qualified unknowns, and complete versus partial
   zero-candidate absence. All workspace all-feature gates pass; production resolution authority is unchanged.
-- [ ] M3.8 Measure resolution precision/recall and incremental file-isolation behavior.
+- [x] M3.8 Measure resolution precision/recall and incremental file-isolation behavior.
+  The published M3.8 report scores the frozen 16-case corpus with a full five-status confusion matrix:
+  diagonal counts `[7,1,2,6,0]`. Ten Complete cases have 27/27 exact path and 18/18 endpoint precision/
+  recall; all six expected Unknown cases remain counted with 9/9 paths and 5/5 endpoints. Four clean-parity
+  incremental scenarios prove 5 reused/0 rebuilt plus one new unrelated reference, 0/1 for a reachable
+  Unique→Ambiguous duplicate, 1/5 for an export cone, and 0/1 for exact module appearance. All workspace
+  gates pass; production authority is unchanged.
 - [ ] M3.DoD Meet the frozen gold-corpus resolution gate and block semantic recipes wherever authority is
   incomplete or ambiguous.
 

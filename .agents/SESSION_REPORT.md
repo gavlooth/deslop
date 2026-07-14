@@ -9296,3 +9296,129 @@ restart applies.
 labels not opaque keys`, `M3.8 frozen denominator`.
 
 **Signature:** Codex (GPT-5), M3.7 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M3.8 active checkpoint — measurement contract audit
+
+**Date/time:** 2026-07-14T18:05:22+02:00
+
+**Objective/target:** measure frozen-corpus resolution precision/recall and incremental file isolation with
+raw denominators, full status confusion, and clean-build parity.
+
+**Changes:** planning/audit only. Opened clean jj child `msxmkvpo` over terminal M3.7 `nzytmqrp`. Audited
+ADR 0002 verification/report requirements, the frozen 16-case/36-path gold, `ResolutionUpdate` accessors,
+and existing unrelated-file, export-cone, module-appearance, and semantic-artifact successor tests.
+
+**Commands/checks run:** M3.7 Hindsight positive/negative writes and consolidation (1,250 entities, 3,334
+relations, 3,534 observations); `jj new/log/status`; targeted Hindsight M3.8 search; targeted `sed`/`rg` over
+ADR/TODO/update surfaces.
+
+**Results/failure modes:** the frozen corpus has ten Complete supported cases and six expected Unknown cases.
+A single overall accuracy would hide Unknown omissions and the distinction among Ambiguous, Unresolved, and
+Conflict. Existing tests prove several successor counts independently but do not publish one exact isolation
+table, and there is no explicit incremental Unique-to-Ambiguous reachable-duplicate scenario. M3.8 therefore
+needs a scorer derived from the gold plus joined clean-parity scenarios, not hand-copied percentages.
+
+**Invalidated assumptions / negative memory:** M3.7 exact equality is not itself the required M3.8 report.
+Percentages without counts, excluding Unknown from the denominator, set-deduplicating alternate paths, or
+claiming isolation from reuse counts without clean equality are invalid. The M3.7 labels are immutable input;
+measurement cannot revise them.
+
+**Current recommendation/next actions:** deserialize and score the gold against one reusable actual-corpus
+builder, then add four exact incremental scenarios including unrelated same-spelled addition and reachable
+equal-precedence transition. Publish the measured report only after focused tests pass.
+
+**Blockers/dependencies/restart:** none. No dependency or live process is needed.
+
+**Negative-memory status:** provisional and active. Search handles: `M3.8 full status confusion`, `Unknown
+denominator`, `path multiset precision recall`, `clean parity isolation`, `reachable duplicate transition`,
+`no corpus relabel`.
+
+**Signature:** Codex (GPT-5), M3.8 integration owner, measurement-contract checkpoint, 2026-07-14.
+
+---
+
+## M3.8 scorer/isolation implementation checkpoint
+
+**Date/time:** 2026-07-14T18:10:10+02:00
+
+**Objective/target:** compute exact status/path/endpoint agreement from frozen gold and measure clean-parity
+incremental reverse cones without omitting Unknown cases.
+
+**Changes:** made the M3.7 gold types strict-deserializable; factored one actual-corpus builder; added exact
+multiset scoring, five-status confusion, supported/Unknown segment measurements, and four incremental
+isolation scenarios. Added `.agents/M3_8_RESOLUTION_REPORT.md` with raw counts, ratios, matrix, scenario
+table, commands/failures, and scope limits. No production resolver/schema/adapter code changed.
+
+**Commands/checks run:** exact focused corpus scorer; focused two-test `m3_8_` run; repeated `cargo fmt`.
+
+**Results:** PASS at focused checkpoint. Confusion is diagonal `[7,1,2,6,0]`; 16/16 exact cases; 36/36
+exact paths. Supported: 10/10 statuses, path precision/recall 27/27, endpoint precision/recall 18/18.
+Expected Unknown: 6/6 statuses, 9/9 paths, 5/5 non-null endpoints. Incremental: unrelated addition 5 reused/
+0 rebuilt/1 added; reachable duplicate 0/1 and Unique→Ambiguous; export addition 1/5 and Unknown→Unique;
+module appearance 0/1 and Unknown→Unknown. Every successor equals clean JSON.
+
+**Invalidated assumptions / failure modes:** the first module-appearance expected table treated invalidation
+reasons as exclusive and expected only MatchingModuleAdded. The measured rebuild also correctly retains
+ReachableScopeChanged. The assertion was corrected to preserve both evidence causes; no resolver behavior was
+changed. Percent-only reporting, Unknown omission, alternate-path deduplication, and reuse without clean
+parity remain invalid.
+
+**Current recommendation/next actions:** run parse and full workspace all-feature terminal gates, update the
+published report with final commands, audit that all changes remain test/report-only and prior gates remain
+green, then close M3.8.
+
+**Blockers/dependencies/restart:** none.
+
+**Negative-memory status:** provisional negative constraint added: invalidation reason counts are
+non-exclusive evidence dimensions. Search handles: `M3.8 module appearance two reasons`, `status matrix
+7 1 2 6 0`, `Unknown denominator 6`, `27 path 18 endpoint`, `clean parity isolation`.
+
+**Signature:** Codex (GPT-5), M3.8 integration owner, scorer/isolation checkpoint, 2026-07-14.
+
+---
+
+## M3.8 terminal checkpoint — exact resolution measurement and isolation
+
+**Date/time:** 2026-07-14T18:12:59+02:00
+
+**Objective/target:** finish M3.8 with an executable scorer and published report containing exact raw counts,
+full status confusion, supported/Unknown path and endpoint agreement, and clean-parity isolation behavior.
+
+**Changes:** finalized the reusable M3.7 corpus loader/actual builder, exact path and endpoint multiset scorer,
+five-status confusion matrix, Complete and expected-Unknown segments, and four incremental scenarios. Updated
+`.agents/M3_8_RESOLUTION_REPORT.md` to terminal status and checked M3.8 in `.agents/TODO.md`. All source
+changes are inside the `resolution.rs` test module; production code is unchanged.
+
+**Commands/checks run:** exact corpus scorer; focused `m3_8_` tests; `cargo test -p deslop-parse
+--all-features`; focused parse rustdoc/clippy/fmt/diff; full `cargo test --workspace --all-features`; `cargo
+build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features
+--no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all --
+--check`; `git diff --check`; targeted `jj status/diff` and report-state audits.
+
+**Results:** PASS. Full status confusion is diagonal `[7,1,2,6,0]`; 16/16 cases and 36/36 paths match.
+Complete supported cases: 10/10 statuses, path precision/recall 27/27, endpoint precision/recall 18/18.
+Expected Unknown: 6/6 statuses, 9/9 paths, 5/5 endpoints. Isolation: unrelated same-spelled addition 5
+reused/0 rebuilt/1 added; reachable duplicate 0/1 and Unique→Ambiguous; export cone 1/5 and Unknown→Unique;
+module appearance 0/1 and Unknown→Unknown. Every successor is clean-document equal. Parse reports 131
+passed, zero failed, one designated ignored probe, and four passing compile-fail doctests. Every workspace
+gate, M0/M1/M2 lock, and graph false-resolution probe passes.
+
+**Invalidated assumptions / failure modes:** invalidation reasons are non-exclusive; module appearance
+retains both ReachableScopeChanged and MatchingModuleAdded for one rebuilt result. This was the only failed
+first assertion and was corrected in the expected measurement without changing resolution behavior. A 1.0
+ratio without raw counts, excluding Unknown, deduplicating alternate paths, or treating test-adapter results
+as production capability remains invalid.
+
+**Current recommendation/next actions:** open M3.DoD and join the frozen resolution gate to semantic-recipe
+eligibility. Prove every non-Unique/incomplete/dynamic/conflicting result blocks consumers and that no graph/2
+fallback authorizes a recipe.
+
+**Blockers/dependencies/restart:** none. No dependency or live-state transition applies.
+
+**Negative-memory status:** terminal constraints ready for Hindsight consolidation. Search handles: `M3.8
+terminal matrix 7 1 2 6 0`, `27 path 18 endpoint`, `Unknown denominator 6`, `clean parity isolation`,
+`invalidation reasons non-exclusive`, `production authority unchanged`.
+
+**Signature:** Codex (GPT-5), M3.8 integration owner, terminal checkpoint, 2026-07-14.

@@ -4622,7 +4622,8 @@ fn sibling() {
         sibling: ScopeFactKey,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct GoldResolutionPath {
         endpoint: Option<String>,
         viability: ResolutionPathViability,
@@ -4636,13 +4637,61 @@ fn sibling() {
         coverage: FactCoverage,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct GoldResolutionResult {
         status: ResolutionStatus,
         coverage: FactCoverage,
         authority: Option<CapabilityAuthority>,
         dynamic_boundary_count: usize,
         paths: Vec<GoldResolutionPath>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct GoldResolutionCorpus {
+        schema: String,
+        cases: BTreeMap<String, GoldResolutionResult>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct ExactAgreementCounts {
+        expected: usize,
+        actual: usize,
+        matched: usize,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct CorpusSegmentMeasurement {
+        cases: usize,
+        status_matches: usize,
+        paths: ExactAgreementCounts,
+        endpoints: ExactAgreementCounts,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct ResolutionCorpusMeasurement {
+        cases: usize,
+        exact_cases: usize,
+        status_order: [ResolutionStatus; 5],
+        status_confusion: [[usize; 5]; 5],
+        supported: CorpusSegmentMeasurement,
+        expected_unknown: CorpusSegmentMeasurement,
+        all_paths: ExactAgreementCounts,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct IncrementalIsolationMeasurement {
+        scenario: &'static str,
+        previous_results: usize,
+        current_results: usize,
+        reused_results: usize,
+        rebuilt_results: usize,
+        added_references: usize,
+        removed_references: usize,
+        rebuilt_reasons: BTreeMap<ResolutionInvalidationReason, usize>,
+        status_transition: (ResolutionStatus, ResolutionStatus),
+        clean_document_equal: bool,
     }
 
     fn gold_endpoint(graph: &ScopeGraphProjection, endpoint: &ResolutionEndpoint) -> String {
@@ -4757,6 +4806,231 @@ fn sibling() {
                 )
             })
             .unwrap()
+    }
+
+    fn frozen_m3_7_gold() -> GoldResolutionCorpus {
+        serde_json::from_str(include_str!(
+            "../../../tests/fixtures/resolution_m3_7_adversarial_gold.json"
+        ))
+        .unwrap()
+    }
+
+    fn actual_m3_7_gold() -> BTreeMap<String, GoldResolutionResult> {
+        let mut actual = BTreeMap::new();
+        for (label, mode, partial) in [
+            ("duplicate-equal-precedence", FixtureMode::Ambiguous, false),
+            (
+                "nested-explicit-shadowing",
+                FixtureMode::ExplicitShadowing,
+                false,
+            ),
+            (
+                "namespace-visibility-timing-rejections",
+                FixtureMode::Rejected,
+                false,
+            ),
+            ("dynamic-boundary", FixtureMode::Dynamic, false),
+            (
+                "conditional-deferred-import",
+                FixtureMode::DeferredImport,
+                false,
+            ),
+            (
+                "mapped-deferred-import",
+                FixtureMode::DeferredMappedImport,
+                false,
+            ),
+            ("unresolved-qualification", FixtureMode::Qualified, false),
+            ("complete-zero-candidate", FixtureMode::Missing, false),
+            ("partial-zero-candidate", FixtureMode::Missing, true),
+        ] {
+            let fixture = fixture(mode, partial);
+            let graph = Arc::clone(&fixture.graph);
+            let projection =
+                ResolutionProjection::build(fixture.graph, policy(label.as_bytes())).unwrap();
+            actual.insert(
+                label.into(),
+                gold_result(&graph, projection.results()[0].wire()),
+            );
+        }
+
+        let graph = module_fixture();
+        let projection =
+            ResolutionProjection::build(Arc::clone(&graph), policy(b"m3-7-module-gold")).unwrap();
+        for (label, spelling) in [
+            ("selective-import", "imported"),
+            ("alias-import", "alias"),
+            ("re-export", "through"),
+            ("wildcard-import", "globbed"),
+            ("re-export-cycle", "looped"),
+        ] {
+            actual.insert(
+                label.into(),
+                gold_result(
+                    &graph,
+                    module_result(&graph, &projection, "importer.resolutionrs", spelling),
+                ),
+            );
+        }
+
+        let graph = module_fixture_with_peer("fn imported() {} fn peer() { imported; }\n");
+        let projection =
+            ResolutionProjection::build(Arc::clone(&graph), policy(b"m3-7-unrelated-duplicate"))
+                .unwrap();
+        for (label, path) in [
+            ("unrelated-importer-name", "importer.resolutionrs"),
+            ("unrelated-peer-name", "peer.resolutionrs"),
+        ] {
+            actual.insert(
+                label.into(),
+                gold_result(&graph, module_result(&graph, &projection, path, "imported")),
+            );
+        }
+        actual
+    }
+
+    fn multiset_match_count(mut expected: Vec<String>, mut actual: Vec<String>) -> usize {
+        expected.sort();
+        actual.sort();
+        let (mut expected_index, mut actual_index, mut matched) = (0, 0, 0);
+        while expected_index < expected.len() && actual_index < actual.len() {
+            match expected[expected_index].cmp(&actual[actual_index]) {
+                Ordering::Less => expected_index += 1,
+                Ordering::Greater => actual_index += 1,
+                Ordering::Equal => {
+                    expected_index += 1;
+                    actual_index += 1;
+                    matched += 1;
+                }
+            }
+        }
+        matched
+    }
+
+    fn measure_corpus_segment(
+        labels: &[&String],
+        expected: &BTreeMap<String, GoldResolutionResult>,
+        actual: &BTreeMap<String, GoldResolutionResult>,
+    ) -> CorpusSegmentMeasurement {
+        let expected_paths = labels
+            .iter()
+            .flat_map(|label| expected[*label].paths.iter())
+            .map(|path| serde_json::to_string(path).unwrap())
+            .collect::<Vec<_>>();
+        let actual_paths = labels
+            .iter()
+            .flat_map(|label| actual[*label].paths.iter())
+            .map(|path| serde_json::to_string(path).unwrap())
+            .collect::<Vec<_>>();
+        let expected_endpoints = labels
+            .iter()
+            .flat_map(|label| expected[*label].paths.iter())
+            .filter_map(|path| path.endpoint.clone())
+            .collect::<Vec<_>>();
+        let actual_endpoints = labels
+            .iter()
+            .flat_map(|label| actual[*label].paths.iter())
+            .filter_map(|path| path.endpoint.clone())
+            .collect::<Vec<_>>();
+        CorpusSegmentMeasurement {
+            cases: labels.len(),
+            status_matches: labels
+                .iter()
+                .filter(|label| {
+                    let label = **label;
+                    expected[label].status == actual[label].status
+                })
+                .count(),
+            paths: ExactAgreementCounts {
+                expected: expected_paths.len(),
+                actual: actual_paths.len(),
+                matched: multiset_match_count(expected_paths, actual_paths),
+            },
+            endpoints: ExactAgreementCounts {
+                expected: expected_endpoints.len(),
+                actual: actual_endpoints.len(),
+                matched: multiset_match_count(expected_endpoints, actual_endpoints),
+            },
+        }
+    }
+
+    fn measure_m3_8_corpus(
+        expected: &BTreeMap<String, GoldResolutionResult>,
+        actual: &BTreeMap<String, GoldResolutionResult>,
+    ) -> ResolutionCorpusMeasurement {
+        let status_order = [
+            ResolutionStatus::Unique,
+            ResolutionStatus::Ambiguous,
+            ResolutionStatus::Unresolved,
+            ResolutionStatus::Unknown,
+            ResolutionStatus::Conflict,
+        ];
+        let mut status_confusion = [[0; 5]; 5];
+        let status_index = |status| {
+            status_order
+                .iter()
+                .position(|entry| *entry == status)
+                .unwrap()
+        };
+        for (label, expected_result) in expected {
+            let actual_result = &actual[label];
+            status_confusion[status_index(expected_result.status)]
+                [status_index(actual_result.status)] += 1;
+        }
+        let supported = expected
+            .iter()
+            .filter_map(|(label, result)| {
+                (result.coverage == FactCoverage::Complete).then_some(label)
+            })
+            .collect::<Vec<_>>();
+        let expected_unknown = expected
+            .iter()
+            .filter_map(|(label, result)| {
+                (result.status == ResolutionStatus::Unknown).then_some(label)
+            })
+            .collect::<Vec<_>>();
+        let all = expected.keys().collect::<Vec<_>>();
+        ResolutionCorpusMeasurement {
+            cases: expected.len(),
+            exact_cases: expected
+                .iter()
+                .filter(|(label, result)| actual[*label] == **result)
+                .count(),
+            status_order,
+            status_confusion,
+            supported: measure_corpus_segment(&supported, expected, actual),
+            expected_unknown: measure_corpus_segment(&expected_unknown, expected, actual),
+            all_paths: measure_corpus_segment(&all, expected, actual).paths,
+        }
+    }
+
+    fn measure_incremental_isolation(
+        scenario: &'static str,
+        update: &ResolutionProjectionUpdate,
+        clean: &ResolutionProjection,
+        status_transition: (ResolutionStatus, ResolutionStatus),
+    ) -> IncrementalIsolationMeasurement {
+        let mut rebuilt_reasons = BTreeMap::new();
+        for reason in update
+            .rebuilt_results()
+            .iter()
+            .flat_map(ResolutionInvalidation::reasons)
+        {
+            *rebuilt_reasons.entry(*reason).or_insert(0) += 1;
+        }
+        IncrementalIsolationMeasurement {
+            scenario,
+            previous_results: update.previous().results().len(),
+            current_results: update.current().results().len(),
+            reused_results: update.reused_result_keys().len(),
+            rebuilt_results: update.rebuilt_results().len(),
+            added_references: update.added_references().len(),
+            removed_references: update.removed_references().len(),
+            rebuilt_reasons,
+            status_transition,
+            clean_document_equal: serde_json::to_value(update.current().document()).unwrap()
+                == serde_json::to_value(clean.document()).unwrap(),
+        }
     }
 
     fn analysis(pack: &'static dyn LangPack) -> Arc<ProjectAnalysis> {
@@ -6206,81 +6480,227 @@ fn sibling() {
 
     #[test]
     fn m3_7_adversarial_resolution_matrix_matches_frozen_gold() {
-        let mut actual = BTreeMap::new();
-        for (label, mode, partial) in [
-            ("duplicate-equal-precedence", FixtureMode::Ambiguous, false),
-            (
-                "nested-explicit-shadowing",
-                FixtureMode::ExplicitShadowing,
-                false,
-            ),
-            (
-                "namespace-visibility-timing-rejections",
-                FixtureMode::Rejected,
-                false,
-            ),
-            ("dynamic-boundary", FixtureMode::Dynamic, false),
-            (
-                "conditional-deferred-import",
-                FixtureMode::DeferredImport,
-                false,
-            ),
-            (
-                "mapped-deferred-import",
-                FixtureMode::DeferredMappedImport,
-                false,
-            ),
-            ("unresolved-qualification", FixtureMode::Qualified, false),
-            ("complete-zero-candidate", FixtureMode::Missing, false),
-            ("partial-zero-candidate", FixtureMode::Missing, true),
-        ] {
-            let fixture = fixture(mode, partial);
-            let graph = Arc::clone(&fixture.graph);
-            let projection =
-                ResolutionProjection::build(fixture.graph, policy(label.as_bytes())).unwrap();
-            actual.insert(label, gold_result(&graph, projection.results()[0].wire()));
-        }
-
-        let graph = module_fixture();
-        let projection =
-            ResolutionProjection::build(Arc::clone(&graph), policy(b"m3-7-module-gold")).unwrap();
-        for (label, spelling) in [
-            ("selective-import", "imported"),
-            ("alias-import", "alias"),
-            ("re-export", "through"),
-            ("wildcard-import", "globbed"),
-            ("re-export-cycle", "looped"),
-        ] {
-            actual.insert(
-                label,
-                gold_result(
-                    &graph,
-                    module_result(&graph, &projection, "importer.resolutionrs", spelling),
-                ),
-            );
-        }
-
-        let graph = module_fixture_with_peer("fn imported() {} fn peer() { imported; }\n");
-        let projection =
-            ResolutionProjection::build(Arc::clone(&graph), policy(b"m3-7-unrelated-duplicate"))
-                .unwrap();
-        for (label, path) in [
-            ("unrelated-importer-name", "importer.resolutionrs"),
-            ("unrelated-peer-name", "peer.resolutionrs"),
-        ] {
-            actual.insert(
-                label,
-                gold_result(&graph, module_result(&graph, &projection, path, "imported")),
-            );
-        }
-
-        let expected: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/resolution_m3_7_adversarial_gold.json"
-        ))
-        .unwrap();
-        assert_eq!(expected["schema"], "deslop.resolution-adversarial-gold/1");
+        let expected = frozen_m3_7_gold();
+        let actual = actual_m3_7_gold();
+        assert_eq!(expected.schema, "deslop.resolution-adversarial-gold/1");
         assert_eq!(actual.len(), 16);
-        assert_eq!(expected["cases"], serde_json::to_value(actual).unwrap());
+        assert_eq!(expected.cases, actual);
+    }
+
+    #[test]
+    fn m3_8_frozen_corpus_reports_exact_confusion_precision_and_recall() {
+        let expected = frozen_m3_7_gold();
+        let actual = actual_m3_7_gold();
+        let measured = measure_m3_8_corpus(&expected.cases, &actual);
+        let perfect_paths = |count| ExactAgreementCounts {
+            expected: count,
+            actual: count,
+            matched: count,
+        };
+
+        assert_eq!(
+            measured,
+            ResolutionCorpusMeasurement {
+                cases: 16,
+                exact_cases: 16,
+                status_order: [
+                    ResolutionStatus::Unique,
+                    ResolutionStatus::Ambiguous,
+                    ResolutionStatus::Unresolved,
+                    ResolutionStatus::Unknown,
+                    ResolutionStatus::Conflict,
+                ],
+                status_confusion: [
+                    [7, 0, 0, 0, 0],
+                    [0, 1, 0, 0, 0],
+                    [0, 0, 2, 0, 0],
+                    [0, 0, 0, 6, 0],
+                    [0, 0, 0, 0, 0],
+                ],
+                supported: CorpusSegmentMeasurement {
+                    cases: 10,
+                    status_matches: 10,
+                    paths: perfect_paths(27),
+                    endpoints: perfect_paths(18),
+                },
+                expected_unknown: CorpusSegmentMeasurement {
+                    cases: 6,
+                    status_matches: 6,
+                    paths: perfect_paths(9),
+                    endpoints: perfect_paths(5),
+                },
+                all_paths: perfect_paths(36),
+            }
+        );
+    }
+
+    #[test]
+    fn m3_8_incremental_isolation_matches_clean_reverse_cones() {
+        let mut measured = Vec::new();
+
+        let resolution_policy = policy(b"m3-8-unrelated-same-name");
+        let previous_graph = module_fixture_with_peer("fn peer_before() {}\n");
+        let previous = Arc::new(
+            ResolutionProjection::build(Arc::clone(&previous_graph), resolution_policy.clone())
+                .unwrap(),
+        );
+        let previous_status = module_result(
+            &previous_graph,
+            &previous,
+            "importer.resolutionrs",
+            "imported",
+        )
+        .status();
+        let current_graph = module_fixture_with_peer("fn imported() {} fn peer() { imported; }\n");
+        let clean =
+            ResolutionProjection::build(Arc::clone(&current_graph), resolution_policy.clone())
+                .unwrap();
+        let current_status =
+            module_result(&current_graph, &clean, "importer.resolutionrs", "imported").status();
+        let update = previous
+            .successor(Arc::clone(&current_graph), resolution_policy)
+            .unwrap();
+        measured.push(measure_incremental_isolation(
+            "unrelated-same-spelled-peer-addition",
+            &update,
+            &clean,
+            (previous_status, current_status),
+        ));
+
+        let resolution_policy = policy(b"m3-8-reachable-duplicate");
+        let previous_graph = fixture(FixtureMode::Unique, false).graph;
+        let previous = Arc::new(
+            ResolutionProjection::build(previous_graph, resolution_policy.clone()).unwrap(),
+        );
+        let previous_status = previous.results()[0].wire().status();
+        let current_graph = fixture(FixtureMode::Ambiguous, false).graph;
+        let clean =
+            ResolutionProjection::build(Arc::clone(&current_graph), resolution_policy.clone())
+                .unwrap();
+        let current_status = clean.results()[0].wire().status();
+        let update = previous
+            .successor(current_graph, resolution_policy)
+            .unwrap();
+        measured.push(measure_incremental_isolation(
+            "reachable-equal-precedence-addition",
+            &update,
+            &clean,
+            (previous_status, current_status),
+        ));
+
+        let resolution_policy = policy(b"m3-8-export-cone");
+        let peer = "fn peer() { let independent = 1; independent; }\n";
+        let previous_graph = module_fixture_with_peer_and_export(peer, false);
+        let previous = Arc::new(
+            ResolutionProjection::build(Arc::clone(&previous_graph), resolution_policy.clone())
+                .unwrap(),
+        );
+        let previous_status = module_result(
+            &previous_graph,
+            &previous,
+            "importer.resolutionrs",
+            "through",
+        )
+        .status();
+        let current_graph = module_fixture_with_peer_and_export(peer, true);
+        let clean =
+            ResolutionProjection::build(Arc::clone(&current_graph), resolution_policy.clone())
+                .unwrap();
+        let current_status =
+            module_result(&current_graph, &clean, "importer.resolutionrs", "through").status();
+        let update = previous
+            .successor(current_graph, resolution_policy)
+            .unwrap();
+        measured.push(measure_incremental_isolation(
+            "reachable-export-addition",
+            &update,
+            &clean,
+            (previous_status, current_status),
+        ));
+
+        let resolution_policy = policy(b"m3-8-module-appearance");
+        let previous_graph = fixture(FixtureMode::DeferredImport, false).graph;
+        let previous = Arc::new(
+            ResolutionProjection::build(previous_graph, resolution_policy.clone()).unwrap(),
+        );
+        let previous_status = previous.results()[0].wire().status();
+        let current_graph = fixture(FixtureMode::DeferredMappedImport, false).graph;
+        let clean =
+            ResolutionProjection::build(Arc::clone(&current_graph), resolution_policy.clone())
+                .unwrap();
+        let current_status = clean.results()[0].wire().status();
+        let update = previous
+            .successor(current_graph, resolution_policy)
+            .unwrap();
+        measured.push(measure_incremental_isolation(
+            "matching-module-appearance",
+            &update,
+            &clean,
+            (previous_status, current_status),
+        ));
+
+        assert_eq!(
+            measured,
+            [
+                IncrementalIsolationMeasurement {
+                    scenario: "unrelated-same-spelled-peer-addition",
+                    previous_results: 5,
+                    current_results: 6,
+                    reused_results: 5,
+                    rebuilt_results: 0,
+                    added_references: 1,
+                    removed_references: 0,
+                    rebuilt_reasons: BTreeMap::new(),
+                    status_transition: (ResolutionStatus::Unique, ResolutionStatus::Unique),
+                    clean_document_equal: true,
+                },
+                IncrementalIsolationMeasurement {
+                    scenario: "reachable-equal-precedence-addition",
+                    previous_results: 1,
+                    current_results: 1,
+                    reused_results: 0,
+                    rebuilt_results: 1,
+                    added_references: 0,
+                    removed_references: 0,
+                    rebuilt_reasons: BTreeMap::from([(
+                        ResolutionInvalidationReason::ReachableScopeChanged,
+                        1,
+                    )]),
+                    status_transition: (ResolutionStatus::Unique, ResolutionStatus::Ambiguous),
+                    clean_document_equal: true,
+                },
+                IncrementalIsolationMeasurement {
+                    scenario: "reachable-export-addition",
+                    previous_results: 6,
+                    current_results: 6,
+                    reused_results: 1,
+                    rebuilt_results: 5,
+                    added_references: 0,
+                    removed_references: 0,
+                    rebuilt_reasons: BTreeMap::from([(
+                        ResolutionInvalidationReason::ReachableScopeChanged,
+                        5,
+                    )]),
+                    status_transition: (ResolutionStatus::Unknown, ResolutionStatus::Unique),
+                    clean_document_equal: true,
+                },
+                IncrementalIsolationMeasurement {
+                    scenario: "matching-module-appearance",
+                    previous_results: 1,
+                    current_results: 1,
+                    reused_results: 0,
+                    rebuilt_results: 1,
+                    added_references: 0,
+                    removed_references: 0,
+                    rebuilt_reasons: BTreeMap::from([
+                        (ResolutionInvalidationReason::ReachableScopeChanged, 1),
+                        (ResolutionInvalidationReason::MatchingModuleAdded, 1),
+                    ]),
+                    status_transition: (ResolutionStatus::Unknown, ResolutionStatus::Unknown),
+                    clean_document_equal: true,
+                },
+            ]
+        );
     }
 
     #[test]

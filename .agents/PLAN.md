@@ -2496,3 +2496,70 @@ capability promotion.
 
 Next checkpoint: open M3.8 in a fresh jj child and design the exact confusion-matrix and incremental-
 isolation scorer over the frozen M3.7 cases without changing or re-labelling the corpus.
+
+#### Active M3.8 execution plan — exact corpus scorer and incremental isolation report
+
+Active hypothesis: M3.8 must derive measurements from the immutable M3.7 gold rather than repeat its
+expected labels in assertions. The supported subset is the ten Complete-coverage cases; all six expected
+Unknown cases remain in a separate explicit denominator. Exact multiset agreement over complete path
+objects and semantic endpoint labels provides honest path/endpoint precision and recall, while a full
+five-status matrix exposes every misclassification rather than collapsing outcomes into correct/incorrect.
+
+Current approach:
+
+1. Deserialize the frozen M3.7 document into the test-only semantic gold types and factor construction of
+   the 16 actual results into one reusable function. Compute the full Unique/Ambiguous/Unresolved/Unknown/
+   Conflict confusion matrix, exact case matches, supported and Unknown denominators, retained-path
+   multiset intersections, and endpoint-label intersections. Store all ratios as raw numerators and
+   denominators; render 1.0 only in the human report.
+2. Add four clean-parity incremental scenarios: an unrelated same-spelled peer addition (five existing
+   results reused and one new reference), a reachable equal-precedence declaration (Unique to Ambiguous),
+   an export addition reverse cone, and a formerly unresolved import after its exact module appears. Record
+   previous/current/reused/rebuilt/added/removed counts and status transitions.
+3. Publish `.agents/M3_8_RESOLUTION_REPORT.md` with corpus counts, the full status confusion matrix,
+   supported and Unknown agreement, incremental counts, commands, failures, and scope limitations. Run the
+   focused scorer first, then parse and all-feature workspace terminal gates.
+
+CONVERGENCE: one scorer test consumes the frozen gold and returns one report structure. Terminal outcomes
+are: (a) status/path/endpoint counts disagree—implementation or scorer mapping is wrong; (b) an incremental
+scenario differs from clean or rebuilds outside the labelled cone—invalidation is wrong; or (c) every exact
+count matches, authorizing publication and terminal gates. No serial threshold tuning or corpus relabelling
+is permitted.
+
+Validation path: exact M3.8 scorer; existing M3.7 frozen-gold test; focused incremental transition tests;
+parse tests/doctests; full workspace all-feature test, build, rustdoc, clippy, fmt, and diff gates; unchanged
+M0/M1/M2 and graph false-resolution gates.
+
+Negative-memory constraints: never omit Unknown cases from denominators; never report a percentage without
+numerator/denominator; never treat path order as endpoint authority; never deduplicate alternate paths to one
+endpoint before scoring paths; never relabel frozen gold to fit actual output; never count incremental reuse
+without clean-document equality; never mix graph/2 syntactic candidates into semantic resolution scoring.
+
+Agent assignment: `/root` owns scoring, isolation measurement, publication, integration, and verification.
+No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: factor the frozen corpus loader/actual builder and prove the exact 5x5 status matrix plus
+supported/Unknown path and endpoint agreement before adding incremental measurements.
+
+Measurement checkpoint (2026-07-14): focused scorer and isolation table complete. The exact 5x5 matrix has
+only diagonal counts `[7, 1, 2, 6, 0]`. Complete supported cases are 10/10 status matches with 27/27 path
+precision/recall and 18/18 endpoint precision/recall. All six expected Unknown cases remain counted with
+9/9 paths and 5/5 retained non-null endpoints; total exact path agreement is 36/36.
+
+Four successor scenarios are clean-document equal: unrelated same-spelled peer addition reuses five existing
+results, rebuilds zero, and adds one reference; reachable equal-precedence addition rebuilds one and changes
+Unique to Ambiguous; export addition reuses one/rebuilds five; exact module appearance rebuilds one. The last
+scenario retains both ReachableScopeChanged and MatchingModuleAdded—reason dimensions are non-exclusive.
+The focused report is published in `.agents/M3_8_RESOLUTION_REPORT.md`. Next: parse and workspace terminal
+gates, report final commands/failures, source audit, then either close M3.8 or record the exact blocker.
+
+Terminal M3.8 checkpoint (2026-07-14): complete and verified. The published report now records the final
+commands and terminal status. Full workspace all-feature test/build/rustdoc/clippy/fmt/diff gates pass;
+`deslop-parse` reports 131 passed, zero failed, one designated ignored probe, and four passing compile-fail
+doctests. M0/M1/M2 numerical/authority locks and all graph false-resolution probes remain green. Targeted
+diff audit confirms M3.8 contains only test-module scoring/isolation code and `.agents` reports—no production
+resolver, schema, adapter, graph, consumer, or capability declaration changed.
+
+Next checkpoint: open M3.DoD in a fresh jj child and audit every semantic-recipe consumer gate against the
+frozen corpus statuses/authority, especially blocking Unknown, Ambiguous, Unresolved, Conflict, dynamic
+boundaries, and incomplete reverse dependencies without graph/2 fallback.
