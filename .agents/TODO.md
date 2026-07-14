@@ -382,7 +382,14 @@ reports, benchmark records, and work orders.
   owner-checked dense handles, strict wire validation, 12 focused cases, 115 parse tests plus four
   compile-fail doctests, and every all-feature workspace gate pass. Production capability declarations
   remain unchanged and repository-global bare-name lookup/order-based selection is absent.
-- [ ] M3.5 Stitch file/module/package/build-target names incrementally.
+- [x] M3.5 Stitch file/module/package/build-target names incrementally.
+  Exact build-context package/target/module declarations now constrain alias, selective, glob, export,
+  and re-export paths without file-stem or global-name inference. Explicit export-set coverage gates
+  terminal outcomes; wrong-target paths remain rejected and pure re-export cycles remain Unknown.
+  Stable revision-bound fact keys plus reverse dependency invalidation give byte-identical successor/
+  clean documents: unrelated edits reuse 5/rebuild 0 results, export additions reuse 1/rebuild 5, and a
+  newly matching module rebuilds the formerly unresolved reference. All workspace gates pass; production
+  adapter semantic capabilities remain unchanged.
 - [ ] M3.6 Add optional compiler/LSP semantic facts with higher authority and conflict reporting.
 - [ ] M3.7 Add duplicate-name, nested scope, wildcard/alias import, re-export, dynamic, and unresolved fixtures.
 - [ ] M3.8 Measure resolution precision/recall and incremental file-isolation behavior.

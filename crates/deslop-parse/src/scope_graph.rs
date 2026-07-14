@@ -473,6 +473,7 @@ pub enum ScopeFactData {
         source_root: String,
         module_path: Vec<String>,
         file_scopes: Vec<ScopeFactKey>,
+        export_coverage: FactCoverageEvidence,
     },
     DynamicBoundary {
         construct_kind: String,
@@ -767,6 +768,7 @@ pub struct BuildModuleDraft {
     pub source_root: String,
     pub module_path: Vec<String>,
     pub file_scopes: Vec<ScopeFactId>,
+    pub export_coverage: FactCoverageEvidence,
 }
 
 #[derive(Debug, Clone)]
@@ -1066,6 +1068,7 @@ impl ScopeGraphBuilder {
             .into_iter()
             .map(|id| self.require_key(id, ScopeFactKind::Scope))
             .collect::<Result<Vec<_>, _>>()?;
+        draft.export_coverage.validate()?;
         self.push(
             node,
             canonical_roles,
@@ -1077,6 +1080,7 @@ impl ScopeGraphBuilder {
                 source_root: draft.source_root,
                 module_path: draft.module_path,
                 file_scopes,
+                export_coverage: draft.export_coverage,
             },
         )
     }
@@ -1253,14 +1257,7 @@ impl ScopeGraphBuilder {
                 ScopeGraphBuildError::Invalid("source byte order exceeds u64".into())
             })?,
         };
-        let key = derive_fact_key(
-            self.analysis.id().as_str(),
-            &self.build_context,
-            &self.fact_policy,
-            index,
-            &evidence,
-            &data,
-        )?;
+        let key = derive_fact_key(&self.build_context, &self.fact_policy, &evidence, &data)?;
         self.facts.push(ScopeFactRecord {
             id,
             node,
@@ -1434,7 +1431,7 @@ impl ScopeGraphDocument {
             ));
         }
         let mut kinds = BTreeMap::new();
-        for (index, fact) in self.facts.iter().enumerate() {
+        for fact in &self.facts {
             if kinds.insert(fact.key.clone(), fact.data.kind()).is_some() {
                 return Err(ScopeGraphBuildError::Invalid(
                     "scope graph contains duplicate fact keys".into(),
@@ -1442,14 +1439,8 @@ impl ScopeGraphDocument {
             }
             validate_wire_fact(fact)?;
             let expected = derive_fact_key(
-                &self.analysis_id,
                 &self.build_context,
                 &self.fact_policy,
-                u32::try_from(index).map_err(|_| {
-                    ScopeGraphBuildError::Invalid(
-                        "scope graph exceeds the local fact ID space".into(),
-                    )
-                })?,
                 &fact.evidence,
                 &fact.data,
             )?;
@@ -1605,6 +1596,7 @@ fn validate_wire_fact(fact: &ScopeFactWire) -> Result<(), ScopeGraphBuildError> 
             source_root,
             module_path,
             file_scopes,
+            export_coverage,
         } => {
             validate_nonempty("module package identity", package_id)?;
             validate_nonempty("module target identity", target_id)?;
@@ -1613,6 +1605,21 @@ fn validate_wire_fact(fact: &ScopeFactWire) -> Result<(), ScopeGraphBuildError> 
             if file_scopes.is_empty() {
                 return Err(ScopeGraphBuildError::Invalid(
                     "build module must contain a file scope".into(),
+                ));
+            }
+            export_coverage.validate()?;
+            if export_coverage.status == FactCoverage::Complete
+                && fact
+                    .evidence
+                    .adapter
+                    .capabilities()
+                    .declaration(AdapterCapability::ImportsExports)
+                    .support()
+                    != CapabilitySupport::Provided
+            {
+                return Err(ScopeGraphBuildError::Invalid(
+                    "complete module export coverage requires provided imports/exports capability"
+                        .into(),
                 ));
             }
         }
@@ -1995,10 +2002,8 @@ fn derive_external_id(
 }
 
 fn derive_fact_key(
-    analysis_id: &str,
     context: &BuildContextId,
     policy: &ScopeFactPolicyId,
-    index: u32,
     evidence: &ScopeFactEvidence,
     data: &ScopeFactData,
 ) -> Result<ScopeFactKey, ScopeGraphBuildError> {
@@ -2006,19 +2011,15 @@ fn derive_fact_key(
     #[serde(deny_unknown_fields)]
     struct Payload<'a> {
         schema: &'static str,
-        analysis_id: &'a str,
         build_context: &'a BuildContextId,
         fact_policy: &'a ScopeFactPolicyId,
-        index: u32,
         evidence: &'a ScopeFactEvidence,
         data: &'a ScopeFactData,
     }
     let payload = serde_json::to_vec(&Payload {
         schema: SCOPE_GRAPH_SCHEMA,
-        analysis_id,
         build_context: context,
         fact_policy: policy,
-        index,
         evidence,
         data,
     })
@@ -2099,6 +2100,52 @@ fn outer(x: i32) {
         .build()
         .unwrap();
         ProjectAnalysis::build(snapshot).unwrap()
+    }
+
+    fn analysis_with_peer(peer_source: &str) -> Arc<ProjectAnalysis> {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("stable.rs"), "fn stable() {}\n").unwrap();
+        std::fs::write(root.path().join("peer.rs"), peer_source).unwrap();
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("scope-fact-successor-test-repository").unwrap(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        ProjectAnalysis::build(snapshot).unwrap()
+    }
+
+    fn file_root(analysis: &ProjectAnalysis, path: &str) -> NodeId {
+        analysis
+            .node_ids()
+            .find(|id| {
+                let node = analysis.node(*id).unwrap();
+                node.path() == Path::new(path) && node.raw_kind() == "source_file"
+            })
+            .unwrap_or_else(|| panic!("missing source root for {path}"))
+    }
+
+    fn build_file_scopes(analysis: Arc<ProjectAnalysis>, paths: &[&str]) -> ScopeGraphProjection {
+        let (context, policy) = ids();
+        let mut builder = ScopeGraphBuilder::new(Arc::clone(&analysis), context, policy).unwrap();
+        for path in paths {
+            let root = file_root(&analysis, path);
+            builder
+                .add_scope(
+                    root,
+                    roles(&analysis, root),
+                    partial(),
+                    ScopeDraft {
+                        kind: ScopeKind::File,
+                        parent: None,
+                        namespace_policy: NamespacePolicy::new(vec![NameNamespace::Value], vec![])
+                            .unwrap(),
+                    },
+                )
+                .unwrap();
+        }
+        builder.build().unwrap()
     }
 
     fn node_by_kind(analysis: &ProjectAnalysis, kind: &str) -> NodeId {
@@ -2339,6 +2386,7 @@ fn outer(x: i32) {
                     source_root: "src".into(),
                     module_path: vec!["scope".into()],
                     file_scopes: vec![root_scope],
+                    export_coverage: partial(),
                 },
             )
             .unwrap();
@@ -2439,6 +2487,32 @@ fn outer(x: i32) {
         let changed = changed.build().unwrap();
         assert_ne!(baseline.id(), changed.id());
         assert_ne!(baseline.facts()[0].key(), changed.facts()[0].key());
+    }
+
+    #[test]
+    fn unchanged_fact_keys_ignore_unrelated_analysis_and_builder_position() {
+        let previous_analysis = analysis_with_peer("fn before() {}\n");
+        let current_analysis = analysis_with_peer("fn after() { changed(); }\n");
+        assert_ne!(previous_analysis.id(), current_analysis.id());
+
+        let previous = build_file_scopes(Arc::clone(&previous_analysis), &["stable.rs", "peer.rs"]);
+        let current = build_file_scopes(Arc::clone(&current_analysis), &["peer.rs", "stable.rs"]);
+        assert_ne!(previous.id(), current.id());
+
+        let key_for = |projection: &ScopeGraphProjection, path: &str| {
+            projection
+                .facts()
+                .iter()
+                .find(|fact| fact.evidence().node_key.file().path.as_path() == Path::new(path))
+                .unwrap()
+                .key()
+                .clone()
+        };
+        assert_eq!(
+            key_for(&previous, "stable.rs"),
+            key_for(&current, "stable.rs")
+        );
+        assert_ne!(key_for(&previous, "peer.rs"), key_for(&current, "peer.rs"));
     }
 
     #[test]

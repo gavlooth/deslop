@@ -8830,3 +8830,176 @@ winner`, `qualification tail unknown`, `projection identity result keys`, `canon
 `duplicate rejection no fallthrough`.
 
 **Signature:** Codex (GPT-5), M3.4 integration owner, terminal checkpoint, 2026-07-14.
+
+---
+
+## M3.5 active checkpoint — identity before incremental stitching
+
+**Date/time:** 2026-07-14T04:37:00+02:00
+
+**Objective/target:** stitch declared file/module/package/build-target names and preserve exact clean/
+incremental parity with bounded reverse-dependency invalidation.
+
+**Changes:** planning/audit only. Opened clean jj child `yxxzorzk` over terminal M3.4 `oyrvxomo`. Audited
+ADR 0002, `ScopeFactData::{Import,Export,BuildModule}`, language import/module rules, deferred traversal,
+resolution path construction, and `ProjectAnalysis::successor` change evidence.
+
+**Commands/checks run:** `jj new/status`; targeted `rg`/`sed` over ADR 0002 and the scope graph,
+resolution, traversal, language-rule, snapshot, and incremental modules; M3.4 Hindsight consolidation
+(1,226 entities, 3,236 relations, 3,429 observations).
+
+**Results/failure modes:** the fact model already carries exact import form/alias/selection/conditions,
+export local target/name/re-export path/visibility/conditions, build module package/target/source-root/path/
+file constituents, and opaque exact build-context identity. Traversal correctly defers only imports that
+can supply the lookup root. The blocking identity defect is that `derive_fact_key` hashes the global
+`ProjectAnalysisId` and builder index in addition to the complete revision payload. Therefore any
+unrelated file edit or earlier fact insertion churns every fact, path, and result key, making the ADR's
+unrelated-result reuse and byte-equivalent incremental contract unattainable.
+
+**Invalidated assumptions / negative memory:** a payload-bound key is not incrementally stable merely
+because it includes every field; adding whole-project and positional fields creates false dependencies.
+Dense owner/index identity and wire revision identity must stay separate. The projection/document remains
+analysis-bound; an unchanged fact's wire key should be bound to its exact file/node revision, build
+context, policy, evidence, and data, not unrelated repository state. Module lookup must be constrained by
+declared `BuildModule` constituents and exact package/target/path, never inferred from file names.
+
+**Current recommendation/next actions:** first remove global analysis/index inputs from `sf1_` derivation
+and add successor identity tests. Then construct the module stitch index, retained import/export/re-export
+paths, and reverse-dependency successor API. Use one multi-file/two-target fixture to prove clean parity,
+wrong-target rejection, export invalidation, and unrelated result reuse numerically.
+
+**Blockers/dependencies/restart:** no external blocker or dependency. This is a schema identity correction
+inside the unreleased M3 projection; no live process, migration, reload, cache clear, or restart applies.
+
+**Negative-memory status:** provisional and active. Search handles: `M3.5 global analysis fact-key churn`,
+`scope fact positional identity`, `module constrained import`, `incremental clean parity`, `no path stem
+module inference`. Recheck after the fact-key successor test; do not implement caching atop unstable keys.
+
+**Signature:** Codex (GPT-5), M3.5 integration owner, active identity checkpoint, 2026-07-14.
+
+### M3.5 identity correction checkpoint
+
+**Date/time:** 2026-07-14T04:45:00+02:00
+
+**Changes:** removed whole-project `analysis_id` and positional builder `index` from `sf1_` derivation
+and strict document recomputation. Keys still bind schema, exact build context, fact policy, complete
+revision-bearing node/grammar/adapter/capability evidence, and fact payload. Added a two-file test that
+changes only a peer source and reverses fact insertion order.
+
+**Commands/results:** `cargo fmt --all`; focused successor identity test; all seven scope-graph tests;
+`git diff --check`. PASS. The stable file retains the exact fact key. The edited peer fact key,
+`ProjectAnalysisId`, and scope projection ID change. Dense process-local owner/index behavior and
+build-context/policy key sensitivity remain intact.
+
+**Invalidated assumption:** revision binding does not require a whole-project revision when exact file/
+node revision evidence is already in the fact payload. Global and positional inputs were false
+dependencies, not additional safety.
+
+**Next action:** build the exact module index from declared `BuildModule` facts and extend deferred import
+paths through module/export edges before adding successor-level reuse.
+
+**Negative-memory status:** the provisional `M3.5 global analysis fact-key churn` failure is fixed at the
+fact boundary and remains a regression constraint until clean/incremental resolution parity passes.
+
+**Signature:** Codex (GPT-5), M3.5 integration owner, identity correction checkpoint, 2026-07-14.
+
+---
+
+## M3.5 module and invalidation checkpoint
+
+**Date/time:** 2026-07-14T04:50:00+02:00
+
+**Objective/target:** stitch exact declared module/package/build-target facts into retained resolution
+paths and implement bounded successor invalidation with byte-identical clean-build parity.
+
+**Changes:** added explicit `BuildModule.export_coverage` and aligned Complete coverage with declared
+imports/exports adapter authority. Added a module stitch index constrained by exact build context,
+package, target, module path, source-root ownership, and constituent file scopes. Alias, selective, glob,
+export, and re-export edges now extend stored resolution paths; wrong-target candidates remain rejected;
+cycle-aware traversal leaves pure cycles Unknown. Added `ResolutionProjection::successor` with explicit
+added/removed fact sets, invalidation reasons, and reused/rebuilt/added/removed result reporting. Corrected
+`ScopeFactKey` identity so unrelated project revisions and builder position are not false dependencies.
+
+**Commands/checks run:** repeated `cargo fmt --all`; seven scope-graph tests; 17 focused resolution tests;
+`cargo test -p deslop-parse --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc -p deslop-parse
+--all-features --no-deps`; `cargo clippy -p deslop-parse --all-features --all-targets -- -D warnings`;
+`git diff --check`.
+
+**Results:** PASS at the package checkpoint. The parse package reports 121 passed, zero failed, one
+designated slow instrumentation probe ignored, and four compile-fail doctests passed. Successor versus
+clean strict JSON is byte-identical in all measured fixtures. Unrelated peer edit reuses five exact result
+keys and rebuilds zero. Adding an export reuses one independent result and rebuilds five reverse
+dependents. Adding a newly matching module rebuilds the one formerly unresolved import and reuses zero.
+Focused rustdoc, clippy, formatting, and diff checks are clean.
+
+**Invalidated assumptions / failure modes:** an exact export map does not prove that the export set is
+complete; explicit export coverage is required before a missing or unique export can be terminal. A
+whole-project analysis ID and builder position strengthen neither revision safety nor determinism when
+exact fact evidence is already revision-bound; they only destroy reuse. Re-export traversal cannot use a
+first-visited winner, and a pure cycle cannot fabricate a terminal endpoint. New facts require special
+matching-module invalidation because a formerly unresolved path has no old module dependency to follow.
+
+**Current recommendation/next actions:** run every all-feature workspace terminal gate, then audit the
+diff for global bare-name/file-stem inference, first-winner/order fallback, and accidental production
+capability promotion. Close M3.5 only if those checks and the unchanged earlier definition-of-done probes
+remain green.
+
+**Blockers/dependencies/restart:** none. No new dependency, process, migration, reload, cache clear, or
+restart applies. Workspace-wide validation remains pending at this checkpoint.
+
+**Negative-memory status:** provisional constraints remain active. Search handles: `M3.5 global analysis
+fact-key churn`, `explicit export set coverage`, `new matching module invalidation`, `clean incremental
+resolution parity`, `re-export pure cycle unknown`, `no path stem module inference`.
+
+**Signature:** Codex (GPT-5), M3.5 integration owner, module/invalidation checkpoint, 2026-07-14.
+
+---
+
+## M3.5 terminal checkpoint — exact module stitching and bounded invalidation
+
+**Date/time:** 2026-07-14T04:57:12+02:00
+
+**Objective/target:** complete file/module/package/build-target stitching in the exact build context and
+prove incremental successors preserve the clean strict resolution document.
+
+**Changes:** terminalized the package checkpoint implementation. Exact `BuildModule` facts own package,
+target, module path, source root, constituent file scopes, and explicit export-set coverage. Module alias,
+selective, glob, export, and re-export edges are retained with source facts and checks; wrong-target
+candidates remain rejected and pure cycles remain Unknown. Stable scope-fact wire keys exclude unrelated
+analysis and builder-position inputs while retaining exact revision evidence. `ResolutionProjection::
+successor` exposes additions, removals, reasons, reuse, and rebuilds from reverse dependencies.
+
+**Commands/checks run:** `cargo test -p deslop-parse --all-features`; focused parse rustdoc and clippy;
+`cargo test --workspace --all-features`; `cargo build --workspace --all-features`; `RUSTDOCFLAGS='-D
+warnings' cargo doc --workspace --all-features --no-deps`; `cargo clippy --workspace --all-features
+--all-targets -- -D warnings`; `cargo fmt --all -- --check`; `git diff --check`; targeted `rg`, source
+inspection, and parent diff audits for file-stem/global bare-name inference, order winners, and production
+capability changes; `jj status/diff`.
+
+**Results:** PASS. The parse package reports 121 passed, zero failed, one designated instrumentation
+probe ignored, and four compile-fail doctests passed. Every all-feature workspace test/build/rustdoc/
+clippy/fmt/diff gate passes, including unchanged M0/M1/M2 definition-of-done locks and graph false-
+resolution probes. Clean/successor strict JSON is byte-identical. Measured invalidation is unrelated peer
+edit: five reused/zero rebuilt; export addition: one independent reused/five reverse dependents rebuilt;
+newly matching module: zero reused/one formerly unresolved rebuilt. Production adapter capability and
+rule declarations are unchanged.
+
+**Invalidated assumptions / failure modes:** exact export entries do not prove export-set completeness;
+terminal outcomes require separate coverage evidence. Global analysis identity and builder position are
+false dependencies for already revision-bound fact keys. A newly available module requires explicit
+matching invalidation because an old unresolved result cannot record a dependency on a nonexistent fact.
+Re-export cycles, missing coverage, wrong targets, and unevaluated conditions cannot be promoted by
+deterministic order.
+
+**Current recommendation/next actions:** open a clean M3.6 child and audit optional compiler/language-
+server provider identity, build/artifact versioning, evidence precedence, and conflict retention before
+adding any higher-authority fact. Preserve M3.5's strict paths and successor parity as regression gates.
+
+**Blockers/dependencies/restart:** none. This changes only immutable Rust schemas/projections and tests;
+no live process, dependency, migration, reload, cache clear, or restart is required.
+
+**Negative-memory status:** terminal correction ready for Hindsight consolidation. Search handles:
+`M3.5 stable scope fact key`, `explicit export set coverage`, `module constrained import`, `new matching
+module invalidation`, `clean incremental parity`, `re-export cycle unknown`, `no path stem inference`.
+
+**Signature:** Codex (GPT-5), M3.5 integration owner, terminal checkpoint, 2026-07-14.

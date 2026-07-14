@@ -81,10 +81,11 @@ pub use query::{
 pub use resolution::{
     RESOLUTION_POLICY_SCHEMA, RESOLUTION_SCHEMA, ResolutionCheck, ResolutionCheckKind,
     ResolutionCheckState, ResolutionCoverageEvidence, ResolutionDocument, ResolutionEndpoint,
-    ResolutionPath, ResolutionPathEdge, ResolutionPathEdgeKind, ResolutionPathKey,
-    ResolutionPathViability, ResolutionPolicyId, ResolutionPrecedenceComponent,
-    ResolutionProjection, ResolutionProjectionError, ResolutionRejectionReason, ResolutionResult,
-    ResolutionResultId, ResolutionResultKey, ResolutionResultRecord, ResolutionStatus,
+    ResolutionInvalidation, ResolutionInvalidationReason, ResolutionPath, ResolutionPathEdge,
+    ResolutionPathEdgeKind, ResolutionPathKey, ResolutionPathViability, ResolutionPolicyId,
+    ResolutionPrecedenceComponent, ResolutionProjection, ResolutionProjectionError,
+    ResolutionProjectionUpdate, ResolutionRejectionReason, ResolutionResult, ResolutionResultId,
+    ResolutionResultKey, ResolutionResultRecord, ResolutionStatus,
 };
 pub use resolution_traversal::{
     DeferredImportTraversal, DynamicBoundaryTraversal, ExplicitShadowing, LexicalScopeStep,

@@ -219,6 +219,7 @@ impl ResolutionPathEdge {
 pub enum ResolutionEndpoint {
     Declaration(ScopeFactKey),
     Definition(ScopeFactKey),
+    Module(ScopeFactKey),
     MergedDeclarations(Vec<ScopeFactKey>),
     External(String),
 }
@@ -237,6 +238,7 @@ pub enum ResolutionCheckKind {
     AdapterIdentity,
     Shadowing,
     ImportTarget,
+    ExportSetCoverage,
     DynamicBoundary,
 }
 
@@ -475,6 +477,17 @@ impl ResolutionPath {
         }
         if let Some(ResolutionEndpoint::External(provider)) = &self.endpoint {
             validate_text("external resolution provider", provider)?;
+        }
+        if let Some(
+            ResolutionEndpoint::Declaration(key)
+            | ResolutionEndpoint::Definition(key)
+            | ResolutionEndpoint::Module(key),
+        ) = &self.endpoint
+            && !self.source_facts.contains(key)
+        {
+            return Err(ResolutionProjectionError::Invalid(
+                "resolution endpoint is absent from path source facts".into(),
+            ));
         }
         if let Some(ResolutionEndpoint::MergedDeclarations(declarations)) = &self.endpoint {
             if declarations.len() < 2 {
@@ -884,10 +897,92 @@ pub struct ResolutionProjection {
     owner: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ResolutionInvalidationReason {
+    PolicyOrBuildContextChanged,
+    SourceFactChanged,
+    ReachableScopeChanged,
+    MatchingModuleAdded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolutionInvalidation {
+    reference: ScopeFactKey,
+    reasons: Vec<ResolutionInvalidationReason>,
+}
+
+impl ResolutionInvalidation {
+    pub fn reference(&self) -> &ScopeFactKey {
+        &self.reference
+    }
+
+    pub fn reasons(&self) -> &[ResolutionInvalidationReason] {
+        &self.reasons
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolutionProjectionUpdate {
+    previous: Arc<ResolutionProjection>,
+    current: Arc<ResolutionProjection>,
+    reused: Vec<ResolutionResultKey>,
+    rebuilt: Vec<ResolutionInvalidation>,
+    added: Vec<ScopeFactKey>,
+    removed: Vec<ScopeFactKey>,
+}
+
+impl ResolutionProjectionUpdate {
+    pub fn previous(&self) -> &Arc<ResolutionProjection> {
+        &self.previous
+    }
+
+    pub fn current(&self) -> &Arc<ResolutionProjection> {
+        &self.current
+    }
+
+    pub fn into_current(self) -> Arc<ResolutionProjection> {
+        self.current
+    }
+
+    pub fn reused_result_keys(&self) -> &[ResolutionResultKey] {
+        &self.reused
+    }
+
+    pub fn rebuilt_results(&self) -> &[ResolutionInvalidation] {
+        &self.rebuilt
+    }
+
+    pub fn added_references(&self) -> &[ScopeFactKey] {
+        &self.added
+    }
+
+    pub fn removed_references(&self) -> &[ScopeFactKey] {
+        &self.removed
+    }
+}
+
 impl ResolutionProjection {
     pub fn build(
         scope_graph: Arc<ScopeGraphProjection>,
         resolution_policy: ResolutionPolicyId,
+    ) -> Result<Self, ResolutionProjectionError> {
+        let engine = ResolutionTraversalEngine::new(&scope_graph)?;
+        let modules = ModuleStitchIndex::new(&scope_graph)?;
+        let mut wires = Vec::new();
+        for fact in scope_graph.facts() {
+            if fact.data().kind() != ScopeFactKind::Reference {
+                continue;
+            }
+            let traversal = engine.traverse_reference(fact.id())?;
+            wires.push(build_result(&scope_graph, &modules, &traversal)?);
+        }
+        Self::from_wires(scope_graph, resolution_policy, wires)
+    }
+
+    fn from_wires(
+        scope_graph: Arc<ScopeGraphProjection>,
+        resolution_policy: ResolutionPolicyId,
+        wires: Vec<ResolutionResult>,
     ) -> Result<Self, ResolutionProjectionError> {
         let owner = NEXT_RESOLUTION_OWNER
             .fetch_update(AtomicOrdering::Relaxed, AtomicOrdering::Relaxed, |value| {
@@ -896,15 +991,6 @@ impl ResolutionProjection {
             .map_err(|_| {
                 ResolutionProjectionError::Invalid("resolution owner space exhausted".into())
             })?;
-        let engine = ResolutionTraversalEngine::new(&scope_graph)?;
-        let mut wires = Vec::new();
-        for fact in scope_graph.facts() {
-            if fact.data().kind() != ScopeFactKind::Reference {
-                continue;
-            }
-            let traversal = engine.traverse_reference(fact.id())?;
-            wires.push(build_result(&scope_graph, &traversal)?);
-        }
         let mut result_identity = Vec::new();
         result_identity.extend_from_slice(scope_graph.id().as_str().as_bytes());
         for wire in &wires {
@@ -954,6 +1040,14 @@ impl ResolutionProjection {
             document,
             owner,
         })
+    }
+
+    pub fn successor(
+        self: &Arc<Self>,
+        scope_graph: Arc<ScopeGraphProjection>,
+        resolution_policy: ResolutionPolicyId,
+    ) -> Result<ResolutionProjectionUpdate, ResolutionProjectionError> {
+        build_resolution_successor(Arc::clone(self), scope_graph, resolution_policy)
     }
 
     pub fn schema(&self) -> &'static str {
@@ -1022,8 +1116,463 @@ impl From<ResolutionTraversalError> for ResolutionProjectionError {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ModuleRecord {
+    key: ScopeFactKey,
+    package_id: String,
+    target_id: String,
+    module_path: Vec<String>,
+    file_scopes: Vec<ScopeFactKey>,
+    export_coverage: crate::FactCoverageEvidence,
+}
+
+#[derive(Debug, Clone)]
+struct ExportRecord {
+    key: ScopeFactKey,
+    scope: ScopeFactKey,
+    local_target: Option<ScopeFactKey>,
+    local_name: Option<String>,
+    exported_name: String,
+    reexport_segments: Vec<String>,
+    visibility: crate::Visibility,
+    conditions: Vec<String>,
+}
+
+#[derive(Debug)]
+struct ModuleStitchIndex {
+    modules: Vec<ModuleRecord>,
+    exports: Vec<ExportRecord>,
+    scope_parents: BTreeMap<ScopeFactKey, Option<ScopeFactKey>>,
+    scope_kinds: BTreeMap<ScopeFactKey, crate::ScopeKind>,
+}
+
+#[derive(Debug, Clone)]
+struct ModuleCandidate {
+    module: ModuleRecord,
+    importer: ModuleRecord,
+    target_matches: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ExportHop {
+    candidate: ModuleCandidate,
+    export: ExportRecord,
+}
+
+#[derive(Debug, Clone)]
+struct ExportChain {
+    hops: Vec<ExportHop>,
+    endpoint: ResolutionEndpoint,
+}
+
+#[derive(Debug, Default)]
+struct ExportResolution {
+    chains: Vec<ExportChain>,
+    rejected_reexports: Vec<RejectedReexport>,
+    incomplete: bool,
+    observed_facts: Vec<ScopeFactKey>,
+}
+
+#[derive(Debug, Clone)]
+struct RejectedReexport {
+    hops: Vec<ExportHop>,
+    candidate: ModuleCandidate,
+}
+
+impl ModuleStitchIndex {
+    fn new(graph: &ScopeGraphProjection) -> Result<Self, ResolutionProjectionError> {
+        let mut modules = Vec::new();
+        let mut exports = Vec::new();
+        let mut scope_parents = BTreeMap::new();
+        let mut scope_kinds = BTreeMap::new();
+        for fact in graph.facts() {
+            match fact.data() {
+                ScopeFactData::Scope {
+                    scope_kind, parent, ..
+                } => {
+                    scope_parents.insert(fact.key().clone(), parent.clone());
+                    scope_kinds.insert(fact.key().clone(), scope_kind.clone());
+                }
+                ScopeFactData::BuildModule {
+                    package_id,
+                    target_id,
+                    module_path,
+                    file_scopes,
+                    export_coverage,
+                    ..
+                } => modules.push(ModuleRecord {
+                    key: fact.key().clone(),
+                    package_id: package_id.clone(),
+                    target_id: target_id.clone(),
+                    module_path: module_path.clone(),
+                    file_scopes: file_scopes.clone(),
+                    export_coverage: export_coverage.clone(),
+                }),
+                ScopeFactData::Export {
+                    scope,
+                    local_target,
+                    local_name,
+                    exported_name,
+                    reexport_segments,
+                    visibility,
+                    conditions,
+                } => exports.push(ExportRecord {
+                    key: fact.key().clone(),
+                    scope: scope.clone(),
+                    local_target: local_target.clone(),
+                    local_name: local_name.clone(),
+                    exported_name: exported_name.clone(),
+                    reexport_segments: reexport_segments.clone(),
+                    visibility: visibility.clone(),
+                    conditions: conditions.clone(),
+                }),
+                _ => {}
+            }
+        }
+        let index = Self {
+            modules,
+            exports,
+            scope_parents,
+            scope_kinds,
+        };
+        for module in &index.modules {
+            for scope in &module.file_scopes {
+                if index.scope_kinds.get(scope) != Some(&crate::ScopeKind::File) {
+                    return Err(ResolutionProjectionError::Invalid(
+                        "module index contains a non-file constituent scope".into(),
+                    ));
+                }
+            }
+        }
+        Ok(index)
+    }
+
+    fn file_scope(&self, scope: &ScopeFactKey) -> Option<ScopeFactKey> {
+        let mut current = Some(scope);
+        let mut seen = BTreeSet::new();
+        while let Some(key) = current {
+            if !seen.insert(key) {
+                return None;
+            }
+            if self.scope_kinds.get(key) == Some(&crate::ScopeKind::File) {
+                return Some(key.clone());
+            }
+            current = self.scope_parents.get(key).and_then(Option::as_ref);
+        }
+        None
+    }
+
+    fn modules_for_scope(&self, scope: &ScopeFactKey) -> Vec<&ModuleRecord> {
+        let Some(file_scope) = self.file_scope(scope) else {
+            return Vec::new();
+        };
+        self.modules
+            .iter()
+            .filter(|module| module.file_scopes.contains(&file_scope))
+            .collect()
+    }
+
+    fn candidates(&self, scope: &ScopeFactKey, segments: &[String]) -> Vec<ModuleCandidate> {
+        let importers = self.modules_for_scope(scope);
+        importers
+            .into_iter()
+            .flat_map(|importer| self.candidates_from(importer, segments))
+            .collect()
+    }
+
+    fn candidates_from(
+        &self,
+        importer: &ModuleRecord,
+        segments: &[String],
+    ) -> Vec<ModuleCandidate> {
+        let explicit_package = segments.first().filter(|package| {
+            self.modules.iter().any(|module| {
+                &module.package_id == *package
+                    && module.module_path.as_slice() == segments.get(1..).unwrap_or_default()
+            })
+        });
+        let mut candidates = Vec::new();
+        for module in &self.modules {
+            let path_matches = if let Some(package) = explicit_package {
+                &module.package_id == package
+                    && module.module_path.as_slice() == segments.get(1..).unwrap_or_default()
+            } else {
+                module.package_id == importer.package_id && module.module_path == segments
+            };
+            if !path_matches {
+                continue;
+            }
+            let target_matches = explicit_package.is_some()
+                && module.package_id != importer.package_id
+                || module.target_id == importer.target_id;
+            candidates.push(ModuleCandidate {
+                module: module.clone(),
+                importer: importer.clone(),
+                target_matches,
+            });
+        }
+        candidates
+    }
+
+    fn exports_for_module<'a>(
+        &'a self,
+        module: &ModuleRecord,
+        exported_name: &str,
+    ) -> Vec<&'a ExportRecord> {
+        self.exports
+            .iter()
+            .filter(|export| export.exported_name == exported_name)
+            .filter(|export| {
+                self.file_scope(&export.scope)
+                    .is_some_and(|scope| module.file_scopes.contains(&scope))
+            })
+            .collect()
+    }
+
+    fn all_exports_for_module<'a>(&'a self, module: &ModuleRecord) -> Vec<&'a ExportRecord> {
+        self.exports
+            .iter()
+            .filter(|export| {
+                self.file_scope(&export.scope)
+                    .is_some_and(|scope| module.file_scopes.contains(&scope))
+            })
+            .collect()
+    }
+}
+
+fn build_resolution_successor(
+    previous: Arc<ResolutionProjection>,
+    scope_graph: Arc<ScopeGraphProjection>,
+    resolution_policy: ResolutionPolicyId,
+) -> Result<ResolutionProjectionUpdate, ResolutionProjectionError> {
+    if previous.scope_graph.analysis().snapshot().repository()
+        != scope_graph.analysis().snapshot().repository()
+    {
+        return Err(ResolutionProjectionError::Invalid(
+            "resolution successor belongs to a different repository".into(),
+        ));
+    }
+    let previous_facts = previous
+        .scope_graph
+        .facts()
+        .iter()
+        .map(|fact| (fact.key().clone(), fact))
+        .collect::<BTreeMap<_, _>>();
+    let current_facts = scope_graph
+        .facts()
+        .iter()
+        .map(|fact| (fact.key().clone(), fact))
+        .collect::<BTreeMap<_, _>>();
+    let added_facts = current_facts
+        .keys()
+        .filter(|key| !previous_facts.contains_key(*key))
+        .filter_map(|key| current_facts.get(key).copied())
+        .collect::<Vec<_>>();
+    let removed_fact_keys = previous_facts
+        .keys()
+        .filter(|key| !current_facts.contains_key(*key))
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let modules = ModuleStitchIndex::new(&scope_graph)?;
+    let mut impact_scopes = BTreeSet::new();
+    for fact in &added_facts {
+        for scope in fact_impact_scopes(&scope_graph, &modules, fact)? {
+            impact_scopes.insert(scope);
+        }
+    }
+    let previous_results = previous
+        .results()
+        .iter()
+        .map(|result| (result.wire().reference().clone(), result.wire()))
+        .collect::<BTreeMap<_, _>>();
+    let current_references = scope_graph
+        .facts()
+        .iter()
+        .filter(|fact| fact.data().kind() == ScopeFactKind::Reference)
+        .collect::<Vec<_>>();
+    let current_reference_keys = current_references
+        .iter()
+        .map(|fact| fact.key().clone())
+        .collect::<BTreeSet<_>>();
+    let removed = previous_results
+        .keys()
+        .filter(|key| !current_reference_keys.contains(*key))
+        .cloned()
+        .collect::<Vec<_>>();
+    let global_change = previous.resolution_policy != resolution_policy
+        || previous.scope_graph.build_context() != scope_graph.build_context()
+        || previous.scope_graph.fact_policy() != scope_graph.fact_policy();
+    let engine = ResolutionTraversalEngine::new(&scope_graph)?;
+    let mut wires = Vec::with_capacity(current_references.len());
+    let mut reused = Vec::new();
+    let mut rebuilt = Vec::new();
+    let mut added = Vec::new();
+    for reference in current_references {
+        let Some(old) = previous_results.get(reference.key()).copied() else {
+            let traversal = engine.traverse_reference(reference.id())?;
+            wires.push(build_result(&scope_graph, &modules, &traversal)?);
+            added.push(reference.key().clone());
+            continue;
+        };
+        let mut reasons = BTreeSet::new();
+        if global_change {
+            reasons.insert(ResolutionInvalidationReason::PolicyOrBuildContextChanged);
+        }
+        if old
+            .source_facts()
+            .iter()
+            .any(|key| removed_fact_keys.contains(key) || !current_facts.contains_key(key))
+        {
+            reasons.insert(ResolutionInvalidationReason::SourceFactChanged);
+        }
+        let result_scopes = old
+            .source_facts()
+            .iter()
+            .filter(|key| {
+                current_facts
+                    .get(*key)
+                    .is_some_and(|fact| fact.data().kind() == ScopeFactKind::Scope)
+            })
+            .collect::<BTreeSet<_>>();
+        if impact_scopes
+            .iter()
+            .any(|scope| result_scopes.contains(scope))
+        {
+            reasons.insert(ResolutionInvalidationReason::ReachableScopeChanged);
+        }
+        if added_facts.iter().any(|fact| {
+            matches!(fact.data(), ScopeFactData::BuildModule { .. })
+                && result_has_matching_import(old, &current_facts, fact)
+        }) {
+            reasons.insert(ResolutionInvalidationReason::MatchingModuleAdded);
+        }
+        if reasons.is_empty() {
+            wires.push(old.clone());
+            reused.push(old.key().clone());
+        } else {
+            let traversal = engine.traverse_reference(reference.id())?;
+            wires.push(build_result(&scope_graph, &modules, &traversal)?);
+            rebuilt.push(ResolutionInvalidation {
+                reference: reference.key().clone(),
+                reasons: reasons.into_iter().collect(),
+            });
+        }
+    }
+    let current = Arc::new(ResolutionProjection::from_wires(
+        scope_graph,
+        resolution_policy,
+        wires,
+    )?);
+    Ok(ResolutionProjectionUpdate {
+        previous,
+        current,
+        reused,
+        rebuilt,
+        added,
+        removed,
+    })
+}
+
+fn fact_impact_scopes(
+    graph: &ScopeGraphProjection,
+    modules: &ModuleStitchIndex,
+    fact: &crate::ScopeFactRecord,
+) -> Result<Vec<ScopeFactKey>, ResolutionProjectionError> {
+    let direct = match fact.data() {
+        ScopeFactData::Scope { .. } => vec![fact.key().clone()],
+        ScopeFactData::Declaration { scope, .. }
+        | ScopeFactData::Import { scope, .. }
+        | ScopeFactData::Export { scope, .. } => vec![scope.clone()],
+        ScopeFactData::Definition { declaration, .. } => declaration_scopes(graph, declaration)?,
+        ScopeFactData::Binding { target, .. } => match target {
+            crate::BindingTarget::Declaration(declaration) => {
+                declaration_scopes(graph, declaration)?
+            }
+            crate::BindingTarget::Definition(definition) => {
+                let ScopeFactData::Definition { declaration, .. } =
+                    fact_by_key(graph, definition)?.data()
+                else {
+                    return Err(ResolutionProjectionError::Invalid(
+                        "binding target is not a definition fact".into(),
+                    ));
+                };
+                declaration_scopes(graph, declaration)?
+            }
+        },
+        ScopeFactData::BuildModule { file_scopes, .. }
+        | ScopeFactData::DynamicBoundary {
+            scopes: file_scopes,
+            ..
+        } => file_scopes.clone(),
+        ScopeFactData::Shadowing {
+            shadowing_declaration,
+            shadowed_declaration,
+            ..
+        } => {
+            let mut scopes = declaration_scopes(graph, shadowing_declaration)?;
+            for scope in declaration_scopes(graph, shadowed_declaration)? {
+                push_unique(&mut scopes, scope);
+            }
+            scopes
+        }
+        ScopeFactData::Reference { .. } => Vec::new(),
+    };
+    let mut expanded = Vec::new();
+    for scope in direct {
+        let mut current = Some(scope);
+        let mut seen = BTreeSet::new();
+        while let Some(key) = current {
+            if !seen.insert(key.clone()) {
+                return Err(ResolutionProjectionError::Invalid(
+                    "scope impact relation contains a cycle".into(),
+                ));
+            }
+            push_unique(&mut expanded, key.clone());
+            current = modules.scope_parents.get(&key).cloned().flatten();
+        }
+    }
+    Ok(expanded)
+}
+
+fn declaration_scopes(
+    graph: &ScopeGraphProjection,
+    declaration: &ScopeFactKey,
+) -> Result<Vec<ScopeFactKey>, ResolutionProjectionError> {
+    let ScopeFactData::Declaration { scope, .. } = fact_by_key(graph, declaration)?.data() else {
+        return Err(ResolutionProjectionError::Invalid(
+            "declaration dependency is not a declaration fact".into(),
+        ));
+    };
+    Ok(vec![scope.clone()])
+}
+
+fn result_has_matching_import(
+    result: &ResolutionResult,
+    current_facts: &BTreeMap<ScopeFactKey, &crate::ScopeFactRecord>,
+    module: &crate::ScopeFactRecord,
+) -> bool {
+    let ScopeFactData::BuildModule {
+        package_id,
+        module_path,
+        ..
+    } = module.data()
+    else {
+        return false;
+    };
+    result.source_facts().iter().any(|key| {
+        matches!(
+            current_facts.get(key).map(|fact| fact.data()),
+            Some(ScopeFactData::Import { module_segments, .. })
+                if module_segments == module_path
+                    || module_segments.first() == Some(package_id)
+                        && module_segments.get(1..).unwrap_or_default() == module_path
+        )
+    })
+}
+
 fn build_result(
     graph: &ScopeGraphProjection,
+    modules: &ModuleStitchIndex,
     traversal: &ResolutionTraversal,
 ) -> Result<ResolutionResult, ResolutionProjectionError> {
     let reference = graph
@@ -1062,8 +1611,9 @@ fn build_result(
         }
     }
     for deferred in traversal.deferred_imports() {
-        paths.push(import_path(
+        paths.extend(stitch_import_paths(
             graph,
+            modules,
             traversal,
             deferred.import(),
             deferred.lexical_distance(),
@@ -1104,7 +1654,16 @@ fn build_result(
         &source_facts,
         traversal.rule_gaps(),
         traversal.dynamic_boundaries(),
-        !traversal.deferred_imports().is_empty(),
+        paths.iter().any(|path| {
+            path.viability == ResolutionPathViability::Unknown
+                && path.rejection_reasons.iter().any(|reason| {
+                    matches!(
+                        reason,
+                        ResolutionRejectionReason::ImportUnresolved
+                            | ResolutionRejectionReason::ExportIncomplete
+                    )
+                })
+        }),
         &paths,
     )?;
     let status = derive_status(coverage.status, &paths);
@@ -1379,6 +1938,709 @@ fn import_path(
             reasons: Vec::new(),
         },
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stitch_import_paths(
+    graph: &ScopeGraphProjection,
+    modules: &ModuleStitchIndex,
+    traversal: &ResolutionTraversal,
+    import: ScopeFactId,
+    lexical_distance: u32,
+    rule: ImportTraversalRule,
+    rule_declared: bool,
+    conditions: &[String],
+    dynamic_boundaries: &[ScopeFactKey],
+) -> Result<Vec<ResolutionPath>, ResolutionProjectionError> {
+    let base = import_path(
+        graph,
+        traversal,
+        import,
+        lexical_distance,
+        rule,
+        rule_declared,
+        conditions,
+        dynamic_boundaries,
+    )?;
+    if !rule_declared {
+        return Ok(vec![base]);
+    }
+    let import_fact = graph
+        .fact(import)
+        .map_err(|error| ResolutionProjectionError::Invalid(error.to_string()))?;
+    let ScopeFactData::Import {
+        scope,
+        module_segments,
+        ..
+    } = import_fact.data()
+    else {
+        return Err(ResolutionProjectionError::Invalid(
+            "deferred import is not an import fact".into(),
+        ));
+    };
+    let candidates = modules.candidates(scope, module_segments);
+    if candidates.is_empty() {
+        return Ok(vec![base]);
+    }
+
+    let mut paths = Vec::new();
+    for candidate in candidates {
+        let mut module_path = base.clone();
+        attach_module_candidate(&mut module_path, import_fact.key(), &candidate);
+        match rule {
+            ImportTraversalRule::Alias | ImportTraversalRule::Explicit => {
+                module_path.endpoint =
+                    Some(ResolutionEndpoint::Module(candidate.module.key.clone()));
+                set_import_target_check(
+                    &mut module_path,
+                    ResolutionCheckState::Passed,
+                    "import source module is mapped in the exact build context",
+                    vec![import_fact.key().clone(), candidate.module.key.clone()],
+                );
+                module_path.viability = viability_from_checks(&module_path.checks);
+                paths.push(module_path);
+            }
+            ImportTraversalRule::Selective | ImportTraversalRule::Glob => {
+                attach_export_coverage_check(&mut module_path, &candidate.module);
+                let exports =
+                    modules.exports_for_module(&candidate.module, traversal.lookup_root());
+                if exports.is_empty() {
+                    let complete = candidate.module.export_coverage.status
+                        == FactCoverage::Complete
+                        && fact_is_complete(graph, &candidate.module.key)?
+                        && modules
+                            .all_exports_for_module(&candidate.module)
+                            .into_iter()
+                            .all(|export| fact_is_complete(graph, &export.key).unwrap_or(false));
+                    if complete {
+                        push_unique(
+                            &mut module_path.rejection_reasons,
+                            ResolutionRejectionReason::ImportUnresolved,
+                        );
+                        set_import_target_check(
+                            &mut module_path,
+                            ResolutionCheckState::Rejected,
+                            "complete source module export set does not contain the imported name",
+                            vec![import_fact.key().clone(), candidate.module.key.clone()],
+                        );
+                    } else {
+                        push_unique(
+                            &mut module_path.rejection_reasons,
+                            ResolutionRejectionReason::ExportIncomplete,
+                        );
+                        set_import_target_check(
+                            &mut module_path,
+                            ResolutionCheckState::Unknown,
+                            "source module export set is incomplete",
+                            vec![import_fact.key().clone(), candidate.module.key.clone()],
+                        );
+                    }
+                    module_path.viability = viability_from_checks(&module_path.checks);
+                    paths.push(module_path);
+                    continue;
+                }
+                let export_set = modules.all_exports_for_module(&candidate.module);
+                for export in exports {
+                    let mut export_path = module_path.clone();
+                    if rule == ImportTraversalRule::Glob {
+                        for member in &export_set {
+                            push_unique(&mut export_path.source_facts, member.key.clone());
+                        }
+                    }
+                    let resolved = resolve_export_chains(
+                        graph,
+                        modules,
+                        &candidate,
+                        export,
+                        &mut BTreeSet::new(),
+                    )?;
+                    if resolved.chains.is_empty() {
+                        for key in resolved.observed_facts {
+                            push_unique(&mut export_path.source_facts, key);
+                        }
+                        push_unique(
+                            &mut export_path.rejection_reasons,
+                            ResolutionRejectionReason::ExportIncomplete,
+                        );
+                        attach_export_edge(&mut export_path, &candidate.module, export);
+                        set_import_target_check(
+                            &mut export_path,
+                            ResolutionCheckState::Unknown,
+                            "export or re-export graph has no exact acyclic target",
+                            vec![import_fact.key().clone(), export.key.clone()],
+                        );
+                        export_path.viability = viability_from_checks(&export_path.checks);
+                        paths.push(export_path);
+                        continue;
+                    }
+                    if resolved.incomplete {
+                        let mut incomplete_path = export_path.clone();
+                        attach_export_edge(&mut incomplete_path, &candidate.module, export);
+                        for key in &resolved.observed_facts {
+                            push_unique(&mut incomplete_path.source_facts, key.clone());
+                        }
+                        push_unique(
+                            &mut incomplete_path.rejection_reasons,
+                            ResolutionRejectionReason::ExportIncomplete,
+                        );
+                        set_import_target_check(
+                            &mut incomplete_path,
+                            ResolutionCheckState::Unknown,
+                            "an alternate export or re-export branch is incomplete",
+                            vec![import_fact.key().clone(), export.key.clone()],
+                        );
+                        incomplete_path.viability = viability_from_checks(&incomplete_path.checks);
+                        paths.push(incomplete_path);
+                    }
+                    for rejected in resolved.rejected_reexports {
+                        let mut rejected_path = export_path.clone();
+                        attach_rejected_reexport(&mut rejected_path, import_fact.key(), &rejected);
+                        paths.push(rejected_path);
+                    }
+                    for chain in resolved.chains {
+                        let mut target_path = export_path.clone();
+                        attach_export_chain(graph, traversal, &mut target_path, &chain)?;
+                        paths.push(target_path);
+                    }
+                }
+            }
+            _ => paths.push(base.clone()),
+        }
+    }
+    Ok(paths)
+}
+
+fn attach_module_candidate(
+    path: &mut ResolutionPath,
+    import: &ScopeFactKey,
+    candidate: &ModuleCandidate,
+) {
+    path.rejection_reasons
+        .retain(|reason| *reason != ResolutionRejectionReason::ImportUnresolved);
+    push_unique(&mut path.source_facts, candidate.module.key.clone());
+    for scope in &candidate.module.file_scopes {
+        push_unique(&mut path.source_facts, scope.clone());
+    }
+    if candidate.module.package_id != candidate.importer.package_id {
+        path.edges.push(ResolutionPathEdge {
+            kind: ResolutionPathEdgeKind::Package,
+            from: import.clone(),
+            to: candidate.module.key.clone(),
+            source_fact: candidate.module.key.clone(),
+        });
+    }
+    path.edges.push(ResolutionPathEdge {
+        kind: ResolutionPathEdgeKind::Module,
+        from: import.clone(),
+        to: candidate.module.key.clone(),
+        source_fact: candidate.module.key.clone(),
+    });
+    let (state, detail) = if candidate.target_matches {
+        (
+            ResolutionCheckState::Passed,
+            "module belongs to the importer's exact build target",
+        )
+    } else {
+        push_unique(
+            &mut path.rejection_reasons,
+            ResolutionRejectionReason::WrongBuildTarget,
+        );
+        (
+            ResolutionCheckState::Rejected,
+            "module path exists only in a different build target",
+        )
+    };
+    path.checks.push(ResolutionCheck {
+        kind: ResolutionCheckKind::BuildTarget,
+        state,
+        detail: detail.into(),
+        source_facts: vec![import.clone(), candidate.module.key.clone()],
+    });
+}
+
+fn attach_export_edge(path: &mut ResolutionPath, module: &ModuleRecord, export: &ExportRecord) {
+    push_unique(&mut path.source_facts, export.key.clone());
+    path.edges.push(ResolutionPathEdge {
+        kind: ResolutionPathEdgeKind::Export,
+        from: module.key.clone(),
+        to: export.key.clone(),
+        source_fact: export.key.clone(),
+    });
+}
+
+fn resolve_export_chains(
+    graph: &ScopeGraphProjection,
+    modules: &ModuleStitchIndex,
+    candidate: &ModuleCandidate,
+    export: &ExportRecord,
+    visiting: &mut BTreeSet<(ScopeFactKey, ScopeFactKey)>,
+) -> Result<ExportResolution, ResolutionProjectionError> {
+    let visit = (candidate.module.key.clone(), export.key.clone());
+    if !visiting.insert(visit.clone()) {
+        return Ok(ExportResolution {
+            incomplete: true,
+            observed_facts: vec![candidate.module.key.clone(), export.key.clone()],
+            ..ExportResolution::default()
+        });
+    }
+    let hop = ExportHop {
+        candidate: candidate.clone(),
+        export: export.clone(),
+    };
+    let targets = export_targets(graph, modules, &candidate.module, export)?;
+    let chains = targets
+        .into_iter()
+        .map(|endpoint| ExportChain {
+            hops: vec![hop.clone()],
+            endpoint,
+        })
+        .collect::<Vec<_>>();
+    let mut resolved = ExportResolution {
+        chains,
+        rejected_reexports: Vec::new(),
+        incomplete: false,
+        observed_facts: vec![candidate.module.key.clone(), export.key.clone()],
+    };
+    for scope in &candidate.module.file_scopes {
+        push_unique(&mut resolved.observed_facts, scope.clone());
+    }
+    if !export.reexport_segments.is_empty() {
+        if !reexport_rule_declared(graph, &export.key)? || export.reexport_segments.len() < 2 {
+            resolved.incomplete = true;
+        } else {
+            let split = export.reexport_segments.len() - 1;
+            let module_segments = &export.reexport_segments[..split];
+            let exported_name = &export.reexport_segments[split];
+            let next_candidates = modules.candidates_from(&candidate.module, module_segments);
+            if next_candidates.is_empty() {
+                resolved.incomplete = true;
+            }
+            for next in next_candidates {
+                push_unique(&mut resolved.observed_facts, next.module.key.clone());
+                for scope in &next.module.file_scopes {
+                    push_unique(&mut resolved.observed_facts, scope.clone());
+                }
+                if !next.target_matches {
+                    resolved.rejected_reexports.push(RejectedReexport {
+                        hops: vec![hop.clone()],
+                        candidate: next,
+                    });
+                    continue;
+                }
+                let next_exports = modules.exports_for_module(&next.module, exported_name);
+                if next_exports.is_empty() {
+                    resolved.incomplete = true;
+                }
+                for next_export in next_exports {
+                    let tail = resolve_export_chains(graph, modules, &next, next_export, visiting)?;
+                    resolved.incomplete |= tail.incomplete;
+                    for key in tail.observed_facts {
+                        push_unique(&mut resolved.observed_facts, key);
+                    }
+                    for mut rejected in tail.rejected_reexports {
+                        rejected.hops.insert(0, hop.clone());
+                        resolved.rejected_reexports.push(rejected);
+                    }
+                    for mut chain in tail.chains {
+                        chain.hops.insert(0, hop.clone());
+                        resolved.chains.push(chain);
+                    }
+                }
+            }
+        }
+    } else if resolved.chains.is_empty() {
+        resolved.incomplete = true;
+    }
+    visiting.remove(&visit);
+    Ok(resolved)
+}
+
+fn reexport_rule_declared(
+    graph: &ScopeGraphProjection,
+    export: &ScopeFactKey,
+) -> Result<bool, ResolutionProjectionError> {
+    Ok(fact_by_key(graph, export)?
+        .evidence()
+        .adapter
+        .resolution_rules()
+        .section(ResolutionRuleSectionKind::ImportsExports)
+        .instructions()
+        .iter()
+        .any(|instruction| {
+            matches!(
+                instruction,
+                ResolutionInstruction::ImportTraversal {
+                    rule: ImportTraversalRule::ReExport
+                }
+            )
+        }))
+}
+
+fn attach_export_chain(
+    graph: &ScopeGraphProjection,
+    traversal: &ResolutionTraversal,
+    path: &mut ResolutionPath,
+    chain: &ExportChain,
+) -> Result<(), ResolutionProjectionError> {
+    let Some(first) = chain.hops.first() else {
+        return Err(ResolutionProjectionError::Invalid(
+            "resolved export chain contains no hops".into(),
+        ));
+    };
+    attach_export_edge(path, &first.candidate.module, &first.export);
+    attach_export_visibility(path, &first.candidate, &first.export);
+    attach_export_conditions(path, &first.export);
+    let mut previous_export = first.export.key.clone();
+    for hop in chain.hops.iter().skip(1) {
+        push_unique(&mut path.source_facts, hop.candidate.module.key.clone());
+        for scope in &hop.candidate.module.file_scopes {
+            push_unique(&mut path.source_facts, scope.clone());
+        }
+        if hop.candidate.module.package_id != hop.candidate.importer.package_id {
+            path.edges.push(ResolutionPathEdge {
+                kind: ResolutionPathEdgeKind::Package,
+                from: previous_export.clone(),
+                to: hop.candidate.module.key.clone(),
+                source_fact: hop.candidate.module.key.clone(),
+            });
+        }
+        push_unique(&mut path.source_facts, hop.export.key.clone());
+        path.edges.push(ResolutionPathEdge {
+            kind: ResolutionPathEdgeKind::ReExport,
+            from: previous_export.clone(),
+            to: hop.candidate.module.key.clone(),
+            source_fact: hop.export.key.clone(),
+        });
+        attach_export_edge(path, &hop.candidate.module, &hop.export);
+        attach_reexport_target_check(path, &previous_export, &hop.candidate);
+        attach_export_coverage_check(path, &hop.candidate.module);
+        attach_export_visibility(path, &hop.candidate, &hop.export);
+        attach_export_conditions(path, &hop.export);
+        previous_export = hop.export.key.clone();
+    }
+    let endpoint_key = match &chain.endpoint {
+        ResolutionEndpoint::Declaration(key) | ResolutionEndpoint::Definition(key) => key.clone(),
+        _ => {
+            return Err(ResolutionProjectionError::Invalid(
+                "module export target is not a declaration or definition".into(),
+            ));
+        }
+    };
+    push_unique(&mut path.source_facts, endpoint_key.clone());
+    path.edges.push(ResolutionPathEdge {
+        kind: ResolutionPathEdgeKind::Export,
+        from: previous_export.clone(),
+        to: endpoint_key.clone(),
+        source_fact: previous_export.clone(),
+    });
+    path.endpoint = Some(chain.endpoint.clone());
+    set_import_target_check(
+        path,
+        ResolutionCheckState::Passed,
+        "imported name reaches an exact declared export target",
+        vec![previous_export.clone(), endpoint_key.clone()],
+    );
+    let namespace = endpoint_namespace(graph, &endpoint_key)?;
+    let reference = graph
+        .fact(traversal.reference())
+        .map_err(|error| ResolutionProjectionError::Invalid(error.to_string()))?;
+    let ScopeFactData::Reference {
+        namespace: requested,
+        ..
+    } = reference.data()
+    else {
+        unreachable!("resolution traversal references only reference facts")
+    };
+    let namespace_matches = namespace.as_ref().is_some_and(|actual| actual == requested);
+    if !namespace_matches {
+        push_unique(
+            &mut path.rejection_reasons,
+            ResolutionRejectionReason::WrongNamespace,
+        );
+    }
+    path.checks.push(ResolutionCheck {
+        kind: ResolutionCheckKind::Namespace,
+        state: if namespace_matches {
+            ResolutionCheckState::Passed
+        } else {
+            ResolutionCheckState::Rejected
+        },
+        detail: if namespace_matches {
+            "export target matches the requested namespace".into()
+        } else {
+            "export target does not match the requested namespace".into()
+        },
+        source_facts: vec![previous_export, endpoint_key],
+    });
+    path.viability = viability_from_checks(&path.checks);
+    Ok(())
+}
+
+fn attach_rejected_reexport(
+    path: &mut ResolutionPath,
+    import: &ScopeFactKey,
+    rejected: &RejectedReexport,
+) {
+    let Some(first) = rejected.hops.first() else {
+        return;
+    };
+    attach_export_edge(path, &first.candidate.module, &first.export);
+    attach_export_visibility(path, &first.candidate, &first.export);
+    attach_export_conditions(path, &first.export);
+    let mut previous_export = first.export.key.clone();
+    for hop in rejected.hops.iter().skip(1) {
+        push_unique(&mut path.source_facts, hop.candidate.module.key.clone());
+        for scope in &hop.candidate.module.file_scopes {
+            push_unique(&mut path.source_facts, scope.clone());
+        }
+        push_unique(&mut path.source_facts, hop.export.key.clone());
+        path.edges.push(ResolutionPathEdge {
+            kind: ResolutionPathEdgeKind::ReExport,
+            from: previous_export.clone(),
+            to: hop.candidate.module.key.clone(),
+            source_fact: hop.export.key.clone(),
+        });
+        attach_export_edge(path, &hop.candidate.module, &hop.export);
+        attach_reexport_target_check(path, &previous_export, &hop.candidate);
+        attach_export_coverage_check(path, &hop.candidate.module);
+        attach_export_visibility(path, &hop.candidate, &hop.export);
+        attach_export_conditions(path, &hop.export);
+        previous_export = hop.export.key.clone();
+    }
+    push_unique(
+        &mut path.source_facts,
+        rejected.candidate.module.key.clone(),
+    );
+    for scope in &rejected.candidate.module.file_scopes {
+        push_unique(&mut path.source_facts, scope.clone());
+    }
+    path.edges.push(ResolutionPathEdge {
+        kind: ResolutionPathEdgeKind::ReExport,
+        from: previous_export.clone(),
+        to: rejected.candidate.module.key.clone(),
+        source_fact: rejected.candidate.module.key.clone(),
+    });
+    attach_reexport_target_check(path, &previous_export, &rejected.candidate);
+    push_unique(
+        &mut path.rejection_reasons,
+        ResolutionRejectionReason::ImportUnresolved,
+    );
+    set_import_target_check(
+        path,
+        ResolutionCheckState::Rejected,
+        "re-export module is outside the exact build target",
+        vec![import.clone(), rejected.candidate.module.key.clone()],
+    );
+    path.viability = viability_from_checks(&path.checks);
+}
+
+fn attach_reexport_target_check(
+    path: &mut ResolutionPath,
+    source_export: &ScopeFactKey,
+    candidate: &ModuleCandidate,
+) {
+    let (state, detail) = if candidate.target_matches {
+        (
+            ResolutionCheckState::Passed,
+            "re-export source belongs to the exact build target",
+        )
+    } else {
+        push_unique(
+            &mut path.rejection_reasons,
+            ResolutionRejectionReason::WrongBuildTarget,
+        );
+        (
+            ResolutionCheckState::Rejected,
+            "re-export source belongs to a different build target",
+        )
+    };
+    path.checks.push(ResolutionCheck {
+        kind: ResolutionCheckKind::BuildTarget,
+        state,
+        detail: detail.into(),
+        source_facts: vec![source_export.clone(), candidate.module.key.clone()],
+    });
+}
+
+fn attach_export_conditions(path: &mut ResolutionPath, export: &ExportRecord) {
+    if !export.conditions.is_empty() {
+        path.checks.push(ResolutionCheck {
+            kind: ResolutionCheckKind::Condition,
+            state: ResolutionCheckState::Unknown,
+            detail: format!(
+                "export conditions are unevaluated: {}",
+                export.conditions.join(", ")
+            ),
+            source_facts: vec![export.key.clone()],
+        });
+    }
+}
+
+fn attach_export_coverage_check(path: &mut ResolutionPath, module: &ModuleRecord) {
+    let (state, detail) = if module.export_coverage.status == FactCoverage::Complete {
+        (
+            ResolutionCheckState::Passed,
+            "module export set is complete".to_string(),
+        )
+    } else {
+        (
+            ResolutionCheckState::Unknown,
+            format!(
+                "module export set is {:?}: {}",
+                module.export_coverage.status,
+                module
+                    .export_coverage
+                    .reason
+                    .as_deref()
+                    .unwrap_or("no exact reason retained")
+            ),
+        )
+    };
+    path.checks.push(ResolutionCheck {
+        kind: ResolutionCheckKind::ExportSetCoverage,
+        state,
+        detail,
+        source_facts: vec![module.key.clone()],
+    });
+}
+
+fn attach_export_visibility(
+    path: &mut ResolutionPath,
+    candidate: &ModuleCandidate,
+    export: &ExportRecord,
+) {
+    let (state, detail) = match export.visibility.kind {
+        crate::VisibilityKind::Public => {
+            (ResolutionCheckState::Passed, "export is public".to_string())
+        }
+        crate::VisibilityKind::Package
+            if candidate.module.package_id == candidate.importer.package_id =>
+        {
+            (
+                ResolutionCheckState::Passed,
+                "export is visible within the package".to_string(),
+            )
+        }
+        crate::VisibilityKind::Module if candidate.module.key == candidate.importer.key => (
+            ResolutionCheckState::Passed,
+            "export is visible within the module".to_string(),
+        ),
+        crate::VisibilityKind::AdapterDefined => (
+            ResolutionCheckState::Unknown,
+            "export visibility requires an adapter rule".to_string(),
+        ),
+        _ => {
+            push_unique(
+                &mut path.rejection_reasons,
+                ResolutionRejectionReason::NotVisible,
+            );
+            (
+                ResolutionCheckState::Rejected,
+                "export is outside its visibility boundary".to_string(),
+            )
+        }
+    };
+    path.checks.push(ResolutionCheck {
+        kind: ResolutionCheckKind::Visibility,
+        state,
+        detail,
+        source_facts: vec![export.key.clone()],
+    });
+}
+
+fn set_import_target_check(
+    path: &mut ResolutionPath,
+    state: ResolutionCheckState,
+    detail: &str,
+    source_facts: Vec<ScopeFactKey>,
+) {
+    path.checks
+        .retain(|check| check.kind != ResolutionCheckKind::ImportTarget);
+    path.checks.push(ResolutionCheck {
+        kind: ResolutionCheckKind::ImportTarget,
+        state,
+        detail: detail.into(),
+        source_facts,
+    });
+}
+
+fn fact_is_complete(
+    graph: &ScopeGraphProjection,
+    key: &ScopeFactKey,
+) -> Result<bool, ResolutionProjectionError> {
+    Ok(fact_by_key(graph, key)?.evidence().coverage.status == FactCoverage::Complete)
+}
+
+fn fact_by_key<'a>(
+    graph: &'a ScopeGraphProjection,
+    key: &ScopeFactKey,
+) -> Result<&'a crate::ScopeFactRecord, ResolutionProjectionError> {
+    graph
+        .facts()
+        .iter()
+        .find(|fact| fact.key() == key)
+        .ok_or_else(|| ResolutionProjectionError::MissingFact(key.as_str().into()))
+}
+
+fn export_targets(
+    graph: &ScopeGraphProjection,
+    modules: &ModuleStitchIndex,
+    module: &ModuleRecord,
+    export: &ExportRecord,
+) -> Result<Vec<ResolutionEndpoint>, ResolutionProjectionError> {
+    if let Some(target) = &export.local_target {
+        return Ok(vec![endpoint_for_fact(graph, target)?]);
+    }
+    let Some(local_name) = &export.local_name else {
+        return Ok(Vec::new());
+    };
+    graph
+        .facts()
+        .iter()
+        .filter_map(|fact| match fact.data() {
+            ScopeFactData::Declaration {
+                lookup_key, scope, ..
+            } if lookup_key == local_name
+                && modules
+                    .file_scope(scope)
+                    .is_some_and(|file| module.file_scopes.contains(&file)) =>
+            {
+                Some(Ok(ResolutionEndpoint::Declaration(fact.key().clone())))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn endpoint_for_fact(
+    graph: &ScopeGraphProjection,
+    key: &ScopeFactKey,
+) -> Result<ResolutionEndpoint, ResolutionProjectionError> {
+    match fact_by_key(graph, key)?.data().kind() {
+        ScopeFactKind::Declaration => Ok(ResolutionEndpoint::Declaration(key.clone())),
+        ScopeFactKind::Definition => Ok(ResolutionEndpoint::Definition(key.clone())),
+        actual => Err(ResolutionProjectionError::Invalid(format!(
+            "export target has unsupported fact kind {actual:?}"
+        ))),
+    }
+}
+
+fn endpoint_namespace(
+    graph: &ScopeGraphProjection,
+    key: &ScopeFactKey,
+) -> Result<Option<crate::NameNamespace>, ResolutionProjectionError> {
+    match fact_by_key(graph, key)?.data() {
+        ScopeFactData::Declaration { namespace, .. } => Ok(Some(namespace.clone())),
+        ScopeFactData::Definition { declaration, .. } => {
+            match fact_by_key(graph, declaration)?.data() {
+                ScopeFactData::Declaration { namespace, .. } => Ok(Some(namespace.clone())),
+                _ => Err(ResolutionProjectionError::Invalid(
+                    "definition links a non-declaration fact".into(),
+                )),
+            }
+        }
+        _ => Ok(None),
+    }
 }
 
 fn lexical_edges(
@@ -2193,11 +3455,12 @@ mod tests {
     use tree_sitter::Node;
 
     use crate::{
-        BindingDraft, BindingForm, BindingTargetDraft, BuildContextId, DeclarationDraft,
-        DeclarationModifier, DynamicBoundaryDraft, FactCoverageEvidence, ImportDraft, ImportForm,
-        Mutability, NameNamespace, NamespacePolicy, ProjectAnalysis, ProjectSnapshotBuilder,
-        ReferenceDraft, ReferenceRole, RepositoryId, ScopeDraft, ScopeFactPolicyId,
-        ScopeGraphBuilder, ScopeKind, ShadowingDraft, VisibilityDraft, VisibilityKind,
+        BindingDraft, BindingForm, BindingTargetDraft, BuildContextId, BuildModuleDraft,
+        DeclarationDraft, DeclarationModifier, DynamicBoundaryDraft, ExportDraft,
+        FactCoverageEvidence, ImportDraft, ImportForm, Mutability, NameNamespace, NamespacePolicy,
+        ProjectAnalysis, ProjectSnapshotBuilder, ReferenceDraft, ReferenceRole, RepositoryId,
+        ScopeDraft, ScopeFactPolicyId, ScopeGraphBuilder, ScopeKind, ShadowingDraft,
+        VisibilityDraft, VisibilityKind,
     };
 
     use super::*;
@@ -2281,6 +3544,26 @@ mod tests {
                     .then_some(RuleNamespace::Value),
                     fact_kind,
                 })
+                .collect(),
+            )
+            .unwrap();
+            let imports_index = ResolutionRuleSectionKind::ALL
+                .iter()
+                .position(|kind| *kind == ResolutionRuleSectionKind::ImportsExports)
+                .unwrap();
+            sections[imports_index] = ResolutionRuleSection::provided(
+                ResolutionRuleSectionKind::ImportsExports,
+                [
+                    ImportTraversalRule::Explicit,
+                    ImportTraversalRule::Selective,
+                    ImportTraversalRule::Alias,
+                    ImportTraversalRule::Glob,
+                    ImportTraversalRule::Prelude,
+                    ImportTraversalRule::Export,
+                    ImportTraversalRule::ReExport,
+                ]
+                .into_iter()
+                .map(|rule| ResolutionInstruction::ImportTraversal { rule })
                 .collect(),
             )
             .unwrap();
@@ -2411,6 +3694,7 @@ fn sibling() {
         Rejected,
         Dynamic,
         DeferredImport,
+        DeferredMappedImport,
         Qualified,
         ExplicitShadowing,
         Missing,
@@ -2455,14 +3739,466 @@ fn sibling() {
     }
 
     fn roles(analysis: &Arc<ProjectAnalysis>, node: crate::NodeId) -> CanonicalRoleSet {
+        let path = analysis.node(node).unwrap().path().to_path_buf();
         analysis
-            .canonical_role_projection(Path::new("fixture.resolutionrs"))
+            .canonical_role_projection(&path)
             .unwrap()
             .facts()
             .iter()
             .find(|fact| fact.node() == node)
             .unwrap()
             .roles()
+    }
+
+    fn module_analysis(peer_source: &str) -> Arc<ProjectAnalysis> {
+        let root = tempfile::tempdir().unwrap();
+        let mut registry = Registry::new(&GENERIC_PACK);
+        registry.register(&COMPLETE_RESOLUTION_PACK);
+        let snapshot = ProjectSnapshotBuilder::new(
+            root.path(),
+            RepositoryId::explicit("module-stitch-test-repository").unwrap(),
+        )
+        .unwrap()
+        .with_registry(registry)
+        .with_overlay(
+            "importer.resolutionrs",
+            b"fn consume() { imported; alias; through; globbed; looped; }\n".to_vec(),
+        )
+        .unwrap()
+        .with_overlay(
+            "source.resolutionrs",
+            b"fn source() {} fn through() {} fn globbed() {}\n".to_vec(),
+        )
+        .unwrap()
+        .with_overlay("middle.resolutionrs", b"fn middle() {}\n".to_vec())
+        .unwrap()
+        .with_overlay("cycle.resolutionrs", b"fn cycle() {}\n".to_vec())
+        .unwrap()
+        .with_overlay("wrong.resolutionrs", b"fn wrong() {}\n".to_vec())
+        .unwrap()
+        .with_overlay("peer.resolutionrs", peer_source.as_bytes().to_vec())
+        .unwrap()
+        .build()
+        .unwrap();
+        ProjectAnalysis::build(snapshot).unwrap()
+    }
+
+    fn node_by_path_kind(analysis: &ProjectAnalysis, path: &str, kind: &str) -> crate::NodeId {
+        analysis
+            .node_ids()
+            .find(|id| {
+                let node = analysis.node(*id).unwrap();
+                node.path() == Path::new(path) && node.raw_kind() == kind
+            })
+            .unwrap_or_else(|| panic!("missing {kind} in {path}"))
+    }
+
+    fn node_by_path_text(analysis: &ProjectAnalysis, path: &str, value: &str) -> crate::NodeId {
+        analysis
+            .node_ids()
+            .find(|id| {
+                let node = analysis.node(*id).unwrap();
+                node.path() == Path::new(path) && node.text() == value
+            })
+            .unwrap_or_else(|| panic!("missing {value} in {path}"))
+    }
+
+    fn nodes_by_path_text(
+        analysis: &ProjectAnalysis,
+        path: &str,
+        value: &str,
+    ) -> Vec<crate::NodeId> {
+        analysis
+            .node_ids()
+            .filter(|id| {
+                let node = analysis.node(*id).unwrap();
+                node.path() == Path::new(path) && node.text() == value
+            })
+            .collect()
+    }
+
+    fn module_fixture() -> Arc<ScopeGraphProjection> {
+        module_fixture_with_peer_and_export("fn peer_before() {}\n", true)
+    }
+
+    fn module_fixture_with_peer(peer_source: &str) -> Arc<ScopeGraphProjection> {
+        module_fixture_with_peer_and_export(peer_source, true)
+    }
+
+    fn module_fixture_with_peer_and_export(
+        peer_source: &str,
+        include_through_export: bool,
+    ) -> Arc<ScopeGraphProjection> {
+        module_fixture_with_peer_export_coverage(peer_source, include_through_export, true)
+    }
+
+    fn module_fixture_with_peer_export_coverage(
+        peer_source: &str,
+        include_through_export: bool,
+        complete_exports: bool,
+    ) -> Arc<ScopeGraphProjection> {
+        let analysis = module_analysis(peer_source);
+        let complete = FactCoverageEvidence::complete();
+        let export_coverage = if complete_exports {
+            complete.clone()
+        } else {
+            FactCoverageEvidence::partial("module export extraction is incomplete").unwrap()
+        };
+        let namespaces =
+            NamespacePolicy::new(vec![NameNamespace::Value, NameNamespace::Module], vec![])
+                .unwrap();
+        let importer_root = node_by_path_kind(&analysis, "importer.resolutionrs", "source_file");
+        let source_root = node_by_path_kind(&analysis, "source.resolutionrs", "source_file");
+        let middle_root = node_by_path_kind(&analysis, "middle.resolutionrs", "source_file");
+        let cycle_root = node_by_path_kind(&analysis, "cycle.resolutionrs", "source_file");
+        let wrong_root = node_by_path_kind(&analysis, "wrong.resolutionrs", "source_file");
+        let peer_root = node_by_path_kind(&analysis, "peer.resolutionrs", "source_file");
+        let imported = node_by_path_text(&analysis, "importer.resolutionrs", "imported");
+        let alias = node_by_path_text(&analysis, "importer.resolutionrs", "alias");
+        let through_reference = node_by_path_text(&analysis, "importer.resolutionrs", "through");
+        let globbed_reference = node_by_path_text(&analysis, "importer.resolutionrs", "globbed");
+        let looped_reference = node_by_path_text(&analysis, "importer.resolutionrs", "looped");
+        let source = node_by_path_text(&analysis, "source.resolutionrs", "source");
+        let through = node_by_path_text(&analysis, "source.resolutionrs", "through");
+        let globbed = node_by_path_text(&analysis, "source.resolutionrs", "globbed");
+        let mut builder = ScopeGraphBuilder::new(
+            Arc::clone(&analysis),
+            BuildContextId::from_parts(&[b"module-stitch-context"]).unwrap(),
+            ScopeFactPolicyId::from_parts(&[b"module-stitch-facts/1"]).unwrap(),
+        )
+        .unwrap();
+        let mut add_file = |node| {
+            builder
+                .add_scope(
+                    node,
+                    roles(&analysis, node),
+                    complete.clone(),
+                    ScopeDraft {
+                        kind: ScopeKind::File,
+                        parent: None,
+                        namespace_policy: namespaces.clone(),
+                    },
+                )
+                .unwrap()
+        };
+        let importer_scope = add_file(importer_root);
+        let source_scope = add_file(source_root);
+        let middle_scope = add_file(middle_root);
+        let cycle_scope = add_file(cycle_root);
+        let wrong_scope = add_file(wrong_root);
+        let peer_scope = add_file(peer_root);
+        let independent = nodes_by_path_text(&analysis, "peer.resolutionrs", "independent");
+        if independent.len() >= 2 {
+            let declaration = builder
+                .add_declaration(
+                    independent[0],
+                    roles(&analysis, independent[0]),
+                    complete.clone(),
+                    DeclarationDraft {
+                        original_name: "independent".into(),
+                        lookup_key: "independent".into(),
+                        namespace: NameNamespace::Value,
+                        scope: peer_scope,
+                        visibility: VisibilityDraft {
+                            kind: VisibilityKind::Scope,
+                            boundary: Some(peer_scope),
+                            adapter_rule: None,
+                        },
+                        modifiers: vec![],
+                    },
+                )
+                .unwrap();
+            builder
+                .add_binding(
+                    independent[0],
+                    roles(&analysis, independent[0]),
+                    complete.clone(),
+                    BindingDraft {
+                        target: BindingTargetDraft::Declaration(declaration),
+                        form: BindingForm::Declaration,
+                        timing: crate::BindingTiming::AtDeclaration,
+                        mutability: Mutability::Immutable,
+                    },
+                )
+                .unwrap();
+            let reference = *independent.last().unwrap();
+            builder
+                .add_reference(
+                    reference,
+                    roles(&analysis, reference),
+                    complete.clone(),
+                    ReferenceDraft {
+                        original_spelling: "independent".into(),
+                        segments: vec!["independent".into()],
+                        namespace: NameNamespace::Value,
+                        scope: peer_scope,
+                        role: ReferenceRole::Read,
+                    },
+                )
+                .unwrap();
+        }
+        let target = builder
+            .add_declaration(
+                source,
+                roles(&analysis, source),
+                complete.clone(),
+                DeclarationDraft {
+                    original_name: "imported".into(),
+                    lookup_key: "imported".into(),
+                    namespace: NameNamespace::Value,
+                    scope: source_scope,
+                    visibility: VisibilityDraft {
+                        kind: VisibilityKind::Public,
+                        boundary: None,
+                        adapter_rule: None,
+                    },
+                    modifiers: vec![],
+                },
+            )
+            .unwrap();
+        builder
+            .add_export(
+                source,
+                roles(&analysis, source),
+                complete.clone(),
+                ExportDraft {
+                    scope: source_scope,
+                    local_target: Some(target),
+                    local_name: Some("imported".into()),
+                    exported_name: "imported".into(),
+                    reexport_segments: vec![],
+                    visibility: VisibilityDraft {
+                        kind: VisibilityKind::Public,
+                        boundary: None,
+                        adapter_rule: None,
+                    },
+                    conditions: vec![],
+                },
+            )
+            .unwrap();
+        let through_target = builder
+            .add_declaration(
+                through,
+                roles(&analysis, through),
+                complete.clone(),
+                DeclarationDraft {
+                    original_name: "through".into(),
+                    lookup_key: "through".into(),
+                    namespace: NameNamespace::Value,
+                    scope: source_scope,
+                    visibility: VisibilityDraft {
+                        kind: VisibilityKind::Public,
+                        boundary: None,
+                        adapter_rule: None,
+                    },
+                    modifiers: vec![],
+                },
+            )
+            .unwrap();
+        let globbed_target = builder
+            .add_declaration(
+                globbed,
+                roles(&analysis, globbed),
+                complete.clone(),
+                DeclarationDraft {
+                    original_name: "globbed".into(),
+                    lookup_key: "globbed".into(),
+                    namespace: NameNamespace::Value,
+                    scope: source_scope,
+                    visibility: VisibilityDraft {
+                        kind: VisibilityKind::Public,
+                        boundary: None,
+                        adapter_rule: None,
+                    },
+                    modifiers: vec![],
+                },
+            )
+            .unwrap();
+        for (node, target, name) in [
+            (through, through_target, "through"),
+            (globbed, globbed_target, "globbed"),
+        ] {
+            if name == "through" && !include_through_export {
+                continue;
+            }
+            builder
+                .add_export(
+                    node,
+                    roles(&analysis, node),
+                    complete.clone(),
+                    ExportDraft {
+                        scope: source_scope,
+                        local_target: Some(target),
+                        local_name: Some(name.into()),
+                        exported_name: name.into(),
+                        reexport_segments: vec![],
+                        visibility: VisibilityDraft {
+                            kind: VisibilityKind::Public,
+                            boundary: None,
+                            adapter_rule: None,
+                        },
+                        conditions: vec![],
+                    },
+                )
+                .unwrap();
+        }
+        builder
+            .add_export(
+                middle_root,
+                roles(&analysis, middle_root),
+                complete.clone(),
+                ExportDraft {
+                    scope: middle_scope,
+                    local_target: None,
+                    local_name: None,
+                    exported_name: "through".into(),
+                    reexport_segments: vec!["dep".into(), "through".into()],
+                    visibility: VisibilityDraft {
+                        kind: VisibilityKind::Public,
+                        boundary: None,
+                        adapter_rule: None,
+                    },
+                    conditions: vec![],
+                },
+            )
+            .unwrap();
+        builder
+            .add_export(
+                middle_root,
+                roles(&analysis, middle_root),
+                complete.clone(),
+                ExportDraft {
+                    scope: middle_scope,
+                    local_target: None,
+                    local_name: None,
+                    exported_name: "looped".into(),
+                    reexport_segments: vec!["cycle".into(), "looped".into()],
+                    visibility: VisibilityDraft {
+                        kind: VisibilityKind::Public,
+                        boundary: None,
+                        adapter_rule: None,
+                    },
+                    conditions: vec![],
+                },
+            )
+            .unwrap();
+        builder
+            .add_export(
+                cycle_root,
+                roles(&analysis, cycle_root),
+                complete.clone(),
+                ExportDraft {
+                    scope: cycle_scope,
+                    local_target: None,
+                    local_name: None,
+                    exported_name: "looped".into(),
+                    reexport_segments: vec!["facade".into(), "looped".into()],
+                    visibility: VisibilityDraft {
+                        kind: VisibilityKind::Public,
+                        boundary: None,
+                        adapter_rule: None,
+                    },
+                    conditions: vec![],
+                },
+            )
+            .unwrap();
+        for (node, scope, target_id, path) in [
+            (importer_root, importer_scope, "lib", vec!["app".into()]),
+            (source_root, source_scope, "lib", vec!["dep".into()]),
+            (middle_root, middle_scope, "lib", vec!["facade".into()]),
+            (cycle_root, cycle_scope, "lib", vec!["cycle".into()]),
+            (wrong_root, wrong_scope, "test", vec!["dep".into()]),
+        ] {
+            builder
+                .add_build_module(
+                    node,
+                    roles(&analysis, node),
+                    complete.clone(),
+                    BuildModuleDraft {
+                        package_id: "workspace".into(),
+                        target_id: target_id.into(),
+                        source_root: "src".into(),
+                        module_path: path,
+                        file_scopes: vec![scope],
+                        export_coverage: export_coverage.clone(),
+                    },
+                )
+                .unwrap();
+        }
+        builder
+            .add_import(
+                importer_root,
+                roles(&analysis, importer_root),
+                complete.clone(),
+                ImportDraft {
+                    scope: importer_scope,
+                    module_segments: vec!["dep".into()],
+                    form: ImportForm::Selective,
+                    alias: None,
+                    selected_names: vec!["imported".into()],
+                    conditions: vec![],
+                },
+            )
+            .unwrap();
+        builder
+            .add_import(
+                importer_root,
+                roles(&analysis, importer_root),
+                complete.clone(),
+                ImportDraft {
+                    scope: importer_scope,
+                    module_segments: vec!["dep".into()],
+                    form: ImportForm::Module,
+                    alias: Some("alias".into()),
+                    selected_names: vec![],
+                    conditions: vec![],
+                },
+            )
+            .unwrap();
+        for (module, form, selected) in [
+            ("facade", ImportForm::Selective, vec!["through".into()]),
+            ("dep", ImportForm::Glob, Vec::new()),
+            ("facade", ImportForm::Selective, vec!["looped".into()]),
+        ] {
+            builder
+                .add_import(
+                    importer_root,
+                    roles(&analysis, importer_root),
+                    complete.clone(),
+                    ImportDraft {
+                        scope: importer_scope,
+                        module_segments: vec![module.into()],
+                        form,
+                        alias: None,
+                        selected_names: selected,
+                        conditions: vec![],
+                    },
+                )
+                .unwrap();
+        }
+        for (node, name) in [
+            (imported, "imported"),
+            (alias, "alias"),
+            (through_reference, "through"),
+            (globbed_reference, "globbed"),
+            (looped_reference, "looped"),
+        ] {
+            builder
+                .add_reference(
+                    node,
+                    roles(&analysis, node),
+                    complete.clone(),
+                    ReferenceDraft {
+                        original_spelling: name.into(),
+                        segments: vec![name.into()],
+                        namespace: NameNamespace::Value,
+                        scope: importer_scope,
+                        role: ReferenceRole::Read,
+                    },
+                )
+                .unwrap();
+        }
+        Arc::new(builder.build().unwrap())
     }
 
     fn visibility(boundary: ScopeFactId) -> VisibilityDraft {
@@ -2564,7 +4300,7 @@ fn sibling() {
 
         let lookup = match mode {
             FixtureMode::Missing => "missing",
-            FixtureMode::DeferredImport => "imported",
+            FixtureMode::DeferredImport | FixtureMode::DeferredMappedImport => "imported",
             _ => "target",
         };
         let mut outer_id = None;
@@ -2810,7 +4546,10 @@ fn sibling() {
                 )
                 .unwrap();
         }
-        if matches!(mode, FixtureMode::DeferredImport) {
+        if matches!(
+            mode,
+            FixtureMode::DeferredImport | FixtureMode::DeferredMappedImport
+        ) {
             builder
                 .add_import(
                     root_node,
@@ -2823,6 +4562,23 @@ fn sibling() {
                         alias: Some("imported".into()),
                         selected_names: vec![],
                         conditions: vec!["default-target".into()],
+                    },
+                )
+                .unwrap();
+        }
+        if matches!(mode, FixtureMode::DeferredMappedImport) {
+            builder
+                .add_build_module(
+                    root_node,
+                    roles(&analysis, root_node),
+                    complete.clone(),
+                    BuildModuleDraft {
+                        package_id: "workspace".into(),
+                        target_id: "lib".into(),
+                        source_root: "src".into(),
+                        module_path: vec!["crate".into(), "dependency".into()],
+                        file_scopes: vec![root],
+                        export_coverage: complete.clone(),
                     },
                 )
                 .unwrap();
@@ -2900,6 +4656,204 @@ fn sibling() {
                 .all(|path| !path.source_facts().contains(&fixture.sibling))
         );
         assert!(Arc::ptr_eq(projection.scope_graph(), &fixture.graph));
+    }
+
+    #[test]
+    fn declared_modules_stitch_alias_and_selective_exports_without_target_fallback() {
+        let graph = module_fixture();
+        let projection =
+            ResolutionProjection::build(Arc::clone(&graph), policy(b"modules")).unwrap();
+        assert_eq!(projection.results().len(), 5);
+        let result_for = |spelling: &str| {
+            projection
+                .results()
+                .iter()
+                .map(ResolutionResultRecord::wire)
+                .find(|result| {
+                    matches!(
+                        fact_by_key(&graph, result.reference()).unwrap().data(),
+                        ScopeFactData::Reference { original_spelling, .. }
+                            if original_spelling == spelling
+                    )
+                })
+                .unwrap()
+        };
+
+        let selective = result_for("imported");
+        assert_eq!(selective.status(), ResolutionStatus::Unique);
+        assert_eq!(selective.coverage().status(), FactCoverage::Complete);
+        assert!(selective.paths().iter().any(|path| {
+            path.viability() == ResolutionPathViability::Viable
+                && matches!(path.endpoint(), Some(ResolutionEndpoint::Declaration(_)))
+                && [
+                    ResolutionPathEdgeKind::SelectiveImport,
+                    ResolutionPathEdgeKind::Module,
+                    ResolutionPathEdgeKind::Export,
+                ]
+                .into_iter()
+                .all(|kind| path.edges().iter().any(|edge| edge.kind() == kind))
+        }));
+        assert!(selective.paths().iter().any(|path| {
+            path.rejection_reasons()
+                .contains(&ResolutionRejectionReason::WrongBuildTarget)
+                && path.checks().iter().any(|check| {
+                    check.kind() == ResolutionCheckKind::BuildTarget
+                        && check.state() == ResolutionCheckState::Rejected
+                })
+        }));
+
+        let alias = result_for("alias");
+        assert_eq!(alias.status(), ResolutionStatus::Unique);
+        assert_eq!(alias.coverage().status(), FactCoverage::Complete);
+        assert!(alias.paths().iter().any(|path| {
+            path.viability() == ResolutionPathViability::Viable
+                && matches!(path.endpoint(), Some(ResolutionEndpoint::Module(_)))
+                && path
+                    .edges()
+                    .iter()
+                    .any(|edge| edge.kind() == ResolutionPathEdgeKind::AliasImport)
+        }));
+
+        let reexported = result_for("through");
+        assert_eq!(
+            reexported.status(),
+            ResolutionStatus::Unique,
+            "{:?}",
+            reexported
+                .paths()
+                .iter()
+                .map(|path| (
+                    path.viability(),
+                    path.rejection_reasons(),
+                    path.checks()
+                        .iter()
+                        .filter(|check| check.state() == ResolutionCheckState::Unknown)
+                        .map(ResolutionCheck::detail)
+                        .collect::<Vec<_>>()
+                ))
+                .collect::<Vec<_>>()
+        );
+        assert!(reexported.paths().iter().any(|path| {
+            path.viability() == ResolutionPathViability::Viable
+                && path
+                    .edges()
+                    .iter()
+                    .any(|edge| edge.kind() == ResolutionPathEdgeKind::ReExport)
+        }));
+
+        let globbed = result_for("globbed");
+        assert_eq!(globbed.status(), ResolutionStatus::Unique);
+        assert!(globbed.paths().iter().any(|path| {
+            path.viability() == ResolutionPathViability::Viable
+                && path
+                    .edges()
+                    .iter()
+                    .any(|edge| edge.kind() == ResolutionPathEdgeKind::GlobImport)
+        }));
+
+        let looped = result_for("looped");
+        assert_eq!(looped.status(), ResolutionStatus::Unknown);
+        assert_eq!(looped.coverage().status(), FactCoverage::Partial);
+        assert!(looped.paths().iter().any(|path| {
+            path.rejection_reasons()
+                .contains(&ResolutionRejectionReason::ExportIncomplete)
+                && path.viability() == ResolutionPathViability::Unknown
+        }));
+    }
+
+    #[test]
+    fn incomplete_export_set_never_authorizes_a_terminal_import_result() {
+        let graph = module_fixture_with_peer_export_coverage("fn peer_before() {}\n", true, false);
+        let projection =
+            ResolutionProjection::build(Arc::clone(&graph), policy(b"partial-exports")).unwrap();
+        let imported = projection
+            .results()
+            .iter()
+            .map(ResolutionResultRecord::wire)
+            .find(|result| {
+                matches!(
+                    fact_by_key(&graph, result.reference()).unwrap().data(),
+                    ScopeFactData::Reference { original_spelling, .. }
+                        if original_spelling == "imported"
+                )
+            })
+            .unwrap();
+        assert_eq!(imported.status(), ResolutionStatus::Unknown);
+        assert_eq!(imported.coverage().status(), FactCoverage::Partial);
+        assert!(imported.paths().iter().any(|path| {
+            path.checks().iter().any(|check| {
+                check.kind() == ResolutionCheckKind::ExportSetCoverage
+                    && check.state() == ResolutionCheckState::Unknown
+            })
+        }));
+    }
+
+    #[test]
+    fn incremental_module_successor_reuses_unrelated_results_and_matches_clean_build() {
+        let resolution_policy = policy(b"module-successor");
+        let previous_graph = module_fixture_with_peer("fn peer_before() {}\n");
+        let previous = Arc::new(
+            ResolutionProjection::build(previous_graph, resolution_policy.clone()).unwrap(),
+        );
+        let current_graph = module_fixture_with_peer("fn peer_after() { changed(); }\n");
+        let clean =
+            ResolutionProjection::build(Arc::clone(&current_graph), resolution_policy.clone())
+                .unwrap();
+        let update = previous
+            .successor(current_graph, resolution_policy)
+            .unwrap();
+
+        assert_eq!(update.reused_result_keys().len(), 5);
+        assert!(update.rebuilt_results().is_empty());
+        assert!(update.added_references().is_empty());
+        assert!(update.removed_references().is_empty());
+        assert_eq!(
+            serde_json::to_value(update.current().document()).unwrap(),
+            serde_json::to_value(clean.document()).unwrap()
+        );
+        assert_eq!(
+            update
+                .previous()
+                .results()
+                .iter()
+                .map(|result| result.wire().key())
+                .collect::<Vec<_>>(),
+            update
+                .current()
+                .results()
+                .iter()
+                .map(|result| result.wire().key())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn export_addition_invalidates_reverse_dependents_but_reuses_independent_result() {
+        let resolution_policy = policy(b"export-successor");
+        let peer = "fn peer() { let independent = 1; independent; }\n";
+        let previous_graph = module_fixture_with_peer_and_export(peer, false);
+        let previous = Arc::new(
+            ResolutionProjection::build(previous_graph, resolution_policy.clone()).unwrap(),
+        );
+        let current_graph = module_fixture_with_peer_and_export(peer, true);
+        let clean =
+            ResolutionProjection::build(Arc::clone(&current_graph), resolution_policy.clone())
+                .unwrap();
+        let update = previous
+            .successor(current_graph, resolution_policy)
+            .unwrap();
+
+        assert_eq!(update.reused_result_keys().len(), 1);
+        assert_eq!(update.rebuilt_results().len(), 5);
+        assert!(update.rebuilt_results().iter().all(|invalidation| {
+            invalidation
+                .reasons()
+                .contains(&ResolutionInvalidationReason::ReachableScopeChanged)
+        }));
+        assert_eq!(
+            serde_json::to_value(update.current().document()).unwrap(),
+            serde_json::to_value(clean.document()).unwrap()
+        );
     }
 
     #[test]
@@ -3098,6 +5052,34 @@ fn sibling() {
             check.kind() == ResolutionCheckKind::Condition
                 && check.state() == ResolutionCheckState::Unknown
         }));
+    }
+
+    #[test]
+    fn newly_declared_matching_module_invalidates_a_formerly_unresolved_import() {
+        let resolution_policy = policy(b"new-module");
+        let previous_graph = fixture(FixtureMode::DeferredImport, false).graph;
+        let previous = Arc::new(
+            ResolutionProjection::build(previous_graph, resolution_policy.clone()).unwrap(),
+        );
+        let current_graph = fixture(FixtureMode::DeferredMappedImport, false).graph;
+        let clean =
+            ResolutionProjection::build(Arc::clone(&current_graph), resolution_policy.clone())
+                .unwrap();
+        let update = previous
+            .successor(current_graph, resolution_policy)
+            .unwrap();
+
+        assert!(update.reused_result_keys().is_empty());
+        assert_eq!(update.rebuilt_results().len(), 1);
+        assert!(
+            update.rebuilt_results()[0]
+                .reasons()
+                .contains(&ResolutionInvalidationReason::MatchingModuleAdded)
+        );
+        assert_eq!(
+            serde_json::to_value(update.current().document()).unwrap(),
+            serde_json::to_value(clean.document()).unwrap()
+        );
     }
 
     #[test]

@@ -2244,3 +2244,92 @@ retained path graph rather than introduce an alternate lookup surface.
 Next checkpoint: audit exact module/import/export facts, build-context identities, and invalidation APIs;
 design one convergent stitching fixture that measures alias, wildcard, re-export, package, build-target,
 and single-file invalidation behavior before implementing M3.5.
+
+#### Active M3.5 execution plan — module-constrained paths and exact incremental parity
+
+Active hypothesis: M3.5 can meet the ADR only if unchanged scope facts and resolution results keep stable
+revision-bound keys across an unrelated `ProjectAnalysis` successor. The existing `sf1_` derivation
+includes the whole-project `analysis_id` and positional fact index, so any unrelated revision or earlier
+insertion churns every downstream path/result identity. That invalidates incremental reuse before module
+stitching begins and must be corrected at the identity boundary.
+
+Current approach:
+
+1. Change `ScopeFactKey` derivation to bind schema, exact build context, fact policy, complete node/adapter/
+   capability evidence, and fact payload—but not whole-project analysis identity or builder position.
+   Keep dense `ScopeFactId` owner/index analysis-local and keep projection/document identity bound to the
+   exact `ProjectAnalysisId` and ordered fact document. Add numerical successor tests proving unchanged
+   facts retain keys while edited facts and projection identity change.
+2. Build an exact module stitch index only from `BuildModule` facts in the current build context. Resolve
+   importer ownership through declared file-scope constituents; match package/target/module paths rather
+   than path stems or global names; retain wrong-target candidates as rejected paths.
+3. Extend deferred import paths through module and export/re-export edges. Alias imports bind modules;
+   selective/glob imports traverse the source module's declared export set; local targets and names stay
+   constrained to constituent scopes. Incomplete module/export coverage remains Unknown. Re-export SCCs
+   use a deterministic fixed point and never first-win.
+4. Add `ResolutionProjection::successor` plus an explicit update report. Compare stable fact keys and
+   reverse dependencies, rebuild only added/invalidated references, clone unchanged result wires, and
+   prove the successor document is byte-for-byte equal to a clean rebuild. New module mappings also
+   invalidate matching formerly-unresolved imports; new facts in a searched lexical/module scope
+   invalidate dependents; unrelated files reuse exact result keys.
+
+CONVERGENCE: one synthetic multi-file, two-target graph will exercise explicit module alias, selective
+and glob imports, one re-export chain/cycle boundary, wrong-target rejection, an export edit, and an
+unrelated-file edit. Terminal outcomes are: (a) clean and incremental documents differ—identity or
+invalidation design is invalid; (b) unrelated keys churn—fact identity remains invalid; (c) target or
+export ambiguity becomes order-dependent—stitching is invalid; or (d) exact parity and bounded reuse
+pass, authorizing the full workspace gates. This single fixture collapses the identity, stitching, and
+incremental decision tree before later M3.7 adversarial breadth and M3.8 performance measurement.
+
+Validation path: smallest fact-key successor test; focused module-stitch cases; clean/incremental JSON
+parity with numerical reused/rebuilt counts; parse crate tests/doctests; all-feature workspace test,
+build, rustdoc, clippy, fmt, and diff checks; unchanged M0/M1/M2 and graph false-resolution gates.
+
+Negative-memory constraints: no repository-global spelling candidate; no file-path-as-module inference;
+no alias string substitution; no terminal result from incomplete module/export coverage; no stable-order
+tie break; no reusing a result without proving all lexical/module/export dependencies unchanged; no
+production S2 capability promotion from synthetic complete fixtures.
+
+Agent assignment: `/root` owns identity correction, module stitching, successor invalidation, integration,
+and verification. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: make unchanged `sf1_` identities successor-stable and prove edited facts/projections
+still expire before adding any module traversal.
+
+Identity checkpoint (2026-07-14): complete. `sf1_` no longer hashes the whole-project analysis ID or
+builder index; it still binds schema, build context, fact policy, complete revision-bearing evidence,
+and fact data. The projection/document remain analysis-bound and dense IDs remain owner/index-local.
+A two-file successor test changes the peer source and reverses builder order: the project/projection IDs
+and peer key change, while the unchanged file key remains byte-identical. All seven scope-graph tests and
+`git diff --check` pass. Next: add the exact module stitch index and module-constrained import paths.
+
+Module/invalidation checkpoint (2026-07-14): focused implementation complete. `BuildModule` now carries
+explicit export-set coverage, and Complete export coverage requires declared imports/exports adapter
+authority. Deferred imports traverse only exact declared package/target/module mappings and their file
+constituents. Alias imports end at modules; selective and glob imports traverse exact exports; re-exports
+use cycle-aware reachability; wrong-target candidates remain rejected paths. Incomplete export sets and
+pure cycles remain Unknown rather than authorizing a terminal result.
+
+The new `ResolutionProjection::successor` compares stable fact keys, follows reverse scope/module/export
+dependencies, rebuilds affected references, and copies unchanged strict result wires. One convergent
+fixture proves byte-identical successor versus clean documents and measures: unrelated peer edit = five
+reused/zero rebuilt; source export addition = one independent result reused/five dependents rebuilt; newly
+matching module = zero reused/one formerly unresolved reference rebuilt. The parse package reports 121
+passed, one designated instrumentation probe ignored, and four compile-fail doctests passed; focused
+rustdoc/clippy/fmt/diff gates are clean. Next checkpoint: all-feature workspace terminal gates, targeted
+fallback/capability audits, then either close M3.5 or record the exact failing boundary.
+
+Terminal M3.5 checkpoint (2026-07-14): complete and verified. Exact declared package/target/module/file
+constituent mappings now extend retained resolution paths through aliases, selective/glob exports, and
+cycle-aware re-exports. Export-set completeness is explicit and capability-bound. Stable fact keys and
+reverse dependency invalidation preserve exact unchanged result wires while rebuilding all measured
+dependents; every successor fixture is byte-identical to a clean strict document.
+
+Validation: 17 focused resolution tests; 121 parse tests with one designated instrumentation probe
+ignored; four compile-fail doctests; full workspace all-feature test/build/rustdoc/clippy/fmt/diff gates;
+unchanged M0/M1/M2 definition-of-done and graph false-resolution probes. Targeted source/diff audit found
+no file-stem/global bare-name lookup, first/sorted winner, or production capability change. No dependency,
+live-state transition, migration, reload, cache clear, or restart applies.
+
+Next checkpoint: open M3.6 in a fresh jj child and audit the existing external-provider/artifact identity,
+authority, and conflict surfaces before designing optional compiler/LSP semantic fact ingestion.
