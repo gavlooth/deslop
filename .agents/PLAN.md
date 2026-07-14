@@ -3292,3 +3292,57 @@ CompilerTypeEvidence and the repo retains no version/configuration/dependency-bo
 artifact. Compiler graph comparison is therefore frozen as explicitly unavailable; compiler-backed M3 name
 resolution is not reused as graph truth. Four M4.9 suites, all 61 aggregate M4 suites, and all six workspace
 terminal gates pass. M4.9 is complete; only M4.DoD remains.
+
+### Active plan — M4.DoD frozen graph-recipe eligibility gate
+
+Active hypothesis: the frozen graph algorithms are not a usable milestone boundary until downstream recipes
+can ask one question and receive every exact reason the required M4 evidence is insufficient. The gate must
+walk retained source projections and typed gaps; callers must not reconstruct readiness from status strings.
+
+Current approach:
+
+1. Add versioned public graph-evidence layer, requirement, decision, and typed block contracts with local-PDG
+   and interprocedural recipe constructors whose layer dependencies are closed explicitly.
+2. Evaluate required CFG, control-region/PST, non-structured, dataflow, PDG, and optional SDG projections from
+   one exact PDG source chain; reject a foreign SDG source rather than joining by project identity.
+3. Propagate every incomplete coverage reason, required capability support/authority gap, non-structured fact,
+   PDG gap, SDG gap, missing required layer, and source mismatch into canonical distinct blocks.
+4. Reuse the Complete M4.7 fixture and ambiguous-capture/nonterminating M4.5-M4.6 fixture to freeze eligible,
+   missing-SDG, missing-binding, unresolved-access, nontermination, capability, and source-mismatch matrices.
+5. Add an M4 definition-of-done integration gate that joins the 50-vector gold oracle with eligibility
+   propagation, then run all M4 and workspace terminal gates.
+
+CONVERGENCE: one complete and one deliberately incomplete retained projection chain exercise every block
+family. Terminal outcomes are: (a) Complete exact local/interprocedural evidence is blocked—gate invalid; (b)
+any upstream reason/fact/gap disappears—gate invalid; (c) incomplete evidence remains eligible—safety boundary
+invalid; (d) foreign projections join—identity boundary invalid; or (e) frozen gold plus exhaustive eligibility
+matrix and workspace gates pass, completing M4.
+
+Validation path: exact block-set assertions and canonical round-trip, block-count measurements per layer,
+missing/foreign SDG cases, Complete local/interprocedural positive cases, aggregate M4 DoD integration test,
+focused parse tests/clippy, then full workspace test, build, rustdoc, clippy, fmt, and diff gates.
+
+Negative-memory constraints: do not convert Partial/Unsupported/Failed into one lossy boolean; do not drop
+coverage reasons because a typed gap also exists; do not ignore non-structured facts under Complete coverage;
+do not infer capability authority from support; do not join projections by analysis/project ID alone; do not
+let a requirement omit prerequisite layers.
+
+Agent assignment: `/root` owns public gate contract, evidence traversal, fixture exposure, DoD integration,
+and verification. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: implement the public requirement/block/decision surface and exact source-chain traversal,
+then bind it to the Complete and ambiguous fixtures.
+
+M4.DoD terminal checkpoint (2026-07-14): public strict `deslop.graph-recipe-eligibility/1` now provides
+dependency-closed local and interprocedural requirements plus content-addressed `gre1_` decisions. Evaluation
+walks the exact PDG-retained CFG, PST/control-region, non-structured, and dataflow chain and accepts an SDG only
+when it binds that exact PDG projection. It retains coverage status and every reason, support and authority,
+conservative edges, residuals, non-structured facts, access/effect/call uncertainty, typed PDG/SDG gaps,
+missing layers, and source mismatches as canonical distinct blocks.
+
+Seven DoD suites prove Complete local and interprocedural eligibility, exact 9-block ambiguous/nonterminating
+and 25-block comprehensive incomplete matrices, exact missing/partial/foreign SDG behavior, prerequisite
+closure, strict requirement/decision round-trip and corruption rejection, and the terminal join to all 50
+frozen CFG/PST/PDG gold vectors. Aggregate M4 is 68/68. All six workspace terminal gates pass; parse reports
+203 active passing tests, one designated ignored instrumentation probe, and four passing compile-fail doctests.
+M4 is complete. The next roadmap item is M5.1, versioned transformation recipe and candidate schemas.

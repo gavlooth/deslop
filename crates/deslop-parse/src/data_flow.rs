@@ -2353,8 +2353,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    fn m4_5_m4_6_m4_8_ambiguous_capture_remains_unknown_partial_and_a_pdg_gap() {
+    pub(crate) fn ambiguous_capture_pdg_fixture() -> crate::ProgramDependenceProjection {
         let analysis = integration_analysis();
         let root_node = nodes_by_kind(&analysis, "source_file")[0];
         let function = nodes_by_kind(&analysis, "function_item")[0];
@@ -2621,6 +2620,13 @@ pub(crate) mod tests {
                 .count(),
             2
         );
+
+        pdg
+    }
+
+    #[test]
+    fn m4_5_m4_6_m4_8_ambiguous_capture_remains_unknown_partial_and_a_pdg_gap() {
+        let _ = ambiguous_capture_pdg_fixture();
     }
 
     #[test]

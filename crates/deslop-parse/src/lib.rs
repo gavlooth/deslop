@@ -36,6 +36,7 @@ mod containment;
 mod control_flow;
 mod control_regions;
 mod data_flow;
+mod graph_eligibility;
 mod identity;
 mod incremental;
 mod instrumentation;
@@ -90,6 +91,11 @@ pub use data_flow::{
     DataFlowDocument, DataFlowEffect, DataFlowEffectDraft, DataFlowEffectKey, DataFlowEffectKind,
     DataFlowGraph, DataFlowGraphDraft, DataFlowGraphKey, DataFlowPointFacts, DataFlowPointKey,
     DataFlowPolicyId, DataFlowProjection, DataFlowSymbol, DataFlowSymbolKey,
+};
+pub use graph_eligibility::{
+    GRAPH_RECIPE_ELIGIBILITY_SCHEMA, GraphEligibilityBlock, GraphEligibilityDecision,
+    GraphEligibilityDecisionId, GraphEligibilityError, GraphEvidenceLayer, GraphRecipeRequirement,
+    evaluate_graph_recipe_eligibility,
 };
 pub use identity::{
     NODE_BASELINE_SCHEMA, NODE_KEY_SCHEMA, NodeAnchor, NodeBaselineFingerprint, NodeId, NodeKey,

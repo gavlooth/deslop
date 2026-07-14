@@ -10546,3 +10546,85 @@ not hashes`, `compiler resolution not graph oracle`, `compiler graph unavailable
 `semantic mutation comparator`.
 
 **Signature:** Codex (GPT-5), M4.9 integration owner, terminal checkpoint, 2026-07-14.
+
+### M4.DoD start checkpoint — graph-recipe eligibility propagation
+
+**Date/time:** 2026-07-14 23:13:06 CEST (Europe/Madrid).
+
+**Objective/target:** complete M4 by joining frozen CFG/PST/PDG gold with a public consumer eligibility gate
+that propagates every missing or uncertain required semantic fact.
+
+**Changes:** created the final M4 jj change and wrote the convergent DoD plan. The gate will operate on the
+exact retained PDG source chain and optional SDG, not caller-supplied summary booleans.
+
+**Commands run:** `jj new -m 'Gate recipes on complete M4 evidence'`; targeted API audit of PDG upstream
+projection ownership, non-structured facts, dataflow capability evidence, and SDG capability/gap getters.
+
+**Results:** all required evidence is retained and publicly traversable from `ProgramDependenceProjection`,
+with `SystemDependenceProjection` binding its exact PDG. Existing Complete and ambiguous fixtures can be
+exposed test-only without duplicating their builders.
+
+**Invalidated assumptions / negative-memory constraint:** projection existence is not eligibility; Complete
+non-structured coverage can still carry facts that block a structured recipe; support without authority is
+not usable capability evidence; matching analysis IDs cannot replace exact projection-chain identity.
+
+**Current recommendation / next actions:** add typed layer requirements and canonical blocks, expose the two
+fixture constructors, and freeze positive/negative eligibility matrices before the final terminal run.
+
+**Blockers/dependencies/restart:** none.
+
+**Signature:** Codex (GPT-5), M4.DoD integration owner, start checkpoint, 2026-07-14.
+
+#### M4.DoD terminal checkpoint — milestone complete and verified
+
+**Date/time:** 2026-07-14 23:41:04 CEST (Europe/Madrid).
+
+**Objective/target:** close M4 only after the 50-vector frozen CFG/PST/PDG oracle and every retained missing or
+uncertain graph fact jointly determine downstream recipe eligibility without fallback inference.
+
+**Changes:** added and exported strict `deslop.graph-recipe-eligibility/1` with dependency-closed local and
+interprocedural requirements, typed evidence layers, canonical eligibility blocks, and content-addressed
+`gre1_` decisions. The evaluator starts from one exact `ProgramDependenceProjection`, follows its retained
+dataflow/control-region/CFG and non-structured sources, and accepts an optional SDG only when its exact PDG ID
+matches. It propagates incomplete coverage with every canonical reason; unavailable capability support and
+authority; conservative CFG edges; control-region residuals; every non-structured fact; dataflow access and
+effect uncertainty; PDG gaps; SDG call uncertainty and gaps; missing required layers; and foreign-source
+mismatches. Strict deserialization rejects malformed/stale IDs, wrong schemas, unknown fields, contradictory
+eligibility, noncanonical order, unrequired-layer blocks, invalid reasons/precision/authority, and payload
+mutation. Existing complete, missing-binding, and ambiguous-capture fixtures are reusable test-only builders;
+the M4.9 gold comparator exposes a test-only exact vector count without weakening its oracle.
+
+**Commands run:** repeated focused `cargo test -p deslop-parse --all-features m4_dod_ -- --nocapture`; focused
+parse all-target clippy and `git diff --check`; aggregate `cargo test -p deslop-parse --all-features m4_ --
+--nocapture`; `cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`; `cargo clippy --workspace
+--all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`; `git diff --check`.
+
+**Results:** PASS. Seven DoD suites prove Complete local and interprocedural chains are eligible; an ambiguous
+capture/nonterminating chain emits exactly nine blocks `[4 coverage, 1 non-structured, 1 access, 3 PDG gaps]`;
+the comprehensive incomplete chain emits exactly 25 blocks across coverage, five capability gaps, one
+conservative edge, one residual, three non-structured facts, access/effect/call uncertainty, four PDG gaps,
+and one SDG gap. Missing SDG emits one block, missing parameter emits two, and missing outputs emit three;
+foreign SDG source identity is rejected. The terminal test joins eligibility with all 50 frozen M4 gold
+vectors. Aggregate M4 is 68/68. Full workspace tests pass; `deslop-parse` has 203 active passing tests, one
+designated ignored instrumentation probe, and four passing compile-fail doctests. Build, warning-denied
+rustdoc, all-target clippy, format, and diff gates pass.
+
+**Invalidated assumptions/failure modes:** projection existence is not readiness; Complete coverage cannot
+erase non-structured facts; a typed gap does not replace its coverage reason; support does not imply authority;
+matching analysis/project identity cannot join a foreign SDG; a boolean without its exact blocks is not a
+portable decision; syntactically valid but stale serialized blocks are rejected by the content-bound decision
+ID.
+
+**Current recommendation/next actions:** M4 is terminal. Begin M5.1 from the eligibility contract by versioning
+`TransformationRecipe` and `TransformationCandidate`; do not reconstruct M4 readiness from statuses or bypass
+the public gate.
+
+**Blockers/dependencies/restart:** none. No dependency, migration, rebuild outside the verified workspace,
+cache clear, or runtime restart remains.
+
+**Negative-memory status:** durable terminal checkpoint pending Hindsight write. Search handles: `M4 complete
+graph eligibility`, `gre1 content-bound decision`, `25-block incomplete matrix`, `exact PDG SDG source join`,
+`50-vector M4 DoD`.
+
+**Signature:** Codex (GPT-5), M4 integration owner, terminal checkpoint, 2026-07-14.

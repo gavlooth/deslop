@@ -471,8 +471,13 @@ reports, benchmark records, and work orders.
   exact comparison, schema/dangling validation, and three semantic mutation classes pass. All six production
   adapters explicitly lack a retained compiler-authoritative graph oracle, so compiler comparison remains an
   exact unavailable result rather than borrowed resolution authority. All workspace gates pass.
-- [ ] M4.DoD Pass frozen CFG/PST/PDG gold gates and propagate every missing/uncertain semantic fact into
-  recipe eligibility.
+- [x] M4.DoD Pass frozen CFG/PST/PDG gold gates and propagate every missing/uncertain semantic fact into
+  recipe eligibility. Public strict `deslop.graph-recipe-eligibility/1` requirements walk the exact retained
+  CFG/PST/non-structured/dataflow/PDG/SDG source chain and return content-bound canonical blocks for every
+  incomplete coverage reason, capability/authority gap, conservative edge, residual, non-structured fact,
+  access/effect/call uncertainty, PDG/SDG gap, missing layer, or foreign source. Seven DoD suites lock Complete
+  positive cases, exact 9- and 25-block incomplete matrices, missing/partial/foreign SDG behavior, strict wire
+  rejection, and the 50-vector M4 gold join. All workspace all-feature gates pass.
 
 ## M5 — Candidate detectors and transformation recipes
 

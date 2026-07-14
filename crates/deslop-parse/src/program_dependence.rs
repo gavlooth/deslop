@@ -1407,7 +1407,7 @@ fn derive_id(domain: &str, prefix: &str, parts: &[&[u8]]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1834,6 +1834,20 @@ mod tests {
         parse_m4_gold(include_str!("../../../tests/fixtures/m4_graph_gold.json")).unwrap()
     }
 
+    pub(crate) fn m4_gold_vector_count() -> usize {
+        let expected = frozen_m4_gold();
+        let actual = actual_m4_gold();
+        assert_eq!(actual, expected);
+        actual.cfg.points.len()
+            + actual.cfg.edges.len()
+            + actual.pst.points.len()
+            + actual.pst.regions.len()
+            + actual.pst.residuals.len()
+            + actual.pdg.control_edges.len()
+            + actual.pdg.flow_edges.len()
+            + actual.pdg.unresolved_accesses.len()
+    }
+
     fn parse_m4_gold(input: &str) -> Result<GoldM4Corpus, String> {
         let gold =
             serde_json::from_str::<GoldM4Corpus>(input).map_err(|error| error.to_string())?;
@@ -1908,17 +1922,7 @@ mod tests {
             ],
             [11, 14, 11, 2, 0, 9, 2, 1]
         );
-        assert_eq!(
-            actual.cfg.points.len()
-                + actual.cfg.edges.len()
-                + actual.pst.points.len()
-                + actual.pst.regions.len()
-                + actual.pst.residuals.len()
-                + actual.pdg.control_edges.len()
-                + actual.pdg.flow_edges.len()
-                + actual.pdg.unresolved_accesses.len(),
-            50
-        );
+        assert_eq!(m4_gold_vector_count(), 50);
     }
 
     #[test]

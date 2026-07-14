@@ -2060,7 +2060,7 @@ fn derive_id(domain: &str, prefix: &str, parts: &[&[u8]]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use serde::de::DeserializeOwned;
 
     use super::*;
@@ -2308,8 +2308,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn m4_7_m4_8_two_callable_summaries_preserve_exact_edges_and_advanced_outputs() {
+    pub(crate) struct SystemDependenceTestFixture {
+        pub(crate) pdg: Arc<ProgramDependenceProjection>,
+        pub(crate) complete: SystemDependenceProjection,
+        pub(crate) missing_parameter: SystemDependenceProjection,
+        pub(crate) missing_output: SystemDependenceProjection,
+    }
+
+    pub(crate) fn system_dependence_fixture() -> SystemDependenceTestFixture {
         let analysis = analysis();
         let root = nodes_by_kind(&analysis, "source_file")[0];
         let functions = nodes_by_kind(&analysis, "function_item");
@@ -3200,7 +3206,7 @@ mod tests {
         );
 
         let mut missing_output = SystemDependenceBuilder::new(
-            pdg,
+            Arc::clone(&pdg),
             SystemDependencePolicyId::from_parts(&[b"system-dependence/missing-output"]).unwrap(),
         );
         copy_summaries(system.document(), &mut missing_output);
@@ -3254,5 +3260,17 @@ mod tests {
             inc_resolution.wire().preferred().unwrap().endpoints(),
             [crate::ResolutionEndpoint::Declaration(endpoint)] if endpoint == &inc_declaration_key
         ));
+
+        SystemDependenceTestFixture {
+            pdg,
+            complete: system,
+            missing_parameter,
+            missing_output,
+        }
+    }
+
+    #[test]
+    fn m4_7_m4_8_two_callable_summaries_preserve_exact_edges_and_advanced_outputs() {
+        let _ = system_dependence_fixture();
     }
 }
