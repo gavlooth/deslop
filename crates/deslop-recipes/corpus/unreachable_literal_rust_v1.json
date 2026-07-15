@@ -1,0 +1,39 @@
+{
+  "schema": "deslop.recipe-evaluation-corpus/1",
+  "corpus_id": "b2r1_71f0651edc3d3bf26564715ba11214f8ff6dc2962bdb0405871e2c98a1235207",
+  "recipe_name": "rust-remove-unreachable-literal-statement",
+  "language": "rust",
+  "generator": "unreachable-literal-rust-grid/1",
+  "seed": 5251007,
+  "positive_clusters": 200,
+  "hard_negative_clusters": 200,
+  "variants_per_cluster": 5,
+  "positive_families": [
+    "integer-literal-after-return",
+    "float-literal-after-return",
+    "boolean-literal-after-return",
+    "character-literal-after-return",
+    "string-literal-after-return"
+  ],
+  "hard_negative_families": [
+    "reachable-literal",
+    "unreachable-call",
+    "unreachable-binary-expression",
+    "unreachable-identifier",
+    "literal-after-conditional-return"
+  ],
+  "layout_variants": 40,
+  "labelled_opportunities": 1000,
+  "hard_negatives": 1000,
+  "expected_safety": "safe-auto",
+  "protected_span_policy": "Only the labelled inert literal statement may change; every other byte is protected.",
+  "protected_api_policy": "All function names, parameters, signatures, and callable boundaries are protected.",
+  "behavior_oracle": "Exact entry-unreachable inert-literal deletion preserves all reachable Rust behavior; parse and graph-delta validation remain mandatory.",
+  "independence_policy": "Five variants share one design cluster and are never counted as independent confidence-bound samples; Wilson intervals use 200 positive and 200 hard-negative clusters.",
+  "resource_budget": {
+    "maximum_source_bytes": 500000,
+    "maximum_candidates": 1000,
+    "maximum_wall_time_ms": 60000
+  },
+  "expanded_digest": "b2x1_1c1d4f402fd945f1a1c8c1cc8ce42480fa750648c1e481fb0e73b83dca1fb4c9"
+}

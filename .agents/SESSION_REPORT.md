@@ -10628,3 +10628,100 @@ graph eligibility`, `gre1 content-bound decision`, `25-block incomplete matrix`,
 `50-vector M4 DoD`.
 
 **Signature:** Codex (GPT-5), M4 integration owner, terminal checkpoint, 2026-07-14.
+
+### M5.1-M5.4 start checkpoint — recipe contract and unreachable-code vertical slice
+
+**Date/time:** 2026-07-15 CEST (Europe/Madrid).
+
+**Objective/target:** implement M5.1-M5.4 completely, then one M5.25 graph-grounded recipe with honest
+recipe-specific B2/B7 evaluation evidence.
+
+**Changes:** created jj change `ussqqmsp` and wrote the convergent implementation plan. The contract audit found
+no existing `TransformationRecipe`, `TransformationCandidate`, or `RecipeId`; current `deslop.workorder/3`
+groups analyzer findings by rewrite region and belongs to the later M6 migration. The new semantic boundary
+will therefore be a dedicated recipe layer consuming M4 projections and producing strict candidates that M6
+can later schedule. Chosen first M5.25 family: removal of an exact CFG/PST-unreachable syntax statement with
+explicit abstention for recovered, uncertain, referenced, effectful, or insufficient-authority cases.
+
+**Commands run:** Hindsight/Serena startup context; `jj status`/`jj log`; targeted `rg` and source inspection of
+the M5 ledger, workspace crates, `deslop-protocol`, `deslop-eval`, core safety types, and M4 eligibility surface;
+`jj new -m 'Version transformation recipes and remove unreachable code'`.
+
+**Results:** M4 provides the required content-bound graph evidence and fail-closed eligibility decision. Existing
+evaluation reports only point precision/recall/F1 and lacks hard-negative FPR bounds, confidence intervals,
+calibration, abstention, and frozen candidate-corpus identity. These must be added for the B7 slice rather than
+inferred from the legacy analyzer corpus.
+
+**Invalidated assumptions / negative-memory constraint:** the existing analyzer `Finding` or region-grouped
+`WorkOrder` is not a transformation recipe/candidate; source order after an exit is not reachability evidence;
+unreachable runtime code may still affect names/types/builds; one recipe family cannot complete global B2/B7.
+
+**Current recommendation / next actions:** implement the strict recipe/candidate contract and fixture roles in
+a dedicated recipe crate, then bind the unreachable-statement detector directly to retained M4 evidence.
+
+**Blockers/dependencies/restart:** none.
+
+**Signature:** Codex (GPT-5), M5 integration owner, start checkpoint, 2026-07-15.
+
+### M5.1-M5.4 terminal and first M5.25 recipe-specific B2/B7 evidence
+
+**Date/time:** 2026-07-15 CEST (Europe/Madrid).
+
+**Objective/target:** complete M5.1-M5.4, then deliver one graph-grounded M5.25 recipe with actual-detector
+recipe-specific B2/B7 evidence, without claiming the global multi-family/multi-language gates.
+
+**Changes:** added workspace crate `deslop-recipes`. It exports strict content-bound
+`deslop.transformation-recipe/1` and `deslop.transformation-candidate/1` contracts; required/forbidden
+`Proven`/`Disproven`/`Unknown` results; exact condition evidence; M4 graph eligibility; safety/disposition;
+bounded directional impact cones; typed expected graph changes; revision-guarded edits; validation and exact
+rollback plans; and the canonical four fixture roles. Added the `rust-remove-unreachable-literal-statement`
+recipe, which emits `SafeAuto` only for an exact Rust literal expression statement proven entry-unreachable by
+complete CFG/control-region/non-structured evidence. It rejects recovered or conservative control and every
+declaration, identifier, call, macro, operator, aggregate, and other potentially referential/effectful form.
+The positive fixture executes guarded deletion, reparsing, expected old-entity removal, and byte-exact rollback.
+
+Added strict recipe-evaluation corpus/report schemas, deterministic case expansion, content hashes, cluster-
+aware confusion accounting, Wilson 95% intervals, ECE, coverage/action/abstention metrics, fail-closed
+threshold evaluation, and mutation tests. The frozen Rust artifact contains 200 positive and 200 hard-negative
+design clusters with five variants each: 1,000 labelled opportunities and 1,000 hard negatives. Five variants
+within a cluster are explicitly not counted as independent confidence samples. Frozen assets are
+`crates/deslop-recipes/corpus/unreachable_literal_rust_v1.json` and
+`crates/deslop-recipes/evaluation/unreachable_literal_rust_v1_report.json`.
+
+**Commands run:** repeated focused `cargo fmt --all`, `cargo check -p deslop-recipes`, `cargo test -p
+deslop-recipes`, and warnings-denied focused clippy; explicit optimized evidence gate `cargo test --release -p
+deslop-recipes unreachable::tests::frozen_b2_slice_runs_once_and_meets_recipe_specific_b7_gates -- --exact
+--ignored --nocapture`; `cargo test --workspace --all-features`; `cargo build --workspace --all-features`;
+`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`; `cargo clippy --workspace
+--all-features --all-targets -- -D warnings`; `cargo fmt --all -- --check`; `git diff --check`.
+
+**Results:** PASS. Focused crate suite has 11 active tests plus the explicit release evidence gate. The release
+gate processed every frozen case in 7.821 seconds under the fixed 60-second budget and emitted exactly 1,000
+candidates: raw TP=1000, FP=0, TN=1000, FN=0; cluster TP=200, FP=0, TN=200, FN=0. Precision and recall lower
+95% bounds are `0.981154673623`; hard-negative FPR upper 95% is `0.018845326377`; ECE is `0`; opportunity
+coverage and hard-negative abstention are both `1`. Report ID is
+`b7r1_b0c5b717c0ce2ecb102d51f4a33aa43c84b50ce2ce7247420a37ea9d62f16365`. Full workspace tests, build,
+warning-denied rustdoc, warnings-denied all-target clippy, format, and whitespace gates pass.
+
+**Invalidated assumptions/failure modes:** one 2,000-function debug projection exceeded three minutes and was
+interrupted; an optimized monolithic mixed-label projection then completed quickly but correctly emitted zero
+candidates because intentionally incomplete hard-negative graphs contaminated the projection-wide eligibility
+decision. Therefore monolithic cross-cluster batching is invalid evidence. The final evaluator runs all 400
+five-case design clusters independently in one command and aggregates exact frozen case IDs. Broader
+unreachable syntax cannot inherit literal-only safety: runtime unreachability does not erase compile/name/type
+effects, and production def/use/effect authority remains insufficient for declarations, calls, macros,
+operators, or composites.
+
+**Current recommendation/checkpoint:** M5.1-M5.4 are terminal. The requested single M5.25 recipe and its
+recipe-specific B2/B7 evidence are terminal. Keep M5.25, B2, and B7 globally unchecked; the next dependency-
+ordered roadmap item is M5.5, while broader dead-code recipes wait for exact production def/use/effect proof.
+
+**Blockers/dependencies/restart:** none for the delivered library recipe. No migration, runtime restart, cache
+clear, or external service change is required. Wider recipe coverage depends on language-authoritative semantic
+facts and is outside this completed slice.
+
+**Negative-memory status:** durable and consolidated. The monolithic corpus approach is superseded by the
+passing cluster-isolated run. Search handles: `M5.25 2000 case monolithic projection`,
+`B2 B7 timeout`, `projection-wide eligibility contamination`, `cluster-isolated unreachable corpus`.
+
+**Signature:** Codex (GPT-5), M5 integration owner, terminal checkpoint, 2026-07-15.

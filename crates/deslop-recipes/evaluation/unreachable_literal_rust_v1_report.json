@@ -1,0 +1,53 @@
+{
+  "schema": "deslop.recipe-evaluation-report/1",
+  "report_id": "b7r1_b0c5b717c0ce2ecb102d51f4a33aa43c84b50ce2ce7247420a37ea9d62f16365",
+  "corpus_id": "b2r1_71f0651edc3d3bf26564715ba11214f8ff6dc2962bdb0405871e2c98a1235207",
+  "corpus_digest": "b2x1_1c1d4f402fd945f1a1c8c1cc8ce42480fa750648c1e481fb0e73b83dca1fb4c9",
+  "recipe_name": "rust-remove-unreachable-literal-statement",
+  "language": "rust",
+  "raw_totals": {
+    "true_positive": 1000,
+    "false_positive": 0,
+    "true_negative": 1000,
+    "false_negative": 0
+  },
+  "cluster_totals": {
+    "true_positive": 200,
+    "false_positive": 0,
+    "true_negative": 200,
+    "false_negative": 0
+  },
+  "precision": {
+    "estimate": 1.0,
+    "lower_95": 0.981154673623,
+    "upper_95": 1.0
+  },
+  "recall": {
+    "estimate": 1.0,
+    "lower_95": 0.981154673623,
+    "upper_95": 1.0
+  },
+  "hard_negative_fpr": {
+    "estimate": 0.0,
+    "lower_95": 0.0,
+    "upper_95": 0.018845326377
+  },
+  "expected_calibration_error": 0.0,
+  "opportunity_coverage": 1.0,
+  "overall_action_rate": 0.5,
+  "hard_negative_abstention": 1.0,
+  "overall_abstention": 0.5,
+  "thresholds": {
+    "precision_lower_95": 0.9,
+    "recall_lower_95": 0.7,
+    "hard_negative_fpr_upper_95": 0.02,
+    "maximum_ece": 0.05
+  },
+  "threshold_results": {
+    "precision": true,
+    "recall": true,
+    "hard_negative_fpr": true,
+    "calibration": true,
+    "passed": true
+  }
+}

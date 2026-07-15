@@ -11,6 +11,7 @@ members = [
   "crates/deslop-mcp",
   "crates/deslop-external",
   "crates/deslop-protocol",
+  "crates/deslop-recipes",
   "crates/deslop-verify",
   "crates/deslop-slim",
   "crates/deslop-lsp",
@@ -60,6 +61,7 @@ deslop-metrics = { path = "crates/deslop-metrics" }
 deslop-mcp = { path = "crates/deslop-mcp" }
 deslop-external = { path = "crates/deslop-external" }
 deslop-protocol = { path = "crates/deslop-protocol" }
+deslop-recipes = { path = "crates/deslop-recipes" }
 deslop-verify = { path = "crates/deslop-verify" }
 deslop-slim = { path = "crates/deslop-slim", default-features = false }
 deslop-lsp = { path = "crates/deslop-lsp" }

@@ -3346,3 +3346,73 @@ closure, strict requirement/decision round-trip and corruption rejection, and th
 frozen CFG/PST/PDG gold vectors. Aggregate M4 is 68/68. All six workspace terminal gates pass; parse reports
 203 active passing tests, one designated ignored instrumentation probe, and four passing compile-fail doctests.
 M4 is complete. The next roadmap item is M5.1, versioned transformation recipe and candidate schemas.
+
+### Active plan — M5.1-M5.4 recipe contract and first M5.25 vertical slice
+
+Active hypothesis: M4 now retains enough exact reachability, source identity, capability, uncertainty, and
+dependence evidence to make one deterministic cleanup candidate without reviving analyzer-text heuristics as
+rewrite authority. The first vertical slice should prove the recipe contract against unreachable syntax,
+because the candidate has an exact CFG/PST witness and a measurable no-op/near-miss boundary.
+
+Current approach:
+
+1. Add a dedicated recipe layer between `deslop-parse` and the existing work-order protocol. Version strict
+   `TransformationRecipe` and `TransformationCandidate` schemas with content-bound identities.
+2. Represent required and forbidden obligations as explicit `Proven`/`Disproven`/`Unknown` results with exact
+   evidence and authority. Automatic eligibility requires every required obligation Proven and every forbidden
+   condition Disproven; weaker results remain explicit candidates without automatic authority.
+3. Retain expected typed graph changes, an impact-cone query/result, safety class, exact source edits and
+   revision guards, validation steps, and rollback metadata. Reject stale/noncanonical/cross-source payloads.
+4. Freeze recipe fixtures under four required roles: positive, no-op, minimal counterexample, and adversarial
+   near-miss.
+5. Implement one M5.25 unreachable-statement-removal recipe from exact M4 CFG/PST reachability. It must abstain
+   on recovered points, uncertain/conservative control, non-structured facts, referenced definitions, effects,
+   or insufficient authority, and emit a deterministic deletion plus expected removed graph entities otherwise.
+6. Add a strict recipe-specific B2 corpus slice and B7 evaluator with frozen opportunity/hard-negative counts,
+   Wilson precision/recall/FPR bounds, calibration error, coverage/abstention, and mutation tests. Do not mark
+   the global multi-family B2/B7 release gates complete from a single recipe family.
+
+CONVERGENCE: one instrumented corpus run evaluates every frozen positive and hard negative and produces the
+candidate, patch, graph delta, impact cone, authority decision, and numerical score in one pass. Terminal
+outcomes are: (a) incomplete/uncertain graph evidence emits an automatic candidate—invalid; (b) a hard negative
+receives a deletion—invalid; (c) a labelled reachable or externally referenced statement is removed—invalid;
+(d) a stale/corrupted candidate wire is accepted—invalid; (e) numerical lower/upper bounds miss the declared
+recipe-specific B7 thresholds—recipe remains disabled; or (f) strict contracts, exact fixtures, frozen corpus,
+and workspace gates pass.
+
+Validation path: schema/key/source-closure and mutation tests; exact four-role fixture matrix; candidate/edit/
+delta/impact assertions; frozen corpus count/hash validation; measured confusion matrix, Wilson bounds, ECE,
+coverage and abstention; focused crate tests/clippy; aggregate M5 tests; full workspace test, build, rustdoc,
+clippy, fmt, and diff gates.
+
+Negative-memory constraints: do not treat syntactic position after an exit as unreachable without exact M4
+reachability; do not delete unreachable declarations referenced by reachable code; do not equate no runtime
+effect with no compile/name/type effect; do not promote test-only adapter authority into production; do not
+count templated variants as independent statistical evidence without declaring generation/provenance; do not
+mark global B2/B7 complete from this one-family slice.
+
+Agent assignment: `/root` owns contract design, recipe implementation, corpus/evaluator, integration, and
+verification. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: freeze the strict recipe/candidate wire and four-role fixture convention before emitting the
+first deletion candidate.
+
+### Terminal checkpoint — M5.1-M5.4 and first M5.25 recipe
+
+M5.1-M5.4 are complete in the dedicated `deslop-recipes` layer. The strict recipe/candidate contract binds
+content identity, exact M4 eligibility, three-state required and forbidden obligations, authority, safety,
+impact, typed graph delta, guarded edits, validation, rollback, and exactly four fixture roles. The first
+M5.25 vertical slice is `rust-remove-unreachable-literal-statement`: it automatically removes only exact
+entry-unreachable inert Rust literal statements and refuses recovered, conservative, non-structured,
+reachable, referential, call, operator, macro, declaration, and composite forms.
+
+The recipe-specific B2/B7 evidence is frozen under corpus
+`b2r1_71f0651edc3d3bf26564715ba11214f8ff6dc2962bdb0405871e2c98a1235207` and report
+`b7r1_b0c5b717c0ce2ecb102d51f4a33aa43c84b50ce2ce7247420a37ea9d62f16365`. One optimized cluster-isolated
+run evaluates all 1,000 opportunities and 1,000 hard negatives in 7.821 seconds against a 60-second budget.
+Raw confusion is TP=1000, FP=0, TN=1000, FN=0; cluster confusion is TP=200, FP=0, TN=200, FN=0; precision and
+recall lower 95% bounds are `0.981154673623`, FPR upper 95% is `0.018845326377`, and ECE is `0`.
+
+Global M5.25, B2, and B7 remain open because one narrow Rust recipe does not cover the other opportunity
+families or languages. The next roadmap boundary is M5.5; broader dead syntax remains blocked on production
+def/use and effect authority and must not inherit the literal-only recipe's `SafeAuto` authority.

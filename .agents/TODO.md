@@ -483,11 +483,19 @@ reports, benchmark records, and work orders.
 
 ### Recipe framework
 
-- [ ] M5.1 Version `TransformationRecipe` and `TransformationCandidate` schemas.
-- [ ] M5.2 Implement required facts, `Proven`/`Disproven`/`Unknown` preconditions, forbidden conditions,
-  authority evidence, and capability checks; permit only `Proven` automatic obligations.
-- [ ] M5.3 Implement expected graph deltas, impact-cone queries, safety class, validation plan, and rollback metadata.
-- [ ] M5.4 Add recipe fixture conventions: positive, no-op, minimal counterexample, and adversarial near-miss.
+- [x] M5.1 Version `TransformationRecipe` and `TransformationCandidate` schemas. Strict
+  `deslop.transformation-recipe/1` and `deslop.transformation-candidate/1` wires retain content-bound `rcp1_`
+  and `tcn1_` identities, exact M4 eligibility, source projection IDs, targets, edits, and revision guards.
+- [x] M5.2 Implement required facts, `Proven`/`Disproven`/`Unknown` preconditions, forbidden conditions,
+  authority evidence, and capability checks; permit only `Proven` automatic obligations. Automatic candidates
+  require `SafeAuto`, eligible graph evidence, every required obligation Proven, and every forbidden condition
+  Disproven; strict mutation tests reject weaker or stale payloads.
+- [x] M5.3 Implement expected graph deltas, impact-cone queries, safety class, validation plan, and rollback
+  metadata. Canonical typed changes, bounded directional PDG traversal, exact validation/rollback plan binding,
+  guarded patch validation, expected-removal checks, and byte-exact rollback are executable tests.
+- [x] M5.4 Add recipe fixture conventions: positive, no-op, minimal counterexample, and adversarial near-miss.
+  Every recipe must declare exactly the four canonical roles; the first recipe executes all four through the
+  retained CFG/PST/PDG chain.
 
 ### Branch/control flow
 
@@ -521,6 +529,9 @@ reports, benchmark records, and work orders.
 - [ ] M5.23 Collapse pair matches into maximal clone classes and one coordinated candidate.
 - [ ] M5.24 Classify generated/schema/test/public-API/intentional repetition before abstraction proposals.
 - [ ] M5.25 Add graph-grounded forwarding, conversion/allocation, wrapper, repeated-error, and dead-code candidates.
+  Partial vertical slice complete: `rust-remove-unreachable-literal-statement` removes only exact
+  entry-unreachable inert Rust literal statements, fails closed on recovered/conservative/non-structured or
+  non-literal forms, and completes candidate -> guarded patch -> expected delta -> validation -> rollback.
 - [ ] M5.26 Add role/scope-aware identifier and comment evidence without automatic rationale deletion.
 - [ ] M5.DoD Every enabled detector completes graph fact -> unique candidate -> patch -> expected delta ->
   verification -> rollback on its fixtures, with no known unsafe `safe-auto` counterexample.
@@ -617,6 +628,9 @@ reports, benchmark records, and work orders.
   language adapter, with gold roles/spans/containment/ownership/edges and malformed/opaque cases.
 - [ ] B2 Freeze and hash at least 1,000 labelled transformation opportunities and 1,000 hard negatives
   with protected spans/APIs, expected safety class, behavior oracle, and resource budget.
+  Recipe-specific slice complete, global gate open: corpus `b2r1_71f0651edc3d3bf26564715ba11214f8ff6dc2962bdb0405871e2c98a1235207`
+  freezes 1,000 Rust opportunities and 1,000 hard negatives in 400 five-variant design clusters, with protected
+  APIs/spans, `SafeAuto`, behavior oracle, exact expanded digest, and a 60-second optimized-run budget.
 - [ ] B3 Pin 18 real repositories, three per language across size strata, with tests, APIs, generated
   boundaries, and reproducible build commands.
 - [ ] B4 Freeze at least 300 blinded readability pairs and 240 fixed LLM refactoring tasks balanced by
@@ -628,6 +642,9 @@ reports, benchmark records, and work orders.
 - [ ] B7 Meet actionable precision lower 95% bound >= 0.90 overall/0.85 per language, recall lower bound
   >= 0.70 overall/0.60 per language-family, hard-negative FPR upper bound <= 0.02 overall/0.05 per language,
   and ECE <= 0.05.
+  Recipe-specific Rust slice passes, global gate open: 200/200 positive clusters and 200/200 hard-negative
+  clusters yield precision/recall lower 95% `0.981154673623`, hard-negative FPR upper 95%
+  `0.018845326377`, ECE `0`, opportunity coverage `1`, and hard-negative abstention `1`.
 - [ ] B8 Show 100% declared parse/build/type/behavior-oracle success for accepted benchmark patches and
   zero confirmed semantic failures or verification bypasses in `safe-auto`.
 - [ ] B9 Meet blinded human-preference lower 95% bound >= 0.60 overall/0.55 per language and improve the
