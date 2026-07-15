@@ -36,6 +36,7 @@ mod containment;
 mod control_flow;
 mod control_regions;
 mod data_flow;
+mod dependency;
 mod graph_eligibility;
 mod identity;
 mod incremental;
@@ -91,6 +92,12 @@ pub use data_flow::{
     DataFlowDocument, DataFlowEffect, DataFlowEffectDraft, DataFlowEffectKey, DataFlowEffectKind,
     DataFlowGraph, DataFlowGraphDraft, DataFlowGraphKey, DataFlowPointFacts, DataFlowPointKey,
     DataFlowPolicyId, DataFlowProjection, DataFlowSymbol, DataFlowSymbolKey,
+};
+pub use dependency::{
+    DEPENDENCY_POLICY_SCHEMA, DEPENDENCY_SCHEMA, DependencyBuildError, DependencyCoverageEvidence,
+    DependencyDocument, DependencyEdge, DependencyEdgeKey, DependencyEdgeKind, DependencyEvidence,
+    DependencyGap, DependencyGapKey, DependencyGapKind, DependencyNode, DependencyNodeKey,
+    DependencyNodeKind, DependencyPolicyId, DependencyProjection, derive_dependencies,
 };
 pub use graph_eligibility::{
     GRAPH_RECIPE_ELIGIBILITY_SCHEMA, GraphEligibilityBlock, GraphEligibilityDecision,

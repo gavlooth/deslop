@@ -11401,3 +11401,51 @@ architecture candidates. The dependency schema must preserve source/build/API pr
 recipe exports/project dispatch, CLI selectors/tests, installed executable, and durable Hindsight memory.
 
 Signature: Codex `/root` — M5.15 terminal owner
+
+## 2026-07-15T16:43:50+02:00 — M5.16 terminal project dependency projection
+
+**Objective/target:** provide the strict retained dependency substrate required by the architecture milestones,
+covering source files, exact build modules, packages, build targets, local/external APIs, containment, level-specific
+dependencies, API use, evidence, and honest coverage gaps.
+
+**Changes:** added `deslop.dependency/1` and `deslop.dependency-policy/1` in `deslop-parse`, with content-bound
+policy/node/edge/gap identities and strict document deserialization. `derive_dependencies` consumes an exact
+`Arc<ResolutionProjection>`; only `BuildModule` facts create Module/Package/BuildTarget identities and containment.
+Complete Unique one-endpoint results create file/module/package/target dependency edges and file-to-API use evidence.
+Definition endpoints canonicalize to their declaration, only complete authoritative Export facts label a local API
+as exported, explicit external endpoints remain API-only, and same-level self-edges are excluded. Missing/duplicate
+file ownership, incomplete exports/resolution, unsupported endpoints, and missing endpoint files are typed gaps;
+aggregate coverage preserves Partial/Unsupported/Failed severity.
+
+**Numerical verification/results:** the exact compiler-backed two-file, two-module, two-package, two-target fixture
+emitted 9 nodes and 11 edges: two edges for each containment kind and one each for File, Module, Package, BuildTarget,
+and API-use dependency kinds. Six focused tests cover exact hierarchy/use, deterministic byte-identical rebuild,
+strict JSON round-trip and tamper rejection, incomplete export downgrade, duplicate ownership, local self-use, and
+external API identity. `cargo test -p deslop-parse --all-features` passed 207 tests with one explicit ignore before
+the final adversarial additions; the terminal all-feature workspace run passed with `deslop-parse` at 210 passed and
+one explicit ignore. `cargo test --workspace --all-features`, `cargo build --workspace --all-features`, rustdoc with
+`-D warnings`, all-feature/all-target clippy with `-D warnings`, `cargo fmt --all -- --check`, and `git diff --check`
+all exited 0.
+
+**Invalidated assumption:** a selective import segment and exact BuildModule facts for two different packages do not
+authorize cross-package reachability. The retained resolver correctly returned Unknown/Partial with
+`ImportUnresolved`, because BuildModule owns module identity but does not declare a package-dependency mapping. The
+complete fixture now uses an exact compiler semantic endpoint; the projection then maps its files through exact
+BuildModule ownership. Bare spelling remains insufficient.
+
+**Current authority/recommendation:** M5.16 is terminal. Under Complete coverage, consumers may use the emitted
+hierarchy and dependencies as retained architectural facts. Under any gap, absent edges are not negative dependency
+claims. M5.17 should compute architecture metrics and constraints from this projection, preserve its evidence and
+coverage, and avoid the legacy bare-name graph. A future explicit package-dependency mapping fact may replace the
+compiler fixture prerequisite, but no path/import heuristic may do so.
+
+**Blockers/restart/dependencies:** no blockers. No rebuild, service restart, MCP restart, migration, or CLI install is
+needed beyond normal downstream recompilation; this milestone changes the parse-layer Rust API only. The M5.16
+contract and the invalid cross-package inference are stored in Hindsight bank
+`repo:/home/christos/code/deslop` under session scope `m5-dependencies-2026-07-15`.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-parse/src/dependency.rs`, parse public exports, test-only complete-resolution pack visibility, and
+durable Hindsight memory.
+
+Signature: Codex `/root` — M5.16 integration and terminal verification owner

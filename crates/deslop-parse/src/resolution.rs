@@ -4355,7 +4355,7 @@ fn validate_key(value: &str, prefix: &str) -> Result<(), ResolutionProjectionErr
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::Path;
 
     use deslop_core::Lang;
@@ -4380,11 +4380,11 @@ mod tests {
 
     use super::*;
 
-    struct CompleteResolutionPack {
+    pub(crate) struct CompleteResolutionPack {
         duplicate_rule: DuplicateDefinitionRule,
     }
 
-    static COMPLETE_RESOLUTION_PACK: CompleteResolutionPack = CompleteResolutionPack {
+    pub(crate) static COMPLETE_RESOLUTION_PACK: CompleteResolutionPack = CompleteResolutionPack {
         duplicate_rule: DuplicateDefinitionRule::Ambiguous,
     };
     static MERGING_RESOLUTION_PACK: CompleteResolutionPack = CompleteResolutionPack {

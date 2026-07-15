@@ -3827,3 +3827,53 @@ DefUse/Effects/LocalPdg. Workspace test/build/rustdoc/clippy/fmt/diff gates exit
 2026-07-15T16:08:47+02:00, and all three installed selector smokes returned `[]`. Proceed to M5.16 file/module/
 package/build/API dependency projections. Preserve one event ordinal sequence across same-point definitions/accesses
 and retain condition evidence on its declared graph layer.
+
+## 2026-07-15 — M5.16 project dependency projection
+
+Active hypothesis: M5.17-M5.20 need one strict, versioned, provenance-preserving dependency substrate rather than
+reconstructing architecture from file paths or names. Derive `deslop.dependency/1` from an exact retained
+`ResolutionProjection` and its current `BuildContextId`. Model canonical File, Module, Package, BuildTarget, and API
+nodes in one projection; containment edges connect package -> target -> module -> file, while each Complete Unique
+resolution produces level-specific file/module/package/target dependencies and one file-to-API use edge when its
+endpoint is a local declaration/definition or explicit external provider.
+
+Current approach: use only `BuildModule` facts for package ID, target ID, module path, source root, constituent file
+scopes, and export coverage. Map reference and endpoint files from retained fact evidence, never path heuristics.
+Canonicalize Definition endpoints through their declaration for one API identity and retain name, namespace,
+visibility, export facts, reference/result identity, authority, and coverage as edge evidence. Deduplicate identical
+level edges while preserving every supporting result/fact. Keep self-dependencies out of same-level file/module/
+package/target edges; retain file-to-API uses including same-file consumers. Projection/node/edge/gap identities bind
+their complete serialized payload and policy.
+
+Coverage and gaps: Complete requires every analyzed file to belong to exactly one BuildModule, Complete module export
+coverage, and every retained reference result to be Complete Unique with one supported preferred endpoint. Missing/
+duplicate module ownership, incomplete exports, ambiguous/unresolved/conflicting/dynamic resolution, foreign or
+unsupported endpoints, and absent target facts are explicit typed gaps and downgrade the projection. Explicit
+external providers may form External API nodes but cannot invent package/build identities.
+
+Validation path: a two-file, two-module, two-package, two-target authoritative fixture must emit the exact hierarchy,
+one dependency at each same-level layer, and one API use with complete evidence; JSON round-trip and deterministic
+rebuild must be byte-identical. Incomplete export, unresolved/ambiguous reference, duplicate file ownership, local
+self-use, and explicit external provider fixtures verify downgrade/dedup semantics. Then expose the projection from
+`deslop-parse`, run focused and terminal workspace gates, update artifacts, and persist contract lessons.
+
+Negative-memory constraints: do not infer modules/packages/targets from directories, Cargo filenames, import text,
+or endpoint spelling; do not interpret absent edges as no dependency under partial coverage; do not collapse source
+and build targets with equal names; do not call a visible declaration exported without an exact Export fact; do not
+lose rejected/unknown resolution or export coverage; do not make M5.17 metrics consume the legacy bare-name graph.
+
+Agent assignment: `/root` owns schema, derivation, integration, validation, and terminal evidence. No sub-agent was
+requested, so no delegation is active.
+
+Next checkpoint: strict two-file facts produce exact File/Module/Package/BuildTarget/API nodes, hierarchy and use
+edges with Complete coverage, while one incomplete export deterministically yields a typed gap and Partial coverage.
+
+Terminal result: M5.16 added and publicly exported the strict `deslop.dependency/1` projection. The authoritative
+two-file/two-package/two-target fixture emits 9 nodes and 11 edges with exact compiler-backed cross-package evidence;
+all File, Module, Package, BuildTarget, containment, and API-use layers are present. Incomplete exports retain Partial
+coverage and withhold unproven dependency/use edges. Duplicate ownership withholds module/parent dependencies while
+preserving the independently proven file dependency; same-file API use creates no self-dependency; external API use
+creates no build identity. JSON round-trip, deterministic rebuild, identity tamper rejection, exact authoritative
+Export filtering, crate-wide tests, and all terminal workspace gates pass. No CLI replacement is required because
+M5.16 changes only the `deslop-parse` Rust API. Proceed to M5.17 architecture metrics and constraints using this
+projection; do not consume the legacy spelling-based graph as architectural authority.
