@@ -1219,7 +1219,7 @@ fn derive_id(domain: &str, prefix: &str, parts: &[&[u8]]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::Path;
 
     use deslop_lang::Registry;
@@ -1236,14 +1236,14 @@ mod tests {
     };
 
     #[derive(Clone, Copy, PartialEq, Eq)]
-    enum FixtureEndpoint {
+    pub(crate) enum FixtureEndpoint {
         ProviderDeclaration,
         ConsumerDeclaration,
         External,
         AdapterOnly,
     }
 
-    fn dependency_fixture(
+    pub(crate) fn dependency_fixture(
         export_coverage: FactCoverageEvidence,
         endpoint: FixtureEndpoint,
         duplicate_provider_owner: bool,

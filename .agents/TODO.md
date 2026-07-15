@@ -570,8 +570,14 @@ reports, benchmark records, and work orders.
 
 ### Dependencies and modules
 
-- [ ] M5.16 Build file/module/package/build/API dependency projections.
-- [ ] M5.17 Compute SCCs, condensation DAG, layers, fan-in/out, instability, and architecture-rule violations.
+- [x] M5.16 Build file/module/package/build/API dependency projections. Strict `deslop.dependency/1`
+  derives File/Module/Package/BuildTarget/local-and-external-API nodes only from retained resolution and exact
+  BuildModule facts. It preserves containment, level dependencies, API use, authority, coverage, and typed gaps;
+  six adversarial tests and every workspace gate pass. Partial authority never makes an absent edge negative proof.
+- [x] M5.17 Compute SCCs, condensation DAG, layers, fan-in/out, instability, and architecture-rule violations.
+  `deslop.architecture/1` now derives deterministic SCCs at every structural level, a condensation DAG,
+  dependency-first layers, distinct fan/API metrics, exact rational instability, and evidence-bearing policy
+  violations/gaps from `deslop.dependency/1`; eight numerical/adversarial tests and every workspace gate pass.
 - [ ] M5.18 Generate reviewed cycle-breaking seams with API/data-flow evidence.
 - [ ] M5.19 Generate move/split/merge-module candidates from cohesion, coupling, impact, and optional change history.
 - [ ] M5.20 Add semantically safe import/declaration ordering recipes.

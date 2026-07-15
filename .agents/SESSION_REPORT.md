@@ -11449,3 +11449,49 @@ contract and the invalid cross-package inference are stored in Hindsight bank
 durable Hindsight memory.
 
 Signature: Codex `/root` — M5.16 integration and terminal verification owner
+
+## 2026-07-15T17:11:20+02:00 — M5.17 terminal architecture topology and constraints
+
+**Objective:** close M5.17 with an authoritative, deterministic topology and architecture-policy projection over the
+M5.16 dependency contract.
+
+**Target:** add strict `deslop.architecture/1` and `deslop.architecture-policy/1` parse-layer Rust APIs that compute
+structural topology and exact metrics without upgrading partial dependency authority or treating API use as a
+structural edge.
+
+**Changes:** added iterative SCC discovery for File, Module, Package, and BuildTarget dependencies; a canonical
+condensation DAG; dependency-first inferred layers; distinct same-level fan-in/fan-out and API users/uses; exact
+rational instability; content-bound policy, rule, component, edge, violation, and gap identities; exact layer
+assignments; direct/transitive forbidden-dependency, forbidden-cycle, required-layer-descent, and
+stable-dependency rules; evidence-bearing violations; typed authority gaps; inherited source coverage; strict custom
+wire validation; and public parse exports. The M5.16 TODO evidence was also reconciled before closing M5.17.
+
+**Commands run/results:** focused architecture tests passed 8/8. Focused parse clippy passed after replacing an
+over-wide rule-evaluation call with a context object. `cargo test -p deslop-parse --all-features` passed 218 tests
+with 1 explicit ignore and 4 doctests. `cargo test --workspace --all-features`, `cargo build --workspace
+--all-features`, `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`, `cargo clippy
+--workspace --all-features --all-targets -- -D warnings`, `cargo fmt --all -- --check`, and `git diff --check` all
+passed.
+
+**Numerical evidence:** the retained complete fixture emits 9 node metrics, 8 SCC components, 4 condensation edges,
+and two components per structural level at dependency-first layers 0 and 1. The application package has fan-in 0,
+fan-out 1, and instability 1/1; the dependency package has fan-in 1, fan-out 0, and instability 0/1. The consumer
+file has one API use and the local declaration has one API user without acquiring structural instability.
+
+**Invalidated assumptions/authority lessons:** a cycle is a topology/planning fact, not a defect unless policy
+forbids it. Stability comparison cannot be authoritative on partial topology because fan denominators rely on absent
+edges, so the projection emits an explicit gap instead. API uses must not distort SCC or structural fan metrics, and
+the legacy `deslop.graph/2` spelling graph is not architecture authority.
+
+**Current recommendation/checkpoint:** M5.17 is terminal. Proceed to M5.18 and generate reviewed cycle-breaking seams
+from this topology plus exact API/data-flow evidence; never choose a seam from topology alone.
+
+**Blockers/restart/dependencies:** no blockers. No CLI replacement, service restart, migration, or cache clear is
+required; normal downstream recompilation is sufficient. The result is stored in Hindsight bank
+`repo:/home/christos/code/deslop` under session scope `m5-architecture-2026-07-15`.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-parse/src/architecture.rs`, `crates/deslop-parse/src/dependency.rs`,
+`crates/deslop-parse/src/lib.rs`, and durable Hindsight memory.
+
+Signature: Codex `/root` — M5.17 integration and terminal verification owner

@@ -30,6 +30,7 @@ pub use deslop_lang::{
 // M1.3 owns the raw arena internally; M1.4 adds owner-validated public node views.
 mod adapter;
 mod aggregation;
+mod architecture;
 #[allow(dead_code)]
 mod arena;
 mod containment;
@@ -64,6 +65,16 @@ pub use aggregation::{
     InclusiveSyntaxPolicy, SyntaxAggregateLookupError, SyntaxAggregateOwner,
     SyntaxAggregateProjection, SyntaxAggregates, SyntaxAggregationError,
     SyntaxAggregationInstrumentation, SyntaxNodeAggregate,
+};
+pub use architecture::{
+    ARCHITECTURE_POLICY_SCHEMA, ARCHITECTURE_SCHEMA, ArchitectureBuildError, ArchitectureComponent,
+    ArchitectureComponentKey, ArchitectureCondensationEdge, ArchitectureCondensationEdgeKey,
+    ArchitectureCoverageEvidence, ArchitectureDocument, ArchitectureGap, ArchitectureGapKey,
+    ArchitectureGapKind, ArchitectureLayerAssignment, ArchitectureLevel, ArchitectureNodeClass,
+    ArchitectureNodeMetrics, ArchitecturePolicy, ArchitecturePolicyId, ArchitectureProjection,
+    ArchitectureRatio, ArchitectureRule, ArchitectureRuleDraft, ArchitectureRuleKey,
+    ArchitectureRuleKind, ArchitectureViolation, ArchitectureViolationKey,
+    ArchitectureViolationKind, derive_architecture,
 };
 pub use arena::{SourcePoint, SyntaxSpan};
 pub use control_flow::{

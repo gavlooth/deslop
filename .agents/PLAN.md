@@ -3877,3 +3877,57 @@ creates no build identity. JSON round-trip, deterministic rebuild, identity tamp
 Export filtering, crate-wide tests, and all terminal workspace gates pass. No CLI replacement is required because
 M5.16 changes only the `deslop-parse` Rust API. Proceed to M5.17 architecture metrics and constraints using this
 projection; do not consume the legacy spelling-based graph as architectural authority.
+
+## 2026-07-15 — M5.17 architecture topology, metrics, and constraints
+
+Active hypothesis: architecture consumers need one strict derived view over `deslop.dependency/1`, not SCCs or
+coupling numbers recomputed independently by metrics, graph, and recipe crates. Add `deslop.architecture/1` in
+`deslop-parse`, retaining the exact `DependencyProjection` and a content-bound architecture policy. The view owns
+observed same-level topology for File, Module, Package, and BuildTarget nodes; LocalApi/ExternalApi remain visible
+through separate API-use counts and source dependency evidence rather than being mixed into structural SCCs.
+
+Current approach: compute deterministic SCCs over each dependency level, collapse them into one condensation DAG,
+and assign dependency-first layers (`0` for components with no outgoing dependency, otherwise one plus the maximum
+target layer). Per-node metrics retain distinct direct dependency fan-in/fan-out, API uses/users, and exact rational
+instability `fan_out / (fan_in + fan_out)`; zero-degree nodes have undefined instability rather than fabricated 0.
+Cycle components are topology/planning facts, not violations by default.
+
+Architecture policies contain canonical exact-node layer assignments and typed rules: forbidden direct/transitive
+dependency, forbidden cycle by level, required declared-layer descent, and stable-dependency direction. Violations
+retain rule identity plus exact dependency edges/path or component evidence. Layer rules may require total assignment;
+missing assignments and stale rule endpoints become typed gaps. Stability violations require Complete source topology
+because fan counts depend on absence; incomplete topology yields a rule-requires-complete gap instead of a conclusion.
+Positive forbidden-edge/layer/cycle violations remain valid when their exact evidence is retained.
+
+Coverage and identity: inherit every M5.16 gap and status; architecture gaps may further downgrade but never upgrade.
+Policy, component, condensation-edge, violation, gap, and projection identities bind canonical payloads. Strict JSON
+validation checks ordering, component partitions, level consistency, condensation acyclicity, inferred-layer
+recurrence, exact rational bounds, rule references, and evidence endpoints. The projection must never read
+`deslop.graph/2`, paths, names, manifests, or import spelling to reconstruct missing dependencies.
+
+Validation path: the M5.16 exact two-package fixture must produce eight structural components, four condensation
+edges, source layers `1`, target layers `0`, exact `1/1` versus `0/1` instability, and API-use counts. Direct and
+transitive forbidden rules, declared-layer inversion, cycle policy, stable-direction comparison, partial topology,
+same-file API use, deterministic rebuild, strict round-trip, and tamper cases must be numerical and fail closed.
+
+Negative-memory constraints: BuildModule ownership is not an inter-package dependency declaration; absent retained
+edges under partial coverage are not no-dependency evidence; SCC cycles are planning constraints unless a declared
+rule forbids them; inferred topological layers are observations, not declared architecture; instability is undefined
+for isolated nodes and cannot be compared under incomplete topology; API uses must not alter structural SCC metrics.
+
+Agent assignment: `/root` owns schema, algorithms, integration, validation, and terminal evidence. No sub-agent was
+requested, so no delegation is active.
+
+Next checkpoint: the exact retained fixture emits pinned component/DAG/layer/fan/instability numbers and exact rule
+violations, while partial topology retains observed edges but blocks absence-dependent stability conclusions.
+
+Terminal result: M5.17 is complete. `deslop.architecture/1` and `deslop.architecture-policy/1` expose deterministic
+iterative SCCs, a condensation DAG, dependency-first inferred layers, distinct structural and API fan metrics, exact
+rational instability, content-bound identities, four policy rule families, evidence-bearing violations, typed
+authority gaps, and strict canonical wire validation. The pinned complete fixture has 9 node metrics, 8 components,
+4 condensation edges, and two components per structural level at layers 0 and 1; the application package has
+instability 1/1, its dependency 0/1, and exact API-use counts remain separate from structural topology. Partial
+source authority is inherited and prevents absence-dependent stability conclusions. Eight focused tests, the full
+218-test parse suite (1 explicit ignore), and every workspace test/build/doc/clippy/fmt/diff gate pass. No CLI
+replacement is required because this is a parse-layer Rust API addition. Proceed to M5.18 using topology as a
+planning fact and API/data-flow evidence as the authority for any reviewed cycle-breaking seam.
