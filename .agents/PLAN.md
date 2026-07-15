@@ -3416,3 +3416,40 @@ recall lower 95% bounds are `0.981154673623`, FPR upper 95% is `0.018845326377`,
 Global M5.25, B2, and B7 remain open because one narrow Rust recipe does not cover the other opportunity
 families or languages. The next roadmap boundary is M5.5; broader dead syntax remains blocked on production
 def/use and effect authority and must not inherit the literal-only recipe's `SafeAuto` authority.
+
+### Terminal checkpoint — M5.5 equivalent branch factoring (2026-07-15)
+
+Active hypothesis resolved: useful branch factoring can ship without inventing semantic authority by separating
+exact structural/control evidence from unavailable def/use and effect proof. The Rust detector recognizes exact
+equivalent arms and exact common prefix/suffix fragments, associates them with one unrecovered branch dispatch
+and two exact outgoing edges, and constructs rewrites that evaluate the original condition once before the
+factored fragment. It abstains on comments, attributes, `if let`/let chains, absent block alternatives,
+recovered points, and conservative branch edges.
+
+Current approach: `rust-factor-equivalent-branch-fragments` requires CFG, control-region, non-structured,
+data-flow, and PDG layers. Exact CST equivalence and condition order are Proven. Production Rust DefUse,
+Effects, and LocalPdg capabilities remain Unknown, so dependency, lifetime, borrow, drop-order, exception, and
+suspension obligations stay explicit Unknown counter-evidence. Candidates are deterministic
+`SafeWithPrecondition`/`ReviewRequired` work orders. The guarded apply path independently rejects every
+non-Automatic work order even with `--canary`.
+
+M5.10 evidence path for this family: `branch_graph_evidence` emits canonical retained before entities, the
+expected after graph delta, and forbidden-condition counter-evidence for every M5.5 candidate. The global M5.10
+item remains open because M5.6-M5.9 have not yet adopted this boundary.
+
+Validation path: four canonical fixture roles; exact equivalent/prefix/suffix positives; reordered and
+comment-bearing no-op/near-miss coverage; strict JSON round trip and unknown-field rejection; replacement parse
+rebuild; project discovery isolation; protocol work-order mapping; CLI detection; and a live assertion that
+review candidates cannot apply. Focused recipe, protocol, CLI, clippy, fmt, and diff gates pass. Full workspace
+test/build/rustdoc/clippy/fmt/diff gates remain the terminal checkpoint for this change.
+
+Negative-memory constraints: do not upgrade this recipe to `SafeAuto` from exact CST/CFG evidence alone; do not
+interpret empty synthetic effect lists as production Effects authority; do not hide capability Unknown behind a
+successful parse/build; do not apply overlapping alternative factorizations as one patch; do not delete or move
+comments as incidental trivia.
+
+Agent assignment: `/root` owns contract, implementation, integration, validation, and final roadmap evidence.
+No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: pass the full workspace gates, record the terminal session report, then begin M5.6 with an
+explicit short-circuit and exception-order contract rather than inheriting M5.5's structural proof.

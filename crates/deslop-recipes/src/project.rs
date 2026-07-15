@@ -16,7 +16,10 @@ use deslop_parse::{
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 
-use crate::{TransformationCandidate, detect_unreachable_literal_statements};
+use crate::{
+    TransformationCandidate, detect_equivalent_branch_fragments,
+    detect_unreachable_literal_statements,
+};
 
 const SCOPE_LIMITATION: &str =
     "production Rust scope authority is unavailable to this control-only recipe";
@@ -66,7 +69,7 @@ pub fn detect_rust_recipe_report(root: &Path, paths: &[PathBuf]) -> Result<Recip
     let selected_rust_files = logical_files.len();
     let (mut candidates, analyzed_rust_files, mut abstentions) =
         match build_rust_recipe_projection(&root, &logical_files) {
-            Ok(Some(projection)) => match detect_unreachable_literal_statements(&projection) {
+            Ok(Some(projection)) => match detect_projection_recipes(&projection) {
                 Ok(provisional) => {
                     // Candidate wires must remain reconstructible from their exact target file.
                     // The combined projection is only the cheap discovery pass; files with an
@@ -141,7 +144,16 @@ fn detect_one_file(root: &Path, logical: &PathBuf) -> Result<Vec<TransformationC
     else {
         return Ok(Vec::new());
     };
-    detect_unreachable_literal_statements(&projection).map_err(Into::into)
+    detect_projection_recipes(&projection)
+}
+
+fn detect_projection_recipes(
+    projection: &ProgramDependenceProjection,
+) -> Result<Vec<TransformationCandidate>> {
+    let mut candidates = detect_unreachable_literal_statements(projection)?;
+    candidates.extend(detect_equivalent_branch_fragments(projection)?);
+    candidates.sort_by(|left, right| left.id().cmp(right.id()));
+    Ok(candidates)
 }
 
 /// Build the retained production graph used by recipe detection.

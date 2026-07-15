@@ -694,14 +694,20 @@ fn apply_recipes(args: RecipeApplyArgs) -> Result<()> {
 }
 
 fn detect_recipes(args: RecipeDetectArgs) -> Result<()> {
-    if args.recipe != "rust-remove-unreachable-literal-statement" {
+    if !matches!(
+        args.recipe.as_str(),
+        "rust-remove-unreachable-literal-statement" | "rust-factor-equivalent-branch-fragments"
+    ) {
         bail!("unknown production recipe `{}`", args.recipe);
     }
     let root = args
         .root
         .canonicalize()
         .with_context(|| format!("failed to resolve recipe root {}", args.root.display()))?;
-    let report = detect_rust_recipe_report(&root, &args.paths)?;
+    let mut report = detect_rust_recipe_report(&root, &args.paths)?;
+    report
+        .candidates
+        .retain(|candidate| candidate.recipe().name() == args.recipe);
     let candidates = report.candidates.clone();
     let work_orders = recipe_work_orders(candidates.clone())?;
     let rendered = match args.format {

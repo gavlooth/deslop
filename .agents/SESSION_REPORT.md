@@ -10795,3 +10795,61 @@ Hindsight bank `repo:/home/christos/code/deslop`. Search handles: `recipe produc
 `target-scoped graph eligibility`, `control-region residual closure`, `one controlled positive insufficient`.
 
 **Signature:** Codex (GPT-5), recipe canary integration owner, terminal disabled checkpoint, 2026-07-15.
+## 2026-07-15T10:53:01+02:00 — M5.5 equivalent branch factoring terminal checkpoint
+
+**Objective:** proceed with the next dependency-ordered roadmap batch after the guarded recipe canary.
+
+**Target:** M5.5 equivalent-arm/common-prefix/common-suffix detection and the M5.10 evidence boundary required
+for this branch family. M5.6-M5.9 and global M5.10 remain outside this batch.
+
+**Changes:** added `rust-factor-equivalent-branch-fragments` in `deslop-recipes`. The Rust detector associates
+exact arm fragments with one unrecovered branch dispatch and two exact outgoing edges; proposes deterministic
+condition-order-preserving equivalent-arm, prefix, or suffix replacements; abstains on comments, attributes,
+let conditions/chains, non-block alternatives, recovered points, and conservative edges; and emits canonical
+before entities, expected after graph changes, and forbidden-condition counter-evidence. Added an exact-node
+replacement constructor, project-wide detector composition, CLI recipe selection, four-role fixtures, strict
+wire/rebuild tests, and a CLI transaction test. Updated `.agents/TODO.md` and `.agents/PLAN.md`.
+
+**Authority and safety result:** production Rust supplies authoritative CFG evidence but reports DefUse,
+Effects, and LocalPdg as `Unknown`. Every M5.5 candidate is therefore `SafeWithPrecondition` and
+`ReviewRequired`, with explicit Unknown dependency/effect/lifetime/drop evidence. The apply transaction rejects
+the generated work order as non-automatic even when `--canary` is present. Automatic recipe application remains
+disabled.
+
+**Commands run and results:**
+
+- `cargo test -p deslop-recipes branch::tests --all-features -- --nocapture` — 3 passed after correcting the
+  positive fixture's canonical expectation from `ReviewRequired` to generic `Candidate`.
+- `cargo test -p deslop-recipes --all-features` — 17 passed, 1 designated release-only evidence test ignored.
+- `cargo test -p deslop-protocol --all-features recipe` — 3 passed.
+- `cargo test -p deslop-cli --all-features --test recipes` — 3 passed.
+- focused all-target clippy and `git diff --check` — passed.
+- `cargo test --workspace --all-features` — passed with no failures; three pre-existing explicitly ignored
+  performance/evidence probes remained ignored.
+- `cargo build --workspace --all-features` — passed.
+- `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps` — passed.
+- `cargo clippy --workspace --all-features --all-targets -- -D warnings` — passed.
+- `cargo fmt --all -- --check` and `git diff --check` — passed.
+- `cargo install --path crates/deslop-cli --all-features --force` — replaced
+  `/home/christos/.cargo/bin/deslop` at 2026-07-15 10:52:45 +02:00.
+- installed smoke on `crates/deslop-recipes/src/branch.rs` with the new recipe selector — one file analyzed,
+  zero candidates, zero abstentions; `deslop-cli 0.1.0`.
+
+**Failure mode / invalidated assumption:** a positive canonical fixture cannot declare `ReviewRequired`; the
+four-role contract uses generic `Candidate` for the positive role and represents review authority on the emitted
+candidate. More broadly, exact CST equality plus exact CFG does not prove dependency, borrow, lifetime,
+destruction, exception, or suspension preservation. Empty synthetic effect vectors do not upgrade the production
+adapter's explicit Unknown Effects declaration.
+
+**Current recommendation/checkpoint:** M5.5 is terminal. M5.10 is terminal for M5.5 candidates only and remains
+globally open. Proceed to M5.6 with a dedicated short-circuit/exception-order contract; do not reuse M5.5's
+structural proof as semantic authority.
+
+**Blockers/dependencies/restart:** no code blocker. The user-scoped CLI binary contains the new selector now.
+Any already-running `deslop mcp` process still holds its old executable image and requires restart before this
+replacement is live there. No migration or cache clear is required.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-recipes/src/branch.rs`, recipe contract/lib/project integration, CLI selector, and CLI recipe tests.
+
+Signature: Codex `/root` — M5.5 integration and verification owner

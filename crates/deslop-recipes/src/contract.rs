@@ -469,15 +469,24 @@ pub struct TransformationEdit {
 }
 
 impl TransformationEdit {
-    pub fn exact_node_deletion(target: NodeKey, span: Span, before: String) -> Self {
+    pub fn exact_node_replacement(
+        target: NodeKey,
+        span: Span,
+        before: String,
+        after: String,
+    ) -> Self {
         let guard = revision_guard(target.file().path.as_path(), span, &before);
         Self {
             target,
             span,
             before,
-            after: String::new(),
+            after,
             revision_guard: guard,
         }
+    }
+
+    pub fn exact_node_deletion(target: NodeKey, span: Span, before: String) -> Self {
+        Self::exact_node_replacement(target, span, before, String::new())
     }
 }
 

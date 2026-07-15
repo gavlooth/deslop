@@ -499,12 +499,19 @@ reports, benchmark records, and work orders.
 
 ### Branch/control flow
 
-- [ ] M5.5 Detect equivalent arms and common prefix/suffix factoring with effect/order constraints.
+- [x] M5.5 Detect equivalent arms and common prefix/suffix factoring with effect/order constraints.
+  Rust `if` candidates now cover exact equivalent arms and exact common boundary fragments, retain one
+  condition evaluation before the factored fragment, reject recovered/conservative branch edges and comment/
+  attribute-bearing rewrites, and carry explicit `Unknown` DefUse/Effects evidence. Production candidates are
+  therefore deterministic `SafeWithPrecondition` review work orders and can never enter automatic apply.
 - [ ] M5.6 Detect safe adjacent-condition merges with short-circuit and exception constraints.
 - [ ] M5.7 Detect independent branch splits from dependence slices.
 - [ ] M5.8 Detect guard-clause/condition inversion candidates from PST and exit facts.
 - [ ] M5.9 Detect dead arms and exhaustive chain-to-match/table candidates.
-- [ ] M5.10 Emit before/after graph evidence and counter-evidence for every branch candidate.
+- [ ] M5.10 Emit before/after graph evidence and counter-evidence for every branch candidate. M5.5 slice
+  complete: every equivalent-arm/prefix/suffix candidate exposes canonical retained before entities, expected
+  after graph changes, and capability-tagged forbidden-condition counter-evidence. Keep the global item open
+  until M5.6-M5.9 use the same evidence boundary.
 
 ### Functions and expressions
 
