@@ -540,7 +540,13 @@ reports, benchmark records, and work orders.
   flow-closed computation slice, region object-state boundaries/effects, touching flow edges, and expected graph
   changes. Slice completeness is Proven only with Complete authoritative DefUse/Effects/LocalPdg and no typed gap;
   current production gaps keep candidates review-only. Generated helpers do not recursively re-extract.
-- [ ] M5.12 Infer exact extraction inputs, outputs, mutations, exits, exceptions, captures, and async/ownership constraints.
+- [x] M5.12 Infer exact extraction inputs, outputs, mutations, exits, exceptions, captures, and async/ownership
+  constraints. Extract-method v2 selects only used typed parameter/prior-local inputs, classifies copy/shared-borrow/
+  mutable-reborrow ownership and direct writes, and supports unit statements or directly typed primitive initializer
+  outputs. Candidate evidence separately retains all seven signature dimensions; current partial DefUse/Effects
+  authority leaves mutation and exception absence Unknown and review-only. Typed initializer CFG/SESE lowering is
+  exact while let-else remains conservative. A four-case executable before/after matrix matched exactly, sixteen
+  unsafe shapes abstained, all workspace gates passed, and the installed CLI was replaced.
 - [ ] M5.13 Detect multi-responsibility callable splits from dependence cohesion/action clusters.
 - [ ] M5.14 Detect safe merge/inline of over-fragmented single-use helpers.
 - [ ] M5.15 Add def/use/effect-grounded temporary, expression, and independent-statement recipes.

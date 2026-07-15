@@ -44,8 +44,9 @@ pub use evaluation::{
     frozen_unreachable_rust_cases, frozen_unreachable_rust_manifest,
 };
 pub use extract_method::{
-    ExtractMethodRecipeError, ExtractionSliceEvidence, detect_extract_method_candidates,
-    extract_method_recipe,
+    ExtractMethodRecipeError, ExtractionInputEvidence, ExtractionInputOrigin,
+    ExtractionOutputEvidence, ExtractionOwnershipMode, ExtractionSignatureEvidence,
+    ExtractionSliceEvidence, detect_extract_method_candidates, extract_method_recipe,
 };
 pub use guard_clause::{
     GuardClauseExitEvidence, GuardClauseRecipeError, detect_guard_clause_inversions,

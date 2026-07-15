@@ -4624,6 +4624,13 @@ fn rust_control_flow_rule_pack(adapter_schema: &str) -> LanguageControlFlowRuleP
         vec![
             ControlFlowRule::new(selector("block"), ControlFlowAction::Sequence),
             ControlFlowRule::new(
+                selector("let_declaration"),
+                ControlFlowAction::NestedValue {
+                    value_field: "value".into(),
+                    unsupported_field: Some("alternative".into()),
+                },
+            ),
+            ControlFlowRule::new(
                 selector("expression_statement"),
                 ControlFlowAction::Sequence,
             ),
@@ -5711,7 +5718,7 @@ mod tests {
                 assert_eq!(control_flow.authority(), Some(CapabilityAuthority::Adapter));
                 assert_eq!(control_flow.dialects().len(), 1);
                 assert_eq!(control_flow.owners().len(), 4);
-                assert_eq!(control_flow.rules().len(), 17);
+                assert_eq!(control_flow.rules().len(), 18);
             } else {
                 assert!(control_flow.dialects().is_empty());
                 assert!(control_flow.owners().is_empty());

@@ -3650,3 +3650,44 @@ Terminal result: M5.11 passed all focused and full workspace gates. The installe
 analyzed file, zero candidates, and zero abstentions. Proceed to M5.12; retain the bounded M5.11 frontier as the
 compiling baseline while adding exact used inputs, outputs, mutations, exits, exceptions, captures, and
 async/ownership constraints.
+
+## 2026-07-15 — M5.12 exact extraction signature evidence
+
+Active hypothesis: M5.12 should make every callable-boundary dimension explicit without expanding into signatures
+that cannot be compiled or semantically classified. Extend the M5.11 transaction with a first-class signature model:
+only identifiers lexically bound to simple typed parameters or preceding simple typed locals become helper inputs;
+unused parameters are omitted; primitive values copy, shared references copy, and mutable references reborrow. A
+direct branch statement has unit output; an `if` used as the initializer of a direct, explicitly typed simple `let`
+may return that exact type. The selected region continues to reject internal bindings, receivers, generics, owned
+inputs, abrupt exits, macros, closures, unsafe, async/await/yield, and recovered syntax.
+
+Current approach: record exact input origin/name/type/ownership mode, optional output binding/type/ownership,
+syntactically direct mutable writes, explicit exit entities, typed exceptional facts, capture facts, suspension facts,
+and completeness states from retained ControlFlow/DataFlow/PDG authority. CST proves the supported input/output and
+no-capture/no-async boundary; exception and hidden mutation absence remain Unknown unless authoritative Effects and
+DefUse facts are Complete. Candidate evidence gets one condition per M5.12 dimension on its declared graph layer.
+
+Validation path: used-versus-unused parameters; typed prior primitive/reference local inputs; unit and typed-return
+outputs; copy/shared-borrow/mutable-reborrow modes; direct mutation classification; exact no-exit/no-capture/no-async
+facts; effect-authority downgrade; compile and execute generated positive functions before/after over a numerical
+input matrix; reject untyped/owned/complex locals, inner bindings, generic/lifetime/receiver, return/break/try,
+macro/closure/unsafe/async/await and output-type near misses; strict wire/rebuild/CLI tests; focused clippy/fmt/diff;
+then full workspace gates.
+
+Negative-memory constraints: do not use bare spelling without excluding binding and field positions; do not pass
+every callable parameter and call that exact used-input inference; do not call `&mut` permission proof of an actual
+write; do not infer panic/unwind absence from Rust's lack of language exceptions; do not move return/break/try across
+the helper boundary; do not infer captures from nested syntax; do not erase Unknown when production DefUse/Effects
+are partial; do not widen to generic/lifetime/owned inputs without compiler type and ownership authority.
+
+Agent assignment: `/root` owns the signature model, extraction rendering, integration, numerical behavior checks,
+and terminal evidence. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: both unit and typed-return extractions compile and match pre/post behavior over the frozen numerical
+matrix, every M5.12 dimension is present in strict candidate evidence, and unsafe signature shapes abstain.
+
+Terminal result: M5.12 passed the four-case executable before/after matrix, sixteen zero-candidate near misses,
+focused language/parser/recipe/protocol/CLI tests, and the full workspace test/build/rustdoc/clippy/fmt/diff gate.
+The installed CLI was replaced at 2026-07-15T14:41:41+02:00; its production-module selector smoke completed with
+an empty work-order array and no abstention error. Proceed to M5.13 dependence-cohesion/action-cluster callable
+splits. Retain mutation and exception absence as Unknown until complete retained DefUse/Effects authority exists.

@@ -142,6 +142,10 @@ pub enum ControlSuspensionForm {
 #[serde(tag = "action", rename_all = "kebab-case")]
 pub enum ControlFlowAction {
     Sequence,
+    NestedValue {
+        value_field: String,
+        unsupported_field: Option<String>,
+    },
     Branch {
         condition_field: String,
         consequence_field: String,
@@ -190,6 +194,13 @@ impl ControlFlowAction {
     fn validate(&self) -> Result<(), String> {
         match self {
             Self::Sequence => Ok(()),
+            Self::NestedValue {
+                value_field,
+                unsupported_field,
+            } => {
+                validate_text("nested value field", value_field)?;
+                validate_optional_text("nested unsupported field", unsupported_field)
+            }
             Self::Branch {
                 condition_field,
                 consequence_field,

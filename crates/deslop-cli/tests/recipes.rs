@@ -499,6 +499,24 @@ fn extract_method_reports_exact_compiling_edit_and_cannot_apply() {
                     && result["state"] == "unknown"
             )
     );
+    for (condition, state) in [
+        ("exact-extraction-inputs", "proven"),
+        ("exact-extraction-outputs", "proven"),
+        ("exact-extraction-mutation-frontier", "unknown"),
+        ("exact-extraction-exits", "proven"),
+        ("exact-extraction-exceptions", "unknown"),
+        ("exact-extraction-captures", "proven"),
+        ("exact-extraction-async-ownership", "proven"),
+    ] {
+        assert!(
+            candidate["required_results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|result| result["condition"] == condition && result["state"] == state),
+            "missing {condition}={state}"
+        );
+    }
 
     let rejected = deslop()
         .args([

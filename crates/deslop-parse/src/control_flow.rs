@@ -955,6 +955,10 @@ impl<'a> OwnerLowerer<'a> {
         };
         match rule.action() {
             ControlFlowAction::Sequence => self.lower_sequence(node),
+            ControlFlowAction::NestedValue {
+                value_field,
+                unsupported_field,
+            } => self.lower_nested_value(node, value_field, unsupported_field.as_deref()),
             ControlFlowAction::Branch {
                 condition_field,
                 consequence_field,
@@ -1012,6 +1016,31 @@ impl<'a> OwnerLowerer<'a> {
                 Ok(self.leaf(node, ControlEdgePrecision::conservative(reason)?))
             }
         }
+    }
+
+    fn lower_nested_value(
+        &mut self,
+        node: NodeId,
+        value_field: &str,
+        unsupported_field: Option<&str>,
+    ) -> Result<LoweredFragment, ControlFlowBuildError> {
+        if let Some(field) = unsupported_field
+            && child_by_field(self.analysis, node, field)?.is_some()
+        {
+            let reason = format!(
+                "{} with `{field}` is not exact nested-value control",
+                self.analysis
+                    .node(node)
+                    .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?
+                    .raw_kind()
+            );
+            self.uncertainty.insert(reason.clone());
+            return Ok(self.leaf(node, ControlEdgePrecision::conservative(reason)?));
+        }
+        let Some(value) = child_by_field(self.analysis, node, value_field)? else {
+            return Ok(self.leaf(node, ControlEdgePrecision::Exact));
+        };
+        self.lower(value)
     }
 
     fn scan_uncertainty(&mut self, node: NodeId) -> Result<(), ControlFlowBuildError> {
@@ -3411,7 +3440,7 @@ pub(crate) mod tests {
         let declaration = rust.declaration(AdapterCapability::ControlFlow);
         assert_eq!(declaration.support(), CapabilitySupport::Provided);
         assert_eq!(declaration.authority(), Some(CapabilityAuthority::Adapter));
-        assert_eq!(RUST_PACK.control_flow_rule_pack().rules().len(), 17);
+        assert_eq!(RUST_PACK.control_flow_rule_pack().rules().len(), 18);
         let source = include_str!("control_flow.rs")
             .split("#[cfg(test)]")
             .next()
@@ -3496,7 +3525,7 @@ pub(crate) mod tests {
             .language_adapter_identity()
             .unwrap();
         assert_eq!(identity.schema(), "deslop-lang-adapter/3");
-        assert_eq!(identity.control_flow_rules().rules().len(), 17);
+        assert_eq!(identity.control_flow_rules().rules().len(), 18);
         let lowered = lower_control_flow(
             Arc::clone(&exact),
             ControlFlowPolicyId::from_parts(&[b"m4.2-production-rust-exact/1"]).unwrap(),
@@ -3523,6 +3552,64 @@ pub(crate) mod tests {
                     label: Some("'outer".into()),
                 })
         }));
+    }
+
+    #[test]
+    fn m5_12_rust_typed_let_initializer_lowers_nested_branch_but_let_else_stays_conservative() {
+        let exact = production_rust_analysis(
+            "fn run(flag: bool) -> i32 { let value: i32 = if flag { 1 } else { 2 }; value }\n",
+        );
+        let lowered = lower_control_flow(
+            exact,
+            ControlFlowPolicyId::from_parts(&[b"m5.12-rust-let-value/1"]).unwrap(),
+        )
+        .unwrap();
+        let graph = &lowered.projection().unwrap().document().graphs()[0];
+        assert_eq!(graph.coverage().status(), FactCoverage::Complete);
+        assert_eq!(
+            graph
+                .points()
+                .iter()
+                .filter(|point| {
+                    point.kind()
+                        == &ControlPointKind::Synthetic(ControlSyntheticPointKind::BranchDispatch)
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            graph
+                .edges()
+                .iter()
+                .filter(|edge| matches!(edge.kind(), ControlEdgeKind::Branch(_)))
+                .count(),
+            2
+        );
+
+        let let_else = production_rust_analysis(
+            "fn run(value: Option<i32>) { let Some(_found) = value else { return; }; 1; }\n",
+        );
+        let lowered = lower_control_flow(
+            let_else,
+            ControlFlowPolicyId::from_parts(&[b"m5.12-rust-let-else/1"]).unwrap(),
+        )
+        .unwrap();
+        let graph = &lowered.projection().unwrap().document().graphs()[0];
+        assert_eq!(graph.coverage().status(), FactCoverage::Partial);
+        assert!(graph.coverage().reasons().iter().any(|reason| {
+            reason == "let_declaration with `alternative` is not exact nested-value control"
+        }));
+        assert_eq!(
+            graph
+                .points()
+                .iter()
+                .filter(|point| {
+                    point.kind()
+                        == &ControlPointKind::Synthetic(ControlSyntheticPointKind::BranchDispatch)
+                })
+                .count(),
+            0
+        );
     }
 
     #[test]

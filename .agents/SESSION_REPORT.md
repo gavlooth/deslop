@@ -11115,3 +11115,77 @@ must restart to load the replaced executable.
 `crates/deslop-recipes/src/extract_method.rs`, recipe lib/project integration, CLI selector, and CLI recipe tests.
 
 Signature: Codex `/root` — M5.11 terminal owner
+
+## 2026-07-15T14:36:45+02:00 — M5.12 focused exact-signature checkpoint
+
+**Objective/target:** infer an explicit, compiling extraction signature for the bounded M5.11 Rust transaction,
+retain every requested boundary dimension in candidate evidence, and validate the rewrite numerically before the
+terminal workspace gate.
+
+**Changes:** upgraded `rust-extract-sese-branch-method` to recipe version 2.0.0. The transaction now selects only
+used primitive/reference parameters, accepts explicitly typed prior primitive/reference locals as inputs, records
+copy/shared-borrow/mutable-reborrow ownership modes and direct syntactic mutation, and supports either a unit
+statement extraction or one directly typed primitive `let` initializer returned by the helper. Added public input,
+output, ownership, and full signature evidence. Candidate wires now contain separate exact-input, output, mutation,
+exit, exception, capture, and async/ownership conditions. Current partial production DefUse/Effects authority keeps
+mutation and exception completeness Unknown and the transaction review-only; it does not infer absence from syntax.
+
+**Cross-layer completion:** added an additive `NestedValue` control-flow action and Rust `let_declaration` rule so a
+typed initializer's nested branch receives exact CFG/SESE lowering. Rust let-else remains a conservative leaf with
+an explicit reason. Internal bindings, receiver/generic/owned-value boundaries, named lifetimes, abrupt control,
+try/macro/closure/unsafe/async/recovered syntax, and non-primitive or untyped outputs abstain.
+
+**Commands/results:** language tests passed 14; focused parse control-flow tests passed 18; recipe tests passed 39
+with the existing release-corpus ignore; protocol recipe tests passed 3; all 8 CLI recipe tests passed. The measured
+before/after executable matrix passed four cases exactly: `false:-8:-36:-12`, `false:0:-12:-4`, `true:0:12:4`, and
+`true:11:45:15`. Sixteen unsafe/unsupported near misses each produced zero candidates. Focused all-feature/all-target
+clippy with `-D warnings`, formatting, and diff checks passed after replacing two `filter_map(bool::then)` chains
+with explicit filter/map pipelines. Full workspace terminal gates have not yet run.
+
+**Failure modes/invalidations:** the first typed-output fixture produced no candidate because Rust let declarations
+were intentionally CFG leaves; treating the initializer as an exact nested value only when no let-else alternative
+exists fixes the semantic layer rather than special-casing the recipe. Passing every callable parameter is not an
+exact input frontier, so unused parameters are now omitted and typed prior locals cross explicitly. Syntax-only
+absence of hidden mutation or exceptions is invalid authority; those dimensions remain Unknown until retained
+DefUse/Effects coverage is complete. Broad-context test insertion briefly placed new CLI assertions in unrelated
+recipe tests; the assertions were relocated to the extract-method test and all CLI tests now pass.
+
+**Recommendation/checkpoint:** run all terminal workspace gates. If they pass, mark M5.12 terminal, replace the
+installed CLI, persist the authority/failure lessons, and proceed to M5.13 dependence-cohesion callable splits.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-lang/src/control_flow.rs`, `crates/deslop-lang/src/lib.rs`,
+`crates/deslop-parse/src/control_flow.rs`, `crates/deslop-recipes/src/extract_method.rs`,
+`crates/deslop-recipes/src/lib.rs`, and `crates/deslop-cli/tests/recipes.rs`.
+
+Signature: Codex `/root` — M5.12 integration and verification owner
+
+## 2026-07-15T14:41:41+02:00 — M5.12 terminal exact-signature evidence
+
+**Objective/target:** close M5.12 with terminal workspace evidence, replace the installed executable, and leave
+the dependence-cohesion callable-split detector as the next bounded milestone.
+
+**Terminal result:** `cargo test --workspace --all-features` passed without failures and retained the same three
+explicit ignores: the CLI slow self-scan probe, parse latency/memory probe, and 2,000-case release recipe corpus.
+Workspace build, rustdoc with `-D warnings`, all-feature/all-target clippy with `-D warnings`, formatting, and diff
+checks passed. `cargo install --path crates/deslop-cli --all-features --force` replaced
+`/home/christos/.cargo/bin/deslop`. The installed `rust-extract-sese-branch-method` smoke analyzed the production
+extraction module successfully and wrote the exact empty work-order array `[]` (three bytes).
+
+**Current authority:** the exact supported Rust frontier now covers used typed parameters and prior locals,
+unit/typed primitive output, explicit ownership modes, direct mutation evidence, and retained exit/exception/
+capture/suspension dimensions. Production mutation and exception completeness remain Unknown because retained
+DefUse/Effects coverage is partial; the recipe remains `SafeWithPrecondition` and `ReviewRequired`. No restart is
+needed for ordinary CLI calls. Existing `deslop mcp` processes must restart to load the replaced executable.
+
+**Failure modes/invalidations:** the first installed-smoke shell wrapper used zsh's read-only `status` parameter and
+exited after the detector completed; rerunning the identical detector with `rc` completed successfully. This was a
+wrapper-only failure and did not invalidate detector output or modify repository state.
+
+**Recommendation/checkpoint:** proceed to M5.13 multi-responsibility callable splits using retained dependence
+cohesion and action clusters. Do not treat syntactic action adjacency or size alone as responsibility evidence.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`, language/parser control-flow
+schema and lowering, extract-method recipe/public evidence, and CLI recipe integration tests.
+
+Signature: Codex `/root` — M5.12 terminal owner
