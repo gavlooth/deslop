@@ -10948,3 +10948,50 @@ M5.8 only from exact PST exit facts. No migration/cache clear is required. Exist
 restart to load the replaced binary.
 
 Signature: Codex `/root` — M5.7 integration and verification owner
+
+## 2026-07-15T13:13:42+02:00 — M5.8 PST/exit-backed guard-clause terminal checkpoint
+
+**Objective/target:** proceed from terminal M5.7 through M5.8 and its M5.10 evidence slice; leave M5.9 and the
+global M5.10 item open.
+
+**Changes:** added `rust-invert-guard-clause`. The bounded Rust shape is a statement-position `if` with an
+explicit block `else`, one direct `return` in exactly one arm, and one to eight semicolon-terminated continuation
+statements. A returning `then` arm loses its `else`; a returning `else` arm is selected by `!(condition)` and the
+continuation is flattened after the guard. Detection requires exact true/false dispatch, a single exact return
+edge to the callable abrupt-exit dispatch, the exact abrupt virtual-exit outcome, an all-exact modeled path to
+the branch merge, and retained PST reachability/exit-reachability/post-dominance facts. Added public exit/PST
+evidence, expected graph delta, project/CLI integration, four-role/rebuild/wire tests, and CLI apply rejection.
+Updated plan and TODO.
+
+**Authority/safety:** complete PST coverage makes the continuation-boundary condition Proven; partial coverage
+remains Unknown. Any conservative edge on a selected path suppresses the proposal. Exact CST shape, predicate
+count/polarity, direct return, modeled merge reachability, and abrupt virtual-exit outcome are retained. Production
+DefUse and Effects remain Unknown, so binding visibility, borrow/lifetime, temporary/drop order, effect, panic,
+exception, and suspension obligations remain explicit Unknown. Candidates are `SafeWithPrecondition` and
+`ReviewRequired`; automatic apply rejects them even under `--canary`.
+
+**Commands/results:** focused `cargo test -p deslop-recipes --all-features` passed 28 tests with the designated
+release corpus gate ignored; `cargo test -p deslop-protocol --all-features recipe` passed 3; focused CLI recipe
+coverage passed. Strict focused clippy/fmt/diff passed. Terminal `cargo test --workspace --all-features` passed
+without failures and retained the same three explicit slow/release ignores. Workspace build, rustdoc with
+`-D warnings`, all-target clippy with `-D warnings`, fmt check, and diff check passed. `cargo install --path
+crates/deslop-cli --all-features --force` replaced `/home/christos/.cargo/bin/deslop` at 13:13:30 +02:00.
+Installed selector smoke analyzed one file with zero candidates and zero abstentions.
+
+**Failure modes/invalidations:** requiring globally Complete PST coverage initially suppressed otherwise useful
+graphs because Rust call unwind behavior intentionally makes CFG/PST coverage partial. The implementation now
+retains partial PST as Unknown but never Proven. The same call-bearing fixture still abstains when the actual
+selected continuation path contains a conservative edge. An early existential path walk could have ignored
+conservative sibling edges; it was tightened to reject any conservative edge on every visited pre-merge point.
+Direct abrupt and exit-dispatch points now require exactly one outgoing exact edge. A candidate-wire test first
+mutated a Proven condition to Unknown, which remained a valid review candidate; the strict negative was corrected
+to an illegal Automatic disposition.
+
+**Recommendation/checkpoint:** M5.8 is terminal; M5.10 covers M5.5-M5.8 and remains open only for M5.9. Proceed
+to M5.9 from exact reachability and exhaustiveness evidence. No migration or cache clear is required. Existing
+`deslop mcp` processes need restart to load the replaced binary.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-recipes/src/guard_clause.rs`, recipe lib/project integration, CLI selector, and CLI recipe tests.
+
+Signature: Codex `/root` — M5.8 integration and verification owner

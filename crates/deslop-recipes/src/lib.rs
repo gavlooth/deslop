@@ -3,6 +3,7 @@ mod branch_split;
 mod condition_merge;
 mod contract;
 mod evaluation;
+mod guard_clause;
 mod impact;
 mod project;
 mod unreachable;
@@ -34,6 +35,10 @@ pub use evaluation::{
     RecipeEvaluationCorpusManifest, RecipeEvaluationError, RecipeEvaluationReport,
     RecipeEvaluationThresholdResults, RecipeEvaluationTotals, evaluate_recipe_observations,
     frozen_unreachable_rust_cases, frozen_unreachable_rust_manifest,
+};
+pub use guard_clause::{
+    GuardClauseExitEvidence, GuardClauseRecipeError, detect_guard_clause_inversions,
+    guard_clause_inversion_recipe,
 };
 pub use impact::{ImpactQueryError, program_dependence_impact_cone};
 pub use project::{

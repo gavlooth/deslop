@@ -700,6 +700,7 @@ fn detect_recipes(args: RecipeDetectArgs) -> Result<()> {
             | "rust-factor-equivalent-branch-fragments"
             | "rust-merge-adjacent-conditions"
             | "rust-split-independent-branch-actions"
+            | "rust-invert-guard-clause"
     ) {
         bail!("unknown production recipe `{}`", args.recipe);
     }

@@ -3524,3 +3524,42 @@ sub-agent was requested, so no delegation is active.
 
 Next checkpoint: pass full gates, replace the installed CLI, record the terminal report, then begin M5.8 from
 exact PST exit facts rather than syntactic nesting alone.
+
+### M5.8 guard-clause/condition-inversion implementation checkpoint (2026-07-15)
+
+Active hypothesis: guard-clause flattening is a control rewrite, not a nesting-style preference. The bounded
+Rust shape is a statement-position `if` with an explicit block `else`, exactly one direct `return` in one arm,
+and one to eight semicolon-terminated statements in the continuation arm. A returning `then` arm loses its
+`else`; a returning `else` arm becomes `if !(condition) { return; }` followed by the original continuation.
+Tail-valued branches, else-if chains, comments, let conditions, recovered nodes, and non-direct exits abstain.
+
+Current approach and authority: `rust-invert-guard-clause` requires exact true/false dispatch edges, an exact
+single return edge to the callable abrupt-exit dispatch, an exact abrupt exit edge to the virtual exit, and an
+all-exact modeled path from the continuation arm to the branch merge. Retained PST point facts must mark the
+dispatch, merge, return, and abrupt-exit dispatch reachable, exit-reachable, and post-dominated by the virtual
+exit. Complete region coverage makes that PST condition Proven; otherwise it remains Unknown. Any conservative
+edge on the selected paths suppresses the proposal. Production DefUse and Effects remain Unknown, so flattened
+binding, borrow, lifetime, temporary, drop, effect, panic, exception, and suspension obligations remain explicit.
+Every candidate is `SafeWithPrecondition`/`ReviewRequired`; apply rejects it even under `--canary`.
+
+M5.10 evidence: before evidence names the dispatch, merge, direct return, abrupt-exit dispatch, and four PST point
+facts. The expected delta modifies the dispatch and merge boundary while preserving the direct abrupt point and
+callable abrupt-exit outcome. Counter-evidence retains exact-control, binding/lifetime/drop, effect/exception,
+and non-structured-control obligations. Global M5.10 remains open only for M5.9.
+
+Validation path: four canonical recipe roles; both guard polarities; exact PST and abrupt-exit evidence; a call
+continuation that abstains because Rust unwind modeling is conservative; ordinary non-terminating arms,
+tail-valued branches, comments, and let-condition near misses; replacement parse/rebuild; strict candidate wire;
+CLI work-order output and apply rejection; focused recipe/protocol/CLI tests; strict clippy/fmt/diff. Full
+workspace test/build/rustdoc/clippy/fmt/diff remain the terminal checkpoint.
+
+Negative-memory constraints: do not infer a terminating arm from syntax alone; do not treat partial PST coverage
+as Proven; do not search through or ignore a conservative edge to manufacture an exact continuation path; do not
+flatten a value-producing tail expression; do not claim moved bindings or drop/effect order are safe without
+DefUse/Effects authority; do not grant automatic authority from successful parsing or graph reconstruction.
+
+Agent assignment: `/root` owns shape design, detector, integration, validation, and terminal evidence. No
+sub-agent was requested, so no delegation is active.
+
+Next checkpoint: pass full workspace gates, replace the installed CLI, record the terminal report, then begin
+M5.9 dead-arm and exhaustive chain-to-match/table candidates from exact exhaustiveness and reachability facts.

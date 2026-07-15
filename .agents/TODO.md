@@ -515,12 +515,17 @@ reports, benchmark records, and work orders.
   edge suppresses the proposal. The rewrite stores the predicate once and retains action order. Production
   DefUse/Effects/LocalPdg gaps keep independence and scope/drop obligations explicit `Unknown`, so candidates
   are `SafeWithPrecondition` review work orders and cannot enter automatic apply.
-- [ ] M5.8 Detect guard-clause/condition inversion candidates from PST and exit facts.
+- [x] M5.8 Detect guard-clause/condition inversion candidates from PST and exit facts. Rust
+  statement-position `if`/`else` branches now support direct-return guards in either polarity when exact branch,
+  abrupt-exit, virtual-exit, merge-reachability, and PST point facts are retained. Statement-only continuations
+  are flattened; comments, let conditions, tail-valued branches, non-direct exits, and conservative paths
+  abstain. Production DefUse/Effects gaps keep scope, lifetime, drop, and effect obligations `Unknown`, so
+  candidates are `SafeWithPrecondition` review work orders and cannot enter automatic apply.
 - [ ] M5.9 Detect dead arms and exhaustive chain-to-match/table candidates.
-- [ ] M5.10 Emit before/after graph evidence and counter-evidence for every branch candidate. M5.5-M5.7 slices
-  complete: factoring, adjacent-condition, and dependence-split candidates expose retained dispatch/slice
-  entities, expected after graph changes, and capability-tagged counter-evidence. Keep the global item open until
-  M5.8-M5.9 use the same evidence boundary.
+- [ ] M5.10 Emit before/after graph evidence and counter-evidence for every branch candidate. M5.5-M5.8 slices
+  complete: factoring, adjacent-condition, dependence-split, and guard-inversion candidates expose retained
+  dispatch/slice/PST/exit entities, expected after graph changes, and capability-tagged counter-evidence. Keep
+  the global item open until M5.9 uses the same evidence boundary.
 
 ### Functions and expressions
 

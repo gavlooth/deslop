@@ -18,7 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     TransformationCandidate, detect_adjacent_condition_merges, detect_equivalent_branch_fragments,
-    detect_independent_branch_splits, detect_unreachable_literal_statements,
+    detect_guard_clause_inversions, detect_independent_branch_splits,
+    detect_unreachable_literal_statements,
 };
 
 const SCOPE_LIMITATION: &str =
@@ -154,6 +155,7 @@ fn detect_projection_recipes(
     candidates.extend(detect_equivalent_branch_fragments(projection)?);
     candidates.extend(detect_adjacent_condition_merges(projection)?);
     candidates.extend(detect_independent_branch_splits(projection)?);
+    candidates.extend(detect_guard_clause_inversions(projection)?);
     candidates.sort_by(|left, right| left.id().cmp(right.id()));
     Ok(candidates)
 }
