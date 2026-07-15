@@ -3777,3 +3777,53 @@ closed the only gate failure, and the full terminal sequence then exited 0. The 
 CallGraph, and SDG authority is partial. Proceed to M5.15 def/use/effect-grounded temporary, expression, and
 independent-statement recipes. Keep candidate target entities inside their computed impact layer; interprocedural
 call sites remain evidence/delta entities until impact cones retain SystemDependence.
+
+## 2026-07-15 — M5.15 exact local cleanup recipes
+
+Active hypothesis: M5.15 is the local, intra-callable cleanup closure of the function/expression milestone. Ship
+three concrete Rust transactions, each authorized by Complete DefUse, Effects, LocalPdg, and exact CST rather than
+name spelling or an absent edge: (1) inline one immutable, untyped, single-use temporary into the immediately next
+statement; (2) delete one reachable unused closed literal expression statement; and (3) delete one independent
+unused immutable local whose initializer is a closed literal. These cover temporary, expression, and independent-
+statement cleanup without claiming general compiler type, ownership, drop, panic, or commutativity authority.
+
+Current approach: require a Complete eligible local PDG/data graph with no typed gaps or uncertainty. Temporary
+inlining requires one exact definition, one Read access of the same symbol, exactly that reaching definition, an
+adjacent direct-body use, no initializer access/boundary/effect, and a closed primitive literal/operator initializer;
+the atomic edit deletes the declaration and replaces the sole identifier use with a parenthesized initializer. Pure
+expression deletion requires a direct-body literal expression statement and zero definitions/accesses/boundaries/
+effects at its retained point. Independent dead-local deletion requires one direct-body simple immutable binding,
+zero symbol accesses, a closed literal initializer, and the same empty effect frontier. Literal/dead-local deletion
+may be automatic; temporary inlining remains review-only because diagnostic/panic source location and inferred-type
+presentation can change even across the bounded adjacent frontier.
+
+Production authority boundary: the current Rust recipe builder retains no definitions/accesses and declares
+DefUse/Effects/LocalPdg incomplete. Wire all three selectors into production but return zero rather than deriving
+definitions, uses, or independence from syntax. A positive installed smoke is not required until an adapter supplies
+the facts; selector availability and honest empty output are required now.
+
+Validation path: one authoritative callable fixture yields exactly one candidate per recipe; applying all disjoint
+transactions compiles and matches pre/post output. Second use, non-adjacent use, unresolved/reaching-definition gap,
+effectful/call initializer, explicit type, mutable/pattern binding, nonliteral expression statement, live local, and
+partial production authority abstain. Check strict candidate wire, edit scope, automatic versus review disposition,
+project/CLI selectors, then all terminal gates, reinstall, artifacts, and durable memory.
+
+Negative-memory constraints: do not infer symbol identity from identifier text; do not equate one visible use with
+a complete use count; do not treat missing Flow/effect edges under partial authority as independence; do not move an
+initializer across an intervening statement; do not inline explicit coercion/type boundaries; do not delete calls,
+operators that can panic, allocations, destructors, macros, comments, attributes, or recovered syntax; keep candidate
+targets inside the local PDG impact cone.
+
+Agent assignment: `/root` owns recipe semantics, integration, validation, and terminal evidence. No sub-agent was
+requested, so no delegation is active.
+
+Next checkpoint: a complete retained fixture emits three non-overlapping candidates whose combined rewrite compiles
+and produces identical output, while every production selector emits zero under missing semantic authority.
+
+Terminal result: M5.15 emitted exactly one candidate per bounded recipe on Complete authoritative facts; the three
+non-overlapping edits compiled together and preserved measured output `19`. The retained two-read local, typed local,
+and operator expression were not selected. Project and CLI production selectors returned zero without complete
+DefUse/Effects/LocalPdg. Workspace test/build/rustdoc/clippy/fmt/diff gates exited 0. The CLI was replaced at
+2026-07-15T16:08:47+02:00, and all three installed selector smokes returned `[]`. Proceed to M5.16 file/module/
+package/build/API dependency projections. Preserve one event ordinal sequence across same-point definitions/accesses
+and retain condition evidence on its declared graph layer.

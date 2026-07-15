@@ -624,6 +624,41 @@ fn inline_selector_is_available_and_fails_closed_without_binding_authority() {
 }
 
 #[test]
+fn local_cleanup_selectors_are_available_and_fail_closed_without_data_authority() {
+    let root = tempfile::tempdir().unwrap();
+    fs::write(
+        root.path().join("cleanup.rs"),
+        "fn run() -> i32 { let temporary = 1 + 2; let result = temporary * 3; 99; let unused = 7; result }\n",
+    )
+    .unwrap();
+
+    for recipe in [
+        "rust-inline-exact-single-use-temporary",
+        "rust-remove-unused-pure-literal-expression",
+        "rust-remove-independent-unused-literal-local",
+    ] {
+        let detected = deslop()
+            .args([
+                "recipes",
+                "detect",
+                "cleanup.rs",
+                "--root",
+                root.path().to_str().unwrap(),
+                "--recipe",
+                recipe,
+                "--format",
+                "candidates",
+            ])
+            .output()
+            .unwrap();
+        assert!(detected.status.success(), "{recipe}: {:?}", detected.stderr);
+        let candidates: Vec<Value> = serde_json::from_slice(&detected.stdout).unwrap();
+        assert!(candidates.is_empty(), "{recipe}");
+        assert!(detected.stderr.is_empty(), "{recipe}");
+    }
+}
+
+#[test]
 fn recipe_cli_is_disabled_by_default_and_canary_rolls_back_live_failure() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("fixture.rs");

@@ -560,7 +560,13 @@ reports, benchmark records, and work orders.
   panic-location review. Compiled before/after behavior matched; second-call, function-value, and public-boundary
   cases abstained. Production lacks exact call facts and therefore fails closed with zero candidates. All workspace
   gates passed, the CLI was replaced, and the installed selector smoke returned `[]` without guessing a binding.
-- [ ] M5.15 Add def/use/effect-grounded temporary, expression, and independent-statement recipes.
+- [x] M5.15 Add def/use/effect-grounded temporary, expression, and independent-statement recipes.
+  Three strict Rust selectors now inline an adjacent exact single-use temporary, remove a reachable semantically
+  empty literal expression, and remove an independent unused literal local. Complete DefUse/Effects/LocalPdg is
+  mandatory; exact reaching definitions, use counts, point effects, and CST shapes authorize the edits. The two
+  literal deletions are automatic; temporary inlining remains review-only for source-location observations. One
+  combined compiled fixture preserved output `19` while two-read, typed-local, and operator near misses abstained.
+  Production honestly returns zero under partial authority. All gates and three installed-selector smokes passed.
 
 ### Dependencies and modules
 

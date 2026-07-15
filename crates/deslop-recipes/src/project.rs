@@ -21,7 +21,7 @@ use crate::{
     TransformationCandidate, detect_adjacent_condition_merges, detect_equivalent_branch_fragments,
     detect_exhaustive_chain_matches, detect_extract_method_candidates,
     detect_guard_clause_inversions, detect_independent_branch_splits,
-    detect_inline_single_use_helpers, detect_literal_dead_arms,
+    detect_inline_single_use_helpers, detect_literal_dead_arms, detect_local_cleanup_candidates,
     detect_responsibility_split_candidates, detect_unreachable_literal_statements,
 };
 
@@ -163,6 +163,7 @@ fn detect_projection_recipes(
     candidates.extend(detect_exhaustive_chain_matches(projection)?);
     candidates.extend(detect_extract_method_candidates(projection)?);
     candidates.extend(detect_responsibility_split_candidates(projection)?);
+    candidates.extend(detect_local_cleanup_candidates(projection)?);
     let mut system = SystemDependenceBuilder::new(
         Arc::new(projection.clone()),
         SystemDependencePolicyId::from_parts(&[b"deslop-rust-recipe-system/1"])?,
@@ -478,6 +479,28 @@ mod tests {
         assert!(report.abstentions.is_empty());
         assert!(report.candidates.iter().all(|candidate| {
             candidate.recipe().name() != "rust-inline-exact-single-use-helper"
+        }));
+    }
+
+    #[test]
+    fn production_local_cleanup_selectors_fail_closed_without_data_authority() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(
+            root.path().join("cleanup.rs"),
+            "fn run() -> i32 { let temporary = 1 + 2; let result = temporary * 3; 99; let unused = 7; result }\n",
+        )
+        .unwrap();
+
+        let report =
+            detect_rust_recipe_report(root.path(), &[PathBuf::from("cleanup.rs")]).unwrap();
+        assert!(report.abstentions.is_empty());
+        assert!(report.candidates.iter().all(|candidate| {
+            !matches!(
+                candidate.recipe().name(),
+                "rust-inline-exact-single-use-temporary"
+                    | "rust-remove-unused-pure-literal-expression"
+                    | "rust-remove-independent-unused-literal-local"
+            )
         }));
     }
 }

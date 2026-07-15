@@ -720,7 +720,7 @@ fn missing(kind: &str, identity: &str) -> InlineHelperRecipeError {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::Path;
     use std::process::Command;
     use std::sync::Arc;
@@ -750,8 +750,8 @@ mod tests {
 
     use super::*;
 
-    struct InlineTestPack;
-    static INLINE_TEST_PACK: InlineTestPack = InlineTestPack;
+    pub(crate) struct InlineTestPack;
+    pub(crate) static INLINE_TEST_PACK: InlineTestPack = InlineTestPack;
 
     impl LangPack for InlineTestPack {
         fn name(&self) -> &'static str {

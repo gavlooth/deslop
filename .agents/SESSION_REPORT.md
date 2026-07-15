@@ -11330,3 +11330,74 @@ multiplicity and ownership evidence.
 recipe exports/project dispatch, CLI selector allowlist/tests, Cargo test dependencies, and durable Hindsight memory.
 
 Signature: Codex `/root` — M5.14 terminal owner
+
+## 2026-07-15T16:04:15+02:00 — M5.15 focused local-cleanup checkpoint
+
+**Objective/target:** implement the temporary, expression, and independent-statement closure of the local
+function/expression recipe milestone using exact DefUse/Effects/LocalPdg evidence.
+
+**Changes:** added three versioned Rust recipes and one shared detector. `rust-inline-exact-single-use-temporary`
+requires one immutable untyped direct-body definition, one exact reaching Read, an immediately adjacent use, a
+closed literal/operator initializer, and an empty initializer access/boundary/effect frontier; it atomically deletes
+the declaration and substitutes the parenthesized initializer, remaining review-only for diagnostic/panic location.
+`rust-remove-unused-pure-literal-expression` deletes a reachable direct-body literal statement only when its complete
+point frontier has no definition, access, boundary, or effect. `rust-remove-independent-unused-literal-local`
+deletes one immutable untyped literal local only when Complete data flow contains its exact definition and no symbol
+access. The two deletion recipes are automatic. Calls, operator-expression deletion, typed/mutable/pattern locals,
+comments, macros, recovered syntax, partial coverage, gaps, and uncertainty are excluded.
+
+**Production boundary:** all selectors are wired through the project detector and CLI allowlist. Current production
+graphs lack authoritative DefUse/Effects/LocalPdg and therefore return zero candidates rather than inferring a
+definition, use count, purity, or independence from syntax.
+
+**Verification/results:** one complete authoritative callable emitted exactly three non-overlapping candidates. The
+fixture also retained a two-read local, typed local, and operator statement without candidates. Applying all three
+transactions compiled and preserved measured output `19`. Candidate construction validates strict contracts and
+dispositions. Focused recipe, production report, three-selector CLI, and all-target clippy checks passed.
+
+**Invalidated assumptions:** data-flow event ordinals are shared across definitions and accesses at one control point,
+not separate per fact category; fixture access ordinals now begin after same-point definitions. Recipe-condition
+evidence must name an entity on the condition's declared graph layer; using a PDG target as ControlFlow/DataFlow
+evidence was rejected, and the detector now retains exact control/data point entities separately from its PDG target.
+
+**Recommendation/checkpoint:** persist the two contract lessons, run all terminal workspace gates, mark M5.15
+complete only if they pass, reinstall the CLI, smoke all three installed selectors, and then proceed to M5.16
+dependency projections.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/SESSION_REPORT.md`, local-cleanup recipe/detector/tests, shared test
+adapter visibility, recipe exports/project dispatch, and CLI selector allowlist/tests.
+
+Signature: Codex `/root` — M5.15 integration and verification owner
+
+## 2026-07-15T16:08:47+02:00 — M5.15 terminal local-cleanup recipes
+
+**Objective/target:** close the Functions and Expressions milestone with terminal evidence for temporary,
+expression, and independent-statement cleanup.
+
+**Terminal result:** `cargo test --workspace --all-features`, `cargo build --workspace --all-features`, rustdoc with
+`-D warnings`, all-feature/all-target clippy with `-D warnings`, formatting, and diff checks exited 0. The complete
+authoritative fixture emitted exactly three candidates; applying all transactions compiled and preserved output
+`19`. The same fixture withheld candidates for a two-read local, typed local, and operator expression. Production
+report and CLI tests accepted all selector names but emitted no candidate under partial semantic authority.
+
+`cargo install --path crates/deslop-cli --all-features --force` replaced
+`/home/christos/.cargo/bin/deslop`. Installed smokes for `rust-inline-exact-single-use-temporary`,
+`rust-remove-unused-pure-literal-expression`, and `rust-remove-independent-unused-literal-local` each returned `[]`
+with exit 0. Existing `deslop mcp` processes must restart to load the executable.
+
+**Current authority:** M5.15 is terminal for the bounded direct-body Rust frontier. Complete exact reaching-
+definition and effect facts authorize the edits; literal deletion never includes operators or calls, and temporary
+inlining never crosses an intervening statement or explicit type/pattern boundary. Missing production facts yield
+no candidate. Broader compiler-typed substitution, panic/source-location equivalence, destructor/drop movement,
+effectful dead stores, and general statement commutativity remain unsupported rather than silently deferred.
+
+**Negative-memory status:** Hindsight bank `repo:/home/christos/code/deslop` records the shared same-point event-
+ordinal invariant and the requirement that condition evidence entities match their declared graph layer.
+
+**Recommendation/checkpoint:** proceed to M5.16 file/module/package/build/API dependency projections before adding
+architecture candidates. The dependency schema must preserve source/build/API provenance and partial authority.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`, local-cleanup recipes/tests,
+recipe exports/project dispatch, CLI selectors/tests, installed executable, and durable Hindsight memory.
+
+Signature: Codex `/root` — M5.15 terminal owner

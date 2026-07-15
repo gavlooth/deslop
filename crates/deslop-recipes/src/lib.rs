@@ -8,6 +8,7 @@ mod extract_method;
 mod guard_clause;
 mod impact;
 mod inline_helper;
+mod local_cleanup;
 mod project;
 mod unreachable;
 
@@ -59,6 +60,10 @@ pub use impact::{ImpactQueryError, program_dependence_impact_cone};
 pub use inline_helper::{
     InlineHelperEvidence, InlineHelperRecipeError, detect_inline_single_use_helpers,
     inline_single_use_helper_recipe,
+};
+pub use local_cleanup::{
+    LocalCleanupRecipeError, detect_local_cleanup_candidates, inline_single_use_temporary_recipe,
+    remove_independent_dead_local_recipe, remove_unused_pure_expression_recipe,
 };
 pub use project::{
     RECIPE_DETECTION_REPORT_SCHEMA, RecipeAbstention, RecipeDetectionReport,
