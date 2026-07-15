@@ -1,4 +1,5 @@
 mod branch;
+mod condition_merge;
 mod contract;
 mod evaluation;
 mod impact;
@@ -8,6 +9,9 @@ mod unreachable;
 pub use branch::{
     BranchGraphEvidence, BranchRecipeError, branch_graph_evidence,
     detect_equivalent_branch_fragments, equivalent_branch_factoring_recipe,
+};
+pub use condition_merge::{
+    ConditionMergeRecipeError, adjacent_condition_merge_recipe, detect_adjacent_condition_merges,
 };
 pub use contract::{
     CandidateDisposition, CandidateId, CandidateSource, CandidateTarget, ConditionEvidence,

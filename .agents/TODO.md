@@ -504,14 +504,19 @@ reports, benchmark records, and work orders.
   condition evaluation before the factored fragment, reject recovered/conservative branch edges and comment/
   attribute-bearing rewrites, and carry explicit `Unknown` DefUse/Effects evidence. Production candidates are
   therefore deterministic `SafeWithPrecondition` review work orders and can never enter automatic apply.
-- [ ] M5.6 Detect safe adjacent-condition merges with short-circuit and exception constraints.
+- [x] M5.6 Detect safe adjacent-condition merges with short-circuit and exception constraints.
+  Rust detection covers nested no-fallback `&&`, nested shared-fallback `&&`, and shared-success `||` forms.
+  It proves exact left-to-right evaluation count and retained outcome bodies from two exact dispatches; abstains
+  on recovered/conservative edges, let conditions/chains, comments, and mismatched outcomes; and retains
+  production Effects uncertainty. Candidates are deterministic `SafeWithPrecondition` review work orders and
+  cannot enter automatic apply.
 - [ ] M5.7 Detect independent branch splits from dependence slices.
 - [ ] M5.8 Detect guard-clause/condition inversion candidates from PST and exit facts.
 - [ ] M5.9 Detect dead arms and exhaustive chain-to-match/table candidates.
-- [ ] M5.10 Emit before/after graph evidence and counter-evidence for every branch candidate. M5.5 slice
-  complete: every equivalent-arm/prefix/suffix candidate exposes canonical retained before entities, expected
+- [ ] M5.10 Emit before/after graph evidence and counter-evidence for every branch candidate. M5.5-M5.6 slices
+  complete: factoring and adjacent-condition candidates expose canonical retained dispatch entities, expected
   after graph changes, and capability-tagged forbidden-condition counter-evidence. Keep the global item open
-  until M5.6-M5.9 use the same evidence boundary.
+  until M5.7-M5.9 use the same evidence boundary.
 
 ### Functions and expressions
 

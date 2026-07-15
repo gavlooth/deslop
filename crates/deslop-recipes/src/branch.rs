@@ -609,7 +609,7 @@ fn render_block(nodes: &[(String, String)]) -> String {
     format!("{{ {} }}", render_nodes(nodes))
 }
 
-fn exact_branch_edges(
+pub(crate) fn exact_branch_edges(
     graph: &deslop_parse::ControlFlowGraph,
     dispatch: &deslop_parse::ControlPointKey,
 ) -> bool {
@@ -644,7 +644,11 @@ fn branch_delta(
     }
 }
 
-fn condition(key: &str, description: &str, layer: GraphEvidenceLayer) -> RecipeCondition {
+pub(crate) fn condition(
+    key: &str,
+    description: &str,
+    layer: GraphEvidenceLayer,
+) -> RecipeCondition {
     RecipeCondition {
         key: key.into(),
         description: description.into(),
@@ -652,7 +656,7 @@ fn condition(key: &str, description: &str, layer: GraphEvidenceLayer) -> RecipeC
     }
 }
 
-fn fixture(
+pub(crate) fn fixture(
     role: RecipeFixtureRole,
     name: &str,
     expectation: FixtureExpectation,
@@ -666,7 +670,7 @@ fn fixture(
     }
 }
 
-fn result(
+pub(crate) fn result(
     condition: &str,
     state: ProofState,
     entity: GraphEntityRef,
@@ -685,7 +689,7 @@ fn result(
     }
 }
 
-fn capability_result(
+pub(crate) fn capability_result(
     condition: &str,
     state: ProofState,
     entity: GraphEntityRef,
@@ -707,7 +711,7 @@ fn capability_result(
     }
 }
 
-fn graph_entity(layer: GraphEvidenceLayer, graph: &str, entity: &str) -> GraphEntityRef {
+pub(crate) fn graph_entity(layer: GraphEvidenceLayer, graph: &str, entity: &str) -> GraphEntityRef {
     GraphEntityRef {
         layer,
         graph: graph.into(),
@@ -715,11 +719,14 @@ fn graph_entity(layer: GraphEvidenceLayer, graph: &str, entity: &str) -> GraphEn
     }
 }
 
-fn flow_entity(graph: &str, point: &str) -> GraphEntityRef {
+pub(crate) fn flow_entity(graph: &str, point: &str) -> GraphEntityRef {
     graph_entity(GraphEvidenceLayer::ControlFlow, graph, point)
 }
 
-fn graph_root(graph: &ProgramDependenceGraph, node: &ProgramDependenceNode) -> GraphEntityRef {
+pub(crate) fn graph_root(
+    graph: &ProgramDependenceGraph,
+    node: &ProgramDependenceNode,
+) -> GraphEntityRef {
     graph_entity(
         GraphEvidenceLayer::ProgramDependence,
         graph.key().as_str(),
@@ -727,7 +734,7 @@ fn graph_root(graph: &ProgramDependenceGraph, node: &ProgramDependenceNode) -> G
     )
 }
 
-fn span(node: &deslop_parse::NodeKey) -> Span {
+pub(crate) fn span(node: &deslop_parse::NodeKey) -> Span {
     Span {
         start_line: node.anchor().start_row() as usize + 1,
         end_line: node.anchor().end_row() as usize + 1,

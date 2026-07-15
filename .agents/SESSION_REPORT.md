@@ -10853,3 +10853,63 @@ replacement is live there. No migration or cache clear is required.
 `crates/deslop-recipes/src/branch.rs`, recipe contract/lib/project integration, CLI selector, and CLI recipe tests.
 
 Signature: Codex `/root` — M5.5 integration and verification owner
+## 2026-07-15T11:54:10+02:00 — M5.6 adjacent-condition merge terminal checkpoint
+
+**Objective:** proceed from terminal M5.5 to the next dependency-ordered recipe batch.
+
+**Target:** M5.6 safe adjacent-condition detection plus the M5.10 evidence boundary for this family. M5.7-M5.9
+and global M5.10 remain outside this batch.
+
+**Changes:** added `rust-merge-adjacent-conditions` in `deslop-recipes`. It recognizes exactly three Rust truth-
+table forms: nested no-fallback `&&`, nested shared-fallback `&&`, and `else if` shared-success `||`. Detection
+binds the outer and inner unrecovered dispatches, requires two exact outgoing edges from each, recursively rejects
+let conditions/chains, preserves exact outcome block bytes, retains left-to-right conditional evaluation count,
+and abstains on comments, recovery, conservative edges, and mismatched outcomes. The expected delta modifies the
+outer dispatch and removes the nested dispatch representation. Added project discovery composition, CLI selector,
+four-role and near-miss fixtures, strict wire/rebuild tests, and CLI apply-rejection coverage. Updated
+`.agents/TODO.md` and `.agents/PLAN.md`; shared M5.10 evidence helpers remain in the branch recipe layer.
+
+**Authority and safety result:** truth-table equivalence, body identity, and short-circuit evaluation count/order
+are Proven from exact CST/CFG evidence. Production Rust Effects and LocalPdg remain `Unknown`, so panic,
+exception, abrupt-exit, suspension, and hidden-effect obligations remain explicit Unknown. Every candidate is
+`SafeWithPrecondition` and `ReviewRequired`; apply rejects it as non-automatic even with `--canary`. Automatic
+recipe application remains disabled.
+
+**Commands run and results:**
+
+- focused `condition_merge::tests` — 4 passed after the two implementation corrections below.
+- `cargo test -p deslop-recipes --all-features` — 21 passed, 1 designated release-only evidence test ignored.
+- `cargo test -p deslop-protocol --all-features recipe` — 3 passed.
+- `cargo test -p deslop-cli --all-features --test recipes` — 4 passed.
+- focused recipe/CLI all-target clippy, fmt, and diff checks — passed.
+- `cargo test --workspace --all-features` — passed with no failures; the same three explicitly ignored
+  performance/evidence probes remained ignored.
+- `cargo build --workspace --all-features` — passed.
+- `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps` — passed.
+- `cargo clippy --workspace --all-features --all-targets -- -D warnings` — passed.
+- `cargo fmt --all -- --check` and `git diff --check` — passed.
+- `cargo install --path crates/deslop-cli --all-features --force` — replaced
+  `/home/christos/.cargo/bin/deslop` at 2026-07-15 11:53:57 +02:00.
+- installed selector smoke on `crates/deslop-recipes/src/condition_merge.rs` — one file analyzed, zero candidates,
+  zero abstentions; `deslop-cli 0.1.0`.
+
+**Failure modes / invalidated assumptions:** the first compile retained fallback text through a temporary
+`NodeView`; owning the exact bytes before rendering fixed the lifetime without weakening identity. The first
+detector matrix found only the `else if` case because Rust wraps a nested `if` used as a block statement in a
+single `expression_statement`; the detector now unwraps exactly that one-child grammar form and does not broaden
+to descendant guessing. Exact Rust `&&`/`||` evaluation semantics still do not upgrade the adapter's explicit
+Unknown Effects declaration or authorize automatic application.
+
+**Current recommendation/checkpoint:** M5.6 is terminal. M5.10 is terminal for M5.5-M5.6 candidates and remains
+globally open. Proceed to M5.7 only from explicit dependence-slice independence; syntactic branch adjacency is
+not dependence proof.
+
+**Blockers/dependencies/restart:** no code blocker. The user-scoped CLI contains the M5.6 selector now. Any
+already-running `deslop mcp` process requires restart to load the replacement. No migration or cache clear is
+required.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-recipes/src/condition_merge.rs`, shared branch helpers, recipe lib/project integration, CLI
+selector, and CLI recipe integration tests.
+
+Signature: Codex `/root` — M5.6 integration and verification owner

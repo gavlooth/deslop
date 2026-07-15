@@ -3453,3 +3453,40 @@ No sub-agent was requested, so no delegation is active.
 
 Next checkpoint: pass the full workspace gates, record the terminal session report, then begin M5.6 with an
 explicit short-circuit and exception-order contract rather than inheriting M5.5's structural proof.
+
+### M5.6 adjacent-condition merge implementation checkpoint (2026-07-15)
+
+Active hypothesis: a bounded Rust recipe can prove short-circuit truth and evaluation-count equivalence from
+two exact branch dispatches while leaving unavailable effect/exception authority explicit. The implemented
+forms are (1) nested no-fallback branches to `&&`, (2) nested branches with byte-identical inner/outer fallback
+to `&&`, and (3) `else if` branches with byte-identical success bodies to `||`. Each rewrite retains the left
+condition first, evaluates the right condition only on the original path, and retains exact outcome block bytes.
+
+Current approach: `rust-merge-adjacent-conditions` requires CFG, control-region, non-structured, data-flow, and
+PDG layers. It rejects recovered points, conservative outgoing edges, comments, parse recovery, let conditions/
+chains, non-block or mismatched outcomes, and any shape outside the three truth-table identities. Exact truth,
+evaluation count/order, and body equivalence are Proven. Production Rust Effects and LocalPdg authority remain
+Unknown, so panic, exception, abrupt-exit, suspension, and hidden-effect obligations remain explicit Unknown.
+Every candidate is `SafeWithPrecondition`/`ReviewRequired`; the apply path rejects it even with `--canary`.
+
+M5.10 evidence path: each candidate's before evidence names both retained dispatches, its after delta modifies
+the outer dispatch and removes the nested dispatch representation, and its counter-evidence retains control,
+binding-scope, Effects, and non-structured facts. `branch_graph_evidence` exposes the same canonical family view.
+Global M5.10 remains open for M5.7-M5.9.
+
+Validation path: four canonical fixture roles; all three truth-table forms; an effectful right predicate proving
+right-side short-circuit placement without upgrading Effects; mismatched fallback, let-binding, comment, and
+reordered near misses; strict wire mutation rejection; replacement parse/rebuild; project discovery; protocol
+mapping; CLI work-order output; and apply rejection. Focused recipe/protocol/CLI tests and all-target clippy/fmt/
+diff pass. Full workspace test/build/rustdoc/clippy/fmt/diff remain the terminal checkpoint.
+
+Negative-memory constraints: do not translate arbitrary nested branches to boolean operators; do not merge let
+conditions across binding scopes; do not infer exception/effect authority from Rust's operator semantics or an
+empty synthetic effect vector; do not grant automatic authority from a successful parse/build; do not move or
+drop comments while reconstructing a condition.
+
+Agent assignment: `/root` owns contract, detector, integration, validation, and terminal evidence. No sub-agent
+was requested, so no delegation is active.
+
+Next checkpoint: pass full workspace gates, replace the user-scoped binary, record the terminal report, and then
+begin M5.7 from explicit dependence-slice independence rather than syntactic branch adjacency.

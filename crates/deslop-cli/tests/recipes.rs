@@ -145,6 +145,79 @@ fn branch_factoring_is_reported_with_counter_evidence_and_cannot_apply() {
 }
 
 #[test]
+fn adjacent_condition_merge_retains_short_circuit_evidence_and_cannot_apply() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("conditions.rs");
+    let orders_path = root.path().join("condition-orders.json");
+    let original = "fn run(a: bool, b: bool) { if a { if b { act(); } } }\nfn act() {}\n";
+    fs::write(&source, original).unwrap();
+
+    let detected = deslop()
+        .args([
+            "recipes",
+            "detect",
+            "conditions.rs",
+            "--root",
+            root.path().to_str().unwrap(),
+            "--recipe",
+            "rust-merge-adjacent-conditions",
+            "--format",
+            "workorders",
+            "--output",
+            orders_path.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(detected.status.success(), "{:?}", detected.stderr);
+    let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
+    assert_eq!(orders.len(), 1);
+    let candidate = &orders[0]["candidate"];
+    assert_eq!(candidate["disposition"], "review-required");
+    assert_eq!(candidate["edits"][0]["after"], "if (a) && (b) { act(); }");
+    assert!(
+        candidate["required_results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(
+                |result| result["condition"] == "left-to-right-evaluation-count"
+                    && result["state"] == "proven"
+                    && result["evidence"].as_array().unwrap().len() == 2
+            )
+    );
+    assert!(
+        candidate["required_results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(
+                |result| result["condition"] == "exception-suspension-order-preserved"
+                    && result["state"] == "unknown"
+            )
+    );
+
+    let rejected = deslop()
+        .args([
+            "recipes",
+            "apply",
+            "--root",
+            root.path().to_str().unwrap(),
+            "--workorders",
+            orders_path.to_str().unwrap(),
+            "--build-cmd",
+            "true",
+            "--test-cmd",
+            "true",
+            "--canary",
+        ])
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("is not automatic"));
+    assert_eq!(fs::read_to_string(source).unwrap(), original);
+}
+
+#[test]
 fn recipe_cli_is_disabled_by_default_and_canary_rolls_back_live_failure() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("fixture.rs");

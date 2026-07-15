@@ -17,7 +17,7 @@ use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    TransformationCandidate, detect_equivalent_branch_fragments,
+    TransformationCandidate, detect_adjacent_condition_merges, detect_equivalent_branch_fragments,
     detect_unreachable_literal_statements,
 };
 
@@ -152,6 +152,7 @@ fn detect_projection_recipes(
 ) -> Result<Vec<TransformationCandidate>> {
     let mut candidates = detect_unreachable_literal_statements(projection)?;
     candidates.extend(detect_equivalent_branch_fragments(projection)?);
+    candidates.extend(detect_adjacent_condition_merges(projection)?);
     candidates.sort_by(|left, right| left.id().cmp(right.id()));
     Ok(candidates)
 }
