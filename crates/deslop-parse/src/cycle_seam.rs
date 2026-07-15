@@ -1053,7 +1053,7 @@ fn derive_id(domain: &str, prefix: &str, parts: &[&[u8]]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::Path;
 
     use super::*;
@@ -1074,7 +1074,7 @@ mod tests {
         CycleSeamPolicyId::from_parts(&[b"cycle-seam-test-policy/1"]).unwrap()
     }
 
-    fn cycle_architecture() -> Arc<ArchitectureProjection> {
+    pub(crate) fn cycle_architecture() -> Arc<ArchitectureProjection> {
         let dependency = Arc::new(cycle_dependency_fixture());
         let projection =
             derive_architecture(dependency, ArchitecturePolicy::new(vec![], vec![]).unwrap())
@@ -1259,7 +1259,9 @@ mod tests {
         Arc::new(projection)
     }
 
-    fn complete_cycle_data_flow(architecture: &ArchitectureProjection) -> Arc<DataFlowProjection> {
+    pub(crate) fn complete_cycle_data_flow(
+        architecture: &ArchitectureProjection,
+    ) -> Arc<DataFlowProjection> {
         cycle_data_flow(architecture, false)
     }
 

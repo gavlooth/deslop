@@ -582,7 +582,10 @@ reports, benchmark records, and work orders.
   Strict `deslop.cycle-seams/1` now emits only API-backed internal cuts for cyclic SCCs, joins exact matching
   data-flow access/reaching-definition evidence, ranks canonical review-required candidates, and preserves every
   authority gap. The retained corpus produces 8 exact candidates; topology-only cycles produce 0. All gates pass.
-- [ ] M5.19 Generate move/split/merge-module candidates from cohesion, coupling, impact, and optional change history.
+- [x] M5.19 Generate move/split/merge-module candidates from cohesion, coupling, impact, and optional change history.
+  Strict `deslop.module-restructure/1` now emits deterministic review-required moves, splits, and merges from exact
+  ownership, dependency, API-impact, cycle-seam, and optional content-bound history evidence. Nine focused tests,
+  235 active parse tests (1 explicit ignore), 4 doctests, and every workspace gate pass.
 - [ ] M5.20 Add semantically safe import/declaration ordering recipes.
 
 ### Clones, ceremony, dead code, clarity

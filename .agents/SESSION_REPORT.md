@@ -11545,3 +11545,59 @@ exports, and Hindsight memory.
 foreign-source invalidations are enforced in code, tests, this report, and durable positive memory.
 
 Signature: Codex `/root` — M5.18 integration and terminal verification owner
+
+## 2026-07-15T21:21:19+02:00 — M5.19 terminal reviewed module restructuring candidates
+
+**Objective:** close M5.19 with deterministic move, split, and merge-module candidates grounded in exact cohesion,
+coupling, public API impact, cycle-seam evidence, and optional retained change history, without granting automatic
+rewrite authority.
+
+**Target:** add strict parse-layer `deslop.module-restructure/1`, `deslop.module-restructure-policy/1`, and optional
+`deslop.module-change-history/1` contracts bound to the exact M5.16 dependency and M5.17/M5.18 topology/seam
+identities.
+
+**Changes:** added content-bound policy, profile, candidate, gap, history, and observation identities; exact
+Module-to-File ownership; directed File and Module dependency evidence; public local API ownership and external API
+users; exact rational cohesion; move enumeration that cannot empty its source module; weakly disconnected split
+communities; canonical bidirectional merge enumeration; retained dependency/API/seam/history evidence; deterministic
+review ordering; fixed review obligations; inherited and typed authority gaps; strict canonical deserialization and
+tamper rejection; and public parse exports. Every candidate is `ReviewRequired`; no mutation or CLI path was added.
+
+**Commands run/results:** focused module-restructure tests passed 9/9. Focused parse clippy passed after extracting a
+`CandidateOrder` type alias. `cargo test -p deslop-parse --all-features --quiet` passed 235 active tests with 1
+explicit ignore plus 4 doctests. `cargo test --workspace --all-features --quiet`, `cargo build --workspace
+--all-features`, `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps`, `cargo clippy
+--workspace --all-features --all-targets -- -D warnings`, `cargo fmt --all -- --check`, and `git diff --check` all
+passed.
+
+**Numerical evidence:** the exact retained cycle has 2 module profiles and emits 1 merge candidate retaining 2
+dependency edges, 2 public API nodes, 2 external API users, and 2 M5.18 seam candidates, with coupling reduction 2,
+rank 1, authority penalty 0, and complete evidence when history is not provided. The independent pinned module model
+emits all 3 operation kinds: move, split into 2 groups, and merge. Complete optional history adds 1 support
+observation with exact Jaccard 3/6 and changes content identity; partial history adds exactly 1 authority penalty and
+an explicit gap. One-way module coupling emits 0 merge candidates.
+
+**Invalidated assumptions/authority lessons:** existing heuristic burden is not module cohesion authority. Structural
+clustering, candidate rank, and co-change support cannot prove rewrite legality. History absence is genuinely
+optional and non-blocking, but missing M5.18 seams cannot be treated the same way when a cyclic Module SCC exists;
+the initial uniform optional-input predicate was caught by the adversarial test and replaced with explicit cyclic
+seam coverage. Exact bidirectional coupling is required for a merge, and supplied partial evidence must downgrade
+rather than disappear.
+
+**Current recommendation/checkpoint:** M5.19 is terminal. Proceed to M5.20 semantically safe import/declaration
+ordering recipes. Keep restructuring candidates as planning evidence until language-specific semantic checks and
+review obligations are satisfied.
+
+**Blockers/restart/dependencies:** no blockers. No CLI replacement, service restart, migration, or cache clear is
+required; normal downstream recompilation is sufficient. Durable positive and negative memory is in Hindsight bank
+`repo:/home/christos/code/deslop` under session `m5-module-restructure-2026-07-15`.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-parse/src/module_restructure.rs`, `crates/deslop-parse/src/cycle_seam.rs`,
+`crates/deslop-parse/src/lib.rs`, and Hindsight memory.
+
+**Negative-memory status:** recorded the optional-evidence conflation: absent change history is non-blocking, while a
+cyclic Module SCC without required seam evidence must be partial and emit `MissingCycleSeams`. The correction is
+enforced in code and an adversarial regression test.
+
+Signature: Codex `/root` — M5.19 integration and terminal verification owner

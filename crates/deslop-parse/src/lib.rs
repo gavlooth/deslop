@@ -43,6 +43,7 @@ mod graph_eligibility;
 mod identity;
 mod incremental;
 mod instrumentation;
+mod module_restructure;
 mod non_structured_control;
 mod planner;
 mod program_dependence;
@@ -136,6 +137,16 @@ pub use instrumentation::{
     ProjectAnalysisInstrumentation, ProjectAnalysisUpdateInstrumentation,
     SyntaxPointContextInstrumentation, SyntaxQueryInstrumentation,
     SyntaxQueryResultsInstrumentation,
+};
+pub use module_restructure::{
+    MODULE_CHANGE_HISTORY_SCHEMA, MODULE_RESTRUCTURE_POLICY_SCHEMA, MODULE_RESTRUCTURE_SCHEMA,
+    ModuleChangeHistory, ModuleChangeHistoryId, ModuleChangeObservation,
+    ModuleChangeObservationDraft, ModuleChangeObservationKey, ModuleHistoryStatus, ModuleProfile,
+    ModuleProfileKey, ModuleRatio, ModuleRestructureBuildError, ModuleRestructureCandidate,
+    ModuleRestructureCandidateKey, ModuleRestructureCoverageEvidence, ModuleRestructureDisposition,
+    ModuleRestructureDocument, ModuleRestructureGap, ModuleRestructureGapKey,
+    ModuleRestructureGapKind, ModuleRestructureKind, ModuleRestructurePolicyId,
+    ModuleRestructureProjection, ModuleRestructureScore, derive_module_restructure,
 };
 pub use non_structured_control::{
     NON_STRUCTURED_CONTROL_POLICY_SCHEMA, NON_STRUCTURED_CONTROL_SCHEMA,

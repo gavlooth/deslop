@@ -3984,3 +3984,60 @@ count, and canonical direction/edge identity. The bidirectional retained corpus 
 3 cyclic SCCs, 6 explicit abstention gaps, and 0 candidates. Eight focused tests, 226 active parse tests (1 explicit
 ignore), 4 doctests, and every workspace test/build/rustdoc/clippy/fmt/diff gate pass. Proceed to M5.19 using these
 reviewed seam facts as one input; do not treat a seam rank as move/split/merge legality.
+
+## 2026-07-15 — M5.19 reviewed module restructuring candidates
+
+Active hypothesis: module restructuring can be ranked from exact dependency ownership, file/API coupling, public API
+impact, M5.18 seam evidence, and optional retained co-change observations, but none of those signals proves move,
+split, or merge legality. Existing heuristic burden metrics are not cohesion authority. Build a strict candidate
+projection over exact M5.17/M5.16 identities, consume M5.18 only on exact architecture identity, and accept history
+only through a content-bound document tied to the current dependency projection.
+
+Current approach:
+
+1. Add strict `deslop.module-restructure/1`, `deslop.module-restructure-policy/1`, and optional
+   `deslop.module-change-history/1` contracts with content-bound observation, candidate, and gap identities.
+2. Derive Module-to-File ownership, directed File and Module dependency evidence, local API ownership/users, and
+   exact per-module cohesion/coupling/impact profiles. Do not consume heuristic burden scores, names, or paths as
+   semantic clustering authority.
+3. Emit review-only move candidates when a file has strictly more exact coupling to another module than to its
+   current nonempty remainder; split candidates from multiple weakly disconnected internal file communities; and
+   one canonical merge candidate for a module pair with exact bidirectional coupling. Attach exact edge/API/seam/
+   history evidence and before/after count deltas.
+4. Rank candidates by authority penalty, public API impact, exact coupling reduction/cohesion separation, affected
+   file count, seam support, optional co-change support, and stable identity. History absence is an explicit
+   `NotProvided` state, not a coverage failure; foreign or malformed history is rejected/gapped.
+5. Freeze end-to-end merge/seam evidence plus numerical move/split community fixtures, optional/no-history parity,
+   partial/foreign source downgrades, deterministic rebuild, strict round-trip, and tamper rejection.
+
+CONVERGENCE: one exact module model plus the retained cycle corpus must distinguish all three operations and every
+authority state. Terminal outcomes are: (a) paths/names or heuristic burden create a candidate—invalid; (b) a move
+empties its source module—invalid; (c) one-way coupling creates a merge—invalid; (d) history absence blocks otherwise
+exact structural candidates—invalid; (e) rank/cluster becomes automatic legality—invalid; or (f) pinned candidates,
+abstentions, identities, and all workspace gates pass, closing M5.19.
+
+Validation path: focused module-restructure tests; full `deslop-parse` all-feature tests; workspace all-feature test,
+build, warnings-denied rustdoc, warnings-denied all-target clippy, fmt check, and `git diff --check`.
+
+Negative-memory constraints: BuildModule ownership does not infer package reachability; topology and clustering are
+candidate generation only; absent edges under partial coverage are not negative proof; optional history never
+overrides current exact dependency/API evidence; a high score never authorizes an edit.
+
+Agent assignment: `/root` owns contract, implementation, numerical fixtures, integration, and terminal validation.
+No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: implement strict history/profile/candidate wire types and the exact module evidence model before
+adding move/split/merge enumeration.
+
+Terminal result: M5.19 is complete. Strict `deslop.module-restructure/1`,
+`deslop.module-restructure-policy/1`, and optional `deslop.module-change-history/1` bind exact dependency,
+architecture, seam, and history identities. Moves require strictly greater exact target coupling while preserving a
+nonempty source remainder; splits require multiple weakly disconnected internal file communities; merges require
+exact bidirectional Module coupling. Every candidate remains `ReviewRequired`, retains exact file/edge/API/user/seam/
+history evidence, and carries fixed review obligations. The retained cycle produces 2 profiles and 1 merge with 2
+dependency edges, 2 public APIs, 2 external API users, 2 seam witnesses, and coupling reduction 2; the independent
+pinned model produces exactly one move, split, and merge kind. Optional complete history records Jaccard 3/6 and
+changes support/identity; absent history remains non-blocking; supplied partial history and missing required cyclic
+seams explicitly downgrade authority; one-way coupling produces 0 merges. Nine focused tests, 235 active parse tests
+(1 explicit ignore), 4 doctests, and every workspace test/build/rustdoc/clippy/fmt/diff gate pass. Proceed to M5.20;
+do not treat restructuring rank or structural clustering as rewrite legality.
