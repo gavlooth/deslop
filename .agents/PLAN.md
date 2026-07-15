@@ -3490,3 +3490,37 @@ was requested, so no delegation is active.
 
 Next checkpoint: pass full workspace gates, replace the user-scoped binary, record the terminal report, and then
 begin M5.7 from explicit dependence-slice independence rather than syntactic branch adjacency.
+
+### M5.7 branch-action dependence-split implementation checkpoint (2026-07-15)
+
+Active hypothesis: a branch split must be driven by retained flow slices, and missing edges under incomplete
+authority must remain Unknown. The bounded Rust shape is a no-`else` branch with two to eight direct call
+statements. Each action roots a bidirectional closure over PDG Flow edges. Any slice overlap or crossing Flow edge
+suppresses the candidate. The rewrite evaluates the predicate once into a scoped boolean and emits ordered
+per-action branches; declarations, let conditions, comments, recovery, conservative control, and alternate arms
+abstain.
+
+Current authority: exact action CST, predicate evaluation count, action order, and exact CFG control are Proven.
+Production DefUse, Effects, and LocalPdg remain Unknown, so an empty crossing set is not independence proof;
+`distinct-dependence-slices`, crossing-flow absence, binding/borrow/lifetime, and drop/effect independence remain
+explicit Unknown. Candidates are `SafeWithPrecondition`/`ReviewRequired` and the apply path rejects them.
+
+M5.10 evidence: before evidence contains retained action slice entities; the expected delta removes the compound
+dispatch representation and preserves every action dependence entity; forbidden results retain crossing-flow,
+scope/drop, control, and non-structured counter-evidence. Global M5.10 remains open for M5.8-M5.9.
+
+Validation path: four recipe roles; a two-action production candidate with Unknown independence; single-action,
+declaration, comment, and else abstentions; replacement parse/rebuild; strict wire mutation rejection; CLI
+work-order output and apply rejection; focused recipe/protocol/CLI tests; clippy/fmt/diff. Full workspace gates
+remain the terminal checkpoint.
+
+Negative-memory constraints: never treat no retained PDG edge as independence without complete DefUse and
+LocalPdg authority; never split declarations or binding-bearing actions; never duplicate predicate evaluation;
+never infer external effect or drop independence from disjoint local flow closures; never grant automatic
+authority from parse/build success.
+
+Agent assignment: `/root` owns slice design, detector, integration, validation, and terminal evidence. No
+sub-agent was requested, so no delegation is active.
+
+Next checkpoint: pass full gates, replace the installed CLI, record the terminal report, then begin M5.8 from
+exact PST exit facts rather than syntactic nesting alone.

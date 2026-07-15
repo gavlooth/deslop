@@ -510,13 +510,17 @@ reports, benchmark records, and work orders.
   on recovered/conservative edges, let conditions/chains, comments, and mismatched outcomes; and retains
   production Effects uncertainty. Candidates are deterministic `SafeWithPrecondition` review work orders and
   cannot enter automatic apply.
-- [ ] M5.7 Detect independent branch splits from dependence slices.
+- [x] M5.7 Detect independent branch splits from dependence slices. Rust no-`else` branches containing two to
+  eight direct call statements now receive one flow closure per action; any overlapping slice or crossing Flow
+  edge suppresses the proposal. The rewrite stores the predicate once and retains action order. Production
+  DefUse/Effects/LocalPdg gaps keep independence and scope/drop obligations explicit `Unknown`, so candidates
+  are `SafeWithPrecondition` review work orders and cannot enter automatic apply.
 - [ ] M5.8 Detect guard-clause/condition inversion candidates from PST and exit facts.
 - [ ] M5.9 Detect dead arms and exhaustive chain-to-match/table candidates.
-- [ ] M5.10 Emit before/after graph evidence and counter-evidence for every branch candidate. M5.5-M5.6 slices
-  complete: factoring and adjacent-condition candidates expose canonical retained dispatch entities, expected
-  after graph changes, and capability-tagged forbidden-condition counter-evidence. Keep the global item open
-  until M5.7-M5.9 use the same evidence boundary.
+- [ ] M5.10 Emit before/after graph evidence and counter-evidence for every branch candidate. M5.5-M5.7 slices
+  complete: factoring, adjacent-condition, and dependence-split candidates expose retained dispatch/slice
+  entities, expected after graph changes, and capability-tagged counter-evidence. Keep the global item open until
+  M5.8-M5.9 use the same evidence boundary.
 
 ### Functions and expressions
 

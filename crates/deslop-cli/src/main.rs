@@ -699,6 +699,7 @@ fn detect_recipes(args: RecipeDetectArgs) -> Result<()> {
         "rust-remove-unreachable-literal-statement"
             | "rust-factor-equivalent-branch-fragments"
             | "rust-merge-adjacent-conditions"
+            | "rust-split-independent-branch-actions"
     ) {
         bail!("unknown production recipe `{}`", args.recipe);
     }

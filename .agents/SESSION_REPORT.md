@@ -10913,3 +10913,38 @@ required.
 selector, and CLI recipe integration tests.
 
 Signature: Codex `/root` — M5.6 integration and verification owner
+## 2026-07-15T12:52:07+02:00 — M5.7 dependence-slice branch split terminal checkpoint
+
+**Objective/target:** proceed from terminal M5.6 through M5.7 and its M5.10 evidence boundary; leave M5.8-M5.9
+and global M5.10 open.
+
+**Changes:** added `rust-split-independent-branch-actions`. The bounded Rust shape is a no-`else` branch with two
+to eight direct call statements. Each action roots a bidirectional PDG Flow closure. Slice overlap or a crossing
+Flow edge suppresses the proposal. The replacement stores the predicate once in a scoped boolean and retains
+action order in per-action branches. Declarations, let conditions, comments, alternate arms, recovery, and
+conservative control abstain. Added public slice evidence, expected removal/preservation delta, project/CLI
+integration, four-role/rebuild/wire tests, and CLI apply rejection. Updated plan and TODO.
+
+**Authority/safety:** exact CST actions, predicate evaluation count, source order, and CFG control are Proven.
+Production DefUse, Effects, and LocalPdg are Unknown, so no crossing retained is explicitly Unknown rather than
+independence proof; scope/borrow/lifetime/drop/effect obligations also remain Unknown. Candidates are
+`SafeWithPrecondition`/`ReviewRequired`; apply rejects them even with `--canary`.
+
+**Verification:** focused recipes 24 passed/1 designated ignored; protocol recipe tests 3 passed; CLI recipe
+tests 5 passed; focused clippy/fmt/diff passed. Full `cargo test --workspace --all-features` passed with no
+failures and the same three designated ignores. Workspace build, rustdoc with `-D warnings`, all-target clippy
+with `-D warnings`, fmt check, and diff check passed. `cargo install --path crates/deslop-cli --all-features
+--force` replaced `/home/christos/.cargo/bin/deslop` at 12:51:56 +02:00. Installed selector smoke analyzed one
+file with zero candidates and zero abstentions.
+
+**Failure modes/invalidations:** the initial multi-file patch was rejected atomically by stale formatted import
+context and wrote nothing; module and integration patches were then separated. A test attempted to manufacture
+opaque PDG node keys through a nonexistent public constructor and was removed rather than weakening key
+identity. One clippy-only collapsible-if finding was corrected. Most importantly, an empty PDG edge set under
+Unknown authority is not independence evidence.
+
+**Recommendation/checkpoint:** M5.7 is terminal; M5.10 covers M5.5-M5.7 and remains globally open. Proceed to
+M5.8 only from exact PST exit facts. No migration/cache clear is required. Existing `deslop mcp` processes need
+restart to load the replaced binary.
+
+Signature: Codex `/root` — M5.7 integration and verification owner
