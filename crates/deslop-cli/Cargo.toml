@@ -20,6 +20,7 @@ deslop-graph.workspace = true
 deslop-metrics.workspace = true
 deslop-mcp = { workspace = true, optional = true }
 deslop-protocol.workspace = true
+deslop-recipes.workspace = true
 deslop-report.workspace = true
 deslop-slim = { workspace = true, features = ["anthropic", "openai"] }
 deslop-verify.workspace = true

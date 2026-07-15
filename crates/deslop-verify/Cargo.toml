@@ -12,6 +12,7 @@ deslop-core.workspace = true
 deslop-mutate.workspace = true
 deslop-parse.workspace = true
 deslop-protocol.workspace = true
+deslop-recipes.workspace = true
 ignore.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use deslop_core::{Lang, SafetyClass, Span};
 use deslop_parse::{
     ControlPointKind, GraphEvidenceLayer, ProgramDependenceGraph, ProgramDependenceNode,
-    ProgramDependenceProjection, ProjectAnalysis, evaluate_graph_recipe_eligibility,
+    ProgramDependenceProjection, ProjectAnalysis, evaluate_program_graph_recipe_eligibility,
 };
 
 use crate::{
@@ -150,13 +150,6 @@ pub fn detect_unreachable_literal_statements(
     projection: &ProgramDependenceProjection,
 ) -> Result<Vec<TransformationCandidate>, UnreachableRecipeError> {
     let recipe = unreachable_literal_statement_recipe()?;
-    let eligibility =
-        evaluate_graph_recipe_eligibility(projection, None, &recipe.eligibility_requirement())
-            .map_err(|error| UnreachableRecipeError::Eligibility(error.to_string()))?;
-    if !eligibility.eligible() {
-        return Ok(Vec::new());
-    }
-
     let data_flow = projection.data_flow();
     let regions = data_flow.control_regions();
     let control_flow = regions.control_flow();
@@ -166,6 +159,15 @@ pub fn detect_unreachable_literal_statements(
     let mut candidates = Vec::new();
 
     for graph in projection.document().graphs() {
+        let eligibility = evaluate_program_graph_recipe_eligibility(
+            projection,
+            graph,
+            &recipe.eligibility_requirement(),
+        )
+        .map_err(|error| UnreachableRecipeError::Eligibility(error.to_string()))?;
+        if !eligibility.eligible() {
+            continue;
+        }
         let flow_graph = control_flow
             .document()
             .graphs()

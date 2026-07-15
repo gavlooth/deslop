@@ -321,6 +321,7 @@ dependencies = [
  "deslop-metrics",
  "deslop-parse",
  "deslop-protocol",
+ "deslop-recipes",
  "deslop-report",
  "deslop-slim",
  "deslop-verify",
@@ -491,6 +492,7 @@ dependencies = [
  "deslop-analyzer",
  "deslop-core",
  "deslop-parse",
+ "deslop-recipes",
  "serde",
  "serde_json",
  "tempfile",
@@ -500,9 +502,11 @@ dependencies = [
 name = "deslop-recipes"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "blake3",
  "deslop-core",
  "deslop-parse",
+ "ignore",
  "serde",
  "serde_json",
  "tempfile",
@@ -547,6 +551,7 @@ dependencies = [
  "deslop-mutate",
  "deslop-parse",
  "deslop-protocol",
+ "deslop-recipes",
  "ignore",
  "serde",
  "serde_json",

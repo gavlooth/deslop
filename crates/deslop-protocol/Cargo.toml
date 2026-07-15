@@ -11,6 +11,7 @@ blake3.workspace = true
 deslop-analyzer.workspace = true
 deslop-core.workspace = true
 deslop-parse.workspace = true
+deslop-recipes.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

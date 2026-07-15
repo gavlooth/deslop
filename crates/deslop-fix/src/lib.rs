@@ -101,7 +101,7 @@ fn write_changed_text(path: &Path, original: &str, fixed: String, backup: bool) 
     })
 }
 
-fn unified_file_diff(path: &Path, original: &str, fixed: &str) -> String {
+pub fn unified_file_diff(path: &Path, original: &str, fixed: &str) -> String {
     let original_lines = original.lines().count();
     let fixed_lines = fixed.lines().count();
     let mut out = String::new();

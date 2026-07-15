@@ -23,6 +23,13 @@ use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 use wait_timeout::ChildExt;
 
+mod recipe;
+
+pub use recipe::{
+    RECIPE_APPLY_REPORT_SCHEMA, RecipeApplyOptions, RecipeApplyReport, RecipeApplyStatus,
+    RecipeCheckPhase, RecipeCheckResult, apply_recipe_work_orders, load_recipe_work_orders,
+};
+
 #[derive(Debug, Clone)]
 pub struct VerifyOptions {
     pub root: PathBuf,

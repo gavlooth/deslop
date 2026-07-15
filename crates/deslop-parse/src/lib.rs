@@ -95,7 +95,7 @@ pub use data_flow::{
 pub use graph_eligibility::{
     GRAPH_RECIPE_ELIGIBILITY_SCHEMA, GraphEligibilityBlock, GraphEligibilityDecision,
     GraphEligibilityDecisionId, GraphEligibilityError, GraphEvidenceLayer, GraphRecipeRequirement,
-    evaluate_graph_recipe_eligibility,
+    evaluate_graph_recipe_eligibility, evaluate_program_graph_recipe_eligibility,
 };
 pub use identity::{
     NODE_BASELINE_SCHEMA, NODE_KEY_SCHEMA, NodeAnchor, NodeBaselineFingerprint, NodeId, NodeKey,

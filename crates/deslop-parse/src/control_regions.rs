@@ -1003,9 +1003,14 @@ fn build_residual(
     policy: &ControlRegionPolicyId,
     graph: &ControlFlowGraphKey,
     indexed: &IndexedGraph,
-    candidate: RegionCandidate,
+    mut candidate: RegionCandidate,
     reason: String,
 ) -> Result<ControlRegionResidual, ControlRegionBuildError> {
+    // A residual records why an attempted SESE region was rejected. Its point set must
+    // still be a closed, self-contained wire object even when the attempted candidate
+    // omitted one of its proposed boundaries (the very condition that made it invalid).
+    candidate.points.insert(candidate.entry);
+    candidate.points.insert(candidate.exit);
     let mut residual = ControlRegionResidual {
         key: ControlRegionResidualKey(String::new()),
         kind: candidate.kind,
@@ -1118,9 +1123,18 @@ fn validate_region_graph(
                 .iter()
                 .any(|point| !facts.contains_key(point))
         {
-            return Err(ControlRegionBuildError::Invalid(
-                "control-region residual has invalid point closure".into(),
-            ));
+            return Err(ControlRegionBuildError::Invalid(format!(
+                "control-region residual has invalid point closure: points={}, has_entry={}, has_exit={}, distinct_boundaries={}, foreign_points={}",
+                residual.points.len(),
+                residual.points.contains(&residual.entry),
+                residual.points.contains(&residual.exit),
+                residual.entry != residual.exit,
+                residual
+                    .points
+                    .iter()
+                    .filter(|point| !facts.contains_key(*point))
+                    .count()
+            )));
         }
         validate_text("control-region residual reason", &residual.reason)?;
         if derive_residual_key(policy, &graph.control_flow_graph, residual)? != residual.key {

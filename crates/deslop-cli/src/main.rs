@@ -11,10 +11,10 @@ use deslop_analyzer::{
 };
 use deslop_core::{
     AnalysisStatus, FileAnalysis, FileReport, Severity, reports_analysis_status,
-    reports_permit_rewrites,
+    reports_permit_rewrites, revision_guard,
 };
 use deslop_eval::{append_false_positive_feedback, render_eval_json, render_eval_text, run_eval};
-use deslop_fix::{diff_paths, undo_paths};
+use deslop_fix::{diff_paths, undo_paths, unified_file_diff};
 use deslop_graph::{
     GraphConfig, graph_paths, render_dot as render_graph_dot, render_json as render_graph_json,
 };
@@ -22,7 +22,10 @@ use deslop_metrics::{
     MetricsConfig, metrics_paths, render_json as render_metrics_json,
     render_text as render_metrics_text,
 };
-use deslop_protocol::{propose_work_orders, propose_work_orders_with_exclusions};
+use deslop_protocol::{
+    propose_work_orders, propose_work_orders_with_exclusions, recipe_work_orders,
+};
+use deslop_recipes::{TransformationCandidate, detect_rust_recipe_report};
 use deslop_report::{render_agent, render_json, render_sarif, render_text};
 use deslop_slim::{
     AnthropicClient, DEFAULT_MODEL, EgressDecision, EgressSummary, OpenAiClient, RecordedClient,
@@ -31,9 +34,10 @@ use deslop_slim::{
     resolve_egress_consent, run_slim_with_progress,
 };
 use deslop_verify::{
-    CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
-    characterization_work_orders_for_patches, load_characterization_tests, load_patches,
-    parse_coverage_mode, verify_characterization_tests, verify_patches,
+    CoverageConfig, MutationConfig, RecipeApplyOptions, RecipeApplyStatus, VerifyOptions,
+    apply_patches, apply_recipe_work_orders, characterization_work_orders_for_patches,
+    load_characterization_tests, load_patches, load_recipe_work_orders, parse_coverage_mode,
+    verify_characterization_tests, verify_patches,
 };
 use serde::{Deserialize, Serialize};
 
@@ -74,6 +78,67 @@ enum Command {
     Baseline(BaselineArgs),
     Undo(PathArgs),
     Rules,
+    Recipes(RecipesArgs),
+}
+
+#[derive(Debug, Args)]
+struct RecipesArgs {
+    #[command(subcommand)]
+    command: RecipesCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum RecipesCommand {
+    Detect(RecipeDetectArgs),
+    Apply(RecipeApplyArgs),
+}
+
+#[derive(Debug, Args)]
+struct RecipeDetectArgs {
+    #[arg(default_value = ".")]
+    paths: Vec<PathBuf>,
+
+    #[arg(long, default_value = "rust-remove-unreachable-literal-statement")]
+    recipe: String,
+
+    #[arg(long, value_enum, default_value_t = RecipeDetectFormat::Candidates)]
+    format: RecipeDetectFormat,
+
+    #[arg(long, default_value = ".")]
+    root: PathBuf,
+
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum RecipeDetectFormat {
+    Candidates,
+    Workorders,
+    Diff,
+    Report,
+}
+
+#[derive(Debug, Args)]
+struct RecipeApplyArgs {
+    #[arg(long)]
+    workorders: PathBuf,
+
+    #[arg(long, default_value = ".")]
+    root: PathBuf,
+
+    #[arg(long)]
+    build_cmd: String,
+
+    #[arg(long)]
+    test_cmd: String,
+
+    #[arg(long)]
+    no_backup: bool,
+
+    /// Permit a controlled canary write. Automatic production application remains disabled.
+    #[arg(long)]
+    canary: bool,
 }
 
 #[derive(Debug, Args)]
@@ -598,7 +663,122 @@ fn main() -> Result<()> {
         Command::Baseline(args) => baseline(args),
         Command::Undo(args) => undo(args),
         Command::Rules => rules(),
+        Command::Recipes(args) => recipes(args),
     }
+}
+
+fn recipes(args: RecipesArgs) -> Result<()> {
+    match args.command {
+        RecipesCommand::Detect(args) => detect_recipes(args),
+        RecipesCommand::Apply(args) => apply_recipes(args),
+    }
+}
+
+fn apply_recipes(args: RecipeApplyArgs) -> Result<()> {
+    let orders = load_recipe_work_orders(&args.workorders)?;
+    let report = apply_recipe_work_orders(
+        &orders,
+        &RecipeApplyOptions {
+            root: args.root,
+            build_command: args.build_cmd,
+            test_command: args.test_cmd,
+            backup: !args.no_backup,
+            explicit_canary: args.canary,
+        },
+    )?;
+    print_pretty_json(&report)?;
+    if report.status != RecipeApplyStatus::Applied {
+        std::process::exit(2);
+    }
+    Ok(())
+}
+
+fn detect_recipes(args: RecipeDetectArgs) -> Result<()> {
+    if args.recipe != "rust-remove-unreachable-literal-statement" {
+        bail!("unknown production recipe `{}`", args.recipe);
+    }
+    let root = args
+        .root
+        .canonicalize()
+        .with_context(|| format!("failed to resolve recipe root {}", args.root.display()))?;
+    let report = detect_rust_recipe_report(&root, &args.paths)?;
+    let candidates = report.candidates.clone();
+    let work_orders = recipe_work_orders(candidates.clone())?;
+    let rendered = match args.format {
+        RecipeDetectFormat::Candidates => serde_json::to_string_pretty(&candidates)?,
+        RecipeDetectFormat::Workorders => serde_json::to_string_pretty(&work_orders)?,
+        RecipeDetectFormat::Diff => render_recipe_diff(&root, &candidates)?,
+        RecipeDetectFormat::Report => serde_json::to_string_pretty(&report)?,
+    };
+    if let Some(output) = args.output {
+        fs::write(&output, format!("{rendered}\n"))
+            .with_context(|| format!("failed to write {}", output.display()))?;
+    } else {
+        println!("{rendered}");
+    }
+    for abstention in &report.abstentions {
+        eprintln!(
+            "recipe abstained for {} at {}: {}",
+            abstention.path.display(),
+            abstention.stage,
+            abstention.reason
+        );
+    }
+    Ok(())
+}
+
+fn render_recipe_diff(root: &Path, candidates: &[TransformationCandidate]) -> Result<String> {
+    let mut edits_by_path = BTreeMap::<PathBuf, Vec<_>>::new();
+    for candidate in candidates {
+        for edit in candidate.edits() {
+            if edit.target.file().path != candidate.target().node.file().path {
+                bail!(
+                    "candidate `{}` contains a foreign-source edit",
+                    candidate.id()
+                );
+            }
+            edits_by_path
+                .entry(edit.target.file().path.clone())
+                .or_default()
+                .push(edit);
+        }
+    }
+
+    let mut rendered = String::new();
+    for (logical, mut edits) in edits_by_path {
+        let physical = root.join(&logical);
+        let original = fs::read_to_string(&physical)
+            .with_context(|| format!("failed to read {}", physical.display()))?;
+        edits.sort_by_key(|edit| (edit.span.start_byte, edit.span.end_byte));
+        if edits
+            .windows(2)
+            .any(|pair| pair[0].span.end_byte > pair[1].span.start_byte)
+        {
+            bail!(
+                "recipe candidates contain overlapping edits for {}",
+                logical.display()
+            );
+        }
+        for edit in &edits {
+            let before = original
+                .get(edit.span.start_byte..edit.span.end_byte)
+                .with_context(|| format!("candidate edit is outside {}", logical.display()))?;
+            if before != edit.before
+                || revision_guard(&logical, edit.span, before) != edit.revision_guard
+            {
+                bail!(
+                    "candidate edit for {} is stale before preview",
+                    logical.display()
+                );
+            }
+        }
+        let mut preview = original.clone();
+        for edit in edits.into_iter().rev() {
+            preview.replace_range(edit.span.start_byte..edit.span.end_byte, &edit.after);
+        }
+        rendered.push_str(&unified_file_diff(&logical, &original, &preview));
+    }
+    Ok(rendered)
 }
 
 fn metrics(args: MetricsArgs) -> Result<()> {

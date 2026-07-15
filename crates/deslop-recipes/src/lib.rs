@@ -1,6 +1,7 @@
 mod contract;
 mod evaluation;
 mod impact;
+mod project;
 mod unreachable;
 
 pub use contract::{
@@ -21,6 +22,10 @@ pub use evaluation::{
     frozen_unreachable_rust_cases, frozen_unreachable_rust_manifest,
 };
 pub use impact::{ImpactQueryError, program_dependence_impact_cone};
+pub use project::{
+    RECIPE_DETECTION_REPORT_SCHEMA, RecipeAbstention, RecipeDetectionReport,
+    build_rust_recipe_projection, detect_rust_recipe_report, detect_rust_recipes,
+};
 pub use unreachable::{
     UnreachableRecipeError, detect_unreachable_literal_statements,
     unreachable_literal_statement_recipe,

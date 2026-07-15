@@ -14,6 +14,13 @@ use deslop_core::{
 use deslop_parse::{ProjectAnalysis, SourceFile, SyntaxOwner};
 use serde::{Deserialize, Serialize};
 
+mod recipe;
+
+pub use recipe::{
+    RECIPE_WORK_ORDER_SCHEMA, RecipePatchBudget, RecipeResource, RecipeResourceKind,
+    RecipeVerificationContract, RecipeWorkOrder, RecipeWorkOrderId, recipe_work_orders,
+};
+
 macro_rules! protocol_struct {
     ($vis:vis struct $name:ident { $($field:ident: $type:ty),+ $(,)? }) => {
         #[derive(Debug, Clone, Serialize, Deserialize)]

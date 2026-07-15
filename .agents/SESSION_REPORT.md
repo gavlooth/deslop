@@ -10725,3 +10725,73 @@ passing cluster-isolated run. Search handles: `M5.25 2000 case monolithic projec
 `B2 B7 timeout`, `projection-wide eligibility contamination`, `cluster-isolated unreachable corpus`.
 
 **Signature:** Codex (GPT-5), M5 integration owner, terminal checkpoint, 2026-07-15.
+
+### Recipe production canary terminal checkpoint — closed disabled
+
+**Date/time:** 2026-07-15 09:39:29 CEST (Europe/Madrid).
+
+**Objective/target:** close `.agents/GOAL.md` only after the existing unreachable-literal recipe has a real
+CLI delivery path (`detect -> preview -> strict shared work order -> guarded apply -> verify -> rollback`) and
+the production enablement decision is backed by pinned real-repository, resource, mutation, and rollback
+evidence.
+
+**Changes:** added retained Rust project recipe construction and target-scoped graph eligibility; fixed
+control-region residual closure so a rejected SESE candidate retains its proposed entry and exit; added
+machine-readable detection reports with exact abstentions; added `deslop recipes detect` candidate,
+work-order, report, and unified-diff formats with recipe/path filters. Added strict content-bound
+`deslop.recipe-workorder/1`, distinct from legacy analyzer-region work orders, with exact candidate authority,
+read/write/require/invalidate resources, patch budget, and validation/rollback contracts. Added staged and
+live guarded apply with immediate exact source guards, parse and graph-delta checks, declared build/test
+commands, protected-file checks, exact rollback, rollback identity reconstruction, and rerun rollback checks.
+Disk and live/rebuilt states are separate. Automatic writes are disabled by default; only explicit `--canary`
+authority can exercise controlled writes, without bypassing verification. Added CLI and library success,
+staleness, duplicate, foreign-field, mutation, race, protected-resource, failure, and rollback tests.
+
+**Real-repository evidence:** pinned supervisor-mcp revision
+`f241a64f5c2bb9fadac2476e2395c7fdcd488e56` (MIT) analyzed all 7 Rust files with zero candidates and zero
+abstentions in 4.14 seconds/61,816 KiB RSS. A separate controlled compiled opportunity on that pinned source
+emitted one audited candidate/work order; staged and live `cargo check --locked` and `cargo test --locked`
+passed, with zero protected-resource violations, in 93.04 seconds/606,608 KiB RSS. A live-only test failure
+restored exact bytes and passed rollback parse, graph, build, and test checks in 50.98 seconds/601,660 KiB RSS.
+Pinned deslop revision `cd153f7466e84341936e627bf4172157900051f2` (MIT), 83 Rust files/92,316 Rust LOC,
+exceeded the frozen 75-second detection budget at 75.26 seconds/994,728 KiB RSS and emitted no terminal
+report. Exact hashes and commands are in `.agents/RECIPE_CANARY_EVIDENCE.json` and the audit narrative is in
+`.agents/RECIPE_CANARY_REPORT.md`.
+
+**Commands run:** focused parse control-region and graph-eligibility tests; focused recipe, protocol,
+verification, and CLI integration tests; optimized ignored 2,000-case recipe evidence gate; pinned natural
+release scans under `/usr/bin/time -v`; controlled pinned supervisor detect/diff/work-order/apply and live-only
+fault injection with declared Cargo build/test commands; final `cargo test --workspace --all-features`;
+`cargo build --workspace --all-features`; `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features
+--no-deps`; `cargo clippy --workspace --all-features --all-targets -- -D warnings`; `cargo fmt --all --
+--check`; `git diff --check`.
+
+**Results:** implementation and all terminal workspace gates PASS. Controlled apply is 1/1 and exact rollback
+is 1/1, but its Wilson lower 95% recall bound is only `0.206549314377`. Natural positive opportunities are
+zero; actionable real precision, recall, hard-negative FPR, and ECE therefore cannot be established. The
+synthetic 1,000-positive/1,000-negative evidence remains separate and was not pooled. Production outcome is
+terminal **DISABLED**, satisfying the goal's evidence-backed disabled branch.
+
+**Invalidated assumptions/failure modes:** projection-wide eligibility contaminated unrelated targets and was
+replaced with exact per-program-graph eligibility plus target-only candidate reconstruction; per-file full
+graph construction removed contamination but took multiple minutes and was replaced by one combined discovery
+projection with target-only rebuilds; invalid residual candidates could violate their own wire closure until
+entry/exit normalization fixed the graph invariant; zero candidates on one small repository cannot establish
+precision or recall; a timed-out repository is a resource abstention, not a clean zero-candidate result;
+controlled positives cannot be counted as natural evidence.
+
+**Current recommendation/checkpoint:** keep automatic recipe application disabled. Reopen only after a <=100k
+Rust LOC retained-graph scan finishes in <=75 seconds and <=1 GiB RSS and a frozen real corpus has at least 30
+natural positives plus 300 hard negatives meeting precision/recall lower 95% >=0.95, FPR upper 95% <=0.01,
+ECE <=0.05, abstention <=1%, and all existing safety/rollback gates.
+
+**Blockers/dependencies/restart:** no implementation blocker remains for read-only detection or controlled
+canary transactions. Automatic enablement is intentionally blocked by measured runtime and insufficient
+natural labels. No dependency installation, migration, cache clear, or live service restart is required; the
+CLI must be rebuilt before disk changes are available through an older installed binary.
+
+**Negative-memory status:** resource and statistical failures are retained locally and durably consolidated in
+Hindsight bank `repo:/home/christos/code/deslop`. Search handles: `recipe production canary disabled`, `deslop 75 second timeout`,
+`target-scoped graph eligibility`, `control-region residual closure`, `one controlled positive insufficient`.
+
+**Signature:** Codex (GPT-5), recipe canary integration owner, terminal disabled checkpoint, 2026-07-15.

@@ -1,0 +1,125 @@
+{
+  "schema": "deslop.recipe-canary-evidence/1",
+  "recorded_at": "2026-07-15T09:39:29+02:00",
+  "recipe": "rust-remove-unreachable-literal-statement",
+  "automatic_application": "disabled",
+  "reference_machine": {
+    "hostname": "spark-05bb",
+    "kernel": "Linux 6.17.0-1008-nvidia aarch64",
+    "cpu": "20-core ARM Cortex-X925/Cortex-A725",
+    "memory_gib": 121,
+    "rustc": "1.94.0 (4a4ef493e 2026-03-02)",
+    "target": "aarch64-unknown-linux-gnu"
+  },
+  "frozen_budgets": {
+    "natural_detection_under_100k_rust_loc": {
+      "wall_seconds": 75,
+      "maximum_rss_mib": 1024
+    },
+    "controlled_transaction": {
+      "wall_seconds": 120,
+      "maximum_rss_mib": 768
+    }
+  },
+  "enablement_thresholds": {
+    "minimum_natural_positive_opportunities": 30,
+    "minimum_audited_hard_negatives": 300,
+    "minimum_actionable_precision_lower_95": 0.95,
+    "minimum_actionable_recall_lower_95": 0.95,
+    "maximum_hard_negative_fpr_upper_95": 0.01,
+    "maximum_ece": 0.05,
+    "required_parse_build_test_graph_delta_rate": 1.0,
+    "required_failed_write_rollback_rate": 1.0,
+    "maximum_abstention_rate": 0.01,
+    "maximum_protected_resource_violations": 0
+  },
+  "repositories": [
+    {
+      "name": "supervisor-mcp",
+      "path": "/home/christos/code/supervisor",
+      "revision": "f241a64f5c2bb9fadac2476e2395c7fdcd488e56",
+      "license": "MIT (Cargo.toml package metadata)",
+      "rust_files": 7,
+      "natural_detection": {
+        "candidates": 0,
+        "abstentions": 0,
+        "wall_seconds": 4.14,
+        "maximum_rss_kib": 61816,
+        "cache_state": "release detector warm; repository extracted without target directory",
+        "artifact_sha256": "028c2dfe98f03794225a3ac4512692e7b903edce5a7ecd4cc9e982fecb49d591"
+      },
+      "controlled_opportunity": {
+        "seed": 0,
+        "source": "src/deslop_canary.rs",
+        "opportunities": 1,
+        "true_positives": 1,
+        "false_positives": 0,
+        "protected_resource_violations": 0,
+        "workorder_id": "rwo1_5b3d792cb3b167aa928474ac2b2d52db3260823efa309a962605926f0a6ec1e7",
+        "build_command": "cargo check --locked",
+        "test_command": "cargo test --locked",
+        "apply": {
+          "status": "applied",
+          "parse_graph_build_test_pass_rate": 1.0,
+          "wall_seconds": 93.04,
+          "maximum_rss_kib": 606608,
+          "cache_state": "Cargo registry cache warm; staged and live target directories cold",
+          "artifact_sha256": "166b87f95ab9c4648094c015a0572ad912e591d6b716917499d764b5d21a4596"
+        },
+        "fault_injection": {
+          "failure": "live test command exits 1 only in DESLOP_VALIDATION_PHASE=live",
+          "status": "rolled-back",
+          "rollback_verified": true,
+          "rollback_parse_graph_build_test_pass_rate": 1.0,
+          "wall_seconds": 50.98,
+          "maximum_rss_kib": 601660,
+          "artifact_sha256": "08d6cca59f4e95d6f1199a02bb7da0adbeef8e22d12c498c56005f2c04ff624a"
+        }
+      }
+    },
+    {
+      "name": "deslop",
+      "path": "/home/christos/code/deslop",
+      "revision": "cd153f7466e84341936e627bf4172157900051f2",
+      "license": "MIT (workspace package metadata)",
+      "rust_files": 83,
+      "rust_loc": 92316,
+      "natural_detection": {
+        "status": "resource-budget-exceeded",
+        "timeout_seconds": 75,
+        "observed_wall_seconds": 75.26,
+        "maximum_rss_kib": 994728,
+        "signal": 2,
+        "report_emitted": false,
+        "cache_state": "release detector warm; repository extracted without target directory",
+        "artifact_sha256": "e93a0f3e9801cc9f9469abd7f58dc3023fe5ca610b784db10f98a9da8502068a"
+      }
+    }
+  ],
+  "real_repository_metrics": {
+    "natural_positive_opportunities": 0,
+    "controlled_positive_opportunities": 1,
+    "confirmed_false_positives": 0,
+    "precision_recall_fpr_calibration": "insufficient-natural-labels",
+    "controlled_recall_point_estimate": 1.0,
+    "controlled_recall_wilson_lower_95": 0.206549314377,
+    "coverage": "one repository complete; one representative repository timed out",
+    "synthetic_evidence_pooled": false
+  },
+  "wire_mutation": {
+    "candidate": "rejected",
+    "work_order": "rejected",
+    "patch": "rejected through candidate identity",
+    "validation": "rejected through recipe and candidate identity",
+    "rollback": "rejected through recipe and candidate identity"
+  },
+  "disable_reasons": [
+    "The pinned 92,316-line deslop scan exceeded the 75-second detection budget and emitted no terminal report.",
+    "The canary contains only one controlled positive and no natural positive opportunities, so actionable precision, recall, hard-negative FPR, and calibration confidence gates cannot be established."
+  ],
+  "recheck": [
+    "Make retained graph construction for a <=100k Rust LOC repository finish within 75 seconds without exceeding 1 GiB RSS.",
+    "Freeze and audit at least 30 natural positive opportunities and 300 hard negatives, then meet every confidence-bound threshold above.",
+    "Rerun the exact pinned natural, controlled apply, and live-failure rollback commands on the recorded reference-machine class."
+  ]
+}

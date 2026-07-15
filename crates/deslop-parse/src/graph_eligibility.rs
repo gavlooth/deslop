@@ -714,6 +714,217 @@ pub fn evaluate_graph_recipe_eligibility(
     Ok(decision)
 }
 
+/// Evaluate graph evidence for one exact local program-dependence graph.
+///
+/// This target-scoped form prevents an unrelated callable or file from granting or
+/// denying authority for a candidate. System-dependence requirements remain
+/// projection-wide and must use [`evaluate_graph_recipe_eligibility`].
+pub fn evaluate_program_graph_recipe_eligibility(
+    program_dependence: &ProgramDependenceProjection,
+    graph: &crate::ProgramDependenceGraph,
+    requirement: &GraphRecipeRequirement,
+) -> Result<GraphEligibilityDecision, GraphEligibilityError> {
+    requirement.validate()?;
+    if requirement.requires(GraphEvidenceLayer::SystemDependence) {
+        return Err(GraphEligibilityError::InvalidRequirement(
+            "target-scoped eligibility cannot authorize system-dependence evidence".into(),
+        ));
+    }
+    let retained = program_dependence
+        .document()
+        .graphs()
+        .iter()
+        .find(|candidate| candidate.key() == graph.key())
+        .ok_or_else(|| {
+            GraphEligibilityError::InvalidDecision(
+                "target graph is foreign to the program-dependence projection".into(),
+            )
+        })?;
+    let data_flow = program_dependence.data_flow();
+    let control_regions = data_flow.control_regions();
+    let control_flow = control_regions.control_flow();
+    let non_structured = program_dependence.non_structured_control();
+    let flow_graph = control_flow
+        .document()
+        .graphs()
+        .iter()
+        .find(|candidate| candidate.key() == retained.control_flow_graph())
+        .ok_or_else(|| GraphEligibilityError::InvalidDecision("target CFG is missing".into()))?;
+    let region_graph = control_regions
+        .document()
+        .graphs()
+        .iter()
+        .find(|candidate| candidate.key() == retained.control_region_graph())
+        .ok_or_else(|| {
+            GraphEligibilityError::InvalidDecision("target control-region graph is missing".into())
+        })?;
+    let non_structured_graph = non_structured
+        .document()
+        .graphs()
+        .iter()
+        .find(|candidate| candidate.key() == retained.non_structured_control_graph())
+        .ok_or_else(|| {
+            GraphEligibilityError::InvalidDecision(
+                "target non-structured-control graph is missing".into(),
+            )
+        })?;
+    let data_graph = data_flow
+        .document()
+        .graphs()
+        .iter()
+        .find(|candidate| candidate.key() == retained.data_flow_graph())
+        .ok_or_else(|| {
+            GraphEligibilityError::InvalidDecision("target data-flow graph is missing".into())
+        })?;
+    let mut blocks = Vec::new();
+
+    if requirement.requires(GraphEvidenceLayer::ControlFlow) {
+        push_coverage(
+            &mut blocks,
+            GraphEvidenceLayer::ControlFlow,
+            flow_graph.key().as_str(),
+            flow_graph.coverage().status(),
+            flow_graph.coverage().reasons(),
+        );
+        push_capability(
+            &mut blocks,
+            GraphEvidenceLayer::ControlFlow,
+            flow_graph.key().as_str(),
+            AdapterCapability::ControlFlow,
+            flow_graph.capability_support(),
+            flow_graph.authority(),
+        );
+        for edge in flow_graph.edges() {
+            if !matches!(edge.precision(), ControlEdgePrecision::Exact) {
+                blocks.push(GraphEligibilityBlock::ConservativeControlEdge {
+                    graph: flow_graph.key().as_str().into(),
+                    edge: edge.key().clone(),
+                    precision: edge.precision().clone(),
+                });
+            }
+        }
+    }
+    if requirement.requires(GraphEvidenceLayer::ControlRegions) {
+        push_coverage(
+            &mut blocks,
+            GraphEvidenceLayer::ControlRegions,
+            region_graph.key().as_str(),
+            region_graph.coverage().status(),
+            region_graph.coverage().reasons(),
+        );
+        for residual in region_graph.residuals() {
+            blocks.push(GraphEligibilityBlock::ControlRegionResidual {
+                graph: region_graph.key().as_str().into(),
+                residual: residual.key().clone(),
+                kind: residual.kind(),
+                reason: residual.reason().into(),
+            });
+        }
+    }
+    if requirement.requires(GraphEvidenceLayer::NonStructuredControl) {
+        push_coverage(
+            &mut blocks,
+            GraphEvidenceLayer::NonStructuredControl,
+            non_structured_graph.key().as_str(),
+            non_structured_graph.coverage().status(),
+            non_structured_graph.coverage().reasons(),
+        );
+        for fact in non_structured_graph.facts() {
+            blocks.push(GraphEligibilityBlock::NonStructuredFact {
+                graph: non_structured_graph.key().as_str().into(),
+                fact: fact.key().clone(),
+                classification: fact.classification(),
+            });
+        }
+    }
+    if requirement.requires(GraphEvidenceLayer::DataFlow) {
+        push_coverage(
+            &mut blocks,
+            GraphEvidenceLayer::DataFlow,
+            data_graph.key().as_str(),
+            data_graph.coverage().status(),
+            data_graph.coverage().reasons(),
+        );
+        push_capability(
+            &mut blocks,
+            GraphEvidenceLayer::DataFlow,
+            data_graph.key().as_str(),
+            AdapterCapability::DefUse,
+            data_graph.coverage().def_use_support(),
+            data_graph.coverage().def_use_authority(),
+        );
+        push_capability(
+            &mut blocks,
+            GraphEvidenceLayer::DataFlow,
+            data_graph.key().as_str(),
+            AdapterCapability::Effects,
+            data_graph.coverage().effects_support(),
+            data_graph.coverage().effects_authority(),
+        );
+        for access in data_graph.accesses() {
+            if let Some(reason) = access.uncertainty() {
+                blocks.push(GraphEligibilityBlock::DataFlowAccessUncertainty {
+                    graph: data_graph.key().as_str().into(),
+                    access: access.key().clone(),
+                    reason: reason.into(),
+                });
+            }
+        }
+        for effect in data_graph.effects() {
+            if let Some(reason) = effect.uncertainty() {
+                blocks.push(GraphEligibilityBlock::DataFlowEffectUncertainty {
+                    graph: data_graph.key().as_str().into(),
+                    effect: effect.key().clone(),
+                    reason: reason.into(),
+                });
+            }
+        }
+    }
+    if requirement.requires(GraphEvidenceLayer::ProgramDependence) {
+        push_coverage(
+            &mut blocks,
+            GraphEvidenceLayer::ProgramDependence,
+            retained.key().as_str(),
+            retained.coverage().status(),
+            retained.coverage().reasons(),
+        );
+        push_capability(
+            &mut blocks,
+            GraphEvidenceLayer::ProgramDependence,
+            retained.key().as_str(),
+            AdapterCapability::LocalPdg,
+            retained.coverage().local_pdg_support(),
+            retained.coverage().local_pdg_authority(),
+        );
+        for gap in retained.gaps() {
+            blocks.push(GraphEligibilityBlock::ProgramDependenceGap {
+                graph: retained.key().as_str().into(),
+                gap: gap.key().clone(),
+                kind: gap.kind().clone(),
+            });
+        }
+    }
+
+    blocks.sort();
+    blocks.dedup();
+    let eligible = blocks.is_empty();
+    let decision = GraphEligibilityDecision {
+        schema: GRAPH_RECIPE_ELIGIBILITY_SCHEMA.into(),
+        decision_id: derive_decision_id(
+            &requirement.consumer,
+            &requirement.layers,
+            eligible,
+            &blocks,
+        )?,
+        consumer: requirement.consumer.clone(),
+        required_layers: requirement.layers.clone(),
+        eligible,
+        blocks,
+    };
+    decision.validate()?;
+    Ok(decision)
+}
+
 fn is_canonical_text(value: &str) -> bool {
     !value.trim().is_empty() && value.trim() == value
 }

@@ -1,5 +1,19 @@
 # Goal — Production canary for transformation recipes
 
+## Terminal status — CLOSED: DISABLED (2026-07-15)
+
+The delivery path is implemented and its guarded controlled canary passes, including exact rollback.
+Automatic application remains disabled because the pinned 92,316-line deslop scan exceeded the frozen
+75-second resource budget without emitting a report, and the real-repository set lacks enough natural
+positive and hard-negative labels to establish the required confidence bounds.
+
+Evidence: [RECIPE_CANARY_REPORT.md](RECIPE_CANARY_REPORT.md) and
+[RECIPE_CANARY_EVIDENCE.json](RECIPE_CANARY_EVIDENCE.json).
+
+`deslop recipes apply` rejects writes by default. `--canary` grants only explicit controlled-canary
+authority and does not bypass any revision, parse, graph-delta, build, test, protected-resource, or
+rollback check. Reopen enablement only under the exact recheck conditions in the evidence record.
+
 ## Outcome
 
 Make the existing `rust-remove-unreachable-literal-statement` recipe usable on a real Rust codebase through
@@ -100,4 +114,3 @@ git diff --check
 - M5.5-M5.26 recipe expansion;
 - additional languages;
 - unattended codebase-wide application.
-
