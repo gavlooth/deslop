@@ -709,6 +709,8 @@ fn detect_recipes(args: RecipeDetectArgs) -> Result<()> {
             | "rust-inline-exact-single-use-temporary"
             | "rust-remove-unused-pure-literal-expression"
             | "rust-remove-independent-unused-literal-local"
+            | "rust-sort-simple-import-block"
+            | "rust-sort-hoisted-private-function-block"
     ) {
         bail!("unknown production recipe `{}`", args.recipe);
     }

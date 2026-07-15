@@ -767,6 +767,7 @@ pub(crate) mod tests {
             for capability in [
                 AdapterCapability::LexicalScopes,
                 AdapterCapability::NameResolution,
+                AdapterCapability::ImportsExports,
                 AdapterCapability::DefUse,
                 AdapterCapability::Effects,
                 AdapterCapability::LocalPdg,

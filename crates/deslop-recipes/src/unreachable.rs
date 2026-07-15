@@ -885,7 +885,9 @@ mod tests {
                     .iter()
                     .flat_map(|graph| graph.nodes())
                     .any(|node| node.key().as_str() == change.entity.entity),
-                deslop_parse::GraphEvidenceLayer::NonStructuredControl
+                deslop_parse::GraphEvidenceLayer::ScopeGraph
+                | deslop_parse::GraphEvidenceLayer::Resolution
+                | deslop_parse::GraphEvidenceLayer::NonStructuredControl
                 | deslop_parse::GraphEvidenceLayer::SystemDependence => false,
             };
             assert!(!retained, "stale expected removal survived: {change:?}");

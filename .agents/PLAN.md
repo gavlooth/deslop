@@ -4041,3 +4041,65 @@ changes support/identity; absent history remains non-blocking; supplied partial 
 seams explicitly downgrade authority; one-way coupling produces 0 merges. Nine focused tests, 235 active parse tests
 (1 explicit ignore), 4 doctests, and every workspace test/build/rustdoc/clippy/fmt/diff gate pass. Proceed to M5.20;
 do not treat restructuring rank or structural clustering as rewrite legality.
+
+## 2026-07-15 — M5.20 semantically safe Rust ordering recipes
+
+Active hypothesis: source ordering is safe only when the language adapter proves the relevant construct is
+order-independent. Implement two bounded Rust transactions in the existing recipe pipeline: lexically sort one
+contiguous block of simple top-level imports, and lexically sort one contiguous block of plain private top-level
+functions whose exact declarations are hoisted. Both require complete retained ScopeGraph and Resolution authority;
+neither spelling nor a successful parse is semantic evidence.
+
+Current approach:
+
+1. Extend recipe eligibility with explicit ScopeGraph and Resolution layers, complete fact/result coverage, usable
+   adapter authority, and terminal unique resolution. Keep existing CFG/PDG recipe requirements unchanged.
+2. Import ordering accepts only direct `use_declaration` siblings with exact non-glob, non-side-effect,
+   non-conditional Import facts in one file scope. Comments, attributes, macros, exports, recovery, dynamic
+   boundaries, equal sort keys, and incomplete/foreign authority abstain.
+3. Declaration ordering accepts only direct plain `function_item` siblings with exact private Declaration,
+   Function Definition, hoisted binding timing/modifier, and complete unique references. Public/exported,
+   shadowed, dynamic, attributed, macro-containing, recovered, or equal-key items abstain.
+4. Emit one exact guarded block replacement per run, preserve original item bytes and inter-item whitespace, attach
+   scope/resolution evidence and expected semantic-preservation deltas, and keep both candidates
+   `SafeWithPrecondition` plus `ReviewRequired` because source locations and diagnostics move.
+5. Integrate both selectors into library, project detection, CLI filtering, strict wire round-trip/tamper checks, and
+   production fail-closed coverage. A complete synthetic adapter is a test oracle; the production Rust adapter must
+   emit zero until it supplies exact scope/import/resolution authority.
+
+CONVERGENCE: one compiled retained fixture must emit exactly one import and one function-order candidate whose
+combined rewrite preserves measured output. Terminal outcomes are: (a) partial scope/resolution emits a candidate—
+invalid; (b) side-effect/conditional/glob imports move—invalid; (c) public, unhoisted, attributed, macro-containing,
+or shadowed functions move—invalid; (d) spelling or parse success grants authority—invalid; or (e) positive,
+adversarial, production fail-closed, wire, CLI, and workspace gates all pass, closing M5.20.
+
+Validation path: focused ordering and eligibility tests first; full `deslop-recipes`, `deslop-parse`, and CLI recipe
+tests second; then workspace all-feature test, build, warnings-denied rustdoc, warnings-denied all-target clippy, fmt
+check, `git diff --check`, installed CLI replacement, and installed selector smokes.
+
+Negative-memory constraints: do not use lexicographic order as semantic proof; do not treat Rust item-order behavior
+as universal across languages; do not move comments/attributes separately from their owners; do not treat empty or
+partial reference sets as negative proof; do not move macro definitions/invocations or source-location-observable
+declarations; do not promote these recipes to automatic disposition from a green compile alone.
+
+Agent assignment: `/root` owns eligibility semantics, recipe implementation, numerical fixtures, integration,
+terminal validation, CLI replacement, and memory. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: exact complete facts emit two guarded review candidates and every listed near miss emits zero for
+its affected recipe before project/CLI integration.
+
+Terminal result: M5.20 is complete. Graph recipe eligibility now models ScopeGraph and Resolution explicitly,
+canonicalizes inherited coverage reasons, and blocks incomplete capability, coverage, or non-unique resolution.
+`rust-sort-simple-import-block` accepts only contiguous direct top-level explicit/selective, unconditional,
+non-side-effectful imports. `rust-sort-hoisted-private-function-block` accepts only contiguous plain private
+top-level Functions with exact hoisted declaration/binding facts. Both reject partial authority, comments,
+attributes, macros, recovery, exports/dynamic order sensitivity, equal keys, and their form-specific side-effect,
+condition, glob, public, or unhoisted boundaries. Each emits one revision-guarded block replacement that preserves
+exact item bytes and inter-item whitespace, remains `SafeWithPrecondition` plus `ReviewRequired`, and carries
+parse/format/build/resolution-delta/test plus reverse-edit rollback. The exact fixture emits 2 candidates and its
+combined rewrite compiles and preserves output `2`; 8 focused tests, 55 active recipe tests (1 explicit ignore), 235
+active parse tests (1 explicit ignore), 4 doctests, production and CLI fail-closed checks, and every workspace test/
+build/rustdoc/clippy/fmt/diff gate pass. The all-feature installed CLI was replaced at
+2026-07-15T21:52:50+02:00; both installed selectors exit 0 with `[]` under current production authority. Proceed to
+M5.21 exact subtree fingerprints and renamed-token normalization; do not generalize Rust ordering semantics to other
+languages or upgrade these review candidates automatically.

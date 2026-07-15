@@ -586,7 +586,10 @@ reports, benchmark records, and work orders.
   Strict `deslop.module-restructure/1` now emits deterministic review-required moves, splits, and merges from exact
   ownership, dependency, API-impact, cycle-seam, and optional content-bound history evidence. Nine focused tests,
   235 active parse tests (1 explicit ignore), 4 doctests, and every workspace gate pass.
-- [ ] M5.20 Add semantically safe import/declaration ordering recipes.
+- [x] M5.20 Add semantically safe import/declaration ordering recipes.
+  Added explicit ScopeGraph/Resolution eligibility and two guarded Rust selectors for simple import blocks and
+  private hoisted-function blocks. The exact fixture emits 2 review candidates whose combined rewrite preserves
+  output `2`; 8 focused tests, production/CLI fail-closed checks, and every workspace gate pass.
 
 ### Clones, ceremony, dead code, clarity
 

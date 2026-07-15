@@ -659,6 +659,40 @@ fn local_cleanup_selectors_are_available_and_fail_closed_without_data_authority(
 }
 
 #[test]
+fn ordering_selectors_are_available_and_fail_closed_without_scope_resolution_authority() {
+    let root = tempfile::tempdir().unwrap();
+    fs::write(
+        root.path().join("ordering.rs"),
+        "use std::vec::Vec;\nuse std::collections::BTreeMap;\nfn zebra() { alpha(); }\nfn alpha() {}\nfn main() {}\n",
+    )
+    .unwrap();
+
+    for recipe in [
+        "rust-sort-simple-import-block",
+        "rust-sort-hoisted-private-function-block",
+    ] {
+        let detected = deslop()
+            .args([
+                "recipes",
+                "detect",
+                "ordering.rs",
+                "--root",
+                root.path().to_str().unwrap(),
+                "--recipe",
+                recipe,
+                "--format",
+                "candidates",
+            ])
+            .output()
+            .unwrap();
+        assert!(detected.status.success(), "{recipe}: {:?}", detected.stderr);
+        let candidates: Vec<Value> = serde_json::from_slice(&detected.stdout).unwrap();
+        assert!(candidates.is_empty(), "{recipe}");
+        assert!(detected.stderr.is_empty(), "{recipe}");
+    }
+}
+
+#[test]
 fn recipe_cli_is_disabled_by_default_and_canary_rolls_back_live_failure() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("fixture.rs");

@@ -11601,3 +11601,59 @@ cyclic Module SCC without required seam evidence must be partial and emit `Missi
 enforced in code and an adversarial regression test.
 
 Signature: Codex `/root` — M5.19 integration and terminal verification owner
+
+## 2026-07-15T21:52:50+02:00 — M5.20 terminal semantically safe ordering recipes
+
+**Objective:** close M5.20 with concrete import/declaration ordering transactions whose semantic authority is
+explicit, language-specific, deterministic, and fail-closed.
+
+**Target:** add bounded Rust recipe selectors for one simple top-level import block and one private hoisted-function
+block, integrate them through library/project/CLI detection, and withhold production candidates until exact
+ScopeGraph and Resolution authority exists.
+
+**Changes:** extended graph recipe eligibility with explicit `ScopeGraph` and `Resolution` layers, their prerequisite,
+scope-fact capability/coverage checks, non-unique resolution blocks, canonical inherited coverage reasons, and strict
+wire validation. Added `rust-sort-simple-import-block` and `rust-sort-hoisted-private-function-block`; exact guarded
+block rendering preserves item bytes and original inter-item whitespace. Added scope/resolution impact evidence,
+semantic-preservation deltas, parse/format/build/resolution-delta/test validation, reverse-edit rollback, public
+exports, project detection, CLI selector validation, production fail-closed checks, and an authoritative synthetic
+adapter fixture. Both recipes are `SafeWithPrecondition` and `ReviewRequired`; neither has an automatic path.
+
+**Commands run/results:** focused ordering tests passed 8/8. `cargo test -p deslop-recipes --all-features --quiet`
+passed 55 active tests with 1 explicit ignore. `cargo test -p deslop-parse --all-features --quiet` passed 235 active
+tests with 1 explicit ignore plus 4 doctests. The focused installed-selector CLI test passed. `cargo test --workspace
+--all-features --quiet`, `cargo build --workspace --all-features`, `RUSTDOCFLAGS='-D warnings' cargo doc --workspace
+--all-features --no-deps`, `cargo clippy --workspace --all-features --all-targets -- -D warnings`, `cargo fmt --all
+-- --check`, and `git diff --check` all passed. `cargo install --path crates/deslop-cli --all-features --force`
+replaced the installed executable; both installed selector smokes exited 0 and returned `[]`.
+
+**Numerical evidence:** the complete retained fixture emits exactly 2 candidates, each with 1 exact edit: one import
+block and one private hoisted-function block. Their combined rewrite compiles and preserves measured stdout `2`.
+Already ordered input emits 0. Partial scope authority emits 0. Side-effect, conditional, and glob import facts emit
+0 import candidates; unhoisted, public, and macro-containing functions emit 0 function candidates. A retained
+comment splits both runs and emits 0. Strict round-trip rebuilds both candidates; edit tampering rejects both.
+
+**Invalidated assumptions/authority lessons:** lexicographic order is a requested output, never semantic proof.
+Rust import/item order behavior is not language-generic. Parse success cannot replace exact import, declaration,
+binding-timing, and resolution authority. Comments and attributes cannot be detached from owners, and macros/source
+locations keep these candidates review-gated. A valid upstream reason vector is not necessarily canonical for a
+downstream identity contract: Resolution coverage reasons are distinct but not ordered, so eligibility must sort and
+deduplicate them rather than erroring or suppressing an incomplete-result block.
+
+**Current recommendation/checkpoint:** M5.20 is terminal. Proceed to M5.21 exact subtree fingerprints and
+renamed-token normalization. Keep ordering production-fail-closed until the Rust adapter provides the required exact
+scope/import/resolution facts; add other languages only through their own order-semantics proof.
+
+**Blockers/restart/dependencies:** no blockers. The installed CLI replacement is active; no further restart,
+migration, or cache clear is required. Durable positive and negative memory is in Hindsight bank
+`repo:/home/christos/code/deslop` under session `m5-ordering-recipes-2026-07-15`.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-parse/src/graph_eligibility.rs`, `crates/deslop-recipes/src/ordering.rs`, recipe library/project/test
+wiring, CLI selector/test wiring, test-only complete adapter capability, and Hindsight memory.
+
+**Negative-memory status:** recorded the downstream coverage-reason canonicalization failure and correction. The
+conditional/glob near-miss test now proves incomplete/non-unique resolution becomes an ineligible decision instead
+of an invalid wire or a silently omitted block.
+
+Signature: Codex `/root` — M5.20 integration and terminal verification owner

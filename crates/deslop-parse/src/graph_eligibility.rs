@@ -7,8 +7,8 @@ use crate::{
     ControlEdgePrecision, ControlRegionResidualKey, DataFlowAccessKey, DataFlowEffectKey,
     FactCoverage, NonStructuredControlClassification, NonStructuredControlFactKey,
     ProgramDependenceGapKey, ProgramDependenceGapKind, ProgramDependenceProjection,
-    StructuredControlRegionKind, SystemDependenceGapKey, SystemDependenceGapKind,
-    SystemDependenceProjection,
+    ResolutionResultKey, ResolutionStatus, StructuredControlRegionKind, SystemDependenceGapKey,
+    SystemDependenceGapKind, SystemDependenceProjection,
 };
 
 pub const GRAPH_RECIPE_ELIGIBILITY_SCHEMA: &str = "deslop.graph-recipe-eligibility/1";
@@ -37,6 +37,8 @@ impl<'de> Deserialize<'de> for GraphEligibilityDecisionId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum GraphEvidenceLayer {
+    ScopeGraph,
+    Resolution,
     ControlFlow,
     ControlRegions,
     NonStructuredControl,
@@ -120,6 +122,10 @@ impl GraphRecipeRequirement {
             ));
         }
         for (layer, prerequisites) in [
+            (
+                GraphEvidenceLayer::Resolution,
+                &[GraphEvidenceLayer::ScopeGraph][..],
+            ),
             (
                 GraphEvidenceLayer::ControlRegions,
                 &[GraphEvidenceLayer::ControlFlow][..],
@@ -223,6 +229,11 @@ pub enum GraphEligibilityBlock {
         support: CapabilitySupport,
         authority: Option<CapabilityAuthority>,
     },
+    NonUniqueResolution {
+        graph: String,
+        result: ResolutionResultKey,
+        status: ResolutionStatus,
+    },
     ConservativeControlEdge {
         graph: String,
         edge: ControlEdgeKey,
@@ -271,6 +282,7 @@ impl GraphEligibilityBlock {
             | Self::SourceMismatch { layer, .. }
             | Self::IncompleteCoverage { layer, .. }
             | Self::CapabilityUnavailable { layer, .. } => *layer,
+            Self::NonUniqueResolution { .. } => GraphEvidenceLayer::Resolution,
             Self::ConservativeControlEdge { .. } => GraphEvidenceLayer::ControlFlow,
             Self::ControlRegionResidual { .. } => GraphEvidenceLayer::ControlRegions,
             Self::NonStructuredFact { .. } => GraphEvidenceLayer::NonStructuredControl,
@@ -407,6 +419,7 @@ impl GraphEligibilityDecision {
                 | GraphEligibilityBlock::DataFlowAccessUncertainty { graph, .. }
                 | GraphEligibilityBlock::DataFlowEffectUncertainty { graph, .. }
                 | GraphEligibilityBlock::ProgramDependenceGap { graph, .. }
+                | GraphEligibilityBlock::NonUniqueResolution { graph, .. }
                     if !is_canonical_text(graph) =>
                 {
                     return Err(GraphEligibilityError::InvalidDecision(
@@ -495,7 +508,64 @@ pub fn evaluate_graph_recipe_eligibility(
     let control_regions = data_flow.control_regions();
     let control_flow = control_regions.control_flow();
     let non_structured = program_dependence.non_structured_control();
+    let resolution = data_flow.resolution();
+    let scope_graph = resolution.scope_graph();
     let mut blocks = Vec::new();
+
+    if requirement.requires(GraphEvidenceLayer::ScopeGraph) {
+        for fact in scope_graph.facts() {
+            let reasons = fact
+                .evidence()
+                .coverage
+                .reason
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            push_coverage(
+                &mut blocks,
+                GraphEvidenceLayer::ScopeGraph,
+                fact.key().as_str(),
+                fact.evidence().coverage.status,
+                &reasons,
+            );
+            push_capability(
+                &mut blocks,
+                GraphEvidenceLayer::ScopeGraph,
+                fact.key().as_str(),
+                fact.evidence().capability,
+                fact.evidence().capability_support,
+                fact.evidence().authority,
+            );
+        }
+    }
+
+    if requirement.requires(GraphEvidenceLayer::Resolution) {
+        for result in resolution.results() {
+            let wire = result.wire();
+            push_coverage(
+                &mut blocks,
+                GraphEvidenceLayer::Resolution,
+                wire.key().as_str(),
+                wire.coverage().status(),
+                wire.coverage().reasons(),
+            );
+            push_capability(
+                &mut blocks,
+                GraphEvidenceLayer::Resolution,
+                wire.key().as_str(),
+                AdapterCapability::NameResolution,
+                wire.reference_evidence().capability_support,
+                wire.authority(),
+            );
+            if wire.status() != ResolutionStatus::Unique {
+                blocks.push(GraphEligibilityBlock::NonUniqueResolution {
+                    graph: resolution.id().as_str().into(),
+                    result: wire.key().clone(),
+                    status: wire.status(),
+                });
+            }
+        }
+    }
 
     if requirement.requires(GraphEvidenceLayer::ControlFlow) {
         for graph in control_flow.document().graphs() {
@@ -744,6 +814,14 @@ pub fn evaluate_program_graph_recipe_eligibility(
     let control_regions = data_flow.control_regions();
     let control_flow = control_regions.control_flow();
     let non_structured = program_dependence.non_structured_control();
+    if requirement.requires(GraphEvidenceLayer::ScopeGraph)
+        || requirement.requires(GraphEvidenceLayer::Resolution)
+    {
+        return Err(GraphEligibilityError::InvalidRequirement(
+            "target-scoped eligibility cannot authorize project scope or resolution evidence"
+                .into(),
+        ));
+    }
     let flow_graph = control_flow
         .document()
         .graphs()
@@ -976,11 +1054,14 @@ fn push_coverage(
     reasons: &[String],
 ) {
     if status != FactCoverage::Complete {
+        let mut reasons = reasons.to_vec();
+        reasons.sort();
+        reasons.dedup();
         blocks.push(GraphEligibilityBlock::IncompleteCoverage {
             layer,
             graph: graph.into(),
             status,
-            reasons: reasons.to_vec(),
+            reasons,
         });
     }
 }
@@ -1022,6 +1103,7 @@ mod tests {
                 GraphEligibilityBlock::SourceMismatch { .. } => "source-mismatch",
                 GraphEligibilityBlock::IncompleteCoverage { .. } => "coverage",
                 GraphEligibilityBlock::CapabilityUnavailable { .. } => "capability",
+                GraphEligibilityBlock::NonUniqueResolution { .. } => "resolution-status",
                 GraphEligibilityBlock::ConservativeControlEdge { .. } => "control-edge",
                 GraphEligibilityBlock::ControlRegionResidual { .. } => "region-residual",
                 GraphEligibilityBlock::NonStructuredFact { .. } => "non-structured",
