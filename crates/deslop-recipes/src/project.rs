@@ -4,14 +4,15 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use deslop_parse::{
-    BuildContextId, CanonicalRoleSet, ControlFlowPolicyId, ControlRegionPolicyId, DataFlowBuilder,
-    DataFlowEffectDraft, DataFlowGraphDraft, DataFlowPolicyId, DiscoveryPolicy,
-    FactCoverageEvidence, NameNamespace, NamespacePolicy, NonStructuredControlPolicyId,
-    ProgramDependencePolicyId, ProgramDependenceProjection, ProjectAnalysis,
-    ProjectSnapshotPlanner, ProjectSnapshotRequest, RepositorySpec, ResolutionPolicyId,
-    ResolutionProjection, RootSpec, ScopeDraft, ScopeFactPolicyId, ScopeGraphBuilder, ScopeKind,
-    ScopeSpec, derive_control_regions, derive_non_structured_control_regions,
-    derive_program_dependence, lower_control_flow,
+    BuildContextId, CallableSummaryDraft, CanonicalRoleSet, ControlFlowPolicyId,
+    ControlRegionPolicyId, DataFlowBuilder, DataFlowEffectDraft, DataFlowGraphDraft,
+    DataFlowPolicyId, DiscoveryPolicy, FactCoverageEvidence, NameNamespace, NamespacePolicy,
+    NonStructuredControlPolicyId, ProgramDependencePolicyId, ProgramDependenceProjection,
+    ProjectAnalysis, ProjectSnapshotPlanner, ProjectSnapshotRequest, RepositorySpec,
+    ResolutionPolicyId, ResolutionProjection, RootSpec, ScopeDraft, ScopeFactPolicyId,
+    ScopeGraphBuilder, ScopeKind, ScopeSpec, SystemDependenceBuilder, SystemDependencePolicyId,
+    derive_control_regions, derive_non_structured_control_regions, derive_program_dependence,
+    lower_control_flow,
 };
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     TransformationCandidate, detect_adjacent_condition_merges, detect_equivalent_branch_fragments,
     detect_exhaustive_chain_matches, detect_extract_method_candidates,
-    detect_guard_clause_inversions, detect_independent_branch_splits, detect_literal_dead_arms,
+    detect_guard_clause_inversions, detect_independent_branch_splits,
+    detect_inline_single_use_helpers, detect_literal_dead_arms,
     detect_responsibility_split_candidates, detect_unreachable_literal_statements,
 };
 
@@ -161,6 +163,19 @@ fn detect_projection_recipes(
     candidates.extend(detect_exhaustive_chain_matches(projection)?);
     candidates.extend(detect_extract_method_candidates(projection)?);
     candidates.extend(detect_responsibility_split_candidates(projection)?);
+    let mut system = SystemDependenceBuilder::new(
+        Arc::new(projection.clone()),
+        SystemDependencePolicyId::from_parts(&[b"deslop-rust-recipe-system/1"])?,
+    );
+    for graph in projection.document().graphs() {
+        system.add_summary(CallableSummaryDraft {
+            program_dependence_graph: graph.key().clone(),
+            formal_inputs: vec![],
+            outputs: vec![],
+            globals: vec![],
+        })?;
+    }
+    candidates.extend(detect_inline_single_use_helpers(&system.build()?)?);
     candidates.sort_by(|left, right| left.id().cmp(right.id()));
     Ok(candidates)
 }
@@ -448,5 +463,21 @@ mod tests {
         .unwrap();
         assert_eq!(combined, isolated);
         assert_eq!(combined.len(), 1);
+    }
+
+    #[test]
+    fn production_inline_selector_fails_closed_without_call_binding_authority() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(
+            root.path().join("inline.rs"),
+            "fn helper() { 1 + 2; }\nfn run() { helper(); }\n",
+        )
+        .unwrap();
+
+        let report = detect_rust_recipe_report(root.path(), &[PathBuf::from("inline.rs")]).unwrap();
+        assert!(report.abstentions.is_empty());
+        assert!(report.candidates.iter().all(|candidate| {
+            candidate.recipe().name() != "rust-inline-exact-single-use-helper"
+        }));
     }
 }

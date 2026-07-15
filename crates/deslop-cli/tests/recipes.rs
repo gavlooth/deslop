@@ -595,6 +595,35 @@ fn responsibility_split_reports_one_atomic_multi_helper_workorder() {
 }
 
 #[test]
+fn inline_selector_is_available_and_fails_closed_without_binding_authority() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("inline.rs");
+    let orders_path = root.path().join("inline-orders.json");
+    fs::write(&source, "fn helper() { 1 + 2; }\nfn run() { helper(); }\n").unwrap();
+
+    let detected = deslop()
+        .args([
+            "recipes",
+            "detect",
+            "inline.rs",
+            "--root",
+            root.path().to_str().unwrap(),
+            "--recipe",
+            "rust-inline-exact-single-use-helper",
+            "--format",
+            "workorders",
+            "--output",
+            orders_path.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(detected.status.success(), "{:?}", detected.stderr);
+    let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
+    assert!(orders.is_empty());
+    assert!(detected.stderr.is_empty());
+}
+
+#[test]
 fn recipe_cli_is_disabled_by_default_and_canary_rolls_back_live_failure() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("fixture.rs");

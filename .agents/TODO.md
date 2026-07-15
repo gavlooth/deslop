@@ -553,7 +553,13 @@ reports, benchmark records, and work orders.
   emits one atomic multi-helper callable replacement. Production DefUse/LocalPdg gaps keep frontier independence
   Unknown and review-only. Compiled pre/post behavior, five near misses, strict wire/rebuild/CLI checks, all workspace
   gates, and the installed selector smoke passed.
-- [ ] M5.14 Detect safe merge/inline of over-fragmented single-use helpers.
+- [x] M5.14 Detect safe merge/inline of over-fragmented single-use helpers.
+  `rust-inline-exact-single-use-helper` consumes Complete SystemDependence, DataFlow, and resolution authority for
+  one private zero-parameter implicit-unit Rust helper with exactly one direct call/reference. It emits one atomic
+  call-block replacement plus helper deletion, preserving nested temporary/drop scope and retaining call-frame/
+  panic-location review. Compiled before/after behavior matched; second-call, function-value, and public-boundary
+  cases abstained. Production lacks exact call facts and therefore fails closed with zero candidates. All workspace
+  gates passed, the CLI was replaced, and the installed selector smoke returned `[]` without guessing a binding.
 - [ ] M5.15 Add def/use/effect-grounded temporary, expression, and independent-statement recipes.
 
 ### Dependencies and modules

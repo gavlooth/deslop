@@ -11255,3 +11255,78 @@ do not infer a callee from spelling or inline merely because a helper is small.
 recipe and public evidence, production project dispatch, CLI selector allowlist, and CLI recipe tests.
 
 Signature: Codex `/root` — M5.13 terminal owner
+
+## 2026-07-15T15:35:35+02:00 — M5.14 focused exact single-use inline checkpoint
+
+**Objective/target:** implement the first safe merge/inline transaction for an over-fragmented local Rust helper
+without deriving callee identity or use counts from spelling.
+
+**Changes:** added `rust-inline-exact-single-use-helper` and a SystemDependence detector. The accepted frontier is
+one private, synchronous, zero-parameter, implicit-unit helper in the same file as its sole caller. Its body is one
+to four direct expression statements with no retained definitions, accesses, boundaries, non-return effects, or
+forbidden CST. Complete Unique resolution must map the direct zero-argument call to the exact helper owner; complete
+resolution, data-flow, CallGraph, and SDG enumeration must show exactly one call and no function-value reference.
+The atomic transaction replaces the call statement with the exact helper block and deletes the helper, retaining a
+nested block so temporary/drop scope is not flattened. Call-frame, panic-location, and backtrace observations remain
+explicit review obligations, so candidates are `SafeWithPrecondition` and `ReviewRequired`.
+
+**Production boundary:** the current Rust project builder does not retain Call accesses or authoritative resolution,
+CallGraph, or SDG facts. It now constructs the honest partial SystemDependence projection and invokes the detector;
+the detector returns zero candidates instead of guessing from a same-spelled identifier. The CLI selector is wired
+and accepts the recipe name.
+
+**Verification/results:** the complete authoritative fixture emitted exactly one two-edit candidate. Applying those
+edits and compiling/running both programs produced identical `ok` output. A second exact call, a function-value
+reference, and a public-helper boundary each emitted zero candidates. The production report and CLI work-order path
+accepted the selector, emitted an empty array, and reported no abstention. Focused recipe, production-builder, and CLI
+tests passed. The full all-feature workspace test command also completed without a reported failure; terminal gates
+remain to be rerun compactly with explicit final status.
+
+**Invalidated assumption:** a SystemDependence call-site entity cannot serve as the candidate target when the impact
+cone is a local PDG cone. Candidate validation correctly rejected it as outside the cone. The target is now the
+caller PDG call node; the interprocedural call site remains condition evidence and an expected removed entity.
+
+**Recommendation/checkpoint:** run the terminal workspace gates, mark M5.14 complete only if all pass, replace the
+installed CLI, smoke the installed selector's fail-closed production behavior, and persist the target/impact-layer
+constraint before proceeding to M5.15.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/SESSION_REPORT.md`, `crates/deslop-recipes/src/inline_helper.rs`,
+recipe exports/project dispatch, CLI selector allowlist/tests, and test-only authoritative adapter dependencies.
+
+Signature: Codex `/root` — M5.14 integration and verification owner
+
+## 2026-07-15T15:41:29+02:00 — M5.14 terminal exact single-use inline
+
+**Objective/target:** close M5.14 with terminal workspace evidence, replace the installed executable, and retain the
+honest production authority boundary.
+
+**Terminal result:** `cargo test --workspace --all-features`, `cargo build --workspace --all-features`, rustdoc with
+`-D warnings`, all-feature/all-target clippy with `-D warnings`, formatting, and diff checks passed. The workspace
+tests retained the same three explicit ignores: CLI slow self-scan, parse latency/memory, and the 2,000-case release
+recipe corpus. The initial clippy run found two `len() != 0` style violations in the new call-binding gate; both were
+changed to `is_empty()`, focused clippy passed, and the complete six-gate sequence then exited 0.
+
+`cargo install --path crates/deslop-cli --all-features --force` replaced
+`/home/christos/.cargo/bin/deslop`. The installed `rust-inline-exact-single-use-helper` smoke analyzed the new recipe
+source and returned `[]` with exit 0, confirming that production dispatch is available but does not fabricate call
+authority. Existing `deslop mcp` processes must restart to load this executable.
+
+**Current authority:** M5.14 is terminal for the exact private zero-parameter implicit-unit frontier. Complete Unique
+resolution, complete reference enumeration, and complete SystemDependence prove callee identity and single use in
+the authoritative consumer. The exact nested block edit preserves evaluation order and temporary/drop scope. Call-
+frame removal, panic/caller location, and backtrace observability remain review obligations. Production's partial
+resolution/CallGraph/SDG facts correctly yield no candidates; this is a live authority limitation, not a detector
+failure and not permission to use spelling.
+
+**Negative-memory status:** recorded the invalid SystemDependence-target/local-PDG-impact assumption in Hindsight
+bank `repo:/home/christos/code/deslop`; the corrected invariant targets the caller PDG node and retains CallSite as
+condition/delta evidence.
+
+**Recommendation/checkpoint:** proceed to M5.15 def/use/effect-grounded temporary, expression, and independent-
+statement recipes. Do not broaden M5.14 to parameters, outputs, or value substitution without exact evaluation-
+multiplicity and ownership evidence.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`, the inline-helper recipe,
+recipe exports/project dispatch, CLI selector allowlist/tests, Cargo test dependencies, and durable Hindsight memory.
+
+Signature: Codex `/root` — M5.14 terminal owner

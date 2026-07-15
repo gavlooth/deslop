@@ -7,6 +7,7 @@ mod evaluation;
 mod extract_method;
 mod guard_clause;
 mod impact;
+mod inline_helper;
 mod project;
 mod unreachable;
 
@@ -55,6 +56,10 @@ pub use guard_clause::{
     guard_clause_inversion_recipe,
 };
 pub use impact::{ImpactQueryError, program_dependence_impact_cone};
+pub use inline_helper::{
+    InlineHelperEvidence, InlineHelperRecipeError, detect_inline_single_use_helpers,
+    inline_single_use_helper_recipe,
+};
 pub use project::{
     RECIPE_DETECTION_REPORT_SCHEMA, RecipeAbstention, RecipeDetectionReport,
     build_rust_recipe_projection, detect_rust_recipe_report, detect_rust_recipes,

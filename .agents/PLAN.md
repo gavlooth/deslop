@@ -3729,3 +3729,51 @@ The installed CLI was replaced at 2026-07-15T15:03:33+02:00; its positive select
 candidate with one atomic edit and two helpers. Proceed to M5.14 safe merge/inline of over-fragmented single-use
 helpers. Retain action-core connectivity separately from the SESE merge boundary, and keep cross-frontier absence
 Unknown while production DefUse/LocalPdg authority is partial.
+
+## 2026-07-15 — M5.14 exact single-use local-helper inline
+
+Active hypothesis: safe single-use inlining begins with an exact semantic call binding and a complete use count,
+not helper size or call spelling. Implement the first bounded Rust transaction over retained SystemDependence: one
+private, free, synchronous, zero-parameter unit helper in the same file as its sole caller; the helper body contains
+one through four direct expression statements and no binding, attribute, macro, unsafe, closure, generic, receiver,
+abrupt, async, or recovered boundary. The sole call is a direct zero-argument expression statement. One atomic
+transaction replaces that statement with the exact helper block and deletes the helper item.
+
+Current approach: require a SystemDependence call site whose callee is one exact local PDG owner with no uncertainty;
+Complete SystemDependence/DataFlow/resolution coverage; one retained call site targeting the callee; and exactly one
+Complete Unique resolution reference whose endpoint fact owns that callee. Retain call-site/callee, reference count,
+signature/body, visibility, evaluation/drop scope, exit, and effect evidence separately. Normal order and temporary
+scope are Proven by block replacement; removal of a call frame, caller-location observations, panic/backtrace, and
+hidden effects remain explicit review preconditions. The recipe is SafeWithPrecondition/ReviewRequired.
+
+Production authority boundary: the current Rust recipe projection intentionally has no retained Call accesses or
+Complete name-resolution/CallGraph facts, so it cannot emit this selector yet. Implement and fully verify the
+SystemDependence consumer now; wire production dispatch fail-closed with zero candidates until the existing adapter
+provides the required facts. Do not manufacture a same-file binding from spelling to make the CLI demo positive.
+
+Validation path: an authoritative two-callable fixture yields one two-edit transaction; generated pre/post programs
+compile and match an executable matrix; second call, function-value reference, parameter/output, public/generic/
+async/unsafe/abrupt/macro/body-shape, unresolved/ambiguous/partial authority, and recursive/cross-file cases abstain;
+strict wire and automatic-promotion rejection pass; production selector returns zero rather than guessed binding;
+then focused and full workspace gates, installed smoke, artifacts, and durable memory.
+
+Negative-memory constraints: do not infer a callee from name spelling, uniqueness in one parsed file, containment,
+or graph/2; do not equate one retained Call edge with a complete reference count; do not erase function-value uses;
+do not inline parameters/returns until exact substitution, evaluation multiplicity, ownership, and output bindings
+are modeled; do not flatten the helper block and thereby change temporary/drop scope; do not call successful build
+proof of unchanged panic location or stack observations.
+
+Agent assignment: `/root` owns SystemDependence consumption, transaction rendering, integration, validation, and
+terminal evidence. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: one authoritative exact-binding fixture produces one strict two-edit candidate whose compiled
+behavior matches before/after, while the production selector honestly emits zero under missing call authority.
+
+Terminal result: M5.14 passed its authoritative two-edit compiled behavior check, second-call/function-value/public
+near misses, production fail-closed project and CLI checks, and the complete workspace test/build/rustdoc/clippy/
+fmt/diff gate. The first clippy pass exposed two `len() != 0` style violations; replacing them with `is_empty()`
+closed the only gate failure, and the full terminal sequence then exited 0. The installed CLI was replaced at
+2026-07-15T15:41:29+02:00; its installed selector smoke returned `[]`, as required while production resolution,
+CallGraph, and SDG authority is partial. Proceed to M5.15 def/use/effect-grounded temporary, expression, and
+independent-statement recipes. Keep candidate target entities inside their computed impact layer; interprocedural
+call sites remain evidence/delta entities until impact cones retain SystemDependence.

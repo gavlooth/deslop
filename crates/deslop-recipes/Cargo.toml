@@ -16,4 +16,6 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+deslop-lang.workspace = true
 tempfile.workspace = true
+tree-sitter.workspace = true

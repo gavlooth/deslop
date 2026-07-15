@@ -505,12 +505,14 @@ dependencies = [
  "anyhow",
  "blake3",
  "deslop-core",
+ "deslop-lang",
  "deslop-parse",
  "ignore",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror",
+ "tree-sitter",
 ]
 
 [[package]]
