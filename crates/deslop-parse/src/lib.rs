@@ -36,6 +36,7 @@ mod arena;
 mod containment;
 mod control_flow;
 mod control_regions;
+mod cycle_seam;
 mod data_flow;
 mod dependency;
 mod graph_eligibility;
@@ -94,6 +95,12 @@ pub use control_regions::{
     ControlRegionPolicyId, ControlRegionProjection, ControlRegionResidual,
     ControlRegionResidualKey, StructuredControlRegion, StructuredControlRegionKind,
     derive_control_regions,
+};
+pub use cycle_seam::{
+    CYCLE_SEAM_POLICY_SCHEMA, CYCLE_SEAM_SCHEMA, CycleSeamAction, CycleSeamBuildError,
+    CycleSeamCandidate, CycleSeamCandidateKey, CycleSeamCost, CycleSeamCoverageEvidence,
+    CycleSeamDisposition, CycleSeamDocument, CycleSeamGap, CycleSeamGapKey, CycleSeamGapKind,
+    CycleSeamPolicyId, CycleSeamProjection, derive_cycle_seams,
 };
 pub use data_flow::{
     DATA_FLOW_POLICY_SCHEMA, DATA_FLOW_SCHEMA, DataFlowAccess, DataFlowAccessDraft,

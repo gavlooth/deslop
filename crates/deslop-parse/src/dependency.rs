@@ -1225,6 +1225,7 @@ pub(crate) mod tests {
     use deslop_lang::Registry;
 
     use super::*;
+    use crate::data_flow::tests::DATA_FLOW_TEST_PACK;
     use crate::resolution::tests::COMPLETE_RESOLUTION_PACK;
     use crate::{
         BuildContextId, BuildModuleDraft, DeclarationDraft, ExportDraft, FactCoverageEvidence,
@@ -1239,6 +1240,8 @@ pub(crate) mod tests {
     pub(crate) enum FixtureEndpoint {
         ProviderDeclaration,
         ConsumerDeclaration,
+        BidirectionalDeclarations,
+        BidirectionalModules,
         External,
         AdapterOnly,
     }
@@ -1250,19 +1253,37 @@ pub(crate) mod tests {
     ) -> DependencyProjection {
         let root = tempfile::tempdir().unwrap();
         let mut registry = Registry::default();
-        registry.register(&COMPLETE_RESOLUTION_PACK);
+        if matches!(
+            endpoint,
+            FixtureEndpoint::BidirectionalDeclarations | FixtureEndpoint::BidirectionalModules
+        ) {
+            registry.register(&DATA_FLOW_TEST_PACK);
+        } else {
+            registry.register(&COMPLETE_RESOLUTION_PACK);
+        }
+        let bidirectional_fixture = matches!(
+            endpoint,
+            FixtureEndpoint::BidirectionalDeclarations | FixtureEndpoint::BidirectionalModules
+        );
+        let consumer_source = if bidirectional_fixture {
+            b"fn consumed() {} fn consume() { imported; }\n".to_vec()
+        } else {
+            b"fn consume() { imported; }\n".to_vec()
+        };
+        let provider_source = if bidirectional_fixture {
+            b"fn imported() { consumed; }\n".to_vec()
+        } else {
+            b"fn imported() {}\n".to_vec()
+        };
         let snapshot = ProjectSnapshotBuilder::new(
             root.path(),
             RepositoryId::explicit("dependency-projection-test").unwrap(),
         )
         .unwrap()
         .with_registry(registry)
-        .with_overlay(
-            "consumer.resolutionrs",
-            b"fn consume() { imported; }\n".to_vec(),
-        )
+        .with_overlay("consumer.resolutionrs", consumer_source)
         .unwrap()
-        .with_overlay("provider.resolutionrs", b"fn imported() {}\n".to_vec())
+        .with_overlay("provider.resolutionrs", provider_source)
         .unwrap()
         .build()
         .unwrap();
@@ -1275,6 +1296,10 @@ pub(crate) mod tests {
         let provider_root = node_by_kind(&analysis, "provider.resolutionrs", "source_file");
         let reference_node = node_by_text(&analysis, "consumer.resolutionrs", "imported");
         let declaration_node = node_by_text(&analysis, "provider.resolutionrs", "imported");
+        let reverse_declaration_node = bidirectional_fixture
+            .then(|| node_by_text(&analysis, "consumer.resolutionrs", "consumed"));
+        let reverse_reference_node = bidirectional_fixture
+            .then(|| node_by_text(&analysis, "provider.resolutionrs", "consumed"));
         let mut builder = ScopeGraphBuilder::new(
             Arc::clone(&analysis),
             BuildContextId::from_parts(&[b"dependency-build-context"]).unwrap(),
@@ -1345,6 +1370,27 @@ pub(crate) mod tests {
                 )
                 .unwrap()
         });
+        let reverse_declaration = reverse_declaration_node.map(|node| {
+            builder
+                .add_declaration(
+                    node,
+                    roles(&analysis, node),
+                    complete.clone(),
+                    DeclarationDraft {
+                        original_name: "consumed".into(),
+                        lookup_key: "consumed".into(),
+                        namespace: NameNamespace::Value,
+                        scope: consumer_scope,
+                        visibility: VisibilityDraft {
+                            kind: VisibilityKind::Public,
+                            boundary: None,
+                            adapter_rule: None,
+                        },
+                        modifiers: vec![],
+                    },
+                )
+                .unwrap()
+        });
         builder
             .add_export(
                 declaration_node,
@@ -1365,6 +1411,28 @@ pub(crate) mod tests {
                 },
             )
             .unwrap();
+        if let (Some(node), Some(declaration)) = (reverse_declaration_node, reverse_declaration) {
+            builder
+                .add_export(
+                    node,
+                    roles(&analysis, node),
+                    complete.clone(),
+                    ExportDraft {
+                        scope: consumer_scope,
+                        local_target: Some(declaration),
+                        local_name: Some("consumed".into()),
+                        exported_name: "consumed".into(),
+                        reexport_segments: vec![],
+                        visibility: VisibilityDraft {
+                            kind: VisibilityKind::Public,
+                            boundary: None,
+                            adapter_rule: None,
+                        },
+                        conditions: vec![],
+                    },
+                )
+                .unwrap();
+        }
         builder
             .add_import(
                 consumer_root,
@@ -1380,6 +1448,23 @@ pub(crate) mod tests {
                 },
             )
             .unwrap();
+        if bidirectional_fixture {
+            builder
+                .add_import(
+                    provider_root,
+                    roles(&analysis, provider_root),
+                    complete.clone(),
+                    ImportDraft {
+                        scope: provider_scope,
+                        module_segments: vec!["app".into()],
+                        form: ImportForm::Selective,
+                        alias: None,
+                        selected_names: vec!["consumed".into()],
+                        conditions: vec![],
+                    },
+                )
+                .unwrap();
+        }
         let reference = builder
             .add_reference(
                 reference_node,
@@ -1394,6 +1479,24 @@ pub(crate) mod tests {
                 },
             )
             .unwrap();
+        let reverse_reference = reverse_reference_node.map(|node| {
+            builder
+                .add_reference(
+                    node,
+                    roles(&analysis, node),
+                    complete.clone(),
+                    ReferenceDraft {
+                        original_spelling: "consumed".into(),
+                        segments: vec!["consumed".into()],
+                        namespace: NameNamespace::Value,
+                        scope: provider_scope,
+                        role: ReferenceRole::Read,
+                    },
+                )
+                .unwrap()
+        });
+        let mut consumer_module = None;
+        let mut provider_module = None;
         for (node, scope, package, target, source_root, module) in [
             (
                 consumer_root,
@@ -1412,7 +1515,7 @@ pub(crate) mod tests {
                 "dep",
             ),
         ] {
-            builder
+            let fact = builder
                 .add_build_module(
                     node,
                     roles(&analysis, node),
@@ -1427,6 +1530,11 @@ pub(crate) mod tests {
                     },
                 )
                 .unwrap();
+            if package == "app-package" {
+                consumer_module = Some(fact);
+            } else {
+                provider_module = Some(fact);
+            }
         }
         if duplicate_provider_owner {
             builder
@@ -1449,6 +1557,10 @@ pub(crate) mod tests {
         let resolution_policy =
             ResolutionPolicyId::from_parts(&[b"dependency-resolution-policy/1"]).unwrap();
         let resolution = if endpoint != FixtureEndpoint::AdapterOnly {
+            let bidirectional = matches!(
+                endpoint,
+                FixtureEndpoint::BidirectionalDeclarations | FixtureEndpoint::BidirectionalModules
+            );
             let mut semantic = SemanticResolutionFactBuilder::new(Arc::clone(&scope));
             let provider = semantic
                 .add_provider(SemanticProviderDraft {
@@ -1461,13 +1573,23 @@ pub(crate) mod tests {
                     project_model_coverage: complete.clone(),
                 })
                 .unwrap();
-            let endpoint = match endpoint {
+            let resolved_endpoint = match endpoint {
                 FixtureEndpoint::ProviderDeclaration => {
                     ResolutionEndpoint::Declaration(scope.fact(declaration).unwrap().key().clone())
                 }
                 FixtureEndpoint::ConsumerDeclaration => ResolutionEndpoint::Declaration(
                     scope
                         .fact(consumer_declaration.expect("consumer declaration requested"))
+                        .unwrap()
+                        .key()
+                        .clone(),
+                ),
+                FixtureEndpoint::BidirectionalDeclarations => {
+                    ResolutionEndpoint::Declaration(scope.fact(declaration).unwrap().key().clone())
+                }
+                FixtureEndpoint::BidirectionalModules => ResolutionEndpoint::Module(
+                    scope
+                        .fact(provider_module.expect("provider module"))
                         .unwrap()
                         .key()
                         .clone(),
@@ -1479,15 +1601,54 @@ pub(crate) mod tests {
             };
             semantic
                 .add_fact(SemanticResolutionFactDraft {
-                    provider,
+                    provider: provider.clone(),
                     reference: scope.fact(reference).unwrap().key().clone(),
                     result_artifact: semantic_artifact(b"compiler-resolution-result"),
                     status: ResolutionStatus::Unique,
-                    endpoints: vec![endpoint],
+                    endpoints: vec![resolved_endpoint],
                     coverage: complete,
                     diagnostics: vec!["compiler retained exact cross-package endpoint".into()],
                 })
                 .unwrap();
+            if bidirectional {
+                semantic
+                    .add_fact(SemanticResolutionFactDraft {
+                        provider,
+                        reference: scope
+                            .fact(reverse_reference.expect("bidirectional reference"))
+                            .unwrap()
+                            .key()
+                            .clone(),
+                        result_artifact: semantic_artifact(b"compiler-reverse-resolution-result"),
+                        status: ResolutionStatus::Unique,
+                        endpoints: vec![match endpoint {
+                            FixtureEndpoint::BidirectionalDeclarations => {
+                                ResolutionEndpoint::Declaration(
+                                    scope
+                                        .fact(
+                                            reverse_declaration.expect("bidirectional declaration"),
+                                        )
+                                        .unwrap()
+                                        .key()
+                                        .clone(),
+                                )
+                            }
+                            FixtureEndpoint::BidirectionalModules => ResolutionEndpoint::Module(
+                                scope
+                                    .fact(consumer_module.expect("consumer module"))
+                                    .unwrap()
+                                    .key()
+                                    .clone(),
+                            ),
+                            _ => unreachable!("bidirectional checked"),
+                        }],
+                        coverage: FactCoverageEvidence::complete(),
+                        diagnostics: vec![
+                            "compiler retained exact reverse cross-package endpoint".into(),
+                        ],
+                    })
+                    .unwrap();
+            }
             Arc::new(
                 ResolutionProjection::build_with_semantic_facts(
                     scope,
@@ -1504,6 +1665,22 @@ pub(crate) mod tests {
             DependencyPolicyId::from_parts(&[b"dependency-policy/1"]).unwrap(),
         )
         .unwrap()
+    }
+
+    pub(crate) fn cycle_dependency_fixture() -> DependencyProjection {
+        dependency_fixture(
+            FactCoverageEvidence::complete(),
+            FixtureEndpoint::BidirectionalDeclarations,
+            false,
+        )
+    }
+
+    pub(crate) fn topology_only_cycle_dependency_fixture() -> DependencyProjection {
+        dependency_fixture(
+            FactCoverageEvidence::complete(),
+            FixtureEndpoint::BidirectionalModules,
+            false,
+        )
     }
 
     fn node_by_kind(analysis: &ProjectAnalysis, path: &str, kind: &str) -> crate::NodeId {

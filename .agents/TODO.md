@@ -578,7 +578,10 @@ reports, benchmark records, and work orders.
   `deslop.architecture/1` now derives deterministic SCCs at every structural level, a condensation DAG,
   dependency-first layers, distinct fan/API metrics, exact rational instability, and evidence-bearing policy
   violations/gaps from `deslop.dependency/1`; eight numerical/adversarial tests and every workspace gate pass.
-- [ ] M5.18 Generate reviewed cycle-breaking seams with API/data-flow evidence.
+- [x] M5.18 Generate reviewed cycle-breaking seams with API/data-flow evidence.
+  Strict `deslop.cycle-seams/1` now emits only API-backed internal cuts for cyclic SCCs, joins exact matching
+  data-flow access/reaching-definition evidence, ranks canonical review-required candidates, and preserves every
+  authority gap. The retained corpus produces 8 exact candidates; topology-only cycles produce 0. All gates pass.
 - [ ] M5.19 Generate move/split/merge-module candidates from cohesion, coupling, impact, and optional change history.
 - [ ] M5.20 Add semantically safe import/declaration ordering recipes.
 

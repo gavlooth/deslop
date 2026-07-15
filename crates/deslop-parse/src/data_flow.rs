@@ -1896,6 +1896,8 @@ pub(crate) mod tests {
             for capability in [
                 AdapterCapability::LexicalScopes,
                 AdapterCapability::NameResolution,
+                AdapterCapability::ImportsExports,
+                AdapterCapability::DependencyGraph,
                 AdapterCapability::DefUse,
                 AdapterCapability::Effects,
                 AdapterCapability::LocalPdg,
@@ -2039,7 +2041,7 @@ pub(crate) mod tests {
             Lang::Rust
         }
         fn extensions(&self) -> &'static [&'static str] {
-            &["dflowrs"]
+            &["dflowrs", "resolutionrs"]
         }
         fn grammar(&self) -> Option<tree_sitter::Language> {
             RUST_PACK.grammar()

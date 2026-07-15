@@ -11495,3 +11495,53 @@ required; normal downstream recompilation is sufficient. The result is stored in
 `crates/deslop-parse/src/lib.rs`, and durable Hindsight memory.
 
 Signature: Codex `/root` — M5.17 integration and terminal verification owner
+
+## 2026-07-15T20:44:12+02:00 — M5.18 terminal reviewed cycle-breaking seams
+
+**Objective:** close M5.18 with deterministic cycle-breaking seam candidates grounded in exact topology, API, and
+data-flow evidence, while withholding any topology-only or automatic rewrite authority.
+
+**Target:** add a strict parse-layer `deslop.cycle-seams/1` projection bound to the exact M5.17 architecture,
+M5.16 dependency/resolution, optional M4.5 data-flow, and cycle-seam policy identities.
+
+**Changes:** added content-bound cycle-seam policy, candidate, and gap identities; exact cyclic-component/internal-edge
+enumeration; resolution-to-local-API-use joins; exact-resolution data-flow source matching; retained access and
+reaching-definition evidence; canonical authority/API/coupling costs and per-component ranks; fixed review
+obligations; inherited source gaps; typed missing, foreign, incomplete, uncertain, and topology-only gaps; strict
+canonical deserialization; public parse exports; and real bidirectional declaration/API and topology-only module
+fixtures. Every emitted candidate is `ReviewRequired`; no mutation path was added.
+
+**Commands run/results:** focused cycle-seam tests passed 8/8; focused all-target clippy passed. `cargo test -p
+deslop-parse --all-features` passed 226 active tests with 1 explicit ignore plus 4 doctests. `cargo test --workspace
+--all-features`, `cargo build --workspace --all-features`, `RUSTDOCFLAGS='-D warnings' cargo doc --workspace
+--all-features --no-deps`, `cargo clippy --workspace --all-features --all-targets -- -D warnings`, `cargo fmt --all
+-- --check`, and `git diff --check` all passed.
+
+**Numerical evidence:** the exact bidirectional corpus has 4 cyclic SCCs and emits 8 candidates: 2 directed cuts at
+each File, Module, Package, and BuildTarget level. Every candidate retains 1 API-use edge, 1 local API node, 1 exact
+resolution, 1 data-flow access, 0 reaching definitions, complete evidence, and rank 1 or 2 within its SCC. The
+topology-only corpus has 3 cyclic SCCs, emits 6 `TopologyWithoutApiEvidence` gaps, and produces 0 candidates. Removing
+one exact data-flow access downgrades exactly 4 of 8 cross-level candidates; a foreign data-flow projection joins 0
+accesses.
+
+**Invalidated assumptions/authority lessons:** SCC membership and edge direction do not identify a legal cut. Matching
+analysis or repository shape is insufficient for a data-flow join; exact resolution projection identity is required.
+Absent API evidence requires abstention, while absent or partial data-flow evidence may retain an API-grounded review
+candidate only as partial. Candidate rank is review ordering, never transformation legality.
+
+**Current recommendation/checkpoint:** M5.18 is terminal. Proceed to M5.19 move/split/merge candidates using cycle
+seams as one evidence source alongside cohesion, coupling, impact, and optional history; keep semantic legality and
+review disposition independent from rank.
+
+**Blockers/restart/dependencies:** no blockers. No CLI replacement, service restart, migration, or cache clear is
+required; normal downstream recompilation is sufficient. Durable memory is in Hindsight bank
+`repo:/home/christos/code/deslop` under session `m5-cycle-seams-2026-07-15`.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-parse/src/cycle_seam.rs`, test-fixture extensions in `data_flow.rs` and `dependency.rs`, parse public
+exports, and Hindsight memory.
+
+**Negative-memory status:** no new failed conceptual path requires a separate negative entry; the topology-only and
+foreign-source invalidations are enforced in code, tests, this report, and durable positive memory.
+
+Signature: Codex `/root` — M5.18 integration and terminal verification owner

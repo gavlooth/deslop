@@ -3931,3 +3931,56 @@ source authority is inherited and prevents absence-dependent stability conclusio
 218-test parse suite (1 explicit ignore), and every workspace test/build/doc/clippy/fmt/diff gate pass. No CLI
 replacement is required because this is a parse-layer Rust API addition. Proceed to M5.18 using topology as a
 planning fact and API/data-flow evidence as the authority for any reviewed cycle-breaking seam.
+
+## 2026-07-15 — M5.18 reviewed cycle-breaking seams
+
+Active hypothesis: a cyclic SCC identifies where planning is required, but topology cannot identify a legal cut.
+Generate a review candidate only for an internal structural dependency edge whose exact M5.16 resolution evidence
+also maps to a local API-use edge. Join an optional `deslop.data-flow/1` projection only when it retains the exact
+same resolution projection; use its access and reaching-definition keys to measure data coupling. Missing, partial,
+uncertain, or foreign data-flow evidence must remain typed and lower candidate authority rather than being inferred.
+
+Current approach:
+
+1. Add strict `deslop.cycle-seams/1` and `deslop.cycle-seam-policy/1` parse-layer contracts bound to exact M5.17,
+   M5.16, and optional M4.5 projection identities, with content-bound candidate and gap identities.
+2. For every cyclic File, Module, Package, or BuildTarget component, enumerate its internal structural dependency
+   edges. Retain a candidate only when every proposed cut is grounded by at least one exact resolution-to-local-API
+   use; topology-only edges become explicit gaps and produce no candidate.
+3. Attach the cut edge, direction, API nodes, resolution results, data-flow accesses, and reaching definitions.
+   Rank within each component by authority penalty, API surface, reaching-definition coupling, access count, and
+   deterministic identity. Every candidate is `ReviewRequired`; no mutation or automatic cycle break is exposed.
+4. Freeze a two-file/two-module/two-package/two-target cycle corpus. Pin eight cross-level candidates, two directed
+   cuts per cyclic level, exact API/resolution evidence, data-flow coupling, ranks, partial/mismatched authority,
+   deterministic rebuild, strict round-trip, and tamper rejection.
+
+CONVERGENCE: one bidirectional retained corpus must answer the whole decision tree. Terminal outcomes are: (a) a
+topology-only edge creates a seam—invalid; (b) a foreign resolution/data-flow projection is joined—invalid; (c)
+partial access evidence is labelled complete—invalid; (d) any candidate becomes automatic—invalid; or (e) all
+eight expected cross-level candidates retain exact evidence and all workspace gates pass, closing M5.18.
+
+Validation path: focused cycle-seam tests first; full `deslop-parse` all-feature tests second; then workspace
+all-feature tests, build, rustdoc with warnings denied, all-target clippy with warnings denied, fmt check, and
+`git diff --check`.
+
+Negative-memory constraints: do not select an edge from SCC topology, fan counts, path spelling, or instability
+alone; do not treat absent API/data-flow facts as negative proof; do not join projections by analysis or repository
+name when exact resolution identity differs; do not turn a review candidate into an automatic edit.
+
+Agent assignment: `/root` owns contract, implementation, integration, numerical fixtures, and terminal validation.
+No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: implement the strict public wire/projection and prove that topology-only cycles abstain while
+API-backed cuts retain exact evidence and explicit data-flow authority.
+
+Terminal result: M5.18 is complete. Strict `deslop.cycle-seams/1` binds the exact architecture, dependency,
+resolution, optional data-flow, and policy identities. It enumerates only internal edges of cyclic SCCs and emits a
+candidate only when exact edge resolution evidence maps to a local API-use edge. Exact matching data-flow access and
+reaching-definition keys are retained; missing, foreign, incomplete, uncertain, and inherited architecture evidence
+becomes typed gaps and partial coverage. Every candidate is `ReviewRequired`, has fixed review obligations, and is
+ranked within its component by authority penalty, API surface, reaching-definition coupling, access count, resolution
+count, and canonical direction/edge identity. The bidirectional retained corpus produces 4 cyclic SCCs, 8 candidates,
+2 ranks per level, and 1 API edge/node, resolution, and data-flow access per candidate. The topology-only corpus has
+3 cyclic SCCs, 6 explicit abstention gaps, and 0 candidates. Eight focused tests, 226 active parse tests (1 explicit
+ignore), 4 doctests, and every workspace test/build/rustdoc/clippy/fmt/diff gate pass. Proceed to M5.19 using these
+reviewed seam facts as one input; do not treat a seam rank as move/split/merge legality.
