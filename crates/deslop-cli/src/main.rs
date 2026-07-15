@@ -704,6 +704,7 @@ fn detect_recipes(args: RecipeDetectArgs) -> Result<()> {
             | "rust-remove-literal-dead-arm"
             | "rust-convert-exhaustive-chain-to-match"
             | "rust-extract-sese-branch-method"
+            | "rust-split-dependence-cohesive-callable"
     ) {
         bail!("unknown production recipe `{}`", args.recipe);
     }

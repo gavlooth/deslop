@@ -547,7 +547,12 @@ reports, benchmark records, and work orders.
   authority leaves mutation and exception absence Unknown and review-only. Typed initializer CFG/SESE lowering is
   exact while let-else remains conservative. A four-case executable before/after matrix matched exactly, sixteen
   unsafe shapes abstained, all workspace gates passed, and the installed CLI was replaced.
-- [ ] M5.13 Detect multi-responsibility callable splits from dependence cohesion/action clusters.
+- [x] M5.13 Detect multi-responsibility callable splits from dependence cohesion/action clusters.
+  `rust-split-dependence-cohesive-callable` finds two-to-four direct-body branch action cores with retained internal
+  PDG connectivity, exact M5.12 signatures, disjoint computation frontiers, and no retained crossing Flow edge. It
+  emits one atomic multi-helper callable replacement. Production DefUse/LocalPdg gaps keep frontier independence
+  Unknown and review-only. Compiled pre/post behavior, five near misses, strict wire/rebuild/CLI checks, all workspace
+  gates, and the installed selector smoke passed.
 - [ ] M5.14 Detect safe merge/inline of over-fragmented single-use helpers.
 - [ ] M5.15 Add def/use/effect-grounded temporary, expression, and independent-statement recipes.
 

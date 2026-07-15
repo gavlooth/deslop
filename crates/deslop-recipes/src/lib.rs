@@ -46,7 +46,9 @@ pub use evaluation::{
 pub use extract_method::{
     ExtractMethodRecipeError, ExtractionInputEvidence, ExtractionInputOrigin,
     ExtractionOutputEvidence, ExtractionOwnershipMode, ExtractionSignatureEvidence,
-    ExtractionSliceEvidence, detect_extract_method_candidates, extract_method_recipe,
+    ExtractionSliceEvidence, ResponsibilityClusterEvidence, ResponsibilitySplitEvidence,
+    detect_extract_method_candidates, detect_responsibility_split_candidates,
+    extract_method_recipe, responsibility_split_recipe,
 };
 pub use guard_clause::{
     GuardClauseExitEvidence, GuardClauseRecipeError, detect_guard_clause_inversions,

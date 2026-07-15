@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use deslop_core::{Lang, SafetyClass};
 use deslop_parse::{
@@ -29,6 +29,11 @@ const REQUIRED_EXITS: &str = "exact-extraction-exits";
 const REQUIRED_EXCEPTIONS: &str = "exact-extraction-exceptions";
 const REQUIRED_CAPTURES: &str = "exact-extraction-captures";
 const REQUIRED_ASYNC_OWNERSHIP: &str = "exact-extraction-async-ownership";
+const REQUIRED_RESPONSIBILITY_CLUSTERS: &str = "multiple-dependence-cohesive-action-clusters";
+const REQUIRED_CLUSTER_FRONTIERS: &str = "disjoint-action-cluster-frontiers";
+const REQUIRED_CLUSTER_SIGNATURES: &str = "exact-action-cluster-signatures";
+const FORBIDDEN_TRIVIAL_CLUSTER: &str = "trivial-or-singleton-action-cluster";
+const FORBIDDEN_CROSS_CLUSTER_FLOW: &str = "cross-cluster-flow-dependence";
 const REQUIRED_EFFECTS: &str = "call-boundary-effects-reviewed";
 const FORBIDDEN_ABRUPT: &str = "abrupt-or-suspending-exit";
 const FORBIDDEN_SCOPE: &str = "unmodelled-local-or-owned-input";
@@ -88,6 +93,21 @@ pub struct ExtractionSignatureEvidence {
     pub exception_completeness: ProofState,
     pub capture_completeness: ProofState,
     pub ownership_completeness: ProofState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResponsibilityClusterEvidence {
+    pub region: GraphEntityRef,
+    pub computation_entities: Vec<GraphEntityRef>,
+    pub internal_dependence_entities: Vec<GraphEntityRef>,
+    pub signature: ExtractionSignatureEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResponsibilitySplitEvidence {
+    pub clusters: Vec<ResponsibilityClusterEvidence>,
+    pub crossing_flow_entities: Vec<GraphEntityRef>,
+    pub independence: ProofState,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -276,6 +296,111 @@ pub fn extract_method_recipe() -> Result<TransformationRecipe, RecipeContractErr
                 "branch-reads-untyped-prior-local",
                 FixtureExpectation::NoCandidate,
                 "A used prior local without an exact type cannot enter the helper signature.",
+            ),
+        ],
+    })
+}
+
+pub fn responsibility_split_recipe() -> Result<TransformationRecipe, RecipeContractError> {
+    TransformationRecipe::new(TransformationRecipeDraft {
+        name: "rust-split-dependence-cohesive-callable".into(),
+        version: "1.0.0".into(),
+        family: TransformationFamily::FunctionExpression,
+        required_layers: vec![
+            GraphEvidenceLayer::ControlFlow,
+            GraphEvidenceLayer::ControlRegions,
+            GraphEvidenceLayer::NonStructuredControl,
+            GraphEvidenceLayer::DataFlow,
+            GraphEvidenceLayer::ProgramDependence,
+        ],
+        required_conditions: vec![
+            condition(
+                REQUIRED_RESPONSIBILITY_CLUSTERS,
+                "The callable contains at least two non-trivial internally connected branch action clusters.",
+                GraphEvidenceLayer::ProgramDependence,
+            ),
+            condition(
+                REQUIRED_CLUSTER_FRONTIERS,
+                "Selected action-cluster computation frontiers are disjoint and retain no crossing Flow edge.",
+                GraphEvidenceLayer::ProgramDependence,
+            ),
+            condition(
+                REQUIRED_CLUSTER_SIGNATURES,
+                "Every cluster independently satisfies the exact extraction signature frontier.",
+                GraphEvidenceLayer::DataFlow,
+            ),
+        ],
+        forbidden_conditions: vec![
+            condition(
+                FORBIDDEN_TRIVIAL_CLUSTER,
+                "A proposed responsibility is a singleton or has no internal dependence edge.",
+                GraphEvidenceLayer::ProgramDependence,
+            ),
+            condition(
+                FORBIDDEN_CROSS_CLUSTER_FLOW,
+                "A retained Flow edge or computation node crosses selected clusters.",
+                GraphEvidenceLayer::ProgramDependence,
+            ),
+        ],
+        maximum_safety: SafetyClass::SafeWithPrecondition,
+        validation_plan: ValidationPlan {
+            steps: vec![
+                validation(
+                    "build",
+                    ValidationStepKind::Build,
+                    "Build all introduced helpers and their call sites.",
+                ),
+                validation(
+                    "graph-delta",
+                    ValidationStepKind::GraphDelta,
+                    "Rebuild every selected action cluster and compare its dependence frontier.",
+                ),
+                validation(
+                    "parse",
+                    ValidationStepKind::Parse,
+                    "Parse the atomic multi-helper callable replacement.",
+                ),
+                validation(
+                    "test",
+                    ValidationStepKind::Test,
+                    "Run project tests before accepting the callable split.",
+                ),
+            ],
+        },
+        rollback_plan: RollbackPlan {
+            strategy: RollbackStrategy::ReverseExactEdits,
+            require_revision_guards: true,
+            validation_steps: vec![
+                "build".into(),
+                "graph-delta".into(),
+                "parse".into(),
+                "test".into(),
+            ],
+        },
+        fixtures: vec![
+            fixture(
+                RecipeFixtureRole::Positive,
+                "two-dependent-branch-action-clusters",
+                FixtureExpectation::Candidate,
+                "Two non-trivial disjoint branch clusters become two private helpers in one transaction.",
+            ),
+            fixture(
+                RecipeFixtureRole::NoOp,
+                "one-branch-action-cluster",
+                FixtureExpectation::NoCandidate,
+                "One cluster is not a multi-responsibility split.",
+            ),
+            fixture(
+                RecipeFixtureRole::MinimalCounterexample,
+                "cross-cluster-flow",
+                FixtureExpectation::NoCandidate,
+                "A retained Flow frontier crossing suppresses the split.",
+            ),
+            fixture(
+                RecipeFixtureRole::AdversarialNearMiss,
+                "adjacent-calls-without-cluster-dependence",
+                FixtureExpectation::NoCandidate,
+                "Adjacency and length do not create responsibility evidence.",
             ),
         ],
     })
@@ -514,6 +639,302 @@ pub fn detect_extract_method_candidates(
                 rollback_plan: recipe.rollback_plan().clone(),
             })?);
         }
+    }
+    candidates.sort_by(|left, right| left.id().cmp(right.id()));
+    Ok(candidates)
+}
+
+pub fn detect_responsibility_split_candidates(
+    projection: &ProgramDependenceProjection,
+) -> Result<Vec<TransformationCandidate>, ExtractMethodRecipeError> {
+    let recipe = responsibility_split_recipe()?;
+    let data_flow = projection.data_flow();
+    let regions = data_flow.control_regions();
+    let flow = regions.control_flow();
+    let analysis = flow.analysis();
+    let non_structured = projection.non_structured_control();
+    let mut candidates = Vec::new();
+
+    for graph in projection.document().graphs() {
+        let eligibility = evaluate_program_graph_recipe_eligibility(
+            projection,
+            graph,
+            &recipe.eligibility_requirement(),
+        )
+        .map_err(|error| ExtractMethodRecipeError::Eligibility(error.to_string()))?;
+        let flow_graph = flow
+            .document()
+            .graphs()
+            .iter()
+            .find(|candidate| candidate.key() == graph.control_flow_graph())
+            .ok_or_else(|| missing("control-flow graph", graph.control_flow_graph().as_str()))?;
+        let region_graph = regions
+            .document()
+            .graphs()
+            .iter()
+            .find(|candidate| candidate.key() == graph.control_region_graph())
+            .ok_or_else(|| {
+                missing(
+                    "control-region graph",
+                    graph.control_region_graph().as_str(),
+                )
+            })?;
+        let data_graph = data_flow
+            .document()
+            .graphs()
+            .iter()
+            .find(|candidate| candidate.key() == graph.data_flow_graph())
+            .ok_or_else(|| missing("data-flow graph", graph.data_flow_graph().as_str()))?;
+        let non_structured_graph = non_structured
+            .document()
+            .graphs()
+            .iter()
+            .find(|candidate| candidate.key() == graph.non_structured_control_graph())
+            .ok_or_else(|| {
+                missing(
+                    "non-structured graph",
+                    graph.non_structured_control_graph().as_str(),
+                )
+            })?;
+        let owner = analysis
+            .node_by_key(graph.owner())
+            .map_err(|error| ExtractMethodRecipeError::Projection(error.to_string()))?;
+        let mut units = Vec::new();
+        for region in region_graph
+            .regions()
+            .iter()
+            .filter(|region| region.kind() == StructuredControlRegionKind::Branch)
+        {
+            if non_structured_graph
+                .facts()
+                .iter()
+                .any(|fact| intersects_sorted(fact.points(), region.points()))
+            {
+                continue;
+            }
+            let Some(dispatch) = flow_graph
+                .points()
+                .iter()
+                .find(|point| point.key() == region.entry())
+            else {
+                return Err(missing(
+                    "control-flow region entry",
+                    region.entry().as_str(),
+                ));
+            };
+            let Some(source) = dispatch.source() else {
+                continue;
+            };
+            let branch = analysis
+                .node_by_key(source)
+                .map_err(|error| ExtractMethodRecipeError::Projection(error.to_string()))?;
+            let Some(shape) = extraction_shape(analysis, owner, branch)? else {
+                continue;
+            };
+            if branch_action_count(analysis, branch)? < 4 {
+                continue;
+            }
+            let Some(root) = graph
+                .nodes()
+                .iter()
+                .find(|node| node.point() == region.entry())
+            else {
+                return Err(missing(
+                    "program-dependence region entry",
+                    region.entry().as_str(),
+                ));
+            };
+            let slice = extraction_slice(graph, region, data_graph);
+            let Some(internal_dependence_entities) = cohesive_cluster_edges(graph, &slice) else {
+                continue;
+            };
+            let signature = extraction_signature(region, data_graph, &shape);
+            units.push((
+                region,
+                shape,
+                root,
+                slice,
+                signature,
+                internal_dependence_entities,
+            ));
+        }
+        units.sort_by_key(|(_, shape, _, _, _, _)| shape.replacement.key().anchor().start_byte());
+        if !(2..=4).contains(&units.len()) {
+            continue;
+        }
+        let (crossing_flow_entities, overlap) = cluster_crossings(
+            graph,
+            &units
+                .iter()
+                .map(|(_, _, _, slice, _, _)| slice)
+                .collect::<Vec<_>>(),
+        );
+        if overlap || !crossing_flow_entities.is_empty() {
+            continue;
+        }
+        let independence = if units
+            .iter()
+            .all(|(_, _, _, slice, _, _)| slice.completeness == ProofState::Proven)
+        {
+            ProofState::Proven
+        } else {
+            ProofState::Unknown
+        };
+        let split_evidence = ResponsibilitySplitEvidence {
+            clusters: units
+                .iter()
+                .map(
+                    |(region, _, _, slice, signature, internal)| ResponsibilityClusterEvidence {
+                        region: graph_entity(
+                            GraphEvidenceLayer::ControlRegions,
+                            region_graph.key().as_str(),
+                            region.key().as_str(),
+                        ),
+                        computation_entities: slice.computation_entities.clone(),
+                        internal_dependence_entities: internal.clone(),
+                        signature: signature.clone(),
+                    },
+                )
+                .collect(),
+            crossing_flow_entities,
+            independence,
+        };
+        let replacement = render_responsibility_split(
+            &units
+                .iter()
+                .map(|(_, shape, _, _, _, _)| shape)
+                .collect::<Vec<_>>(),
+        )?;
+        let first_root = units[0].2;
+        let cluster_evidence = split_evidence
+            .clusters
+            .iter()
+            .flat_map(|cluster| cluster.internal_dependence_entities.iter().cloned())
+            .map(|entity| ConditionEvidence {
+                entity,
+                detail: "Retained edge in a non-trivial connected action core.".into(),
+                capability: Some(AdapterCapability::LocalPdg),
+                support: Some(graph.coverage().local_pdg_support()),
+                authority: graph.coverage().local_pdg_authority(),
+            })
+            .collect::<Vec<_>>();
+        let frontier_evidence = split_evidence
+            .clusters
+            .iter()
+            .flat_map(|cluster| cluster.computation_entities.iter().cloned())
+            .map(|entity| ConditionEvidence {
+                entity,
+                detail: "Disjoint retained computation-frontier node.".into(),
+                capability: Some(AdapterCapability::LocalPdg),
+                support: Some(graph.coverage().local_pdg_support()),
+                authority: graph.coverage().local_pdg_authority(),
+            })
+            .collect::<Vec<_>>();
+        let mut signature_evidence = units
+            .iter()
+            .flat_map(|(_, _, _, _, signature, _)| signature_evidence(data_graph, signature))
+            .collect::<Vec<_>>();
+        signature_evidence.sort_by(|left, right| {
+            (&left.entity, &left.detail).cmp(&(&right.entity, &right.detail))
+        });
+        signature_evidence
+            .dedup_by(|left, right| left.entity == right.entity && left.detail == right.detail);
+        candidates.push(TransformationCandidate::new(
+            TransformationCandidateDraft {
+                recipe: recipe.clone(),
+                source: CandidateSource {
+                    project_snapshot: analysis.snapshot().id().as_str().into(),
+                    analysis: analysis.id().as_str().into(),
+                    program_dependence_projection: projection.id().as_str().into(),
+                },
+                target: CandidateTarget {
+                    entity: graph_root(graph, first_root),
+                    node: graph.owner().clone(),
+                    span: span(graph.owner()),
+                },
+                eligibility: eligibility.clone(),
+                required_results: vec![
+                    ConditionResult {
+                        condition: REQUIRED_RESPONSIBILITY_CLUSTERS.into(),
+                        state: ProofState::Proven,
+                        evidence: cluster_evidence.clone(),
+                    },
+                    ConditionResult {
+                        condition: REQUIRED_CLUSTER_FRONTIERS.into(),
+                        state: independence,
+                        evidence: frontier_evidence,
+                    },
+                    ConditionResult {
+                        condition: REQUIRED_CLUSTER_SIGNATURES.into(),
+                        state: ProofState::Proven,
+                        evidence: signature_evidence,
+                    },
+                ],
+                forbidden_results: vec![
+                    ConditionResult {
+                        condition: FORBIDDEN_TRIVIAL_CLUSTER.into(),
+                        state: ProofState::Disproven,
+                        evidence: split_evidence
+                            .clusters
+                            .iter()
+                            .flat_map(|cluster| {
+                                cluster.internal_dependence_entities.iter().cloned()
+                            })
+                            .map(|entity| {
+                                plain_evidence(entity, "Each cluster has internal dependence.")
+                            })
+                            .collect(),
+                    },
+                    ConditionResult {
+                        condition: FORBIDDEN_CROSS_CLUSTER_FLOW.into(),
+                        state: if independence == ProofState::Proven {
+                            ProofState::Disproven
+                        } else {
+                            ProofState::Unknown
+                        },
+                        evidence: split_evidence
+                            .clusters
+                            .iter()
+                            .flat_map(|cluster| cluster.computation_entities.iter().cloned())
+                            .map(|entity| {
+                                plain_evidence(
+                                    entity,
+                                    "No retained Flow edge crosses this frontier.",
+                                )
+                            })
+                            .collect(),
+                    },
+                ],
+                impact: program_dependence_impact_cone(
+                    projection,
+                    graph.key(),
+                    first_root.key(),
+                    ImpactDirection::Bidirectional,
+                    16,
+                )?,
+                expected_delta: responsibility_split_delta(
+                    graph,
+                    &units
+                        .iter()
+                        .map(|(_, _, root, _, _, _)| *root)
+                        .collect::<Vec<_>>(),
+                    &units
+                        .iter()
+                        .map(|(_, _, _, slice, _, _)| slice)
+                        .collect::<Vec<_>>(),
+                ),
+                edits: vec![TransformationEdit::exact_node_replacement(
+                    graph.owner().clone(),
+                    span(graph.owner()),
+                    owner.text().into(),
+                    replacement,
+                )],
+                safety: SafetyClass::SafeWithPrecondition,
+                disposition: CandidateDisposition::ReviewRequired,
+                validation_plan: recipe.validation_plan().clone(),
+                rollback_plan: recipe.rollback_plan().clone(),
+            },
+        )?);
     }
     candidates.sort_by(|left, right| left.id().cmp(right.id()));
     Ok(candidates)
@@ -933,6 +1354,183 @@ fn render_extraction(shape: &ExtractionShape<'_>) -> Result<String, ExtractMetho
         "fn {}({declarations}){return_type} {{\n    {helper_body}\n}}\n\n{}",
         shape.helper_name, original
     ))
+}
+
+fn render_responsibility_split(
+    shapes: &[&ExtractionShape<'_>],
+) -> Result<String, ExtractMethodRecipeError> {
+    let Some(first) = shapes.first() else {
+        return Err(ExtractMethodRecipeError::Projection(
+            "responsibility split has no extraction shape".into(),
+        ));
+    };
+    if shapes
+        .iter()
+        .any(|shape| shape.owner.key() != first.owner.key())
+    {
+        return Err(ExtractMethodRecipeError::Projection(
+            "responsibility clusters do not share one callable owner".into(),
+        ));
+    }
+    let owner_start = first.owner.key().anchor().start_byte() as usize;
+    let mut original = first.owner.text().to_string();
+    let mut helpers = Vec::new();
+    for shape in shapes {
+        let (helper, _) = render_helper_and_call(shape);
+        helpers.push(helper);
+        let start = (shape.replacement.key().anchor().start_byte() as usize)
+            .checked_sub(owner_start)
+            .ok_or_else(|| {
+                ExtractMethodRecipeError::Projection(
+                    "cluster replacement begins before callable owner".into(),
+                )
+            })?;
+        let end = (shape.replacement.key().anchor().end_byte() as usize)
+            .checked_sub(owner_start)
+            .ok_or_else(|| {
+                ExtractMethodRecipeError::Projection(
+                    "cluster replacement ends before callable owner".into(),
+                )
+            })?;
+        if original.get(start..end) != Some(shape.replacement.text()) {
+            return Err(ExtractMethodRecipeError::Projection(
+                "cluster replacement bytes do not match the retained callable source".into(),
+            ));
+        }
+    }
+    for shape in shapes.iter().rev() {
+        let (_, call) = render_helper_and_call(shape);
+        let start = shape.replacement.key().anchor().start_byte() as usize - owner_start;
+        let end = shape.replacement.key().anchor().end_byte() as usize - owner_start;
+        original.replace_range(start..end, &call);
+    }
+    Ok(format!("{}\n\n{}", helpers.join("\n\n"), original))
+}
+
+fn render_helper_and_call(shape: &ExtractionShape<'_>) -> (String, String) {
+    let arguments = shape
+        .inputs
+        .iter()
+        .map(|input| input.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let declarations = shape
+        .inputs
+        .iter()
+        .map(|input| format!("{}: {}", input.name, input.value_type.text()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let (return_type, helper_body, call) = match &shape.output {
+        Some(output) => (
+            format!(" -> {}", output.value_type.text()),
+            shape.branch.text().to_string(),
+            format!("{}({arguments})", shape.helper_name),
+        ),
+        None => (
+            String::new(),
+            format!("{};", shape.branch.text()),
+            format!("{}({arguments});", shape.helper_name),
+        ),
+    };
+    (
+        format!(
+            "fn {}({declarations}){return_type} {{\n    {helper_body}\n}}",
+            shape.helper_name
+        ),
+        call,
+    )
+}
+
+fn cohesive_cluster_edges(
+    graph: &ProgramDependenceGraph,
+    slice: &ExtractionSliceEvidence,
+) -> Option<Vec<GraphEntityRef>> {
+    let nodes = slice
+        .computation_entities
+        .iter()
+        .map(|entity| entity.entity.as_str())
+        .collect::<BTreeSet<_>>();
+    if nodes.len() < 3 {
+        return None;
+    }
+    let internal = graph
+        .edges()
+        .iter()
+        .filter(|edge| nodes.contains(edge.from().as_str()) && nodes.contains(edge.to().as_str()))
+        .collect::<Vec<_>>();
+    if internal.is_empty() {
+        return None;
+    }
+    let connected_nodes = internal
+        .iter()
+        .flat_map(|edge| [edge.from().as_str(), edge.to().as_str()])
+        .collect::<BTreeSet<_>>();
+    if connected_nodes.len() < 3 {
+        return None;
+    }
+    let mut seen = BTreeSet::from([*connected_nodes.first()?]);
+    let mut pending = VecDeque::from([*connected_nodes.first()?]);
+    while let Some(current) = pending.pop_front() {
+        for adjacent in internal.iter().filter_map(|edge| {
+            if edge.from().as_str() == current {
+                Some(edge.to().as_str())
+            } else if edge.to().as_str() == current {
+                Some(edge.from().as_str())
+            } else {
+                None
+            }
+        }) {
+            if seen.insert(adjacent) {
+                pending.push_back(adjacent);
+            }
+        }
+    }
+    (seen.len() == connected_nodes.len()).then(|| {
+        internal
+            .iter()
+            .map(|edge| {
+                graph_entity(
+                    GraphEvidenceLayer::ProgramDependence,
+                    graph.key().as_str(),
+                    edge.key().as_str(),
+                )
+            })
+            .collect()
+    })
+}
+
+fn cluster_crossings(
+    graph: &ProgramDependenceGraph,
+    slices: &[&ExtractionSliceEvidence],
+) -> (Vec<GraphEntityRef>, bool) {
+    let mut owners = BTreeMap::new();
+    let mut overlap = false;
+    for (index, slice) in slices.iter().enumerate() {
+        for entity in &slice.computation_entities {
+            if owners.insert(entity.entity.as_str(), index).is_some() {
+                overlap = true;
+            }
+        }
+    }
+    let crossing = graph
+        .edges()
+        .iter()
+        .filter(|edge| matches!(edge.kind(), ProgramDependenceEdgeKind::Flow { .. }))
+        .filter(|edge| {
+            matches!(
+                (owners.get(edge.from().as_str()), owners.get(edge.to().as_str())),
+                (Some(left), Some(right)) if left != right
+            )
+        })
+        .map(|edge| {
+            graph_entity(
+                GraphEvidenceLayer::ProgramDependence,
+                graph.key().as_str(),
+                edge.key().as_str(),
+            )
+        })
+        .collect();
+    (crossing, overlap)
 }
 
 fn extraction_slice(
@@ -1536,6 +2134,51 @@ fn extraction_delta(
     ExpectedGraphDelta { changes }
 }
 
+fn responsibility_split_delta(
+    graph: &ProgramDependenceGraph,
+    roots: &[&ProgramDependenceNode],
+    slices: &[&ExtractionSliceEvidence],
+) -> ExpectedGraphDelta {
+    let mut changes = roots
+        .iter()
+        .map(|root| ExpectedGraphChange {
+            kind: GraphChangeKind::Modify,
+            entity: graph_root(graph, root),
+            rationale:
+                "The responsibility cluster moves behind its own private helper call boundary."
+                    .into(),
+        })
+        .collect::<Vec<_>>();
+    let mut preserved = BTreeSet::new();
+    for entity in slices.iter().flat_map(|slice| {
+        slice
+            .computation_entities
+            .iter()
+            .chain(&slice.object_state_entities)
+            .chain(&slice.boundary_flow_entities)
+    }) {
+        if preserved.insert(entity.clone()) {
+            changes.push(ExpectedGraphChange {
+                kind: GraphChangeKind::Preserve,
+                entity: entity.clone(),
+                rationale: "The action-cluster dependence frontier must survive the atomic split."
+                    .into(),
+            });
+        }
+    }
+    ExpectedGraphDelta { changes }
+}
+
+fn plain_evidence(entity: GraphEntityRef, detail: &str) -> ConditionEvidence {
+    ConditionEvidence {
+        entity,
+        detail: detail.into(),
+        capability: None,
+        support: None,
+        authority: None,
+    }
+}
+
 fn capability_condition(
     condition: &str,
     state: ProofState,
@@ -1865,6 +2508,108 @@ fn main() {
         let value: serde_json::Value = serde_json::from_slice(&wire).unwrap();
         assert_eq!(value["recipe"]["name"], "rust-extract-sese-branch-method");
         assert_eq!(value["edits"].as_array().unwrap().len(), 1);
+    }
+
+    fn responsibility_candidates(
+        source: &str,
+    ) -> (tempfile::TempDir, Vec<TransformationCandidate>) {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("split.rs"), source).unwrap();
+        let found = detect_rust_recipes(root.path(), &[PathBuf::from("split.rs")])
+            .unwrap()
+            .into_iter()
+            .filter(|candidate| {
+                candidate.recipe().name() == "rust-split-dependence-cohesive-callable"
+            })
+            .collect();
+        (root, found)
+    }
+
+    #[test]
+    fn responsibility_split_is_one_atomic_compiling_behavior_preserving_edit() {
+        let source = r#"fn run(left: bool, right: bool, v: &mut i32, w: &mut i32) {
+    if left { *v += 1; *v += 2; } else { *v -= 1; *v -= 2; }
+    if right { *w *= 2; *w *= 3; } else { *w += 4; *w += 5; }
+}
+
+fn main() {
+    for (left, right, seed) in [(false, false, -2), (false, true, 0), (true, false, 3), (true, true, 5)] {
+        let mut v = seed;
+        let mut w = seed + 1;
+        run(left, right, &mut v, &mut w);
+        println!("{left}:{right}:{seed}:{v}:{w}");
+    }
+}
+"#;
+        let (root, found) = responsibility_candidates(source);
+        assert_eq!(responsibility_split_recipe().unwrap().fixtures().len(), 4);
+        assert_eq!(found.len(), 1);
+        let candidate = &found[0];
+        assert_eq!(candidate.edits().len(), 1);
+        let wire = serde_json::to_value(candidate).unwrap();
+        let decoded = serde_json::from_value::<TransformationCandidate>(wire.clone()).unwrap();
+        assert_eq!(&decoded, candidate);
+        let mut promoted = wire;
+        promoted["disposition"] = serde_json::json!("automatic");
+        assert!(serde_json::from_value::<TransformationCandidate>(promoted).is_err());
+        let edit = &candidate.edits()[0];
+        assert_eq!(edit.after.matches("fn __deslop_extract_branch_").count(), 2);
+        assert_eq!(edit.after.matches("__deslop_extract_branch_").count(), 4);
+        assert_eq!(
+            candidate
+                .expected_delta()
+                .changes
+                .iter()
+                .filter(|change| change.kind == GraphChangeKind::Modify)
+                .count(),
+            2
+        );
+        let results = candidate
+            .required_results()
+            .iter()
+            .map(|result| (result.condition.as_str(), result.state))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            results[REQUIRED_RESPONSIBILITY_CLUSTERS],
+            ProofState::Proven
+        );
+        assert_eq!(results[REQUIRED_CLUSTER_FRONTIERS], ProofState::Unknown);
+        assert_eq!(results[REQUIRED_CLUSTER_SIGNATURES], ProofState::Proven);
+
+        let before = compile_and_run(root.path(), "split-before.rs", source);
+        let mut rewritten = source.to_string();
+        rewritten.replace_range(edit.span.start_byte..edit.span.end_byte, &edit.after);
+        let after = compile_and_run(root.path(), "split-after.rs", &rewritten);
+        assert_eq!(before, after);
+        assert_eq!(
+            String::from_utf8(before).unwrap(),
+            "false:false:-2:-5:8\nfalse:true:0:-3:6\ntrue:false:3:6:13\ntrue:true:5:8:36\n"
+        );
+        fs::write(root.path().join("split.rs"), &rewritten).unwrap();
+        assert!(
+            detect_rust_recipes(root.path(), &[PathBuf::from("split.rs")])
+                .unwrap()
+                .iter()
+                .all(|next| next.recipe().name() != "rust-split-dependence-cohesive-callable")
+        );
+    }
+
+    #[test]
+    fn responsibility_split_rejects_non_clusters_numerically() {
+        let cases = [
+            "fn run(a: bool, v: &mut i32) { if a { *v += 1; *v += 2; } else { *v -= 1; *v -= 2; } }",
+            "fn run(a: bool, b: bool, v: &mut i32) { if a { *v += 1; } else { *v -= 1; } if b { *v += 2; } else { *v -= 2; } }",
+            "fn one() {} fn two() {} fn run(a: bool, b: bool) { if a { one(); two(); } if b { one(); two(); } }",
+            "fn run<T>(a: bool, b: bool, v: &mut T) { if a { one(); two(); } if b { one(); two(); } } fn one() {} fn two() {}",
+            "fn run(a: bool, b: bool, v: &mut i32) { if a { *v += 1; *v += 2; if b { *v += 3; *v += 4; } } else { *v -= 1; *v -= 2; } }",
+        ];
+        assert_eq!(
+            cases
+                .iter()
+                .map(|source| responsibility_candidates(source).1.len())
+                .collect::<Vec<_>>(),
+            vec![0; 5]
+        );
     }
 
     #[test]

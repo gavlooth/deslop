@@ -3691,3 +3691,41 @@ focused language/parser/recipe/protocol/CLI tests, and the full workspace test/b
 The installed CLI was replaced at 2026-07-15T14:41:41+02:00; its production-module selector smoke completed with
 an empty work-order array and no abstention error. Proceed to M5.13 dependence-cohesion/action-cluster callable
 splits. Retain mutation and exception absence as Unknown until complete retained DefUse/Effects authority exists.
+
+## 2026-07-15 — M5.13 dependence-cohesive callable splits
+
+Active hypothesis: a callable split needs at least two independently nameable action clusters, not merely many
+lines or adjacent statements. Build the first exact Rust boundary from one free callable containing two or more
+direct-body branch SESE regions that independently satisfy the M5.12 extraction frontier. Each branch is an action
+cluster only when its retained region points map to a non-trivial internally connected PDG component; cluster point
+sets must be disjoint, and retained Flow edges must not cross clusters. Emit one atomic transaction that introduces
+one private helper per cluster and replaces all selected branch sites in the original callable in source order.
+
+Current approach: reuse the exact M5.12 input/output/ownership renderer and signature constraints, add a callable-
+level cluster evidence model (region, action nodes, internal dependence edges, crossing edges, and completeness),
+and distinguish Proven cluster membership from Unknown cross-cluster independence when production DefUse/LocalPdg
+authority is partial. Require at least two actions per cluster, unique helper names, no overlapping replacements,
+and a compiling combined rewrite. Keep the recipe review-only and require build, graph-delta, parse, and test gates.
+
+Validation path: a two-branch callable produces one multi-helper transaction; generated code compiles and matches
+before/after behavior over a numerical matrix; one branch, trivial/single-action clusters, interleaved dependence,
+cross-cluster Flow, unsupported signatures, nested clusters, and helper collisions abstain; strict wire, isolated
+rebuild, project/CLI selector, and apply rejection pass; then focused and terminal workspace gates.
+
+Negative-memory constraints: do not use method length, statement adjacency, identifier-name similarity, or call
+spelling as responsibility evidence; do not call singleton/no-edge groups cohesive; do not emit separate overlapping
+transactions for one callable split; do not claim independence from absent production Flow edges; do not compose
+stale byte edits in ascending order; do not weaken any M5.12 signature or boundary constraint.
+
+Agent assignment: `/root` owns cluster semantics, combined rendering, integration, validation, and terminal
+evidence. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: one strict candidate contains at least two retained non-trivial action clusters and one atomic
+multi-helper edit whose compiled execution matches the original behavior matrix.
+
+Terminal result: M5.13 passed the four-case compiled behavior matrix, five zero-candidate near misses, strict wire
+and isolated rebuild checks, full recipe/CLI integration, and the workspace test/build/rustdoc/clippy/fmt/diff gate.
+The installed CLI was replaced at 2026-07-15T15:03:33+02:00; its positive selector smoke emitted exactly one
+candidate with one atomic edit and two helpers. Proceed to M5.14 safe merge/inline of over-fragmented single-use
+helpers. Retain action-core connectivity separately from the SESE merge boundary, and keep cross-frontier absence
+Unknown while production DefUse/LocalPdg authority is partial.

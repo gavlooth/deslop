@@ -11189,3 +11189,69 @@ cohesion and action clusters. Do not treat syntactic action adjacency or size al
 schema and lowering, extract-method recipe/public evidence, and CLI recipe integration tests.
 
 Signature: Codex `/root` — M5.12 terminal owner
+
+## 2026-07-15T15:00:18+02:00 — M5.13 focused dependence-cohesive split checkpoint
+
+**Objective/target:** detect a multi-responsibility callable only from retained non-trivial action clusters, and
+emit one exact atomic multi-helper transaction rather than overlapping per-branch suggestions.
+
+**Changes:** added `rust-split-dependence-cohesive-callable`. The bounded Rust shape is one free callable with two
+through four direct-body branch SESE regions, each satisfying the M5.12 exact signature frontier and containing at
+least four action statements. A cluster action core must contain at least three PDG nodes joined as one connected
+component by retained internal Control/Flow edges. Full computation frontiers must be disjoint; any overlap or
+retained crossing Flow edge suppresses the proposal. One callable replacement prepends one byte-unique private
+helper per cluster and replaces all selected sites in descending byte order. Inputs, outputs, ownership modes,
+object-state evidence, cluster edges, full frontiers, and graph deltas are retained. Incomplete production DefUse/
+LocalPdg keeps cross-cluster independence Unknown and the recipe review-only.
+
+**Commands/results:** focused responsibility tests passed 2. The positive produced one edit, two helpers, two graph
+modifications, Proven action-core membership/signatures, and Unknown frontier independence. Its compiled four-case
+before/after matrix matched exactly: `false:false:-2:-5:8`, `false:true:0:-3:6`, `true:false:3:6:13`, and
+`true:true:5:8:36`. Five non-cluster shapes each produced zero candidates. Strict candidate round-trip and illegal
+automatic-promotion rejection passed; the rewritten source did not recursively re-split. The full recipe crate
+passed 41 tests with one existing release-corpus ignore; all 9 CLI recipe tests passed; focused all-target clippy
+with `-D warnings`, formatting, and diff checks passed. Full workspace terminal gates have not yet run.
+
+**Failure modes/invalidations:** requiring every SESE region point to belong to one connected PDG component falsely
+rejected valid clusters because the exact merge boundary is intentionally outside the control-dependent action
+core. Cohesion now requires the non-trivial edge-induced action core to be connected while the full frontier remains
+separately disjoint/crossing-checked. Flattening signatures from multiple clusters initially duplicated identical
+input evidence and violated canonical candidate ordering; evidence is now sorted and deduplicated. A minimum-action
+guard was briefly inserted in the single-branch M5.12 detector by broad patch context; it was moved to the M5.13
+detector before verification. Direct call-only branches remain conservative CFG and do not fabricate clusters.
+
+**Recommendation/checkpoint:** run terminal workspace gates. If they pass, mark M5.13 terminal, replace the
+installed CLI, persist the action-core versus merge-boundary lesson, and proceed to M5.14 safe single-use helper
+merge/inline detection.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/SESSION_REPORT.md`, extract-method/responsibility recipe and public
+evidence, production project dispatch, CLI selector allowlist, and CLI recipe tests.
+
+Signature: Codex `/root` — M5.13 integration and verification owner
+
+## 2026-07-15T15:03:33+02:00 — M5.13 terminal dependence-cohesive callable split
+
+**Objective/target:** close the bounded callable-split detector with terminal workspace evidence and install the
+new production selector.
+
+**Terminal result:** `cargo test --workspace --all-features` passed without failures and retained the same three
+explicit ignores: the CLI slow self-scan probe, parse latency/memory probe, and 2,000-case release recipe corpus.
+Workspace build, rustdoc with `-D warnings`, all-feature/all-target clippy with `-D warnings`, formatting, and diff
+checks passed. `cargo install --path crates/deslop-cli --all-features --force` replaced
+`/home/christos/.cargo/bin/deslop`. The installed `rust-split-dependence-cohesive-callable` positive smoke emitted
+exactly one candidate containing one atomic edit and two private helpers.
+
+**Current authority:** retained Control dependence proves each bounded branch action core is non-trivial and
+connected. Exact CST and M5.12 signature inference prove the helpers compile for the accepted frontier. Full
+computation frontiers are observed disjoint with no retained crossing Flow, but production DefUse/LocalPdg gaps
+mean absence of an unretained crossing remains Unknown. The selector is `SafeWithPrecondition`, `ReviewRequired`,
+and cannot enter automatic apply. Existing `deslop mcp` processes must restart to load the replaced executable.
+
+**Recommendation/checkpoint:** proceed to M5.14 safe merge/inline of over-fragmented single-use helpers. Require
+exact call binding, one use, compatible visibility/signature, and preserved evaluation/drop/exit/effect behavior;
+do not infer a callee from spelling or inline merely because a helper is small.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`, extract-method/responsibility
+recipe and public evidence, production project dispatch, CLI selector allowlist, and CLI recipe tests.
+
+Signature: Codex `/root` — M5.13 terminal owner

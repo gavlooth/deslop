@@ -540,6 +540,61 @@ fn extract_method_reports_exact_compiling_edit_and_cannot_apply() {
 }
 
 #[test]
+fn responsibility_split_reports_one_atomic_multi_helper_workorder() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("split.rs");
+    let orders_path = root.path().join("split-orders.json");
+    let original = "fn run(left: bool, right: bool, v: &mut i32, w: &mut i32) {\n\
+                    \x20   if left { *v += 1; *v += 2; } else { *v -= 1; *v -= 2; }\n\
+                    \x20   if right { *w *= 2; *w *= 3; } else { *w += 4; *w += 5; }\n\
+                    }\n";
+    fs::write(&source, original).unwrap();
+
+    let detected = deslop()
+        .args([
+            "recipes",
+            "detect",
+            "split.rs",
+            "--root",
+            root.path().to_str().unwrap(),
+            "--recipe",
+            "rust-split-dependence-cohesive-callable",
+            "--format",
+            "workorders",
+            "--output",
+            orders_path.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(detected.status.success(), "{:?}", detected.stderr);
+    let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
+    assert_eq!(orders.len(), 1);
+    let candidate = &orders[0]["candidate"];
+    assert_eq!(
+        candidate["recipe"]["name"],
+        "rust-split-dependence-cohesive-callable"
+    );
+    assert_eq!(candidate["disposition"], "review-required");
+    assert_eq!(candidate["edits"].as_array().unwrap().len(), 1);
+    let after = candidate["edits"][0]["after"].as_str().unwrap();
+    assert_eq!(after.matches("fn __deslop_extract_branch_").count(), 2);
+    for (condition, state) in [
+        ("multiple-dependence-cohesive-action-clusters", "proven"),
+        ("disjoint-action-cluster-frontiers", "unknown"),
+        ("exact-action-cluster-signatures", "proven"),
+    ] {
+        assert!(
+            candidate["required_results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|result| result["condition"] == condition && result["state"] == state),
+            "missing {condition}={state}"
+        );
+    }
+}
+
+#[test]
 fn recipe_cli_is_disabled_by_default_and_canary_rolls_back_live_failure() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("fixture.rs");
