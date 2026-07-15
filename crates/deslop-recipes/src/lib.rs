@@ -4,6 +4,7 @@ mod branch_terminal;
 mod condition_merge;
 mod contract;
 mod evaluation;
+mod extract_method;
 mod guard_clause;
 mod impact;
 mod project;
@@ -41,6 +42,10 @@ pub use evaluation::{
     RecipeEvaluationCorpusManifest, RecipeEvaluationError, RecipeEvaluationReport,
     RecipeEvaluationThresholdResults, RecipeEvaluationTotals, evaluate_recipe_observations,
     frozen_unreachable_rust_cases, frozen_unreachable_rust_manifest,
+};
+pub use extract_method::{
+    ExtractMethodRecipeError, ExtractionSliceEvidence, detect_extract_method_candidates,
+    extract_method_recipe,
 };
 pub use guard_clause::{
     GuardClauseExitEvidence, GuardClauseRecipeError, detect_guard_clause_inversions,

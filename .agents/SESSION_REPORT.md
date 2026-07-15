@@ -11048,3 +11048,70 @@ SESE regions and complete computation/object-state slices. No migration or cache
 integration, CLI selectors, and CLI recipe tests.
 
 Signature: Codex `/root` — M5.9/M5.10 integration and verification owner
+
+## 2026-07-15T14:03:30+02:00 — M5.11 focused extraction checkpoint
+
+**Objective/target:** implement a real extract-method candidate from retained SESE and slice evidence without
+pretending the still-open M5.12 full signature matrix already exists.
+
+**Changes:** added `rust-extract-sese-branch-method` in the FunctionExpression family. The accepted Rust boundary
+is an exact direct function-body `if` statement whose CFG entry belongs to a retained branch SESE region. The
+transaction replaces the complete callable node with a uniquely byte-derived private sibling helper plus the
+original callable containing an exact helper call. It accepts only free, non-generic synchronous functions with
+simple primitive/reference parameters, no prior local declaration, at least two selected actions, and no abrupt,
+try, suspension, macro, attribute, unsafe, closure, recovery, outer-attribute, or helper-collision boundary. Owned
+parameters and nested branches abstain. Generated helper functions are not recursively re-extracted.
+
+**Graph/slice evidence:** each candidate retains the exact ControlRegions entity; the PDG computation closure from
+all region points under bidirectional Flow edges; object-state DataFlow boundaries/effects inside the region; every
+touching retained flow edge; expected modify/preserve graph changes; and capability-tagged counter-authority.
+Slice completeness becomes Proven only when DataFlow and LocalPdg coverage are Complete, typed PDG gaps are empty,
+and DefUse, Effects, and LocalPdg are Provided with authority. Current production Rust projection remains Partial,
+so its exact compiling proposals are SafeWithPrecondition review work orders and cannot enter automatic apply.
+
+**Commands/results:** focused recipe tests passed 38 with the existing designated release corpus ignore; protocol
+recipe tests passed 3; all 8 CLI recipe tests passed. The new five-test recipe set measured one positive candidate,
+one strict edit, at least five preserved slice entities, stable isolated rebuild identity, seven near-miss counts of
+zero, and a generated `rustc --crate-type lib --edition 2024` compile. Focused all-target all-feature clippy with
+`-D warnings`, formatting, and diff checks passed. Full workspace terminal gates have not yet run.
+
+**Failure modes/invalidations:** an evidence-only proposal is invalid because the transformation contract requires
+an exact edit. A placeholder call or missing signature was therefore rejected in favor of a bounded compiling
+transaction. The first candidate wire incorrectly attached ControlRegions and DataFlow entities to the
+ProgramDependence-layer slice condition; strict validation rejected it, and slice-condition evidence now contains
+only PDG nodes/flow edges while region and object-state evidence remain in their exact layers. Hindsight search mode
+`semantic` is unsupported on the shared server; omit mode and accept graph traversal. Production absence of retained
+flow edges is not treated as a complete slice.
+
+**Recommendation/checkpoint:** run the full workspace terminal gates. If they pass, mark M5.11 terminal, replace the
+installed CLI, and proceed to M5.12 exact inputs/outputs/mutations/exits/exceptions/captures/async/ownership.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-recipes/src/extract_method.rs`, recipe lib/project integration, CLI selector, and CLI recipe tests.
+
+Signature: Codex `/root` — M5.11 integration and verification owner
+
+## 2026-07-15T14:06:30+02:00 — M5.11 terminal extraction candidate
+
+**Objective/target:** close M5.11 with terminal workspace evidence and install the resulting production selector.
+
+**Terminal result:** `cargo test --workspace --all-features` passed without failures and retained the same three
+explicit ignores: the CLI slow self-scan probe, the parse latency/memory probe, and the 2,000-case release recipe
+corpus. Workspace build, rustdoc with `-D warnings`, all-feature/all-target clippy with `-D warnings`, formatting,
+and diff checks passed. `cargo install --path crates/deslop-cli --all-features --force` replaced
+`/home/christos/.cargo/bin/deslop` at 14:06:30 +02:00. The installed `rust-extract-sese-branch-method` smoke selected
+and analyzed `crates/deslop-recipes/src/extract_method.rs` with zero candidates and zero abstentions.
+
+**Current authority:** M5.11 is terminal for the bounded compiling Rust transaction. Complete retained
+DefUse/Effects/LocalPdg can prove its computation/object-state slice; current production Rust capability gaps remain
+explicit Unknown and keep emitted candidates review-only. M5.12 remains responsible for the full exact signature
+surface and must not reinterpret M5.11's parameter-frontier signature as minimal used-input inference.
+
+**Recommendation/checkpoint:** proceed to M5.12 exact extraction inputs, outputs, mutations, exits, exceptions,
+captures, and async/ownership constraints. No migration or cache clear is required. Existing `deslop mcp` processes
+must restart to load the replaced executable.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-recipes/src/extract_method.rs`, recipe lib/project integration, CLI selector, and CLI recipe tests.
+
+Signature: Codex `/root` — M5.11 terminal owner

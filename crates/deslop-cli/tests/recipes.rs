@@ -444,6 +444,84 @@ fn terminal_branch_recipes_report_graph_evidence_and_cannot_apply() {
 }
 
 #[test]
+fn extract_method_reports_exact_compiling_edit_and_cannot_apply() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("extract.rs");
+    let orders_path = root.path().join("extract-orders.json");
+    let original = "fn run(flag: bool, value: &mut i32) {\n\
+                    \x20   if flag {\n\
+                    \x20       *value += 1;\n\
+                    \x20       *value += 2;\n\
+                    \x20   } else {\n\
+                    \x20       *value -= 1;\n\
+                    \x20       *value -= 2;\n\
+                    \x20   }\n\
+                    }\n";
+    fs::write(&source, original).unwrap();
+
+    let detected = deslop()
+        .args([
+            "recipes",
+            "detect",
+            "extract.rs",
+            "--root",
+            root.path().to_str().unwrap(),
+            "--recipe",
+            "rust-extract-sese-branch-method",
+            "--format",
+            "workorders",
+            "--output",
+            orders_path.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(detected.status.success(), "{:?}", detected.stderr);
+    let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
+    assert_eq!(orders.len(), 1);
+    let candidate = &orders[0]["candidate"];
+    assert_eq!(
+        candidate["recipe"]["name"],
+        "rust-extract-sese-branch-method"
+    );
+    assert_eq!(candidate["disposition"], "review-required");
+    assert_eq!(candidate["safety"], "safe-with-precondition");
+    assert_eq!(candidate["edits"].as_array().unwrap().len(), 1);
+    let after = candidate["edits"][0]["after"].as_str().unwrap();
+    assert!(after.starts_with("fn __deslop_extract_branch_"));
+    assert!(after.contains("(flag, value);"));
+    assert!(
+        candidate["required_results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(
+                |result| result["condition"] == "complete-computation-object-state-slice"
+                    && result["state"] == "unknown"
+            )
+    );
+
+    let rejected = deslop()
+        .args([
+            "recipes",
+            "apply",
+            "--root",
+            root.path().to_str().unwrap(),
+            "--workorders",
+            orders_path.to_str().unwrap(),
+            "--build-cmd",
+            "true",
+            "--test-cmd",
+            "true",
+            "--canary",
+        ])
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("is not automatic"));
+    assert_eq!(fs::read_to_string(source).unwrap(), original);
+}
+
+#[test]
 fn recipe_cli_is_disabled_by_default_and_canary_rolls_back_live_failure() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("fixture.rs");

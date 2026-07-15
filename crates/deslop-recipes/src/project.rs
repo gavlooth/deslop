@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     TransformationCandidate, detect_adjacent_condition_merges, detect_equivalent_branch_fragments,
-    detect_exhaustive_chain_matches, detect_guard_clause_inversions,
-    detect_independent_branch_splits, detect_literal_dead_arms,
+    detect_exhaustive_chain_matches, detect_extract_method_candidates,
+    detect_guard_clause_inversions, detect_independent_branch_splits, detect_literal_dead_arms,
     detect_unreachable_literal_statements,
 };
 
@@ -159,6 +159,7 @@ fn detect_projection_recipes(
     candidates.extend(detect_guard_clause_inversions(projection)?);
     candidates.extend(detect_literal_dead_arms(projection)?);
     candidates.extend(detect_exhaustive_chain_matches(projection)?);
+    candidates.extend(detect_extract_method_candidates(projection)?);
     candidates.sort_by(|left, right| left.id().cmp(right.id()));
     Ok(candidates)
 }

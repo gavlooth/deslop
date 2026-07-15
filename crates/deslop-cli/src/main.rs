@@ -703,6 +703,7 @@ fn detect_recipes(args: RecipeDetectArgs) -> Result<()> {
             | "rust-invert-guard-clause"
             | "rust-remove-literal-dead-arm"
             | "rust-convert-exhaustive-chain-to-match"
+            | "rust-extract-sese-branch-method"
     ) {
         bail!("unknown production recipe `{}`", args.recipe);
     }

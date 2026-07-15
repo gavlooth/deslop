@@ -533,7 +533,13 @@ reports, benchmark records, and work orders.
 
 ### Functions and expressions
 
-- [ ] M5.11 Generate extract-method candidates from SESE regions and complete computation/object-state slices.
+- [x] M5.11 Generate extract-method candidates from SESE regions and complete computation/object-state slices.
+  `rust-extract-sese-branch-method` now emits one exact compiling helper transaction for bounded direct-body Rust
+  branch regions: free non-generic synchronous functions, primitive/reference parameter frontier, no prior locals,
+  and no abrupt/suspending/macro/unsafe/capture boundary. Candidates retain the exact SESE entity, bidirectional
+  flow-closed computation slice, region object-state boundaries/effects, touching flow edges, and expected graph
+  changes. Slice completeness is Proven only with Complete authoritative DefUse/Effects/LocalPdg and no typed gap;
+  current production gaps keep candidates review-only. Generated helpers do not recursively re-extract.
 - [ ] M5.12 Infer exact extraction inputs, outputs, mutations, exits, exceptions, captures, and async/ownership constraints.
 - [ ] M5.13 Detect multi-responsibility callable splits from dependence cohesion/action clusters.
 - [ ] M5.14 Detect safe merge/inline of over-fragmented single-use helpers.

@@ -3610,3 +3610,43 @@ evidence. No sub-agent was requested, so no delegation is active.
 
 Next checkpoint: pass full workspace gates, replace the installed CLI, record the terminal report, then proceed
 to M5.11 extract-method candidates from SESE regions and complete slices.
+
+## 2026-07-15 — M5.11 bounded Rust extract-method candidate
+
+Active hypothesis: an extraction candidate is only useful when its exact edit parses and can build. The candidate
+contract forbids evidence-only proposals, while full M5.12 signature inference is intentionally still open. M5.11
+will therefore implement a real bounded Rust transaction: a direct function-body `if` statement backed by a
+retained branch SESE region is moved into a uniquely named private sibling helper, and the original statement is
+replaced by an exact call. The accepted signature shape is deliberately exact: free, non-generic synchronous Rust
+functions; simple identifier parameters with concrete primitive/reference types; no prior local declarations;
+and no return/break/continue/try/await/yield, macro, attribute, unsafe, closure, or recovered syntax in the selected
+region. Every accepted parameter is copied or reborrowed into the helper, so the generated edit is complete for
+this boundary rather than a placeholder for M5.12.
+
+Current approach: bind each proposal to the exact structured branch region, its retained CFG points, the PDG nodes
+inside that region, all flow edges touching that slice, and explicit input/object-state parameter evidence. Slice
+closure is Proven only under Complete DataFlow and LocalPdg authority with no typed PDG gap; production's current
+scope/DefUse/Effects limitation remains visible as Unknown and forces review. Exact CST signature shape may be
+Proven independently, but never upgrades semantic slice authority or automatic disposition.
+
+Validation path: four fixture roles; direct-body/SESE and minimum-action positives; nested/non-SESE, prior-local,
+generic, abrupt, async/ownership, macro, and name-collision negatives; exact replacement parse; compile a generated
+positive edit; retained slice/entity counts; strict candidate wire; isolated rebuild identity; project/CLI selector
+integration and apply rejection; focused tests/clippy/fmt/diff; then full workspace test/build/rustdoc/clippy/fmt/diff.
+
+Negative-memory constraints: do not call a stable region key sufficient extraction authority; do not treat closure
+over retained PDG edges as proof that missing DefUse edges do not exist; do not emit a placeholder or uncompilable
+helper; do not infer local inputs from bare identifier spelling; do not move abrupt exits across a callable boundary;
+do not pass owned parameters by value; do not claim M5.12 complete from the bounded parameter-only signature.
+
+Agent assignment: `/root` owns design, implementation, integration, validation, and terminal evidence. No sub-agent
+was requested, so no delegation is active.
+
+Next checkpoint: focused recipe and CLI tests demonstrate an exact compiling extraction plus conservative rejection;
+then run terminal gates, replace the installed CLI, and record M5.11 before proceeding to M5.12.
+
+Terminal result: M5.11 passed all focused and full workspace gates. The installed CLI was replaced at
+2026-07-15T14:06:30+02:00 and its new selector analyzed the production extraction module with one selected/one
+analyzed file, zero candidates, and zero abstentions. Proceed to M5.12; retain the bounded M5.11 frontier as the
+compiling baseline while adding exact used inputs, outputs, mutations, exits, exceptions, captures, and
+async/ownership constraints.
