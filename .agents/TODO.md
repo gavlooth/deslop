@@ -521,11 +521,15 @@ reports, benchmark records, and work orders.
   are flattened; comments, let conditions, tail-valued branches, non-direct exits, and conservative paths
   abstain. Production DefUse/Effects gaps keep scope, lifetime, drop, and effect obligations `Unknown`, so
   candidates are `SafeWithPrecondition` review work orders and cannot enter automatic apply.
-- [ ] M5.9 Detect dead arms and exhaustive chain-to-match/table candidates.
-- [ ] M5.10 Emit before/after graph evidence and counter-evidence for every branch candidate. M5.5-M5.8 slices
-  complete: factoring, adjacent-condition, dependence-split, and guard-inversion candidates expose retained
-  dispatch/slice/PST/exit entities, expected after graph changes, and capability-tagged counter-evidence. Keep
-  the global item open until M5.9 uses the same evidence boundary.
+- [x] M5.9 Detect dead arms and exhaustive chain-to-match/table candidates. Exact Rust `true`/`false` branches
+  with explicit block arms now produce selected-block dead-arm reviews when the discarded tree has no comment,
+  attribute, or macro boundary. Two-to-six `==` comparisons over one identifier, distinct literal/qualified-path
+  cases, and an explicit fallback now produce one final-wildcard match-table review. Rust match lowering now
+  retains exact case/default CFG edges for unguarded final-wildcard forms; guarded or non-wildcard exhaustiveness
+  stays conservative. Production type/DefUse/Effects gaps keep both recipes review-only.
+- [x] M5.10 Emit before/after graph evidence and counter-evidence for every branch candidate. M5.5-M5.9 now all
+  expose retained dispatch, slice, PST, exit, selected/dead-arm, and match-table entities; expected modify/remove/
+  preserve deltas; and capability-tagged control, scope, equality, effect, and non-structured counter-evidence.
 
 ### Functions and expressions
 

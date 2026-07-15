@@ -1,5 +1,6 @@
 mod branch;
 mod branch_split;
+mod branch_terminal;
 mod condition_merge;
 mod contract;
 mod evaluation;
@@ -15,6 +16,11 @@ pub use branch::{
 pub use branch_split::{
     ActionDependenceSlice, BranchSplitDependenceEvidence, BranchSplitRecipeError,
     detect_independent_branch_splits, independent_branch_split_recipe,
+};
+pub use branch_terminal::{
+    DeadArmGraphEvidence, ExhaustiveChainGraphEvidence, TerminalBranchRecipeError,
+    detect_exhaustive_chain_matches, detect_literal_dead_arms, exhaustive_chain_to_match_recipe,
+    literal_dead_arm_recipe,
 };
 pub use condition_merge::{
     ConditionMergeRecipeError, adjacent_condition_merge_recipe, detect_adjacent_condition_merges,

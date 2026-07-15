@@ -701,6 +701,8 @@ fn detect_recipes(args: RecipeDetectArgs) -> Result<()> {
             | "rust-merge-adjacent-conditions"
             | "rust-split-independent-branch-actions"
             | "rust-invert-guard-clause"
+            | "rust-remove-literal-dead-arm"
+            | "rust-convert-exhaustive-chain-to-match"
     ) {
         bail!("unknown production recipe `{}`", args.recipe);
     }

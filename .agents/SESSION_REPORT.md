@@ -10995,3 +10995,56 @@ to M5.9 from exact reachability and exhaustiveness evidence. No migration or cac
 `crates/deslop-recipes/src/guard_clause.rs`, recipe lib/project integration, CLI selector, and CLI recipe tests.
 
 Signature: Codex `/root` — M5.8 integration and verification owner
+
+## 2026-07-15T13:42:14+02:00 — M5.9 terminal branches and M5.10 evidence closure
+
+**Objective/target:** proceed from terminal M5.8 through M5.9, close the shared M5.10 before/after/counter-
+evidence boundary, and leave M5.11 as the next item.
+
+**Changes:** added `rust-remove-literal-dead-arm` and `rust-convert-exhaustive-chain-to-match`. Literal dead-arm
+detection accepts exact Rust `true`/`false` predicates with two explicit block arms and no comment, attribute, or
+macro boundary; the selected block replaces the full expression. Exhaustive-chain detection accepts two through
+six distinct literal/qualified-path `==` cases over one identifier plus an explicit block fallback; it emits one
+match-table expression with a unique final `_` arm. Added public graph evidence, expected graph deltas, project/
+CLI integration, four-role/rebuild/wire tests, and apply rejection for both selectors.
+
+**Cross-layer completion:** the retained adapter schema already declared `ControlFlowAction::Match`, but the
+shared traversal previously emitted one conservative leaf. Implemented exact unguarded match lowering with one
+branch dispatch, typed case/default edges, merge joining, and abrupt-exit propagation. A unique final wildcard is
+the only syntax-level exact exhaustiveness proof. Missing wildcard coverage receives a conservative default edge;
+guarded arms remain conservative. Case labels escape control characters before strict wire validation. Generated
+chain replacements now rebuild into the same graph contract they claim.
+
+**Authority/safety:** literal predicate outcome, selected bytes, shared subject/cases, explicit fallback, generated
+final-wildcard shape, exact current dispatches, and retained PST points are recorded. Complete PST is Proven and
+partial PST stays Unknown. Production type, DefUse, and Effects remain Unknown, so compile-time effects in deleted
+syntax, overloaded `PartialEq` versus pattern semantics, one-time subject move/borrow/drop behavior, and comparison
+effects/panic/exception/suspension remain explicit Unknown. Both recipes are `SafeWithPrecondition` and
+`ReviewRequired`; automatic apply rejects them even with `--canary`. No array/hash index-table rewrite is emitted:
+without type, indexing, and fallback authority it would be weaker than the exact final-wildcard match table.
+
+**Commands/results:** focused parse control-flow tests passed 17; focused recipes passed 33 with one designated
+release corpus ignore; protocol recipe tests passed 3; all 7 CLI recipe tests passed; strict focused clippy/fmt/
+diff passed. Terminal `cargo test --workspace --all-features` passed without failures and retained the same three
+explicit slow/release ignores. Workspace build, rustdoc with `-D warnings`, all-target clippy with `-D warnings`,
+fmt check, and diff check passed. `cargo install --path crates/deslop-cli --all-features --force` replaced
+`/home/christos/.cargo/bin/deslop` at 13:41:43 +02:00. Installed smokes for both selectors each analyzed one file
+with zero candidates and zero abstentions.
+
+**Failure modes/invalidations:** proposing match before adding exact match CFG lowering was invalid because the
+rewrite could not satisfy its own graph-delta validator; the existing retained Match action was implemented first.
+The old match test correctly failed when the authority reason changed from “unimplemented” to explicit missing-
+wildcard exhaustiveness and was updated with exact wildcard plus guarded/non-wildcard numerical cases. A sort-key
+fallback used `u32::MAX` for a `usize` byte offset and was corrected. Focused clippy rejected an owned `PathBuf`
+comparison in a test; it now compares borrowed paths. Raw case text can contain control characters, so labels are
+escaped rather than allowing valid multiline patterns to violate strict evidence text.
+
+**Recommendation/checkpoint:** M5.9 and M5.10 are terminal. Proceed to M5.11 extract-method candidates only from
+SESE regions and complete computation/object-state slices. No migration or cache clear is required. Existing
+`deslop mcp` processes need restart to load the replaced binary.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-parse/src/control_flow.rs`, `crates/deslop-recipes/src/branch_terminal.rs`, recipe lib/project
+integration, CLI selectors, and CLI recipe tests.
+
+Signature: Codex `/root` — M5.9/M5.10 integration and verification owner

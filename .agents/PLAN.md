@@ -3563,3 +3563,50 @@ sub-agent was requested, so no delegation is active.
 
 Next checkpoint: pass full workspace gates, replace the installed CLI, record the terminal report, then begin
 M5.9 dead-arm and exhaustive chain-to-match/table candidates from exact exhaustiveness and reachability facts.
+
+### M5.9 dead-arm/exhaustive-dispatch and M5.10 terminal branch-evidence checkpoint (2026-07-15)
+
+Active hypothesis: dead-arm deletion and dispatch-table conversion require different proofs. Literal dead arms
+are bounded to exact Rust `true`/`false` predicates with two explicit block arms; the exact selected block replaces
+the whole expression. Exhaustive chains are bounded to two through six `==` comparisons over one identifier,
+distinct literal or qualified-path cases, block bodies, and an explicit final block fallback. The replacement is
+one match-table expression with a unique final `_` arm. Nested alternative roots, duplicate cases, missing
+fallbacks, dynamic subjects, comments, attributes, macros, recovery, and conservative dispatch edges abstain.
+
+Cross-layer completion: the existing language rule contract already declared `ControlFlowAction::Match`, but the
+shared traversal previously emitted one conservative leaf. M5.9 now lowers unguarded match arms into one branch
+dispatch, typed `Case`/`Default` edges, one merge, and exact abrupt propagation. Only a unique final wildcard
+authorizes syntax-level exhaustive coverage. Missing wildcard coverage adds a conservative default edge; guarded
+arms remain conservative. Case labels escape control characters before strict wire validation. This lets the
+generated chain-to-match candidate pass its own graph-rebuild contract rather than proposing an unsupported CFG.
+
+Current authority: literal predicate outcome, selected block bytes, shared chain subject/cases, explicit fallback
+exhaustiveness, generated match shape, exact current dispatches, and retained PST point facts are recorded.
+Complete PST coverage is Proven and partial coverage remains Unknown. Production type, DefUse, and Effects are
+Unknown, so dead-syntax compile effects, overloaded `PartialEq` versus pattern semantics, one-time subject move/
+borrow/drop behavior, and comparison panic/effect behavior remain explicit Unknown. Both recipes are
+`SafeWithPrecondition`/`ReviewRequired`; apply rejects them even under `--canary`.
+
+M5.10 terminal evidence: literal-dead candidates remove the branch dispatch and infeasible arm while preserving
+the selected fragment. Exhaustive-chain candidates modify the outer dispatch into one match table, remove nested
+dispatch representations, and preserve each PST boundary. Required and forbidden results retain all exact
+control facts plus compile-effect, equality/type, move/borrow/drop, effect/exception, and non-structured
+counter-evidence. M5.5-M5.9 now share this evidence boundary, so M5.10 is complete.
+
+Validation path: exact final-wildcard match CFG with case/default and abrupt edges; conservative non-wildcard and
+guarded-match counterexamples; both literal polarities; qualified enum chain; replacement parse and exact graph
+rebuild; dynamic predicate, macro dead arm, missing fallback, and duplicate-case near misses; four fixture roles;
+strict candidate wire; project/CLI integration and apply rejection; parser/recipe/protocol/CLI tests; strict
+clippy/fmt/diff. Full workspace test/build/rustdoc/clippy/fmt/diff remain the terminal checkpoint.
+
+Negative-memory constraints: do not call a CFG arm unreachable merely because syntax contains a literal—the
+literal plus exact branch outcome is the infeasibility proof; do not infer type exhaustiveness without compiler
+authority; do not lower match as exhaustive without a unique final wildcard; do not equate overloaded equality
+with structural pattern selection; do not ignore macros or compile-time effects in deleted syntax; do not grant
+automatic authority from successful parse or graph rebuild.
+
+Agent assignment: `/root` owns match-lowering completion, both detectors, integration, validation, and terminal
+evidence. No sub-agent was requested, so no delegation is active.
+
+Next checkpoint: pass full workspace gates, replace the installed CLI, record the terminal report, then proceed
+to M5.11 extract-method candidates from SESE regions and complete slices.

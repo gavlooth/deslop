@@ -965,6 +965,18 @@ impl<'a> OwnerLowerer<'a> {
                 consequence_field,
                 alternative_field.as_deref(),
             ),
+            ControlFlowAction::Match {
+                subject_field,
+                arm_kind,
+                arm_body_field,
+                guard_field,
+            } => self.lower_match(
+                node,
+                subject_field,
+                arm_kind,
+                arm_body_field.as_deref(),
+                guard_field.as_deref(),
+            ),
             ControlFlowAction::Loop {
                 form,
                 condition_field,
@@ -989,8 +1001,7 @@ impl<'a> OwnerLowerer<'a> {
                 let precision = ControlEdgePrecision::conservative(reason.clone())?;
                 Ok(self.leaf(node, precision))
             }
-            ControlFlowAction::Match { .. }
-            | ControlFlowAction::Exceptional { .. }
+            ControlFlowAction::Exceptional { .. }
             | ControlFlowAction::Suspension { .. }
             | ControlFlowAction::AdapterDefined { .. } => {
                 let reason = format!(
@@ -1025,8 +1036,7 @@ impl<'a> OwnerLowerer<'a> {
                 ControlFlowAction::OpaqueBoundary { reason } => {
                     self.uncertainty.insert(reason.clone());
                 }
-                ControlFlowAction::Match { .. }
-                | ControlFlowAction::Exceptional { .. }
+                ControlFlowAction::Exceptional { .. }
                 | ControlFlowAction::Suspension { .. }
                 | ControlFlowAction::AdapterDefined { .. } => {
                     self.uncertainty.insert(format!(
@@ -1208,6 +1218,120 @@ impl<'a> OwnerLowerer<'a> {
                 node,
                 Some(condition),
                 ControlEdgePrecision::Exact,
+            );
+            merge_reachable = true;
+        }
+        if merge_reachable {
+            exits.push(PendingExit {
+                point: merge,
+                kind: PendingExitKind::Normal,
+                source: node,
+                precision: ControlEdgePrecision::Exact,
+            });
+        }
+        Ok(LoweredFragment {
+            start: dispatch,
+            exits,
+        })
+    }
+
+    fn lower_match(
+        &mut self,
+        node: NodeId,
+        subject_field: &str,
+        arm_kind: &str,
+        arm_body_field: Option<&str>,
+        guard_field: Option<&str>,
+    ) -> Result<LoweredFragment, ControlFlowBuildError> {
+        let subject = required_child(self.analysis, node, subject_field)?;
+        if self.contains_unlowered_control(subject)? {
+            self.uncertainty
+                .insert("nested control in match subject is not lowered yet".into());
+        }
+        let arms = match_arms(self.analysis, node, arm_kind)?;
+        if arms.is_empty() {
+            let reason = "match expression has no retained arms".to_string();
+            self.uncertainty.insert(reason.clone());
+            return Ok(self.leaf(node, ControlEdgePrecision::conservative(reason)?));
+        }
+
+        let mut prepared = Vec::with_capacity(arms.len());
+        for arm in arms {
+            if match_arm_has_guard(self.analysis, arm, guard_field)? {
+                let reason = "guarded match arms are not lowered yet".to_string();
+                self.uncertainty.insert(reason.clone());
+                return Ok(self.leaf(node, ControlEdgePrecision::conservative(reason)?));
+            }
+            let pattern = required_child(self.analysis, arm, "pattern")?;
+            let body = arm_body_field
+                .map(|field| required_child(self.analysis, arm, field))
+                .transpose()?
+                .unwrap_or(arm);
+            prepared.push((arm, pattern, body));
+        }
+        let defaults = prepared
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, pattern, _))| pattern_is_wildcard(self.analysis, *pattern))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        if defaults.len() > 1
+            || defaults
+                .first()
+                .is_some_and(|index| *index + 1 != prepared.len())
+        {
+            let reason = "match wildcard arm must be unique and final".to_string();
+            self.uncertainty.insert(reason.clone());
+            return Ok(self.leaf(node, ControlEdgePrecision::conservative(reason)?));
+        }
+
+        let dispatch = self.push_point(
+            ControlPointKind::Synthetic(ControlSyntheticPointKind::BranchDispatch),
+            Some(node),
+        );
+        let merge = self.push_point(
+            ControlPointKind::Synthetic(ControlSyntheticPointKind::Merge),
+            Some(node),
+        );
+        let mut exits = Vec::new();
+        let mut merge_reachable = false;
+        for (arm, pattern, body) in prepared {
+            let fragment = self.lower(body)?;
+            let pattern_view = self
+                .analysis
+                .node(pattern)
+                .map_err(|error| ControlFlowBuildError::Node(error.to_string()))?;
+            let kind = if pattern_is_wildcard(self.analysis, pattern) {
+                ControlEdgeKind::Branch(ControlBranchKind::Default)
+            } else {
+                ControlEdgeKind::Branch(ControlBranchKind::Case {
+                    label: pattern_view
+                        .text()
+                        .chars()
+                        .flat_map(char::escape_default)
+                        .collect(),
+                })
+            };
+            self.push_edge(
+                dispatch,
+                fragment.start,
+                kind,
+                arm,
+                Some(subject),
+                ControlEdgePrecision::Exact,
+            );
+            merge_reachable |= self.join_branch_exits(fragment.exits, merge, &mut exits);
+        }
+        if defaults.is_empty() {
+            let reason = "match exhaustiveness requires a final wildcard arm".to_string();
+            self.uncertainty.insert(reason.clone());
+            self.push_edge(
+                dispatch,
+                merge,
+                ControlEdgeKind::Branch(ControlBranchKind::Default),
+                node,
+                Some(subject),
+                ControlEdgePrecision::conservative(reason)?,
             );
             merge_reachable = true;
         }
@@ -1608,6 +1732,61 @@ fn named_children(
         }
     }
     Ok(children)
+}
+
+fn match_arms(
+    analysis: &ProjectAnalysis,
+    node: NodeId,
+    arm_kind: &str,
+) -> Result<Vec<NodeId>, ControlFlowBuildError> {
+    let direct = named_children(analysis, node)?;
+    let mut arms = direct
+        .iter()
+        .copied()
+        .filter(|child| {
+            analysis
+                .node(*child)
+                .is_ok_and(|view| view.raw_kind() == arm_kind)
+        })
+        .collect::<Vec<_>>();
+    for child in direct {
+        for nested in named_children(analysis, child)? {
+            if analysis
+                .node(nested)
+                .is_ok_and(|view| view.raw_kind() == arm_kind)
+            {
+                arms.push(nested);
+            }
+        }
+    }
+    arms.sort_by_key(|arm| {
+        analysis
+            .node(*arm)
+            .map(|view| view.span().start_byte())
+            .unwrap_or(usize::MAX)
+    });
+    arms.dedup();
+    Ok(arms)
+}
+
+fn match_arm_has_guard(
+    analysis: &ProjectAnalysis,
+    arm: NodeId,
+    guard_field: Option<&str>,
+) -> Result<bool, ControlFlowBuildError> {
+    if let Some(field) = guard_field
+        && child_by_field(analysis, arm, field)?.is_some()
+    {
+        return Ok(true);
+    }
+    let pattern = required_child(analysis, arm, "pattern")?;
+    Ok(child_by_field(analysis, pattern, "condition")?.is_some())
+}
+
+fn pattern_is_wildcard(analysis: &ProjectAnalysis, pattern: NodeId) -> bool {
+    analysis
+        .node(pattern)
+        .is_ok_and(|view| view.text().trim() == "_")
 }
 
 fn child_by_field(
@@ -3451,10 +3630,42 @@ pub(crate) mod tests {
             2
         );
 
+        let exact_match = production_rust_analysis(
+            "fn run(flag: bool) { match flag { true => return, _ => {} } }\n",
+        );
+        let lowered = lower_control_flow(
+            exact_match,
+            ControlFlowPolicyId::from_parts(&[b"m4.2-production-rust-exact-match/1"]).unwrap(),
+        )
+        .unwrap();
+        let graph = &lowered.projection().unwrap().document().graphs()[0];
+        assert_eq!(graph.coverage().status(), FactCoverage::Complete);
+        assert!(graph.edges().iter().any(|edge| {
+            matches!(
+                edge.kind(),
+                ControlEdgeKind::Branch(ControlBranchKind::Case { label }) if label == "true"
+            )
+        }));
+        assert!(
+            graph.edges().iter().any(|edge| {
+                edge.kind() == &ControlEdgeKind::Branch(ControlBranchKind::Default)
+            })
+        );
+        assert!(
+            graph
+                .edges()
+                .iter()
+                .any(|edge| { edge.kind() == &ControlEdgeKind::Abrupt(ControlAbruptKind::Return) })
+        );
+
         for (source, expected_reason) in [
             (
                 "fn run(flag: bool) { match flag { true => return, false => {} } }\n",
-                "match_expression lowering is retained but not implemented by the shared M4.2 traversal",
+                "match exhaustiveness requires a final wildcard arm",
+            ),
+            (
+                "fn run(flag: bool) { match flag { true if flag => {}, _ => {} } }\n",
+                "guarded match arms are not lowered yet",
             ),
             (
                 "fn run(a: bool, b: bool) { if if a { b } else { false } {} }\n",

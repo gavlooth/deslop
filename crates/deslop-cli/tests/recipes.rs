@@ -366,6 +366,84 @@ fn guard_clause_reports_pst_exit_evidence_and_cannot_apply() {
 }
 
 #[test]
+fn terminal_branch_recipes_report_graph_evidence_and_cannot_apply() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("terminal.rs");
+    let original = "enum Mode { A, B }\n\
+                    fn dead() -> i32 { if true { 1 } else { 2 } }\n\
+                    fn dispatch(mode: Mode) -> i32 {\n\
+                        if mode == Mode::A { 1 } else if mode == Mode::B { 2 } else { 3 }\n\
+                    }\n";
+    fs::write(&source, original).unwrap();
+
+    for (recipe, expected_edit, required_condition) in [
+        (
+            "rust-remove-literal-dead-arm",
+            "{ 1 }",
+            "literal-predicate-outcome-exact",
+        ),
+        (
+            "rust-convert-exhaustive-chain-to-match",
+            "match mode { Mode::A => { 1 }, Mode::B => { 2 }, _ => { 3 } }",
+            "explicit-fallback-exhaustive",
+        ),
+    ] {
+        let orders_path = root.path().join(format!("{recipe}.json"));
+        let detected = deslop()
+            .args([
+                "recipes",
+                "detect",
+                "terminal.rs",
+                "--root",
+                root.path().to_str().unwrap(),
+                "--recipe",
+                recipe,
+                "--format",
+                "workorders",
+                "--output",
+                orders_path.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(detected.status.success(), "{:?}", detected.stderr);
+        let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
+        assert_eq!(orders.len(), 1, "{recipe}");
+        let candidate = &orders[0]["candidate"];
+        assert_eq!(candidate["disposition"], "review-required");
+        assert_eq!(candidate["safety"], "safe-with-precondition");
+        assert_eq!(candidate["edits"][0]["after"], expected_edit);
+        assert!(
+            candidate["required_results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|result| result["condition"] == required_condition
+                    && result["state"] == "proven")
+        );
+
+        let rejected = deslop()
+            .args([
+                "recipes",
+                "apply",
+                "--root",
+                root.path().to_str().unwrap(),
+                "--workorders",
+                orders_path.to_str().unwrap(),
+                "--build-cmd",
+                "true",
+                "--test-cmd",
+                "true",
+                "--canary",
+            ])
+            .output()
+            .unwrap();
+        assert!(!rejected.status.success(), "{recipe}");
+        assert!(String::from_utf8_lossy(&rejected.stderr).contains("is not automatic"));
+        assert_eq!(fs::read_to_string(&source).unwrap(), original);
+    }
+}
+
+#[test]
 fn recipe_cli_is_disabled_by_default_and_canary_rolls_back_live_failure() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("fixture.rs");
