@@ -1,0 +1,1131 @@
+{
+  "schema": "deslop.m10-external-report/1",
+  "report_id": "m10xr1_43b724f17dd62b0f519d256fe4e62fc8582ad2c0908013e0599aefac5cbce3dc",
+  "manifest_id": "m10xp1_a29ec0e82bd39f7b8abe723380fbf113a477016b91adc1116b4afb3bf965599e",
+  "environment": {
+    "os": "linux",
+    "architecture": "aarch64",
+    "tool_versions": {
+      "cargo": "cargo 1.94.0 (85eff7c80 2026-01-15)",
+      "julia": "julia version 1.12.5",
+      "lein": null,
+      "npm": "11.9.0",
+      "python3": "Python 3.12.3"
+    },
+    "checkout_root": "/tmp/deslop-m10-external",
+    "dependency_cache_state": "ambient-user-caches; dependency caches are not isolated; command results are environment-qualified"
+  },
+  "projects": [
+    {
+      "id": "clojure-data-json",
+      "language": "clojure",
+      "size_stratum": "large",
+      "revision": "94463ffb54482427fd9b31f264b06bff6dcfd557",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 16,
+      "source_lines": 2397,
+      "reports_by_language": {
+        "clojure": 8,
+        "generic": 8
+      },
+      "analysis_statuses": {
+        "complete": 16
+      },
+      "findings_by_safety": {
+        "llm-only": 9,
+        "never-auto": 3678,
+        "risky-suggest": 5,
+        "safe-auto": 6
+      },
+      "findings_by_rule": {
+        "config-key-unread": 3678,
+        "consecutive-blank-lines": 6,
+        "duplicate-block": 3,
+        "long-method": 2,
+        "magic-number": 5,
+        "narrating-comment": 2,
+        "near-duplicate": 2
+      },
+      "proposal_eligible_findings": 14,
+      "report_only_findings": 3684,
+      "review_pending_findings": 14,
+      "public_api_files": 6,
+      "generated_files": 0,
+      "test_files": 6,
+      "scan_digest": "blake3:71fd5abfb821c82bc8b686a6b1208b65ef2fe3837e7d244f42fcce0795d6372d",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "lein",
+          "arguments": [
+            "test"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "tool-unavailable",
+        "exit_code": null,
+        "stdout_digest": null,
+        "stderr_digest": null,
+        "diagnostic": "lein is not available on PATH"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "clojure-digest",
+      "language": "clojure",
+      "size_stratum": "medium",
+      "revision": "6366ce792684eaeaab2b61ec3f520378269ed920",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 9,
+      "source_lines": 472,
+      "reports_by_language": {
+        "clojure": 8,
+        "generic": 1
+      },
+      "analysis_statuses": {
+        "complete": 9
+      },
+      "findings_by_safety": {
+        "llm-only": 5,
+        "never-auto": 40,
+        "risky-suggest": 2
+      },
+      "findings_by_rule": {
+        "config-key-unread": 40,
+        "duplicate-block": 3,
+        "magic-number": 2,
+        "narrating-comment": 2
+      },
+      "proposal_eligible_findings": 7,
+      "report_only_findings": 40,
+      "review_pending_findings": 7,
+      "public_api_files": 2,
+      "generated_files": 0,
+      "test_files": 2,
+      "scan_digest": "blake3:c9b62dfbf5706f5361906c247c1edd6c130fed1d6efadefada1fd554534d659c",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "lein",
+          "arguments": [
+            "test"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "tool-unavailable",
+        "exit_code": null,
+        "stdout_digest": null,
+        "stderr_digest": null,
+        "diagnostic": "lein is not available on PATH"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "clojure-medley",
+      "language": "clojure",
+      "size_stratum": "small",
+      "revision": "822981871facb27630dcba03cce2924a34989963",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 8,
+      "source_lines": 1495,
+      "reports_by_language": {
+        "clojure": 6,
+        "generic": 2
+      },
+      "analysis_statuses": {
+        "complete": 8
+      },
+      "findings_by_safety": {
+        "llm-only": 15,
+        "never-auto": 20,
+        "risky-suggest": 1
+      },
+      "findings_by_rule": {
+        "config-key-unread": 20,
+        "duplicate-block": 4,
+        "long-method": 1,
+        "magic-number": 1,
+        "near-duplicate": 10
+      },
+      "proposal_eligible_findings": 16,
+      "report_only_findings": 20,
+      "review_pending_findings": 16,
+      "public_api_files": 1,
+      "generated_files": 0,
+      "test_files": 3,
+      "scan_digest": "blake3:05c25ff7a607b3f14258d94c914cdea5f01faba89a90f33c710fa4b5e2538b78",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "lein",
+          "arguments": [
+            "test"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "tool-unavailable",
+        "exit_code": null,
+        "stdout_digest": null,
+        "stderr_digest": null,
+        "diagnostic": "lein is not available on PATH"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "javascript-chalk",
+      "language": "javascript",
+      "size_stratum": "medium",
+      "revision": "aa06bb5ac3f14df9fda8cfb54274dfc165ddfdef",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 21,
+      "source_lines": 1912,
+      "reports_by_language": {
+        "generic": 2,
+        "javascript": 14,
+        "typescript": 5
+      },
+      "analysis_statuses": {
+        "complete": 21
+      },
+      "findings_by_safety": {
+        "llm-only": 8,
+        "never-auto": 17,
+        "risky-suggest": 7,
+        "safe-with-precondition": 1
+      },
+      "findings_by_rule": {
+        "comment-block": 1,
+        "config-key-unread": 17,
+        "js-loose-equality": 1,
+        "long-method": 3,
+        "magic-number": 7,
+        "near-duplicate": 4
+      },
+      "proposal_eligible_findings": 16,
+      "report_only_findings": 17,
+      "review_pending_findings": 16,
+      "public_api_files": 10,
+      "generated_files": 6,
+      "test_files": 7,
+      "scan_digest": "blake3:96681fc85deb36505ccb20a71f88f8b02ec8eecb513d96a543e8a1ff6791dfda",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "npm",
+          "arguments": [
+            "test"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 127,
+        "stdout_digest": "blake3:cd0edac2ca9f43465618570d711efa434d569c21ce4401475b21afa814b83a02",
+        "stderr_digest": "blake3:1ce98637b4dfd543f634422d8cad9693575a4dcdd3903316294f8d93abc378d4",
+        "diagnostic": "sh: 1: xo: not found\n"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "javascript-p-limit",
+      "language": "javascript",
+      "size_stratum": "small",
+      "revision": "42599ebbbb1228a5bdab381fcf8f4ac20eb8d551",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 7,
+      "source_lines": 1145,
+      "reports_by_language": {
+        "generic": 1,
+        "javascript": 4,
+        "typescript": 2
+      },
+      "analysis_statuses": {
+        "complete": 7
+      },
+      "findings_by_safety": {
+        "llm-only": 6,
+        "never-auto": 9,
+        "risky-suggest": 4
+      },
+      "findings_by_rule": {
+        "config-key-unread": 9,
+        "long-method": 1,
+        "magic-number": 4,
+        "narrating-comment": 3,
+        "near-duplicate": 2
+      },
+      "proposal_eligible_findings": 10,
+      "report_only_findings": 9,
+      "review_pending_findings": 10,
+      "public_api_files": 1,
+      "generated_files": 0,
+      "test_files": 2,
+      "scan_digest": "blake3:9b63e9789e628e9e4149070bf8a9308a7d4cbc7162e1a3babbefd2ad365eedbc",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "npm",
+          "arguments": [
+            "test"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 127,
+        "stdout_digest": "blake3:db8c5a26e393a5136186be3f8fcb55902529e89b7796402efe85dc7a4b151e75",
+        "stderr_digest": "blake3:1ce98637b4dfd543f634422d8cad9693575a4dcdd3903316294f8d93abc378d4",
+        "diagnostic": "sh: 1: xo: not found\n"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "javascript-qs",
+      "language": "javascript",
+      "size_stratum": "large",
+      "revision": "3a890d4ecd3deb72a45d90be36f4f8c5970467c7",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 19,
+      "source_lines": 5869,
+      "reports_by_language": {
+        "generic": 10,
+        "javascript": 9
+      },
+      "analysis_statuses": {
+        "complete": 19
+      },
+      "findings_by_safety": {
+        "llm-only": 90,
+        "never-auto": 82,
+        "risky-suggest": 6,
+        "safe-with-precondition": 409
+      },
+      "findings_by_rule": {
+        "comment-block": 3,
+        "config-key-unread": 82,
+        "duplicate-block": 19,
+        "js-loose-equality": 8,
+        "js-var-declaration": 401,
+        "long-method": 34,
+        "magic-number": 6,
+        "narrating-comment": 3,
+        "near-duplicate": 31
+      },
+      "proposal_eligible_findings": 505,
+      "report_only_findings": 82,
+      "review_pending_findings": 505,
+      "public_api_files": 5,
+      "generated_files": 0,
+      "test_files": 5,
+      "scan_digest": "blake3:2a89aca2b7aba1f7d4565ad04b14e6d1d85816e6e44292388b81c772e2493448",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "npm",
+          "arguments": [
+            "test"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 127,
+        "stdout_digest": "blake3:a6d31fcb9ee5b9162473f9d0de7613e91c7424a7dfd0aa4532450b546ce2fa1d",
+        "stderr_digest": "blake3:27239648b87e739f21cec2db5fc8a83ecae77050017070ad5cccabf6b9a76ebf",
+        "diagnostic": "sh: 1: evalmd: not found\n"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "julia-datastructures",
+      "language": "julia",
+      "size_stratum": "large",
+      "revision": "aaeab026a860400cb94c15f321147a5db4269450",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 81,
+      "source_lines": 19998,
+      "reports_by_language": {
+        "julia": 81
+      },
+      "analysis_statuses": {
+        "complete": 78,
+        "partial": 3
+      },
+      "findings_by_safety": {
+        "llm-only": 163,
+        "risky-suggest": 54,
+        "safe-auto": 218,
+        "safe-with-precondition": 49
+      },
+      "findings_by_rule": {
+        "comment-block": 46,
+        "consecutive-blank-lines": 218,
+        "duplicate-block": 16,
+        "long-method": 6,
+        "magic-number": 38,
+        "narrating-comment": 12,
+        "near-duplicate": 83,
+        "reimpl-eachindex": 3,
+        "reimpl-isempty": 46,
+        "reimpl-isnothing": 16
+      },
+      "proposal_eligible_findings": 266,
+      "report_only_findings": 218,
+      "review_pending_findings": 266,
+      "public_api_files": 38,
+      "generated_files": 0,
+      "test_files": 34,
+      "scan_digest": "blake3:8af2106ca85c93dfec6d9f96c812b3afde95233ff5dae51ec17e87a1cd56ec19",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "julia",
+          "arguments": [
+            "--project=.",
+            "-e",
+            "using Pkg; Pkg.test()"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "passed",
+        "exit_code": 0,
+        "stdout_digest": "blake3:6c0a1b2a41173cae6c9f78e23a166f0ccb7beb5832461eeb877385b16c524037",
+        "stderr_digest": "blake3:0b773c1caa88238a9da3b9da0fb78e78fa2c140096fa9949026504afb82e326f",
+        "diagnostic": null
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "julia-fixedpointnumbers",
+      "language": "julia",
+      "size_stratum": "small",
+      "revision": "0bd71249b13704f0a18b7ac7d5306712668c4ef9",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 12,
+      "source_lines": 3598,
+      "reports_by_language": {
+        "julia": 12
+      },
+      "analysis_statuses": {
+        "complete": 11,
+        "partial": 1
+      },
+      "findings_by_safety": {
+        "llm-only": 52,
+        "risky-suggest": 6,
+        "safe-auto": 5
+      },
+      "findings_by_rule": {
+        "comment-block": 3,
+        "consecutive-blank-lines": 5,
+        "duplicate-block": 3,
+        "incompleteness": 1,
+        "magic-number": 6,
+        "narrating-comment": 2,
+        "near-duplicate": 43
+      },
+      "proposal_eligible_findings": 58,
+      "report_only_findings": 5,
+      "review_pending_findings": 58,
+      "public_api_files": 6,
+      "generated_files": 0,
+      "test_files": 5,
+      "scan_digest": "blake3:a127ec804c90f6ae92fcf4a7cd7f461f2704c97c7c93ecc556a3f8f241b5be25",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "julia",
+          "arguments": [
+            "--project=.",
+            "-e",
+            "using Pkg; Pkg.test()"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "passed",
+        "exit_code": 0,
+        "stdout_digest": "blake3:6c0a1b2a41173cae6c9f78e23a166f0ccb7beb5832461eeb877385b16c524037",
+        "stderr_digest": "blake3:8c889a1ef379742f9ad704618b378a778f715f6bf18ddfaedc0252f3693c4820",
+        "diagnostic": null
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "julia-json",
+      "language": "julia",
+      "size_stratum": "medium",
+      "revision": "e5ef310dece16746843753e4c3b44e868b917b64",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 19,
+      "source_lines": 6619,
+      "reports_by_language": {
+        "julia": 19
+      },
+      "analysis_statuses": {
+        "complete": 18,
+        "partial": 1
+      },
+      "findings_by_safety": {
+        "llm-only": 71,
+        "risky-suggest": 14,
+        "safe-auto": 1,
+        "safe-with-precondition": 3
+      },
+      "findings_by_rule": {
+        "comment-block": 9,
+        "consecutive-blank-lines": 1,
+        "duplicate-block": 10,
+        "long-method": 10,
+        "magic-number": 14,
+        "narrating-comment": 14,
+        "near-duplicate": 28,
+        "reimpl-isempty": 3
+      },
+      "proposal_eligible_findings": 88,
+      "report_only_findings": 1,
+      "review_pending_findings": 88,
+      "public_api_files": 6,
+      "generated_files": 2,
+      "test_files": 8,
+      "scan_digest": "blake3:bdec6bdd561dfe8ce41ed9c2ccca09ffb341af1097d8a6f5e7848d81fbd2edbf",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "julia",
+          "arguments": [
+            "--project=.",
+            "-e",
+            "using Pkg; Pkg.test()"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "passed",
+        "exit_code": 0,
+        "stdout_digest": "blake3:6c0a1b2a41173cae6c9f78e23a166f0ccb7beb5832461eeb877385b16c524037",
+        "stderr_digest": "blake3:000180548581e252b7d324b2dd64f48e6c035a5a1925fc6e5f534ca081c85430",
+        "diagnostic": null
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "python-cachecontrol",
+      "language": "python",
+      "size_stratum": "medium",
+      "revision": "23c7cb048fafc46c6a290050eb17d7dc3f8f8b65",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 36,
+      "source_lines": 3638,
+      "reports_by_language": {
+        "generic": 5,
+        "python": 31
+      },
+      "analysis_statuses": {
+        "complete": 36
+      },
+      "findings_by_safety": {
+        "llm-only": 64,
+        "never-auto": 80,
+        "risky-suggest": 14
+      },
+      "findings_by_rule": {
+        "comment-block": 23,
+        "config-key-shadowed": 1,
+        "config-key-unread": 79,
+        "duplicate-block": 8,
+        "long-method": 5,
+        "magic-number": 14,
+        "narrating-comment": 10,
+        "near-duplicate": 18
+      },
+      "proposal_eligible_findings": 78,
+      "report_only_findings": 80,
+      "review_pending_findings": 78,
+      "public_api_files": 36,
+      "generated_files": 0,
+      "test_files": 18,
+      "scan_digest": "blake3:f750dde75308f4181c271e29268830429ca529540907eb44d4cc65738399406b",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "python3",
+          "arguments": [
+            "-m",
+            "pytest",
+            "-q"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 1,
+        "stdout_digest": "blake3:6c0a1b2a41173cae6c9f78e23a166f0ccb7beb5832461eeb877385b16c524037",
+        "stderr_digest": "blake3:b70fa0d3a85f4cc0f39e79a6f85bf9fd432f5cf8d7b00dce71b73e1e995e128c",
+        "diagnostic": "/usr/bin/python3: No module named pytest\n"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "python-inflect",
+      "language": "python",
+      "size_stratum": "large",
+      "revision": "262a247d2d99a47a520cdb2d46adb90df88b4326",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 24,
+      "source_lines": 6545,
+      "reports_by_language": {
+        "generic": 6,
+        "python": 18
+      },
+      "analysis_statuses": {
+        "complete": 24
+      },
+      "findings_by_safety": {
+        "llm-only": 113,
+        "never-auto": 82,
+        "risky-suggest": 6
+      },
+      "findings_by_rule": {
+        "comment-block": 3,
+        "config-key-unread": 82,
+        "duplicate-block": 17,
+        "long-method": 18,
+        "magic-number": 5,
+        "narrating-comment": 53,
+        "near-duplicate": 22,
+        "py-range-len": 1
+      },
+      "proposal_eligible_findings": 119,
+      "report_only_findings": 82,
+      "review_pending_findings": 119,
+      "public_api_files": 24,
+      "generated_files": 0,
+      "test_files": 14,
+      "scan_digest": "blake3:37a31bdf2e592064dea8009365fd7dd84e21bb8453d37995107d453f7c155ae7",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "python3",
+          "arguments": [
+            "-m",
+            "pytest",
+            "-q"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 1,
+        "stdout_digest": "blake3:6c0a1b2a41173cae6c9f78e23a166f0ccb7beb5832461eeb877385b16c524037",
+        "stderr_digest": "blake3:b70fa0d3a85f4cc0f39e79a6f85bf9fd432f5cf8d7b00dce71b73e1e995e128c",
+        "diagnostic": "/usr/bin/python3: No module named pytest\n"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "python-itsdangerous",
+      "language": "python",
+      "size_stratum": "small",
+      "revision": "672971d66a2ef9f85151e53283113f33d642dabd",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 22,
+      "source_lines": 1892,
+      "reports_by_language": {
+        "generic": 7,
+        "python": 15
+      },
+      "analysis_statuses": {
+        "complete": 22
+      },
+      "findings_by_safety": {
+        "llm-only": 26,
+        "never-auto": 109,
+        "risky-suggest": 5
+      },
+      "findings_by_rule": {
+        "comment-block": 7,
+        "config-key-unread": 109,
+        "duplicate-block": 7,
+        "long-method": 1,
+        "magic-number": 5,
+        "narrating-comment": 1,
+        "near-duplicate": 10
+      },
+      "proposal_eligible_findings": 31,
+      "report_only_findings": 109,
+      "review_pending_findings": 31,
+      "public_api_files": 9,
+      "generated_files": 0,
+      "test_files": 7,
+      "scan_digest": "blake3:ca6207cc34be83b7221b1c6ba3ae85ca57bab884ad9af612326d96cd7e68b2a6",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "python3",
+          "arguments": [
+            "-m",
+            "pytest",
+            "-q"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 1,
+        "stdout_digest": "blake3:6c0a1b2a41173cae6c9f78e23a166f0ccb7beb5832461eeb877385b16c524037",
+        "stderr_digest": "blake3:b70fa0d3a85f4cc0f39e79a6f85bf9fd432f5cf8d7b00dce71b73e1e995e128c",
+        "diagnostic": "/usr/bin/python3: No module named pytest\n"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "rust-byteorder",
+      "language": "rust",
+      "size_stratum": "large",
+      "revision": "5a82625fae462e8ba64cec8146b24a372b4d75c6",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 5,
+      "source_lines": 6017,
+      "reports_by_language": {
+        "generic": 2,
+        "rust": 3
+      },
+      "analysis_statuses": {
+        "complete": 5
+      },
+      "findings_by_safety": {
+        "llm-only": 149,
+        "never-auto": 54,
+        "risky-suggest": 3
+      },
+      "findings_by_rule": {
+        "comment-block": 130,
+        "config-key-unread": 54,
+        "duplicate-block": 4,
+        "magic-number": 3,
+        "narrating-comment": 2,
+        "near-duplicate": 13
+      },
+      "proposal_eligible_findings": 152,
+      "report_only_findings": 54,
+      "review_pending_findings": 152,
+      "public_api_files": 1,
+      "generated_files": 0,
+      "test_files": 0,
+      "scan_digest": "blake3:ee85e571fad5730b3e98a468c24231644fd0448ced80bc29a65a69d9424af59a",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "cargo",
+          "arguments": [
+            "test",
+            "--all-features"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "passed",
+        "exit_code": 0,
+        "stdout_digest": "blake3:bf3e86366e9d76db413d2a7ad59b62e3f226600bae3910f9c49c3c469c4e6962",
+        "stderr_digest": "blake3:aeaa42c8999f851dd3793466038e107aa1cfd535c6a27898f19c8ea0d9d36a61",
+        "diagnostic": null
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "rust-itoa",
+      "language": "rust",
+      "size_stratum": "small",
+      "revision": "1577ed901354d0d7448ac162328f9dbf5183124c",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 7,
+      "source_lines": 752,
+      "reports_by_language": {
+        "generic": 2,
+        "rust": 5
+      },
+      "analysis_statuses": {
+        "complete": 7
+      },
+      "findings_by_safety": {
+        "llm-only": 11,
+        "never-auto": 61,
+        "risky-suggest": 2
+      },
+      "findings_by_rule": {
+        "comment-block": 3,
+        "config-key-unread": 61,
+        "duplicate-block": 1,
+        "long-method": 1,
+        "magic-number": 2,
+        "narrating-comment": 1,
+        "near-duplicate": 5
+      },
+      "proposal_eligible_findings": 13,
+      "report_only_findings": 61,
+      "review_pending_findings": 13,
+      "public_api_files": 1,
+      "generated_files": 0,
+      "test_files": 1,
+      "scan_digest": "blake3:82a113d5c55619797ca94ee65ce0696978081a68a40bbf0ee000ac3cb9c7f286",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "cargo",
+          "arguments": [
+            "test",
+            "--all-features"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 101,
+        "stdout_digest": "blake3:6c0a1b2a41173cae6c9f78e23a166f0ccb7beb5832461eeb877385b16c524037",
+        "stderr_digest": "blake3:98fa4d1e20d0e90a29d1bb63384bf34adb42c42e52b2d229cec779ef504592eb",
+        "diagnostic": "   Compiling itoa v1.0.18 (/tmp/deslop-m10-external/rust-itoa)\nerror: linking with `cc` failed: exit status: 1\n  |\n  = note:  \"cc\" \"/tmp/deslop-m10-external/rust-itoa/target/debug/deps/rustcLnQ2Kk/symbols.o\" \"<46 object files omitted>\" \"-Wl,--as-needed\" \"-Wl,-Bstatic\" \"/tmp/deslop-m10-external/rust-itoa/target/debug/deps/libitoa-9c7642136a5f32e9.rlib\" \"<sysroot>/lib/rustlib/aarch64-unknown-linux-gnu/lib/{libtest-*,libgetopts-*,librustc_std_workspace_std-*,libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib\" \"-Wl,-Bdynamic\" \"-lgcc_s\" \"-lutil\" \"-lrt\" \"-lpthread\" \"-lm\" \"-ldl\" \"-lc\" \"-L\" \"/tmp/deslop-m10-external/rust-itoa/target/debug/deps/rustcLnQ2Kk/raw-dylibs\" \"-Wl,--eh-frame-hdr\" \"-Wl,-z,noexecstack\" \"-L\" \"/tmp/deslop-m10-external/rust-ito…[truncated]"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "rust-ryu",
+      "language": "rust",
+      "size_stratum": "medium",
+      "revision": "22a692e0b27d9ca74231a475eb690a9446ed44af",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 32,
+      "source_lines": 4132,
+      "reports_by_language": {
+        "generic": 2,
+        "rust": 30
+      },
+      "analysis_statuses": {
+        "complete": 32
+      },
+      "findings_by_safety": {
+        "llm-only": 197,
+        "never-auto": 66,
+        "risky-suggest": 20
+      },
+      "findings_by_rule": {
+        "comment-block": 28,
+        "config-key-unread": 66,
+        "duplicate-block": 54,
+        "long-method": 7,
+        "magic-number": 20,
+        "narrating-comment": 4,
+        "near-duplicate": 104
+      },
+      "proposal_eligible_findings": 217,
+      "report_only_findings": 66,
+      "review_pending_findings": 217,
+      "public_api_files": 1,
+      "generated_files": 0,
+      "test_files": 10,
+      "scan_digest": "blake3:fbbd88381f281fa1e6b63eba5de58dd707969ecd28ab2a473a798c825892cec4",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "cargo",
+          "arguments": [
+            "test",
+            "--all-features"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 101,
+        "stdout_digest": "blake3:6c0a1b2a41173cae6c9f78e23a166f0ccb7beb5832461eeb877385b16c524037",
+        "stderr_digest": "blake3:186fffc45e3529035dc6e2a105dd8be162116d73c4c3bce4dbcb10e3fd7993e2",
+        "diagnostic": "   Compiling ryu v1.0.23 (/tmp/deslop-m10-external/rust-ryu)\nerror: linking with `cc` failed: exit status: 1\n  |\n  = note:  \"cc\" \"/tmp/deslop-m10-external/rust-ryu/target/debug/examples/rustc3ATDQt/symbols.o\" \"<51 object files omitted>\" \"-Wl,--as-needed\" \"-Wl,-Bstatic\" \"/tmp/deslop-m10-external/rust-ryu/target/debug/deps/{libryu-25db0ef76a787986,librand_xorshift-89d4e47f36330546,librand-a8ccd1cf9722a741,libgetrandom-714f90f34fcd45cb,liblibc-8844194d13f2ff95,libchacha20-e4dc09a7165b1cd1,libcfg_if-3ee559b7b3b51eaf,librand_core-9926e13eac976978}.rlib\" \"<sysroot>/lib/rustlib/aarch64-unknown-linux-gnu/lib/{libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib\" \"-Wl,-Bdynamic\" \"-lgcc_s\" \"-lutil\" \"-lrt\" \"-lpthread\" \"-lm\" \"-ldl\" \"-lc\" \"-L\" \"/tmp/desl…[truncated]"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "typescript-tslib",
+      "language": "typescript",
+      "size_stratum": "small",
+      "revision": "12bd8a74b320e3acfaba36b0ecb0e14964a9165b",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 21,
+      "source_lines": 1852,
+      "reports_by_language": {
+        "generic": 6,
+        "javascript": 13,
+        "typescript": 2
+      },
+      "analysis_statuses": {
+        "complete": 21
+      },
+      "findings_by_safety": {
+        "llm-only": 103,
+        "never-auto": 68,
+        "risky-suggest": 2,
+        "safe-with-precondition": 91
+      },
+      "findings_by_rule": {
+        "config-key-unread": 68,
+        "duplicate-block": 70,
+        "js-loose-equality": 4,
+        "js-var-declaration": 87,
+        "long-method": 2,
+        "magic-number": 2,
+        "narrating-comment": 1,
+        "near-duplicate": 30
+      },
+      "proposal_eligible_findings": 196,
+      "report_only_findings": 68,
+      "review_pending_findings": 196,
+      "public_api_files": 2,
+      "generated_files": 0,
+      "test_files": 10,
+      "scan_digest": "blake3:ff6bef86120f0774a95a2b8daf69d01b2dbc1b2c3fd35d94b4721aa9cf5583b3",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "npm",
+          "arguments": [
+            "test"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 1,
+        "stdout_digest": "blake3:6c0a1b2a41173cae6c9f78e23a166f0ccb7beb5832461eeb877385b16c524037",
+        "stderr_digest": "blake3:c2a9c3ae539020d8b11e436ec0ca37bb03e3551d470c5f45aaef568110e8785b",
+        "diagnostic": "npm error Missing script: \"test\"\nnpm error\nnpm error To see a list of scripts, run:\nnpm error   npm run\nnpm error A complete log of this run can be found in: /home/christos/.npm/_logs/2026-07-16T19_50_44_773Z-debug-0.log\n"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "typescript-type-fest",
+      "language": "typescript",
+      "size_stratum": "medium",
+      "revision": "48ddc4ba71cb215c3e3d98b0257360edc229fa75",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 453,
+      "source_lines": 38496,
+      "reports_by_language": {
+        "javascript": 17,
+        "typescript": 436
+      },
+      "analysis_statuses": {
+        "complete": 446,
+        "partial": 7
+      },
+      "findings_by_safety": {
+        "llm-only": 187,
+        "risky-suggest": 89,
+        "safe-auto": 2,
+        "safe-with-precondition": 9
+      },
+      "findings_by_rule": {
+        "comment-block": 80,
+        "consecutive-blank-lines": 2,
+        "js-loose-equality": 1,
+        "js-var-declaration": 8,
+        "long-method": 8,
+        "magic-number": 89,
+        "narrating-comment": 88,
+        "near-duplicate": 11
+      },
+      "proposal_eligible_findings": 285,
+      "report_only_findings": 2,
+      "review_pending_findings": 285,
+      "public_api_files": 218,
+      "generated_files": 4,
+      "test_files": 228,
+      "scan_digest": "blake3:4b5ea140aae5b3ee532038f7114cef1e77eaef355abc404960e63e22d38923ef",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "npm",
+          "arguments": [
+            "test"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 127,
+        "stdout_digest": "blake3:385384a337c82981d73e11baef3fd97c258e4197dbd813f9467db30f8e9bf4cd",
+        "stderr_digest": "blake3:ba2707613b71570679a5bf2b4166a42a8939713f22a65d434f1761ee523810de",
+        "diagnostic": "sh: 1: run-p: not found\n"
+      },
+      "working_tree_clean_after": true
+    },
+    {
+      "id": "typescript-zod",
+      "language": "typescript",
+      "size_stratum": "large",
+      "revision": "912f0f51b0ced654d0069741e7160834dca742ee",
+      "exact_revision": true,
+      "license_evidence_present": true,
+      "source_files": 406,
+      "source_lines": 91426,
+      "reports_by_language": {
+        "javascript": 2,
+        "typescript": 404
+      },
+      "analysis_statuses": {
+        "complete": 402,
+        "partial": 4
+      },
+      "findings_by_safety": {
+        "llm-only": 1484,
+        "risky-suggest": 132,
+        "safe-auto": 2,
+        "safe-with-precondition": 35
+      },
+      "findings_by_rule": {
+        "comment-block": 255,
+        "consecutive-blank-lines": 2,
+        "duplicate-block": 184,
+        "js-loose-equality": 35,
+        "js-unnecessary-await": 7,
+        "long-method": 270,
+        "magic-number": 125,
+        "narrating-comment": 89,
+        "near-duplicate": 686
+      },
+      "proposal_eligible_findings": 1651,
+      "report_only_findings": 2,
+      "review_pending_findings": 1651,
+      "public_api_files": 399,
+      "generated_files": 0,
+      "test_files": 178,
+      "scan_digest": "blake3:1d0537bee4c25ac28b98eb22dd909c5173c3f8a85f25a8f8bd81eae8d624d9bf",
+      "workflow": [
+        "scan",
+        "triage",
+        "explain",
+        "review-pending",
+        "verify-or-reject"
+      ],
+      "test": {
+        "command": {
+          "program": "npm",
+          "arguments": [
+            "test"
+          ],
+          "timeout_seconds": 180
+        },
+        "status": "failed",
+        "exit_code": 127,
+        "stdout_digest": "blake3:e00a4c475a28c0e59c103a6e154517e88c9d7ea59935a5f9abb3b3fa539e89f4",
+        "stderr_digest": "blake3:8d2fb1d097a42fc826cfe011aec07821d43e7a6549565ce947a250eaa4ff4df3",
+        "diagnostic": "sh: 1: vitest: not found\n"
+      },
+      "working_tree_clean_after": true
+    }
+  ]
+}

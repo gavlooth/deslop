@@ -1,0 +1,561 @@
+{
+  "schema": "deslop.m10-external-projects/1",
+  "manifest_id": "m10xp1_a29ec0e82bd39f7b8abe723380fbf113a477016b91adc1116b4afb3bf965599e",
+  "projects": [
+    {
+      "id": "clojure-data-json",
+      "language": "clojure",
+      "size_stratum": "large",
+      "repository_url": "https://github.com/clojure/data.json.git",
+      "revision": "94463ffb54482427fd9b31f264b06bff6dcfd557",
+      "license_spdx": "EPL-1.0",
+      "license_evidence": "LICENSE",
+      "public_api_markers": [
+        "src",
+        "public"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "lein",
+        "arguments": [
+          "test"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "clojure-digest",
+      "language": "clojure",
+      "size_stratum": "medium",
+      "repository_url": "https://github.com/clj-commons/digest.git",
+      "revision": "6366ce792684eaeaab2b61ec3f520378269ed920",
+      "license_spdx": "EPL-1.0",
+      "license_evidence": "project.clj",
+      "public_api_markers": [
+        "src",
+        "defn"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "lein",
+        "arguments": [
+          "test"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "clojure-medley",
+      "language": "clojure",
+      "size_stratum": "small",
+      "repository_url": "https://github.com/weavejester/medley.git",
+      "revision": "822981871facb27630dcba03cce2924a34989963",
+      "license_spdx": "EPL-1.0",
+      "license_evidence": "LICENSE.txt",
+      "public_api_markers": [
+        "src",
+        "defn"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "lein",
+        "arguments": [
+          "test"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "javascript-chalk",
+      "language": "javascript",
+      "size_stratum": "medium",
+      "repository_url": "https://github.com/chalk/chalk.git",
+      "revision": "aa06bb5ac3f14df9fda8cfb54274dfc165ddfdef",
+      "license_spdx": "MIT",
+      "license_evidence": "license",
+      "public_api_markers": [
+        "source",
+        "index.js"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "npm",
+        "arguments": [
+          "test"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "javascript-p-limit",
+      "language": "javascript",
+      "size_stratum": "small",
+      "repository_url": "https://github.com/sindresorhus/p-limit.git",
+      "revision": "42599ebbbb1228a5bdab381fcf8f4ac20eb8d551",
+      "license_spdx": "MIT",
+      "license_evidence": "license",
+      "public_api_markers": [
+        "index.js",
+        "export"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "npm",
+        "arguments": [
+          "test"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "javascript-qs",
+      "language": "javascript",
+      "size_stratum": "large",
+      "repository_url": "https://github.com/ljharb/qs.git",
+      "revision": "3a890d4ecd3deb72a45d90be36f4f8c5970467c7",
+      "license_spdx": "BSD-3-Clause",
+      "license_evidence": "LICENSE.md",
+      "public_api_markers": [
+        "lib",
+        "index.js"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "npm",
+        "arguments": [
+          "test"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "julia-datastructures",
+      "language": "julia",
+      "size_stratum": "large",
+      "repository_url": "https://github.com/JuliaCollections/DataStructures.jl.git",
+      "revision": "aaeab026a860400cb94c15f321147a5db4269450",
+      "license_spdx": "MIT",
+      "license_evidence": "License.md",
+      "public_api_markers": [
+        "src",
+        "export"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "julia",
+        "arguments": [
+          "--project=.",
+          "-e",
+          "using Pkg; Pkg.test()"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "julia-fixedpointnumbers",
+      "language": "julia",
+      "size_stratum": "small",
+      "repository_url": "https://github.com/JuliaMath/FixedPointNumbers.jl.git",
+      "revision": "0bd71249b13704f0a18b7ac7d5306712668c4ef9",
+      "license_spdx": "MIT",
+      "license_evidence": "LICENSE.md",
+      "public_api_markers": [
+        "src",
+        "export"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "julia",
+        "arguments": [
+          "--project=.",
+          "-e",
+          "using Pkg; Pkg.test()"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "julia-json",
+      "language": "julia",
+      "size_stratum": "medium",
+      "repository_url": "https://github.com/JuliaIO/JSON.jl.git",
+      "revision": "e5ef310dece16746843753e4c3b44e868b917b64",
+      "license_spdx": "MIT",
+      "license_evidence": "LICENSE.md",
+      "public_api_markers": [
+        "src",
+        "export"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "julia",
+        "arguments": [
+          "--project=.",
+          "-e",
+          "using Pkg; Pkg.test()"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "python-cachecontrol",
+      "language": "python",
+      "size_stratum": "medium",
+      "repository_url": "https://github.com/psf/cachecontrol.git",
+      "revision": "23c7cb048fafc46c6a290050eb17d7dc3f8f8b65",
+      "license_spdx": "Apache-2.0",
+      "license_evidence": "LICENSE.txt",
+      "public_api_markers": [
+        "cachecontrol",
+        "__init__.py"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "python3",
+        "arguments": [
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "python-inflect",
+      "language": "python",
+      "size_stratum": "large",
+      "repository_url": "https://github.com/jaraco/inflect.git",
+      "revision": "262a247d2d99a47a520cdb2d46adb90df88b4326",
+      "license_spdx": "MIT",
+      "license_evidence": "pyproject.toml",
+      "public_api_markers": [
+        "inflect",
+        "__all__"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "python3",
+        "arguments": [
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "python-itsdangerous",
+      "language": "python",
+      "size_stratum": "small",
+      "repository_url": "https://github.com/pallets/itsdangerous.git",
+      "revision": "672971d66a2ef9f85151e53283113f33d642dabd",
+      "license_spdx": "BSD-3-Clause",
+      "license_evidence": "LICENSE.txt",
+      "public_api_markers": [
+        "src",
+        "__init__.py"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "python3",
+        "arguments": [
+          "-m",
+          "pytest",
+          "-q"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "rust-byteorder",
+      "language": "rust",
+      "size_stratum": "large",
+      "repository_url": "https://github.com/BurntSushi/byteorder.git",
+      "revision": "5a82625fae462e8ba64cec8146b24a372b4d75c6",
+      "license_spdx": "Unlicense OR MIT",
+      "license_evidence": "COPYING",
+      "public_api_markers": [
+        "src/lib.rs",
+        "pub"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "cargo",
+        "arguments": [
+          "test",
+          "--all-features"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "rust-itoa",
+      "language": "rust",
+      "size_stratum": "small",
+      "repository_url": "https://github.com/dtolnay/itoa.git",
+      "revision": "1577ed901354d0d7448ac162328f9dbf5183124c",
+      "license_spdx": "MIT OR Apache-2.0",
+      "license_evidence": "LICENSE-MIT",
+      "public_api_markers": [
+        "src/lib.rs",
+        "pub"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "cargo",
+        "arguments": [
+          "test",
+          "--all-features"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "rust-ryu",
+      "language": "rust",
+      "size_stratum": "medium",
+      "repository_url": "https://github.com/dtolnay/ryu.git",
+      "revision": "22a692e0b27d9ca74231a475eb690a9446ed44af",
+      "license_spdx": "Apache-2.0 OR BSL-1.0",
+      "license_evidence": "LICENSE-APACHE",
+      "public_api_markers": [
+        "src/lib.rs",
+        "pub"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "cargo",
+        "arguments": [
+          "test",
+          "--all-features"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "typescript-tslib",
+      "language": "typescript",
+      "size_stratum": "small",
+      "repository_url": "https://github.com/microsoft/tslib.git",
+      "revision": "12bd8a74b320e3acfaba36b0ecb0e14964a9165b",
+      "license_spdx": "0BSD",
+      "license_evidence": "LICENSE.txt",
+      "public_api_markers": [
+        "tslib.d.ts",
+        "export"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "npm",
+        "arguments": [
+          "test"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "typescript-type-fest",
+      "language": "typescript",
+      "size_stratum": "medium",
+      "repository_url": "https://github.com/sindresorhus/type-fest.git",
+      "revision": "48ddc4ba71cb215c3e3d98b0257360edc229fa75",
+      "license_spdx": "MIT OR CC0-1.0",
+      "license_evidence": "license-mit",
+      "public_api_markers": [
+        "index.d.ts",
+        "source"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "npm",
+        "arguments": [
+          "test"
+        ],
+        "timeout_seconds": 180
+      }
+    },
+    {
+      "id": "typescript-zod",
+      "language": "typescript",
+      "size_stratum": "large",
+      "repository_url": "https://github.com/colinhacks/zod.git",
+      "revision": "912f0f51b0ced654d0069741e7160834dca742ee",
+      "license_spdx": "MIT",
+      "license_evidence": "LICENSE",
+      "public_api_markers": [
+        "packages",
+        "index.ts"
+      ],
+      "generated_markers": [
+        "generated",
+        "vendor",
+        "dist"
+      ],
+      "test_markers": [
+        "test",
+        "tests",
+        "spec"
+      ],
+      "test_command": {
+        "program": "npm",
+        "arguments": [
+          "test"
+        ],
+        "timeout_seconds": 180
+      }
+    }
+  ]
+}

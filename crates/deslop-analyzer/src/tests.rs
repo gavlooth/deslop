@@ -164,11 +164,23 @@ fn clojure_count_empty_is_not_safe_auto() {
 
 #[test]
 fn blank_runs_are_safe_auto() {
-    let source = source("sample.py", "a = 1\n\n\nb = 2\n");
+    let source = source("sample.py", "a = 1\n\n\n\nb = 2\n");
     let report = scan_source(&source);
     let finding = finding_for_rule(&report, "consecutive-blank-lines");
     assert_eq!(finding.safety, SafetyClass::SafeAuto);
     assert!(finding.edit.is_some());
+}
+
+#[test]
+fn python_two_blank_lines_are_preserved_but_other_languages_retain_the_one_line_policy() {
+    let python = scan_source(&source(
+        "sample.py",
+        "def first():\n    pass\n\n\ndef second():\n    pass\n",
+    ));
+    assert!(!has_rule(&python, "consecutive-blank-lines"));
+
+    let rust = scan_source(&source("sample.rs", "fn first() {}\n\n\nfn second() {}\n"));
+    assert!(has_rule(&rust, "consecutive-blank-lines"));
 }
 
 #[test]

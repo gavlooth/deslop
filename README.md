@@ -163,10 +163,25 @@ are skipped by default.
 
 ## Languages
 
-Full analysis packs for **Rust, Clojure, Julia**, seeded idiom packs for **Python** and
-**JavaScript/TypeScript/TSX**, plus the language-agnostic rules that apply to all sources.
+Stable S1 syntax analysis for **Rust, Clojure, Julia, Python, JavaScript, and TypeScript**, plus
+language-agnostic rules where their lexical/structural preconditions are supported. Deeper scope,
+control/data, external-analyzer, and transformation facts carry explicit per-adapter capability and
+provenance; they are not implied by S1.
 JavaScript/JSX, TypeScript (`.ts`/`.mts`/`.cts`), and TSX use distinct Tree-sitter grammar
 selection; TSX shares TypeScript analyzer thresholds and rules.
+
+## Stable evidence boundary
+
+M10 releases `0.1.0-evidence.1` as **stable-evidence-limited**. The exact shipped/unshipped matrix,
+benchmarks, failure taxonomy, migration rules, and operational policies are in
+[`docs/M10_RELEASE_REPORT.md`](docs/M10_RELEASE_REPORT.md) and
+[`docs/M10_CAPABILITY_MATRIX.md`](docs/M10_CAPABILITY_MATRIX.md).
+
+Important limits: readability labels are unshipped; global transformation precision is demonstrated
+only for the frozen Rust unreachable-literal recipe slice; one-million-LOC performance is not claimed;
+and whole-project finding-proposal batching is unshipped after its measured dogfood timeout. Use the
+bounded work-order protocol for agent workflows. Unknown/partial/unsupported facts remain visible and
+block dependent rewrites.
 
 ## Workspace
 
@@ -181,6 +196,7 @@ mutation tiers, apply) · `deslop-protocol` (workorder/patch schemas) · `deslop
 
 The full design rationale is in `SPEC.md`. Deferred: tree-sitter 0.26 (blocked upstream by the
 Clojure grammar's pin), Clojure/Julia mutation tools (none source-mappable), workspace-wide LSP scan,
-and equivalent-mutant detection (the path to using mutation as an actual slop *detector*). The honest
-scope: deslop's core — deterministic detection + behavior-preserving removal — is complete; the
-surrounding tiers are confirmation/usability layers.
+and equivalent-mutant detection (the path to using mutation as an actual slop *detector*). Release
+exceptions and their exact recheck conditions are maintained in
+[`docs/M10_FAILURE_RISK_REGISTER.md`](docs/M10_FAILURE_RISK_REGISTER.md), not hidden behind a broader
+"complete" claim.

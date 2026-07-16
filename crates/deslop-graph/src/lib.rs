@@ -19,6 +19,9 @@ pub use types::{
     GraphNodeKind, GraphNotice, GraphSummary,
 };
 
+/// Stable public dependency-graph wire schema frozen by M10.
+pub const GRAPH_SCHEMA: &str = types::SCHEMA;
+
 const GRAPH_PROJECTION_SCHEMA: &str = "deslop.graph.projection/1";
 const GRAPH_CAPABILITIES: &[u8] = b"graph=deslop.graph-owned/1";
 

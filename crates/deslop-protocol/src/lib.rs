@@ -20,6 +20,9 @@ mod recipe;
 mod service;
 mod work_order;
 
+/// Stable legacy finding-proposal work-order schema retained for explicit compatibility.
+pub const LEGACY_WORK_ORDER_SCHEMA: &str = "deslop.workorder/3";
+
 pub use lifecycle::{
     ExpiredWorkOrder, WORK_ORDER_HANDLE_SCHEMA, WORK_ORDER_REPLAN_SCHEMA, WorkOrderHandle,
     WorkOrderReplanResult, replan_after_commit,
@@ -327,7 +330,7 @@ pub fn workorder_id_for_context(
 }
 
 pub fn validate_workorder_identity(work_order: &WorkOrder) -> Result<(), String> {
-    if work_order.schema != "deslop.workorder/3" {
+    if work_order.schema != LEGACY_WORK_ORDER_SCHEMA {
         return Err(format!(
             "unsupported workorder schema `{}`; regenerate as deslop.workorder/3",
             work_order.schema
@@ -929,7 +932,7 @@ impl WorkOrderDraft {
     fn into_work_order(self, context: &ProposalContext) -> WorkOrder {
         let id = workorder_id_for_context(&self.path, &self.region, context);
         WorkOrder {
-            schema: "deslop.workorder/3".to_string(),
+            schema: LEGACY_WORK_ORDER_SCHEMA.to_string(),
             kind: self.kind,
             id,
             path: self.path,
@@ -972,7 +975,7 @@ fn work_order_finding(finding: &Finding) -> WorkOrderFinding {
 
 pub fn characterization_work_order_for(work_order: &WorkOrder) -> WorkOrder {
     WorkOrder {
-        schema: "deslop.workorder/3".to_string(),
+        schema: LEGACY_WORK_ORDER_SCHEMA.to_string(),
         kind: WorkOrderKind::NeedsCharacterizationTest,
         id: work_order.id.to_owned(),
         path: work_order.path.to_path_buf(),
@@ -1105,7 +1108,7 @@ mod tests {
         };
         let work_order = work_orders_for_source(&source, &[finding]).remove(0);
         let value = serde_json::to_value(&work_order).expect("json");
-        assert_eq!(value["schema"], "deslop.workorder/3");
+        assert_eq!(value["schema"], LEGACY_WORK_ORDER_SCHEMA);
         assert_eq!(value["kind"], "rewrite-region");
         assert!(
             value["id"]

@@ -4698,3 +4698,158 @@ while every edit parses/misses/fans out to one file and retains 479. Peak proces
 fmt/build/test/clippy gate pass. M10 was not started.
 
 Signature: Codex (GPT-5), M9 incremental-scale terminal owner, 2026-07-16.
+
+## 2026-07-16 — M10 dogfood, external evaluation, and stable release
+
+Status: ACTIVE. M9 is terminal at `57816e993bf0`; no post-M10 capability expansion is in scope.
+
+### Frozen release bar
+
+M10 closes only when every M10 item, G1–G10, and B1–B12 has an executable or immutable evidence record. A numerical
+gate may close as a measured failure only when the associated product claim/tier is explicitly unshipped everywhere;
+missing evidence is not a downgrade and cannot close the gate.
+
+1. One revision-pinned deslop dogfood run traverses scan, candidate/work-order planning, recipe eligibility,
+   verification, apply/rollback simulation, metrics, graph, SARIF, MCP, and LSP surfaces. Every candidate has exactly
+   one accepted, rejected, unsafe, stale, unsupported, or non-actionable disposition; no review-only candidate is
+   silently counted as accepted.
+2. The external matrix pins 18 public repositories at immutable commits: three repositories for each of Rust,
+   JavaScript, TypeScript, Python, Clojure, and Julia, spanning declared size strata. Each record contains licence,
+   checkout digest, public API/generated/test boundaries, build/test command, exact tool availability, scan outcome,
+   and a human-review workflow disposition. A failed build or missing tool is retained as blocked evidence.
+3. The same immutable 240-task M6/M8 task set, prompts, models, and budgets supplies paired graph-rich/baseline LLM
+   evidence. M10 recomputes identities and gates from raw frozen outputs; it does not issue new paid/provider calls or
+   substitute a different model. Any provenance or pairing mismatch invalidates the result.
+4. A strict release-evidence schema aggregates graph, detector, transformation, readability, LLM, performance,
+   dogfood, and external-project results with source artifact digests and no copied scalar as authority.
+5. The release capability matrix, unsupported-construct catalogue, failure taxonomy, known-risk register, and
+   exception ledger map every failure to an owner, product downgrade, recheck condition, and affected tier.
+6. G1–G10 close independently. G7 closes only with readability labels unshipped under the measured M8 failure. Other
+   zero-tolerance safety/determinism/rollback gates must pass; they cannot be waived into a stable tier.
+7. B1 freezes at least 600 content-addressed programs (at least 100 per non-generic adapter) with exact gold role,
+   containment/ownership, graph-edge, malformed/opaque expectations. B2 may release only the existing demonstrated
+   Rust recipe slice unless equivalent evidence exists for another language. B3–B5 pin external/task provenance.
+8. B6–B8 are recomputed from frozen machine-readable evidence. A failed language/family is removed from that
+   capability tier, not pooled away. B9 remains a measured failure and therefore ships no readability/human-quality
+   label. B10 is recomputed from raw M6 outputs. B11 includes a release-mode >=1,000,000-source-line cold scan plus
+   the M9 single-edit matrix and recorded peak RSS. B12 reports macro and worst slices, intervals, abstention, and
+   prior-release availability explicitly.
+9. Graph/protocol/recipe/model version freezes are executable compatibility fixtures covering current strict round
+   trip, previous-version rejection or migration, unknown-field rejection, and content identity. Security, verifier
+   policy, undo/recovery, adapter authoring, and agent integration docs name live commands and fail-closed behavior.
+10. Terminal verification runs focused release tests, full all-feature workspace fmt/build/test/clippy, integration/
+    e2e suites, and external clean-checkout smokes from a fresh jj/git export. `main` advances only while the working
+    copy is a clean empty successor and `main@origin` is verified after push.
+
+### Convergent approach
+
+Build one `deslop.release-evidence/1` assembler that consumes the already-frozen M3/M5/M6/M7/M8/M9 artifacts plus
+new dogfood, canonical-corpus, external-project, and 1-MLOC records. It recomputes every gate and produces exhaustive
+pass/fail/downgrade outcomes in one run. This avoids serial benchmark tuning and makes the stable capability tier a
+pure function of immutable evidence.
+
+### Negative-memory constraints
+
+- A prior self-scan count is not current dogfood evidence; run the pinned complete pipeline and retain every outcome.
+- “Human workflow” means a recorded review/decision path over an independent checkout, not synthetic human approval.
+- A public repository URL is not a pinned/licensed/reproducible project record; exact commit and observed commands are
+  mandatory.
+- Generated canonical programs can test exact contracts but cannot replace external-project or human-quality evidence.
+- A failed gate may remove a product claim, but missing data may not be relabelled as a measured failure.
+- Do not rerun paid LLM calls when frozen raw paired outputs already exist; validate provenance and recompute instead.
+- Do not aggregate away a failing language/family or call evidence-only readability a human-quality success.
+
+Signature: Codex (GPT-5), M10 release-evidence owner, 2026-07-16.
+### M10 external-project evidence checkpoint (2026-07-16)
+
+- Frozen `deslop.m10-external-projects/1` manifest
+  `m10xp1_a29ec0e82bd39f7b8abe723380fbf113a477016b91adc1116b4afb3bf965599e`
+  pins exactly 18 distinct public repositories: Clojure, JavaScript, Julia, Python, Rust, and
+  TypeScript each contribute one small, medium, and large relative-size project. Every entry retains
+  an exact 40-hex revision, repository URL, SPDX licence evidence, public/test/generated boundary
+  markers, and a bounded test command.
+- Frozen `deslop.m10-external-report/1` report
+  `m10xr1_56fdcb14a1a1bc38fffc92a1fc60cff1ccde87c1940f77c48b00fee412b0070c`
+  verifies all 18 local checkouts and licences, analyzes 1,198 source reports / 198,255 lines, and
+  retains 8,541 findings: 3,722 proposal-eligible items remain explicitly `review-pending` and 4,819
+  are report-only. The workflow records scan -> triage -> explain -> review-pending ->
+  verify-or-reject; it grants no rewrite or synthetic human-approval authority.
+- External project test commands are failure-visible: 2 passed, 11 failed because the clean checkout
+  lacked project dependencies or a declared script, 2 hit the 180-second budget, and 3 could not run
+  because Leiningen was unavailable. These outcomes qualify the external environment and feed the
+  M10 exception/risk ledger; they do not invalidate the separately successful read-only Deslop scans
+  and must not be relabelled as behavior-oracle passes.
+- M10.2/B3 remain open until this executable evidence is joined to the published capability/failure
+  matrix and terminal clean-checkout smoke gate. Human preference B9 remains unshipped; review-pending
+  is a workflow state, not a preference observation.
+### M10 dogfood blocker/correction checkpoint (2026-07-16)
+
+- A release CLI scan of the current repository initially emitted 55 `safe-auto` findings. Fifty were
+  `consecutive-blank-lines`; 45 targeted ordinary two-blank-line Python module separation and five
+  targeted deliberately sloppy test-corpus fixtures. The Python findings were a real G4 violation,
+  not acceptable dogfood work.
+- The blank-run detector now conservatively preserves two Python blank lines and only offers a
+  `safe-auto` collapse for three or more; non-Python behavior remains one line. Focused positive and
+  cross-language negative tests pass. Rebuilt release dogfood scan now reports exactly five
+  `safe-auto` findings, all inside intentional sloppy corpus fixtures, and zero in production code.
+- The monolithic `deslop recipes detect . --format report` path was terminated after 15 minutes while
+  CPU-saturated near 2.2 GiB RSS, with no report produced. This shape cannot qualify as an interactive
+  or bounded release path. Dogfood must partition recipe detection into deterministic Rust-file or
+  crate-local units, retain every file result/abstention, and publish the aggregate identity. Do not
+  cite normal analyzer scan latency as recipe-pipeline latency.
+### M10 dogfood evidence checkpoint (2026-07-16)
+
+- Frozen `deslop.m10-dogfood/1` report
+  `m10df1_0e1b991ebb3271a387168eb1e46f5b6beb218f2a5bc3c8001cde16d83dc3d5f2`
+  verifies against exact analyzed-source revision
+  `m10src1_073a8e3e701b200a263e8b5f54b9ba02417ef667336bb6286093a28244d369e2`:
+  187 files / 138,707 lines with per-file path, byte, line, and digest evidence.
+- Analyzer authority is honestly Partial: 180 file reports Complete and seven Partial. Every one of
+  1,523 findings has exactly one disposition: five intentional sloppy-corpus `safe-auto` findings are
+  rejected, 1,518 are unsafe/unverified, and production `safe-auto` is exactly zero. No accepted or
+  naturally stale candidate existed in this read-only run; both zero counts are explicit.
+- Rust recipes run as 136 isolated single-file partitions with three workers and a 30-second/file
+  ceiling. The measured batch took 248.140 seconds at 1,378,537,472-byte peak RSS, emitted seven
+  candidates (all unsafe/unverified), and retained nine timed-out partitions as abstentions. The seven
+  production transformation work orders have seven unique IDs, zero duplicates, four plan edges,
+  seven groups, zero blocked groups, and two waves.
+- Whole-project finding proposal construction is explicitly downgraded/unshipped: the measured release
+  run exceeded 15 minutes after the partitioned recipe stage. Stable release may expose the bounded
+  protocol index/triage/explain/plan interface and the seven transformation orders; it must not claim
+  interactive or exhaustive whole-project finding-proposal batching.
+- The first source identity accidentally included the output report itself via analyzer input contents.
+  The frozen schema now hashes only actual `FileReport` paths and retains their individual identities;
+  immediate recomputation passes.
+### M10 terminal release-schema and documentation checkpoint (2026-07-16)
+
+- Added strict `deslop.release-evidence/1` assembly/verification. It joins 15 immutable artifacts,
+  nine required operational/release documents, 12 shipped/unshipped capability rows, ten terminal
+  exceptions, the frozen public version map, numerical summaries, and all 32 M10/G/B decisions.
+- Frozen versions are tested against compiled public constants for graph/adapter/canonical-role/
+  readability/recipe/candidate/shared+legacy work-order/plan/service schemas. `deslop.graph/2` and
+  `deslop.workorder/3` now expose public constants so compatibility is executable rather than copied
+  prose. Strict deserializers remain the migration policy; there is no alias/default-filled upgrade.
+- Added security, verifier policy, undo/recovery, adapter authoring, agent integration, M10 migration,
+  capability matrix, failure/risk register, and numerical release-report documents. README now states
+  S1 language authority and the stable-evidence-limited boundary.
+- Release assembly intentionally remains blocked until the clean-checkout gate artifact exists and the
+  dogfood report is regenerated for the final source revision. This is a sequencing gate, not a missing
+  product decision.
+### M10 pre-gate frozen-source checkpoint (2026-07-16)
+
+- Refreshed external report
+  `m10xr1_43b724f17dd62b0f519d256fe4e62fc8582ad2c0908013e0599aefac5cbce3dc`
+  uses the final analyzer policy and names ambient dependency-cache state. All 18 exact pins verify;
+  1,198 reports / 198,255 lines yield 8,322 findings and 3,722 proposal-eligible/review-pending.
+  Warm-cache commands are 4 pass, 11 fail, 3 tool unavailable; the prior run's two Julia timeouts
+  remain historical environment evidence.
+- Final-source dogfood report
+  `m10df1_fba1b3b9d498ec4d8032c5ab97dd5f339341a04b7126a0e887a900d68dfdd884`
+  verifies against `m10src1_2fe1dac3e149f6e1be0e5f69909dd12b91ec98e493be7e9d188a9ccd02d1e19a`:
+  189 files / 139,694 lines, 182 Complete + seven Partial, 1,536 findings, zero production
+  `safe-auto`, five fixture rejections, 1,538 unsafe/unverified across findings plus seven recipes,
+  and zero naturally stale. The 138-file recipe batch took 245.550 seconds, retained nine timeouts,
+  and peaked at 1,386,401,792 bytes RSS.
+- Focused fmt/clippy `-D warnings` for evaluator/graph/protocol is green after the cache-state and
+  public-version changes. The implementation/evidence/docs slice is ready to describe and validate
+  from a clean checkout.

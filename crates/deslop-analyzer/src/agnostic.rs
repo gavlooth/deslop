@@ -294,6 +294,10 @@ fn is_tail_padding(ch: char) -> bool {
 fn blank_runs(source: &AnalyzerText) -> Vec<Finding> {
     let mut out = Vec::new();
     let lines = source.lines();
+    // Python requires two blank lines between top-level definitions. This text-only rule cannot
+    // prove whether a run is nested, so its SafeAuto boundary must preserve both rather than
+    // "fixing" valid module layout. Other adapters retain the established one-blank-line policy.
+    let allowed = usize::from(source.lang == deslop_core::Lang::Python) + 1;
     let mut run_start: Option<usize> = None;
     for (idx, line) in lines.iter().enumerate() {
         if line.trim().is_empty() {
@@ -302,22 +306,27 @@ fn blank_runs(source: &AnalyzerText) -> Vec<Finding> {
         }
         if let Some(start) = run_start.take() {
             let end = idx;
-            if end > start {
-                out.push(blank_run_finding(source, start, end));
+            if end + 1 - start > allowed {
+                out.push(blank_run_finding(source, start, end, allowed));
             }
         }
     }
     if let Some(start) = run_start {
         let end = lines.len();
-        if end > start {
-            out.push(blank_run_finding(source, start, end));
+        if end + 1 - start > allowed {
+            out.push(blank_run_finding(source, start, end, allowed));
         }
     }
     out
 }
 
-fn blank_run_finding(source: &AnalyzerText, start_line: usize, end_line: usize) -> Finding {
-    let start_byte = source.line_start_byte(start_line + 1);
+fn blank_run_finding(
+    source: &AnalyzerText,
+    start_line: usize,
+    end_line: usize,
+    allowed: usize,
+) -> Finding {
+    let start_byte = source.line_start_byte(start_line + allowed);
     let end_byte = if end_line < source.lines().len() {
         source.line_start_byte(end_line + 1)
     } else {
@@ -340,7 +349,11 @@ fn blank_run_finding(source: &AnalyzerText, start_line: usize, end_line: usize) 
         SafetyClass::SafeAuto,
         DetectedBy::Text,
         &format!("{} consecutive blank lines", end_line - start_line + 1),
-        "collapse to a single blank line",
+        if allowed == 1 {
+            "collapse to a single blank line"
+        } else {
+            "collapse to two blank lines"
+        },
         None,
         Some(edit),
     )
