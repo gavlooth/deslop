@@ -12717,3 +12717,28 @@ service restart is required. `/tmp` gate logs are ephemeral; durable identities 
 artifact.
 
 Signature: Codex (GPT-5), M10 terminal stable-evidence release, 2026-07-16.
+
+## 2026-07-16 — M10 push confirmation
+
+**Objective:** Confirm the terminal M10 chain is published and leave the durable handoff consistent
+with remote state.
+
+**Target:** `main`, `main@origin`, clean `jj` status, and the already-verified stable-evidence release.
+
+**Changes:** Advanced `main` through the four described M10 changes and pushed it to origin.
+
+**Commands run/results:** `jj bookmark set main -r @-` moved `main` from M9 commit `57816e99` to
+M10 terminal commit `f44a96cbefeb490a2bd25b087c3862349e8cc0c3`; `jj git push --bookmark main`
+succeeded; an exact commit-ID comparison proved `main == main@origin`; `jj status` remained clean.
+
+**Invalidated assumptions:** None.
+
+**Current recommendation/checkpoint:** M10 is complete. Preserve the explicit downgraded capability
+boundaries until new frozen evidence satisfies their recorded recheck conditions.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** Rebuild downstream consumers for the frozen schema/version
+set. No service restart or migration is otherwise required.
+
+Signature: Codex (GPT-5), M10 push confirmation, 2026-07-16.

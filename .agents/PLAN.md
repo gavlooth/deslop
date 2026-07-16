@@ -4884,3 +4884,6 @@ Signature: Codex (GPT-5), M10 release-evidence owner, 2026-07-16.
   global recipe precision, signing trust root, readability label, or 1-MLOC result is implied.
 - M10 is terminal. The only remaining repository action is to seal this ledger/report slice, audit
   the final chain and clean status, advance `main`, push, and verify `main@origin`.
+- Push checkpoint: the clean described chain was advanced and `main@origin` matched
+  `f44a96cbefeb490a2bd25b087c3862349e8cc0c3`. This report-only follow-up records that terminal
+  external state and is the final M10 history change.
