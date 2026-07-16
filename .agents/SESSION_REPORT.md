@@ -12046,3 +12046,53 @@ and derived evidence, `.agents/TODO.md`, `.agents/PLAN.md`, and this report.
 tolerance for derived floats and retain exact checks for all discrete evidence. No unresolved failed approach remains.
 
 Signature: Codex `/root` — M6 terminal integration, benchmark, and verification owner
+
+## 2026-07-16 — M7 hardened verification authority terminal checkpoint
+
+**Objective/target:** complete M7.1–M7.8 and M7.DoD as one revision-pinned verifier authority that widens under
+incomplete evidence, preserves provider conflict, requires pre-change characterization, enforces explicit execution
+policy, compares graph deltas around formatting, atomically commits/undoes, injects failures, and demotes recipes on
+counterexamples.
+
+**Changes:** added strict verifier-plan, authority observation/decision, execution policy/failure, verification
+evidence, pre-change characterization, transaction report, undo-manifest, and recipe-demotion contracts. Added impact-
+indexed dependency closure with project fallback; adapter/compiler/LSP capability conversion and conflict join;
+typed parse/format/build/lint/type/test/coverage/characterization/differential/mutation/delta evidence; policy-bound
+namespace command runtime; exact revision/budget/format-scope/delta checks; fsynced source journal, recovery and
+explicit undo; and immediate durable demotion/supersession. Ordinary patch and recipe-canary writes now use the same
+atomic source primitive. Added ADR 0009, capability matrix, migration notes, and an executable M7 DoD.
+
+**Commands run/results:** focused authority/evidence/atomic/demotion/runtime/transaction/legacy-recipe suites and
+strict verifier clippy pass. Failure injection covers command failure, timeout, command crash, every multi-file
+partial-rename boundary, hard process interruption/recovery, formatting failure, staged/formatted/live graph-delta
+mismatch, and failed differential evidence. The terminal rerun passes `cargo fmt --all -- --check`,
+`cargo build --workspace --all-features`, `cargo test --workspace --all-features`, and
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`: 703 active unit/integration tests, 4 active
+doctests, and 3 explicit ignored probes.
+
+**Numerical/behavioral evidence:** verifier tests pass 81/81. The M7 DoD compiles and executes a Rust SafeAuto behavior
+assertion on the staged transformed source and the committed live source, then uses the durable manifest to restore
+byte-identical original source. All five weaker safety classes are asserted non-Automatic with nonempty uncertainty.
+Two-file atomic tests restore both exact originals after injected rename 1/2 and 2/2; hard-crash recovery restores the
+partially installed transaction from its fsynced Committing journal.
+
+**Invalidated assumptions/failure modes:** executable discovery is not sandbox authority. `/usr/bin/bwrap` and
+`/usr/bin/unshare` exist, but this container rejects network namespace creation with `Operation not permitted`.
+Production policy commands therefore fail closed with a structured policy failure here; no inherited-shell fallback
+was added. A graph-delta value copied from a candidate would be circular evidence, so the transaction requires a
+server-owned `GraphDeltaOracle` and compares its patched/formatted/live observations exactly.
+
+**Current recommendation/checkpoint:** M7.1–M7.8 and M7.DoD are terminal. Describe this slice, create a clean empty
+successor, advance/push `main` only while green and clean, then begin M8 in a later slice.
+
+**Blockers/restart/dependencies:** repository implementation has no blocker. Deployments that execute the default
+policy command runtime must enable Linux namespaces or provide an equivalently enforcing server-owned runtime. No
+schema migration command or cache clear is required; legacy receipts cannot be promoted and must be regenerated.
+
+**Files/artifacts:** `crates/deslop-verify` authority/evidence/runtime/transaction/atomic/demotion modules and DoD,
+legacy atomic-write integrations, Cargo wiring, ADR 0009, M7 capability/migration documents, TODO/PLAN, and this report.
+
+**Negative-memory status:** recorded locally and queued for Hindsight: namespace executable presence does not prove
+namespace permission; never silently downgrade the policy runtime. No unresolved algorithmic failure remains.
+
+Signature: Codex `/root` — M7 integration, transaction, failure-injection, and terminal verification owner

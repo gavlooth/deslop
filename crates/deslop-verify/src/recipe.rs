@@ -551,27 +551,57 @@ fn write_exact_source_map(
     replacements: &BTreeMap<PathBuf, String>,
     backup: bool,
 ) -> Result<()> {
-    for (path, replacement) in replacements {
-        let physical = root.join(path);
-        let current = fs::read_to_string(&physical)?;
-        let retained = expected
-            .get(path)
-            .with_context(|| format!("missing exact write guard for {}", path.display()))?;
-        if current != *retained {
-            bail!(
-                "stale revision guard immediately before writing {}",
-                path.display()
-            );
-        }
-        if current != *replacement {
-            super::write_replacement_file(&physical, &current, replacement.clone(), backup)?;
+    let expected_bytes = expected
+        .iter()
+        .map(|(path, text)| (path.clone(), text.as_bytes().to_vec()))
+        .collect::<BTreeMap<_, _>>();
+    let replacement_bytes = replacements
+        .iter()
+        .map(|(path, text)| (path.clone(), text.as_bytes().to_vec()))
+        .collect::<BTreeMap<_, _>>();
+    let changed = expected_bytes
+        .iter()
+        .filter(|(path, bytes)| replacement_bytes.get(*path) != Some(*bytes))
+        .map(|(path, bytes)| (path.clone(), bytes.clone()))
+        .collect::<BTreeMap<_, _>>();
+    if changed.is_empty() {
+        return Ok(());
+    }
+    let changed_replacements = changed
+        .keys()
+        .map(|path| (path.clone(), replacement_bytes[path].clone()))
+        .collect::<BTreeMap<_, _>>();
+    super::commit_atomic_sources(
+        root,
+        Path::new(".deslop/undo"),
+        &changed,
+        &changed_replacements,
+    )?;
+    if backup {
+        for (path, bytes) in changed {
+            fs::write(
+                PathBuf::from(format!("{}.deslop.bak", root.join(path).display())),
+                bytes,
+            )?;
         }
     }
     Ok(())
 }
 
 fn restore_sources(root: &Path, originals: &BTreeMap<PathBuf, String>) -> Result<()> {
-    write_source_map(root, originals, false)
+    let current = originals
+        .keys()
+        .map(|path| Ok((path.clone(), fs::read(root.join(path))?)))
+        .collect::<Result<BTreeMap<_, _>>>()?;
+    let replacements = originals
+        .iter()
+        .map(|(path, text)| (path.clone(), text.as_bytes().to_vec()))
+        .collect::<BTreeMap<_, _>>();
+    if current == replacements {
+        return Ok(());
+    }
+    super::commit_atomic_sources(root, Path::new(".deslop/undo"), &current, &replacements)?;
+    Ok(())
 }
 
 fn sources_equal(root: &Path, expected: &BTreeMap<PathBuf, String>) -> Result<bool> {
@@ -593,7 +623,7 @@ fn snapshot_protected_files(
         .hidden(false)
         .filter_entry(|entry| {
             let name = entry.file_name().to_string_lossy();
-            !matches!(name.as_ref(), ".git" | ".jj" | "target")
+            !matches!(name.as_ref(), ".deslop" | ".git" | ".jj" | "target")
         })
         .build()
     {

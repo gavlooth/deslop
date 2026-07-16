@@ -674,18 +674,38 @@ reports, benchmark records, and work orders.
 
 ## M7 — Verification authority
 
-- [ ] M7.1 Implement impact-cone test/build/lint/type selection with conservative fallback.
-- [ ] M7.2 Integrate adapter/compiler/LSP precondition checks and authority conflicts.
-- [ ] M7.3 Add targeted tests, coverage evidence, characterization, differential checks, and mutation evidence.
-- [ ] M7.3a Require risky-change characterization to be captured/approved on the pinned pre-change snapshot,
+- [x] M7.1 Implement impact-cone test/build/lint/type selection with conservative fallback.
+  `deslop.verifier-plan/1` selects resource-intersecting dependency-closed checks only under complete impact
+  coverage; truncation, unknowns, or incomplete coverage selects every project build/lint/type/test fallback.
+- [x] M7.2 Integrate adapter/compiler/LSP precondition checks and authority conflicts.
+  Snapshot/artifact-bound capability observations preserve all three providers independently. Proven/Disproven
+  disagreement is a blocking Conflict with no rank winner; stale, syntax-only, or runtime-labelled facts cannot grant.
+- [x] M7.3 Add targeted tests, coverage evidence, characterization, differential checks, and mutation evidence.
+  Every selected check requires exact current typed evidence; missing, wrong-kind, failed, or unknown evidence blocks.
+- [x] M7.3a Require risky-change characterization to be captured/approved on the pinned pre-change snapshot,
   never inferred solely from tests generated after the rewrite.
-- [ ] M7.4 Define verifier resource/time/filesystem/environment/network policies and structured failures.
-- [ ] M7.5 Pin revisions, recheck preconditions, compare expected/actual graph delta, and reanalyze after format.
-- [ ] M7.6 Make patch write/commit atomic with durable undo/rollback metadata.
-- [ ] M7.7 Inject command, timeout, crash, partial-write, formatting, and graph-delta failures.
-- [ ] M7.8 Implement immediate recipe demotion and negative-memory capture for counterexamples.
-- [ ] M7.DoD Show zero known behavior changes in `safe-auto`, deterministic rollback under every injected
+  `deslop.pre-change-characterization/1` binds snapshot, work order, test/behavior artifacts, reviewer, capture and
+  approval sequence; approval must precede patch authorship and the matching characterization evidence must pass.
+- [x] M7.4 Define verifier resource/time/filesystem/environment/network policies and structured failures.
+  Policies bind total/command time, output, files/file size, workspace roots, environment allowlist, and network.
+  The namespace runner clears environment and denies network; unavailable enforcement fails structured/closed.
+- [x] M7.5 Pin revisions, recheck preconditions, compare expected/actual graph delta, and reanalyze after format.
+  Transactions validate exact candidate/source guards and Ready plan authority, compare authoritative deltas on
+  patched, formatted, and live bytes, protect undeclared bytes/files, and reanalyze restored bytes after rollback.
+- [x] M7.6 Make patch write/commit atomic with durable undo/rollback metadata.
+  `deslop.undo-manifest/1` fsyncs exact original artifacts/digests before Committing, fsyncs same-directory replacement
+  files and state changes, rejects drift/corruption, rolls ordinary failures back, and recovers interrupted journals.
+- [x] M7.7 Inject command, timeout, crash, partial-write, formatting, and graph-delta failures.
+  Focused tests cover all six families, every multi-file partial-rename boundary, post-commit live-delta failure, and
+  simulated hard-crash recovery; exact original bytes are retained/restored in every terminal path.
+- [x] M7.8 Implement immediate recipe demotion and negative-memory capture for counterexamples.
+  Format/graph failures and failed targeted/characterization/differential/mutation evidence append a content-addressed
+  local demotion record. Automatic execution remains blocked until an explicit authority/reason supersession.
+- [x] M7.DoD Show zero known behavior changes in `safe-auto`, deterministic rollback under every injected
   failure, and explicit residual uncertainty for every weaker safety class.
+  The executable M7 DoD compiles/runs the SafeAuto behavior oracle before/after, commits and explicitly undoes exact
+  bytes, while unit failures cover rollback/recovery and all five weaker safety classes remain non-automatic with
+  stated uncertainty. Terminal fmt/build/test/clippy passes: 703 active unit/integration tests, 4 doctests, 3 ignores.
 
 ## M8 — Readability and ranking calibration
 

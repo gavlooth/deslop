@@ -23,12 +23,24 @@ use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 use wait_timeout::ChildExt;
 
+mod atomic;
+mod authority;
+mod demotion;
+mod evidence;
 mod recipe;
+mod runtime;
+mod transaction;
 
+pub use atomic::*;
+pub use authority::*;
+pub use demotion::*;
+pub use evidence::*;
 pub use recipe::{
     RECIPE_APPLY_REPORT_SCHEMA, RecipeApplyOptions, RecipeApplyReport, RecipeApplyStatus,
     RecipeCheckPhase, RecipeCheckResult, apply_recipe_work_orders, load_recipe_work_orders,
 };
+pub use runtime::*;
+pub use transaction::*;
 
 #[derive(Debug, Clone)]
 pub struct VerifyOptions {
@@ -3477,13 +3489,46 @@ fn write_prepared_patches(
     backup: bool,
 ) -> Result<Vec<PathBuf>> {
     let grouped = group_prepared_patches(root, prepared);
-    let mut written = Vec::new();
+    let canonical_root = root
+        .canonicalize()
+        .with_context(|| format!("failed to resolve patch root {}", root.display()))?;
+    let mut expected = BTreeMap::new();
+    let mut replacements = BTreeMap::new();
     for (path, patches) in grouped {
-        if write_prepared_patches_to_file(&path, patches, backup)? {
-            written.push(path);
+        if let Some((original, replacement)) = prepared_patch_file_contents(&path, patches)? {
+            let canonical_path = path
+                .canonicalize()
+                .with_context(|| format!("failed to resolve patch path {}", path.display()))?;
+            let relative = canonical_path
+                .strip_prefix(&canonical_root)
+                .with_context(|| format!("{} is outside {}", path.display(), root.display()))?
+                .to_path_buf();
+            expected.insert(relative.clone(), original.into_bytes());
+            replacements.insert(relative, replacement.into_bytes());
         }
     }
-    Ok(written)
+    if expected.is_empty() {
+        return Ok(Vec::new());
+    }
+    let receipt = commit_atomic_sources(
+        &canonical_root,
+        Path::new(".deslop/undo"),
+        &expected,
+        &replacements,
+    )?;
+    if backup {
+        for (path, original) in expected {
+            let physical = canonical_root.join(path);
+            let backup_path = PathBuf::from(format!("{}.deslop.bak", physical.display()));
+            fs::write(&backup_path, original)
+                .with_context(|| format!("failed to write {}", backup_path.display()))?;
+        }
+    }
+    Ok(receipt
+        .written
+        .into_iter()
+        .map(|path| canonical_root.join(path))
+        .collect())
 }
 
 fn group_prepared_patches<'a>(
@@ -3500,11 +3545,10 @@ fn group_prepared_patches<'a>(
     grouped
 }
 
-fn write_prepared_patches_to_file(
+fn prepared_patch_file_contents(
     path: &Path,
     mut patches: Vec<&PreparedPatch>,
-    backup: bool,
-) -> Result<bool> {
+) -> Result<Option<(String, String)>> {
     patches.sort_by(|a, b| b.range.start.cmp(&a.range.start));
     let original = read_to_string_ctx(path)?;
     let mut next_start = original.len() + 1;
@@ -3525,10 +3569,9 @@ fn write_prepared_patches_to_file(
         next_start = patch.range.start;
     }
     if text == original {
-        return Ok(false);
+        return Ok(None);
     }
-    write_replacement_file(path, &original, text, backup)?;
-    Ok(true)
+    Ok(Some((original, text)))
 }
 
 fn write_replacement_file(path: &Path, original: &str, text: String, backup: bool) -> Result<()> {

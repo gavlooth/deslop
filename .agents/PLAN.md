@@ -4451,3 +4451,87 @@ Negative-memory constraint: the first stored-report verifier used exact `f64` eq
 invalidated comparison was replaced with 1e-12-tolerant numeric checks while all integer counts, observations,
 identities, gates, and schema fields remain exact. Benchmark thresholds, prompts, and samples were never changed
 after submission.
+
+## 2026-07-16 — M7 hardened verification authority
+
+Active hypothesis: M7 must turn the existing patch checks, coverage/mutation adapters, and recipe rollback helper into
+one revision-pinned verification transaction. It must select the smallest dependency-closed check set when authority
+is complete, fall back conservatively when it is not, preserve conflicting adapter/compiler/LSP facts, require risky
+characterization evidence from the pre-change snapshot, and make formatting, graph-delta comparison, checks, commit,
+undo, and rollback one durable fail-closed operation.
+
+Current approach:
+
+1. Freeze a strict M7 verification schema and ADR covering authority sources, impact-cone selection, execution policy,
+   structured failures, evidence strength, residual uncertainty, and durable transaction identities.
+2. Build indexed impact selection over work-order resources and dependency facts, selecting targeted test/build/lint/
+   type checks only when coverage is complete; otherwise select the declared conservative project-wide fallback.
+3. Join adapter, compiler, and LSP precondition observations without precedence overwrite. Disagreement, incomplete
+   provenance, stale artifacts, or an unsatisfied required authority blocks verification.
+4. Unify parse/build/lint/type, targeted tests, coverage, pinned pre-change characterization, differential, and
+   mutation observations in one receipt. Risky characterization must be captured and approved before the rewrite.
+5. Execute under explicit time/resource/filesystem/environment/network policy. Pin all declared reads, recheck recipe
+   preconditions, compare expected/actual graph delta before and after formatting, and reanalyze formatted bytes.
+6. Stage all files, fsync durable undo/rollback metadata, atomically replace the complete batch, and restore exact
+   bytes under injected command/timeout/crash/partial-write/format/delta failures.
+7. Immediately demote a recipe when a counterexample is discovered, persist a content-addressed negative-memory
+   record, and prevent further automatic application until explicit supersession.
+
+CONVERGENCE: each slice closes only with strict round-trip/tamper tests and adversarial failures. M7.DoD has two
+terminal outcomes: every injected failure restores exact bytes and every weaker safety class carries explicit
+residual uncertainty, with no known SafeAuto behavior change; or M7 remains open with the exact failed invariant.
+The terminal audit must map M7.1–M7.8 and M7.DoD to executable evidence plus full all-feature workspace gates.
+
+Negative-memory constraints: green tests are evidence rather than equivalence proof; client-supplied M6 observations
+cannot grant verifier authority; generated-after-rewrite characterization cannot establish prior behavior; provider
+rank cannot erase disagreement; missing dependency coverage widens checks rather than narrowing them; formatting is
+a semantic input requiring reanalysis; rollback success is proven only by exact bytes and durable metadata.
+
+Ownership/checkpoint: `/root` owns schema, implementation, validation, integration, and terminal push. No sub-agent
+work was requested. First checkpoint is M7.1/M7.2/M7.4: strict policy, impact selection, and conflict-preserving
+precondition authority.
+
+### M7 terminal checkpoint — hardened verification and durable transaction authority
+
+`deslop.verifier-plan/1` now derives one content-addressed verification plan from the exact M6 work order, project
+snapshot, impact resources, check catalog, provider artifacts, and execution policy. Complete impact coverage selects
+only intersecting dependency-closed checks. Incomplete/truncated/unknown coverage selects every project build, lint,
+type, and test fallback. Adapter/compiler/language-server observations retain independent artifacts and conclusions;
+current Proven/Disproven disagreement blocks as Conflict and no precedence order erases it.
+
+Selected parse, format, build, lint, type, targeted-test, coverage, characterization, differential, mutation, and
+graph-delta checks produce strict snapshot-bound evidence. Every selected check must pass. Risky rewrites additionally
+require `deslop.pre-change-characterization/1`, captured and approved on the exact pre-change snapshot before patch
+authorship, plus matching passing evidence. SafeAuto is the only possible Automatic disposition; every weaker class
+is review-only or rejected with explicit residual uncertainty.
+
+The transaction stages exact guarded edits in an isolated workspace, compares authoritative actual versus expected
+graph deltas, runs formatting, protects undeclared bytes/files, reanalyzes formatted bytes, runs the selected evidence
+set, atomically commits the exact considered bytes, and reanalyzes live state. A live mismatch explicitly undoes,
+reanalyzes the restored source, and demotes the recipe. `GraphDeltaOracle` is mandatory: test success cannot fabricate
+the graph result.
+
+`deslop.undo-manifest/1` stores original bytes as fsynced artifacts with exact original/replacement digests before the
+journal enters Committing. Replacement files and manifest transitions are fsynced. Ordinary errors roll back every
+file; simulated process interruption leaves a recoverable journal; explicit undo refuses later drift or corrupt undo
+data. The same durable write primitive now backs ordinary verified patches and controlled recipe-canary writes.
+
+Execution policy binds total/command time, output size, file count/size, readable/writable workspace roots,
+environment allowlist, and network. The production command runtime clears environment and uses a namespace sandbox
+with network denied. Host-level allowlists are unsupported by a generic shell and reject. On this container,
+`bwrap --unshare-net` and `unshare -n` both return `Operation not permitted`; the runtime therefore produces the
+declared structured PolicyViolation rather than weakening enforcement. A deployment that executes policy commands
+must enable namespaces or supply a server-owned runtime with equivalent enforcement.
+
+`deslop.recipe-demotion/1` appends content-addressed counterexamples for format/graph failures and failed targeted,
+characterization, differential, or mutation evidence. Active demotion blocks automatic execution until an explicit
+authority/reason supersession. Corrupt records, duplicate records/supersessions, and orphan supersessions reject.
+
+ADR 0009, the M7 capability matrix, and migration notes freeze these boundaries. Focused verifier tests pass 81/81
+including the executable DoD. Terminal `cargo fmt --all -- --check`, all-feature workspace build/test, and all-feature/
+all-target clippy with `-D warnings` pass: 703 active unit/integration tests, 4 active doctests, and 3 explicit ignores.
+M7 is terminal; M8 was not started.
+
+Negative-memory constraint: Linux namespace tool presence is not sandbox availability. This host has both executables
+but denies namespace creation; never detect enforcement by executable lookup alone or fall back to an inherited shell.
+Exact graph-delta authority remains a required oracle, never a value copied from the candidate or inferred from tests.
