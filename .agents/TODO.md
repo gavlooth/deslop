@@ -593,7 +593,11 @@ reports, benchmark records, and work orders.
 
 ### Clones, ceremony, dead code, clarity
 
-- [ ] M5.21 Implement exact subtree fingerprints and renamed-token normalization.
+- [x] M5.21 Implement exact subtree fingerprints and renamed-token normalization.
+  Added strict parser-owned exact/normalized content addresses over retained CST subtrees, evidence-backed alpha
+  normalization with default public-API preservation, malformed/partial fail-closed behavior, and optional candidate
+  target wiring for M5.22. Six focused fixtures, 241 active parse tests (1 explicit ignore), 4 doctests, 55 active
+  recipe tests (1 explicit ignore), and every requested workspace fmt/build/test/clippy gate pass.
 - [ ] M5.22 Implement scalable candidate indexing and graph-context clone verification.
 - [ ] M5.23 Collapse pair matches into maximal clone classes and one coordinated candidate.
 - [ ] M5.24 Classify generated/schema/test/public-API/intentional repetition before abstraction proposals.

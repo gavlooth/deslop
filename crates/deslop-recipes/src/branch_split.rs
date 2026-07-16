@@ -365,6 +365,7 @@ pub fn detect_independent_branch_splits(
                         entity: graph_root(graph, root),
                         node: source.clone(),
                         span: target_span,
+                        subtree_fingerprint: None,
                     },
                     eligibility: eligibility.clone(),
                     required_results,

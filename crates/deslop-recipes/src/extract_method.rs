@@ -525,6 +525,7 @@ pub fn detect_extract_method_candidates(
                     entity: graph_root(graph, root),
                     node: graph.owner().clone(),
                     span: target_span,
+                    subtree_fingerprint: None,
                 },
                 eligibility: eligibility.clone(),
                 required_results: vec![
@@ -851,6 +852,7 @@ pub fn detect_responsibility_split_candidates(
                     entity: graph_root(graph, first_root),
                     node: graph.owner().clone(),
                     span: span(graph.owner()),
+                    subtree_fingerprint: None,
                 },
                 eligibility: eligibility.clone(),
                 required_results: vec![

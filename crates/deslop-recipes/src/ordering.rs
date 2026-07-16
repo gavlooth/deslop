@@ -485,6 +485,7 @@ fn build_candidate(
             entity: scope_root.clone(),
             node: root.key().clone(),
             span: span(root.key()),
+            subtree_fingerprint: None,
         },
         eligibility,
         required_results,

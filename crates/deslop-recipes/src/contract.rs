@@ -5,7 +5,7 @@ use std::path::{Component, Path};
 use deslop_core::{RevisionGuard, SafetyClass, Span, revision_guard};
 use deslop_parse::{
     AdapterCapability, CapabilityAuthority, CapabilitySupport, GraphEligibilityDecision,
-    GraphEvidenceLayer, GraphRecipeRequirement, NodeKey,
+    GraphEvidenceLayer, GraphRecipeRequirement, NodeKey, SubtreeFingerprint,
 };
 use serde::{Deserialize, Serialize};
 
@@ -456,6 +456,8 @@ pub struct CandidateTarget {
     pub entity: GraphEntityRef,
     pub node: NodeKey,
     pub span: Span,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtree_fingerprint: Option<SubtreeFingerprint>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1093,7 +1095,17 @@ fn validate_target(target: &CandidateTarget) -> Result<(), RecipeContractError> 
             "candidate target span does not match its exact retained node",
         ));
     }
-    validate_repo_path(target.node.file().path.as_path())
+    validate_repo_path(target.node.file().path.as_path())?;
+    if target
+        .subtree_fingerprint
+        .as_ref()
+        .is_some_and(|fingerprint| fingerprint.root() != &target.node)
+    {
+        return Err(invalid(
+            "candidate subtree fingerprint does not belong to its exact target node",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_span(span: Span) -> Result<(), RecipeContractError> {

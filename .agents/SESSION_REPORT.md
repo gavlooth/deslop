@@ -11657,3 +11657,55 @@ conditional/glob near-miss test now proves incomplete/non-unique resolution beco
 of an invalid wire or a silently omitted block.
 
 Signature: Codex `/root` — M5.20 integration and terminal verification owner
+
+## 2026-07-16T08:37:38+02:00 — M5.21 terminal exact subtree fingerprints
+
+**Objective:** close M5.21 with deterministic, content-addressed structural fingerprints and safe renamed-token
+normalization over retained owned syntax, without starting clone indexing or detection.
+
+**Target:** provide exact and alpha-normalized subtree digest types, preserve all non-identifier and public API tokens
+by default, fail closed on incomplete syntax, and expose the typed evidence through transformation candidates for
+M5.22.
+
+**Changes:** added strict `deslop.subtree-fingerprint/1` and `deslop.subtree-fingerprint-policy/1` types and
+`derive_subtree_fingerprint`. Exact and normalized postorder hashes bind stored grammar identity, raw grammar kind,
+fields, flags, child order, and leaf bytes. Explicit symbol evidence may normalize only classified identifier leaves
+to deterministic first-occurrence ordinals. Public API identifiers remain exact unless a named recipe policy opts in;
+the content-bound policy ID enters the normalized digest. Complete parse provenance and an error/missing/recovery-free
+subtree are mandatory. Added strict Serde validation, public parse exports, and an optional target-bound fingerprint
+on `CandidateTarget`; all existing recipe constructors explicitly carry `None`, so M5.20 behavior is unchanged.
+
+**Commands run/results:** focused fingerprint tests passed 6/6 and focused recipe contract tests passed 3/3.
+`cargo test -p deslop-parse --lib` passed 241 active tests with 1 explicit ignored probe. `cargo fmt --all -- --check`,
+`cargo build --workspace --all-features`, `cargo test --workspace --all-features`, and `cargo clippy --workspace
+--all-features --all-targets -- -D warnings` all passed. The workspace test gate also passed 4 parse doctests and 55
+active recipe tests with 1 explicit ignored evidence gate. `git diff --check` passed before terminal artifacts.
+
+**Numerical evidence:** equal-structure blocks with renamed parameter/local uses have different exact digests and one
+equal normalized digest, with exactly 3 owned identifier occurrences normalized. Structural, numeric-literal, and
+operator mutations each produce unequal normalized digests. Public-surface renames remain unequal under the default
+policy and become equal only under the same named recipe opt-in. Malformed recovered syntax returns
+`IncompleteSyntax` and no digest. Strict round-trip succeeds; uppercase digest and stale policy-ID mutations reject.
+
+**Invalidated assumptions/authority lessons:** a parameter declaration outside a selected block is not owned by that
+subtree even when its references are; the focused fixture therefore measures 3 normalized occurrences, not 4.
+Fingerprint equality is correlation/index evidence only and cannot authorize lookup, editing, or application.
+Whitespace absent from the CST is outside structural equality; all owned syntax tokens remain exact except explicitly
+evidenced identifiers.
+
+**Current recommendation/checkpoint:** M5.21 is terminal. Proceed to M5.22 scalable candidate indexing and
+graph-context clone verification using the typed exact/normalized digests. Do not implement maximal clone classes
+until M5.23, and do not reuse or generalize M5.20 Rust ordering semantics.
+
+**Blockers/restart/dependencies:** no blockers. No installed CLI replacement, restart, migration, cache clear, or push
+is required; downstream consumers need only rebuild. M5.22 must supply graph-grounded identifier/surface evidence and
+must retain exact revision guards for any later proposal.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-parse/src/subtree_fingerprint.rs`, `crates/deslop-parse/src/lib.rs`,
+`crates/deslop-recipes/src/contract.rs`, and existing recipe candidate constructors.
+
+**Negative-memory status:** the existing durable constraint remains enforced: normalized fingerprints are matching
+evidence only and never write authority. No new recurring failed implementation path required negative memory.
+
+Signature: Codex `/root` — M5.21 integration and terminal verification owner

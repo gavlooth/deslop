@@ -415,6 +415,7 @@ pub fn detect_adjacent_condition_merges(
                         entity: graph_root(graph, outer_node),
                         node: outer_key.clone(),
                         span: target_span,
+                        subtree_fingerprint: None,
                     },
                     eligibility: eligibility.clone(),
                     required_results,

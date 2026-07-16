@@ -4103,3 +4103,51 @@ build/rustdoc/clippy/fmt/diff gate pass. The all-feature installed CLI was repla
 2026-07-15T21:52:50+02:00; both installed selectors exit 0 with `[]` under current production authority. Proceed to
 M5.21 exact subtree fingerprints and renamed-token normalization; do not generalize Rust ordering semantics to other
 languages or upgrade these review candidates automatically.
+
+## 2026-07-16 — M5.21 exact subtree fingerprints and renamed-token normalization
+
+Active hypothesis: clone discovery needs a strict, parser-owned content address before it needs an index. Derive
+deterministic exact and alpha-normalized digests from one retained owned CST subtree. Preserve grammar shape, child
+order, fields, flags, and every non-identifier token exactly. Normalize only identifier occurrences backed by explicit
+symbol evidence; public/package/module/API-surface occurrences remain exact unless a named recipe policy opts in.
+Incomplete, recovered, error, or missing syntax produces no fingerprint rather than a degraded match.
+
+Current approach: add strict fingerprint, policy, identifier-evidence, and error types to `deslop-parse`; expose one
+derivation entry point over a retained `ProjectAnalysis`, root `NodeKey`, lexical projection, and exact normalization
+evidence. Carry an optional fingerprint on `CandidateTarget` so M5.22 can index candidates without making a clone
+detector in this slice. Existing candidates carry no fingerprint until their detector owns suitable evidence. Exact
+`RevisionGuard` bytes remain the only write authority.
+
+CONVERGENCE: one focused fixture set must show identical normalized digests for structurally equal functions with
+alpha-renamed locals while their exact digests differ; structural, literal, and operator changes must not match; public
+surface identifiers must remain exact without explicit recipe permission; and malformed/partial syntax must return an
+error with no digest. Candidate serialization and identity must retain and bind the typed fingerprint. Terminal
+outcomes are: (a) spelling-only or fuzzy evidence authorizes normalization—invalid; (b) literals/operators/keywords are
+normalized—invalid; (c) partial syntax emits a digest—invalid; (d) current recipe behavior changes—invalid; or (e) all
+focused and workspace gates pass, closing M5.21 without starting M5.22.
+
+Validation path: focused `deslop-parse` fingerprint tests and candidate contract tests first; then full workspace
+`cargo fmt --all -- --check`, `cargo build --workspace --all-features`, `cargo test --workspace --all-features`, and
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`. Record measured counts and terminal evidence
+in TODO, PLAN, and SESSION_REPORT only after the gates pass.
+
+Negative-memory constraint: subtree fingerprints are correlation and indexing evidence only. They never replace an
+exact revision-bound node lookup or `RevisionGuard`, and normalized equality alone never grants rewrite authority.
+
+Ownership/checkpoint: the primary agent owns schema, parser implementation, candidate integration, fixtures, all
+validation, and terminal artifacts. Do not start M5.22 and do not generalize M5.20 Rust ordering recipes.
+
+Terminal result: M5.21 is complete. `deslop.subtree-fingerprint/1` now derives deterministic `stx1_` exact and
+`stn1_` alpha-normalized content addresses from one revision-bound owned CST subtree. Both addresses bind grammar,
+raw kind, field, flags, child order, and exact leaf tokens; only classified identifier leaves backed by explicit
+symbol evidence can receive stable first-occurrence alpha ordinals. Literal, operator, keyword, delimiter,
+punctuation, comment, error, and unproven identifier bytes remain exact. The versioned policy preserves public API
+surface identifiers by default and requires a named recipe opt-in before normalizing them; its content-bound policy
+ID is included in every normalized digest. Non-complete file provenance or any error/missing/recovered node returns
+an error and emits no fingerprint. Strict wire decoding rejects malformed digests, stale policy IDs, unknown fields,
+and invalid counts. `CandidateTarget` can now carry one optional target-bound `SubtreeFingerprint`; existing recipes
+remain behaviorally unchanged with `None`, exact `RevisionGuard` bytes remain the sole write authority, and no clone
+index/detector was started. Six focused fingerprint tests, 241 active parse tests (1 explicit ignore), 4 parse
+doctests, 55 active recipe tests (1 explicit ignore), and full workspace fmt/build/test/clippy-with-warnings-denied
+all pass. Proceed to M5.22 scalable indexing and graph-context verification; consume these typed fingerprints without
+turning normalized equality into rewrite legality.

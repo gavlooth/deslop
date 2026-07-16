@@ -321,6 +321,7 @@ pub fn detect_unreachable_literal_statements(
                         entity: root,
                         node: statement_key.clone(),
                         span,
+                        subtree_fingerprint: None,
                     },
                     eligibility: eligibility.clone(),
                     required_results,

@@ -251,6 +251,7 @@ fn inline_candidate(
                 entity: target.clone(),
                 node: use_node.key().clone(),
                 span: span(use_node.key()),
+                subtree_fingerprint: None,
             },
             eligibility,
             required_results: vec![
@@ -385,6 +386,7 @@ fn removal_candidate(
                 entity: target.clone(),
                 node: statement.key().clone(),
                 span: span(statement.key()),
+                subtree_fingerprint: None,
             },
             eligibility,
             required_results: required,

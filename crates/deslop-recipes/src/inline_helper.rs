@@ -383,6 +383,7 @@ pub fn detect_inline_single_use_helpers(
                 entity: target_entity,
                 node: shape.statement.key().clone(),
                 span: span(shape.statement.key()),
+                subtree_fingerprint: None,
             },
             eligibility: eligibility.clone(),
             required_results: vec![

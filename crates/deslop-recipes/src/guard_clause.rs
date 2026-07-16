@@ -446,6 +446,7 @@ pub fn detect_guard_clause_inversions(
                         entity: graph_root(graph, root),
                         node: source.clone(),
                         span: target_span,
+                        subtree_fingerprint: None,
                     },
                     eligibility: eligibility.clone(),
                     required_results,

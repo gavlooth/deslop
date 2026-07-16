@@ -54,6 +54,7 @@ mod resolution_traversal;
 mod scope_graph;
 mod semantic_resolution;
 mod snapshot;
+mod subtree_fingerprint;
 mod system_dependence;
 
 pub use adapter::{
@@ -222,6 +223,13 @@ pub use snapshot::{
     ProjectAnalysis, ProjectAnalysisId, ProjectSnapshot, ProjectSnapshotBuilder, ProjectSnapshotId,
     ProjectionId, RepositoryId, ScopeEntry, ScopeEntryKind, ScopeSpec, SnapshotEntry,
     SnapshotEntryKind, SourceRevision, SourceStore, StoredSource, SyntaxOwner, SyntaxPointContext,
+};
+pub use subtree_fingerprint::{
+    ExactSubtreeFingerprint, IdentifierSurface, NormalizedSubtreeFingerprint,
+    PublicApiNormalization, RenamedIdentifierEvidence, RenamedTokenEvidence,
+    SUBTREE_FINGERPRINT_POLICY_SCHEMA, SUBTREE_FINGERPRINT_SCHEMA, SubtreeFingerprint,
+    SubtreeFingerprintError, SubtreeFingerprintPolicy, SubtreeFingerprintPolicyId,
+    derive_subtree_fingerprint,
 };
 pub use system_dependence::{
     CallSite, CallSiteDraft, CallSiteKey, CallableSummary, CallableSummaryDraft,

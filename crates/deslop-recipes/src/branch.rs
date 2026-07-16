@@ -361,6 +361,7 @@ pub fn detect_equivalent_branch_fragments(
                             entity: root,
                             node: source.clone(),
                             span: target_span,
+                            subtree_fingerprint: None,
                         },
                         eligibility: eligibility.clone(),
                         required_results: vec![exact, condition_order, dependencies, effects],
