@@ -1,0 +1,132 @@
+{
+  "schema": "deslop.readability-datasets/1",
+  "sources": [
+    {
+      "id": "brains-on-code-aoc-frp-2026",
+      "title": "Fixation-related potentials reveal that confusing program code elicits a late frontal positivity",
+      "revision": "zenodo-14229849",
+      "uri": "https://zenodo.org/api/records/14229849/files/figure%20data.zip/content",
+      "artifact_checksum": "sha256:8c986528fd24f7622ba02ed2964d8828037c44322f37265360d6faecff1c51d1",
+      "license": {
+        "decision": "approved",
+        "spdx": "CC-BY-4.0",
+        "evidence_uri": "https://www.nature.com/articles/s41598-026-50946-9#data-availability",
+        "checked_on": "2026-07-16",
+        "reason": "The publication and Zenodo record explicitly release the experiment data under CC-BY-4.0."
+      },
+      "task": "timed_correct_comprehension",
+      "annotation_population": "24 experiment participants completing Java atoms-of-confusion comprehension trials",
+      "languages": [
+        "java"
+      ],
+      "roles": [
+        "callable"
+      ],
+      "limitations": [
+        "atoms-of-confusion task rather than general perceived readability",
+        "java only"
+      ],
+      "imported": true
+    },
+    {
+      "id": "deslop-controlled-m8-v1",
+      "title": "Deslop M8 controlled cleanup and unsafe-near-miss pilot",
+      "revision": "deslop.m8-pilot/1",
+      "uri": "docs/M8_PILOT_PROTOCOL.md",
+      "artifact_checksum": "sha256:346e6b04308b180251ccf5ac5dfb234e73c12f8ecbf9316cbc614c555a3a5325",
+      "license": {
+        "decision": "approved",
+        "spdx": "MIT",
+        "evidence_uri": "LICENSE",
+        "checked_on": "2026-07-16",
+        "reason": "Project-owned benchmark protocol and generated metadata."
+      },
+      "task": "controlled_primary_axis",
+      "annotation_population": "mixed human and LLM-assisted cleanup producers plus deterministic unsafe-near-miss oracles; row authorship blinded",
+      "languages": [
+        "clojure",
+        "javascript",
+        "julia",
+        "python",
+        "rust",
+        "typescript"
+      ],
+      "roles": [
+        "callable",
+        "type",
+        "module",
+        "test"
+      ],
+      "limitations": [
+        "controlled oracle is not a human readability rating",
+        "producer mixture is preserved only as a dataset limitation, never a row feature"
+      ],
+      "imported": true
+    },
+    {
+      "id": "dorn-general-readability-2012",
+      "title": "A General Software Readability Model dataset mirror",
+      "revision": "huggingface-main-observed-2026-07-16",
+      "uri": "https://huggingface.co/datasets/rufimelo/Dorn_Code_Readability",
+      "artifact_checksum": "",
+      "license": {
+        "decision": "rejected",
+        "spdx": null,
+        "evidence_uri": "https://huggingface.co/datasets/rufimelo/Dorn_Code_Readability/blob/main/README.md",
+        "checked_on": "2026-07-16",
+        "reason": "The observed dataset card provides no explicit redistribution license; public downloadability is insufficient authority to copy it."
+      },
+      "task": "perceived_readability",
+      "annotation_population": "published human ratings; not imported",
+      "languages": [
+        "cuda",
+        "java",
+        "python"
+      ],
+      "roles": [],
+      "limitations": [
+        "license authority missing",
+        "snippet population differs from deslop's six-language target"
+      ],
+      "imported": false
+    },
+    {
+      "id": "themis-code-preference-2025",
+      "title": "Themis-CodePreference",
+      "revision": "7c366b23590cc9ff8d372bb47280fcd474536344",
+      "uri": "https://huggingface.co/datasets/project-themis/Themis-CodePreference/resolve/7c366b23590cc9ff8d372bb47280fcd474536344/data/train-00000-of-00024.parquet",
+      "artifact_checksum": "sha256:8ea455812b1e8470934fa6f52005a3cb46673ba01c57cda8fd70ac6591aba414",
+      "license": {
+        "decision": "approved",
+        "spdx": "Apache-2.0",
+        "evidence_uri": "https://huggingface.co/datasets/project-themis/Themis-CodePreference#license",
+        "checked_on": "2026-07-16",
+        "reason": "The dataset card explicitly releases the dataset under Apache-2.0."
+      },
+      "task": "readability_and_maintainability_preference",
+      "annotation_population": "pre-2019 permissively licensed merged commits selected by criterion classifiers and multi-model preference consensus",
+      "languages": [
+        "c",
+        "c#",
+        "c++",
+        "go",
+        "java",
+        "javascript",
+        "python",
+        "ruby"
+      ],
+      "roles": [
+        "callable",
+        "type",
+        "module",
+        "test"
+      ],
+      "limitations": [
+        "broad readability-and-maintainability target rather than direct human perceived-readability ratings",
+        "project identity is not exposed in the published row schema",
+        "selection and preference strength use learned or model-consensus components"
+      ],
+      "imported": true
+    }
+  ]
+}

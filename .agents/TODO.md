@@ -709,18 +709,42 @@ reports, benchmark records, and work orders.
 
 ## M8 — Readability and ranking calibration
 
-- [ ] M8.1 Version the exclusive per-node feature schema and aggregation policies.
-- [ ] M8.2 Separate structural, lexical/visual, surprisal, entropy, redundancy, cohesion, impact, and safety axes.
-- [ ] M8.3 Implement CFG-based complexity and declare estimator/sample size for every entropy feature.
-- [ ] M8.4 Licence-check/import published readability datasets and preserve their task/population limits.
-- [ ] M8.5 Collect multilingual, role-stratified pairwise readability and timed/correct comprehension data.
-- [ ] M8.6 Include human/LLM cleanup pairs and unsafe near-misses without authorship labels.
-- [ ] M8.7 Capture every candidate feature once; run size-controlled ablations post hoc.
-- [ ] M8.8 Run leave-project-out and leave-language-out evaluation with calibration and confidence intervals.
-- [ ] M8.9 Compare against size, NLOC/complexity, and simple lexical baselines.
-- [ ] M8.10 Publish a model card and choose portable model, language/role models, or evidence-only UX.
-- [ ] M8.DoD Ship no readability label unless it beats frozen baselines on held-out data with acceptable
+- [x] M8.1 Version the exclusive per-node feature schema and aggregation policies.
+  deslop.readability-features/1 is content-addressed/tamper-evident, owns one exclusive syntax slice, and publishes
+  axis-specific aggregate rules; deslop.metrics/6 exposes the schema and each region vector.
+- [x] M8.2 Separate structural, lexical/visual, surprisal, entropy, redundancy, cohesion, impact, and safety axes.
+  Every vector contains all eight named axes; measured values and explicit unknown reasons are separate, and absent
+  graph/model joins are never zero-filled.
+- [x] M8.3 Implement CFG-based complexity and declare estimator/sample size for every entropy feature.
+  Complete exact owned CFGs use McCabe E-N+2P; syntax fallback is named. Token/AST-kind/byte Shannon measurements
+  each retain their exact estimator and exclusive sample size. Focused metrics tests pass 30/30.
+- [x] M8.4 Licence-check/import published readability datasets and preserve their task/population limits.
+  The strict registry pins Themis (Apache-2.0) and AoC-FRP (CC-BY-4.0) artifacts/revisions/checksums and retains their
+  distinct targets/populations. The unlicensed Dorn mirror is recorded rejected and cannot import.
+- [x] M8.5 Collect multilingual, role-stratified pairwise readability and timed/correct comprehension data.
+  The frozen corpus has 300 blinded readability/maintainability preference pairs across 8 languages and 4 roles plus
+  1,727 Java human comprehension trials (863 ambiguous, 864 unambiguous) with measured time/correctness aggregates.
+- [x] M8.6 Include human/LLM cleanup pairs and unsafe near-misses without authorship labels.
+  The 240-task set contains 160 published human-commit cleanups, 40 controlled LLM-assisted cleanups, and 40 unsafe
+  semantic/literal/operator/API near-misses; the row schema has zero authorship keys.
+- [x] M8.7 Capture every candidate feature once; run size-controlled ablations post hoc.
+  rcp1_fba95f5be345e111f632d94a30ccde649a1e65a2d7f9da200f9207212d66675e captures 760 unique candidates
+  once. All 8 leave-one-axis-out evaluations run on the same 300 pairs and the 226-pair size-controlled subset.
+- [x] M8.8 Run leave-project-out and leave-language-out evaluation with calibration and confidence intervals.
+  Frozen-score holdouts report Wilson 95% intervals, Brier, and 10-bin ECE for all 8 languages. Themis exposes no
+  project identity, so the single explicit unknown-project stratum fails the 3-project gate instead of fabricating
+  leave-project-out generalization.
+- [x] M8.9 Compare against size, NLOC/complexity, and simple lexical baselines.
+  Overall challenger accuracy is 0.5700 (95% 0.5134–0.6248, ECE 0.0764), versus size 0.3933,
+  NLOC/complexity 0.3933, and lexical 0.5333; size-controlled challenger accuracy is 0.5664.
+- [x] M8.10 Publish a model card and choose portable model, language/role models, or evidence-only UX.
+  ADR 0010, the capability/data/migration reports, JSON evaluation, and model card choose evidence-only. No
+  language/role family was fitted, and readability_label_permitted=false is wired into metrics/CLI/MCP output.
+- [x] M8.DoD Ship no readability label unless it beats frozen baselines on held-out data with acceptable
   calibration; preserve transparent axes in every outcome.
+  The executable M8 DoD proves all 8 axes remain visible and no label/model id ships. The challenger fails lower-bound,
+  calibration, project, target-authority, missing-axis, and several language/baseline gates. Terminal all-feature
+  fmt/build/test/clippy passes: 711 active unit/integration tests, 4 doctests, and 3 explicit ignored probes.
 
 ## M9 — Incremental project scale and integrations
 

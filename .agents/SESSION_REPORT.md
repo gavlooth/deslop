@@ -12096,3 +12096,83 @@ legacy atomic-write integrations, Cargo wiring, ADR 0009, M7 capability/migratio
 namespace permission; never silently downgrade the policy runtime. No unresolved algorithmic failure remains.
 
 Signature: Codex `/root` — M7 integration, transaction, failure-injection, and terminal verification owner
+
+## 2026-07-16 — M8 readability and ranking calibration terminal checkpoint
+
+**Date/time:** 2026-07-16T16:30:31+02:00
+
+**Objective/target:** complete M8.1–M8.10 and M8.DoD with a versioned transparent feature
+contract, licence-authorized data, one-capture convergent evaluation, frozen baseline/calibration
+gates, and an enforced portable/language-role/evidence-only product decision.
+
+**Changes:** added deslop.readability-features/1 and deslop.metrics/6 with exclusive
+content-addressed per-region axes, aggregation policy, exact CFG McCabe complexity where complete,
+per-entropy estimator/sample metadata, explicit unknowns, and embedded calibration disposition.
+Added the strict dataset/corpus/capture/policy/report/model-card contracts and the m8-calibration
+assembler/evaluator. Added deterministic side blinding, size control, four rankers, eight
+leave-one-axis-out ablations at both scales, project/language strata, Wilson intervals, Brier/ECE,
+and fail-closed label selection. Added ADR 0010, capability/data/migration/model-card/pilot docs,
+frozen registry/corpus/evaluation artifacts, and an executable M8 DoD.
+
+**Published data and limits:** Themis revision
+7c366b23590cc9ff8d372bb47280fcd474536344 (Apache-2.0) contributes 300 short
+readability-and-maintainability preference pairs: JavaScript/Python/Ruby 65 each, Java 51, C# 24,
+Go 20, C/C++ 5 each. It uses pre-2019 merged commits plus classifier/model-consensus selection and
+does not expose project identity or direct human perceived-readability labels. AoC-FRP Zenodo
+14229849 (CC-BY-4.0) contributes 1,727 Java callable comprehension trials by 24 participants:
+ambiguous n=863, 12,204.055 ms, correctness 0.702202; unambiguous n=864, 11,238.246 ms,
+correctness 0.884259. The Dorn mirror is recorded rejected because no explicit redistribution
+licence was observed.
+
+**Numerical evidence:** the immutable capture
+rcp1_fba95f5be345e111f632d94a30ccde649a1e65a2d7f9da200f9207212d66675e contains 760
+unique candidates. Corpus: 300 blinded pairs, 8 languages, 4 roles, 226 size-controlled pairs, 240
+cleanup tasks (160 published human-commit, 40 controlled LLM-assisted), and 40 unsafe near-misses;
+zero authorship keys. Overall challenger accuracy is 0.5700 (171/300; Wilson 95%
+0.5134–0.6248), Brier 0.249217, ECE 0.076400. Baseline accuracies: size 0.3933,
+NLOC/complexity 0.3933, lexical 0.5333. Size-controlled challenger accuracy is 0.5664
+(128/226; Wilson 95% 0.5012–0.6293), ECE 0.077890. All eight overall/size-controlled ablations
+and all eight language strata are retained in the JSON report.
+
+**Decision:** evidence-only. The challenger wins the aggregate accuracy comparison but fails the
+0.60 lower-bound floor, 0.05 ECE floor, three-project floor, direct-human-target requirement,
+complete-axis requirement, and multiple language/baseline checks. No language/role models were
+fitted or evaluated. deslop.metrics/6 therefore publishes
+readability_label_permitted=false, no model id, and all eight transparent axes. M8 evidence has no
+rewrite/safety authority.
+
+**Commands run/results:** generated the corpus with m8-calibration --assemble and regenerated the
+frozen report; focused deslop-metrics tests pass 30/30; deslop-eval unit/integration/DoD tests pass;
+MCP metrics and CLI algorithm-contract smokes pass. Terminal command passed:
+cargo fmt --all -- --check; cargo build --workspace --all-features;
+cargo test --workspace --all-features; and
+cargo clippy --workspace --all-features --all-targets -- -D warnings.
+The inventory is 711 active unit/integration tests, 4 active doctests, and 3 explicit ignored
+probes.
+
+**Invalidated assumptions/failure modes:** a public dataset without an explicit compatible licence
+cannot be copied; downloadability is not authority. Themis does not expose project identity, so a
+true multi-project holdout cannot be fabricated and the project gate must fail. The first import
+orientation put the preferred variant on a fixed side, which made tie handling position-dependent;
+the final corpus uses BLAKE3 row-id side swapping, and exact ranker ties never count as correct.
+Aggregate improvement over simple baselines is insufficient when calibration, confidence,
+target-authority, axes, or held-out strata fail.
+
+**Current recommendation/checkpoint:** M8.1–M8.10 and M8.DoD are terminal with evidence-only UX.
+Describe this slice, create a clean empty successor, advance and push main only while green and
+clean, then start M9 in a later slice.
+
+**Blockers/restart/dependencies:** no repository blocker and no model artifact to deploy. Consumers
+must migrate from deslop.metrics/5 to /6 to read the new axes/disposition. No cache clear or
+runtime restart is required.
+
+**Files/artifacts:** deslop-metrics feature/CFG/calibration contract; deslop-eval M8 module, binary,
+registry, corpus, evaluation, and DoD; CLI/MCP schema wiring; SPEC; ADR 0010; M8 capability,
+dataset, migration, model-card, and pilot documents; TODO/PLAN; this report.
+
+**Negative-memory status:** queued for Hindsight: fixed-side pair orientation and correctness for
+ties are invalid evaluation designs; missing project identity cannot be replaced by a synthetic
+split; public availability is not redistribution authority; aggregate wins cannot override frozen
+calibration/holdout gates.
+
+Signature: Codex /root — M8 feature, dataset, evaluation, product-decision, and terminal verification owner

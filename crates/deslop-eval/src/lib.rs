@@ -9,6 +9,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 pub mod m6_benchmark;
+pub mod m8_calibration;
 
 const DEFAULT_EPSILON: f64 = 0.0001;
 

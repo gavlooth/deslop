@@ -1,0 +1,1046 @@
+{
+  "model_card": {
+    "decision": {
+      "disposition": "evidence_only",
+      "model_id": null,
+      "readability_label_permitted": false,
+      "reasons": [
+        "1 projects observed; 3 required",
+        "Language `c#` challenger ECE 0.0850 > 0.0500",
+        "Language `c#` challenger lower 95% accuracy 0.3507 < 0.6000",
+        "Language `c#` gain over LexicalBaseline -0.0417 < 0.0200",
+        "Language `c#` gain over NlocComplexityBaseline 0.0000 < 0.0200",
+        "Language `c#` gain over SizeBaseline 0.0000 < 0.0200",
+        "Language `go` challenger ECE 0.1467 > 0.0500",
+        "Language `go` challenger lower 95% accuracy 0.3866 < 0.6000",
+        "Language `go` gain over LexicalBaseline -0.1000 < 0.0200",
+        "Language `java` challenger ECE 0.1445 > 0.0500",
+        "Language `java` challenger lower 95% accuracy 0.4903 < 0.6000",
+        "Language `javascript` challenger lower 95% accuracy 0.3746 < 0.6000",
+        "Language `javascript` gain over LexicalBaseline -0.0769 < 0.0200",
+        "Language `python` challenger ECE 0.1111 > 0.0500",
+        "Language `python` challenger lower 95% accuracy 0.4938 < 0.6000",
+        "Language `ruby` challenger ECE 0.0506 > 0.0500",
+        "Language `ruby` challenger lower 95% accuracy 0.4185 < 0.6000",
+        "Language `ruby` gain over LexicalBaseline -0.0154 < 0.0200",
+        "Overall `all` challenger ECE 0.0764 > 0.0500",
+        "Overall `all` challenger lower 95% accuracy 0.5134 < 0.6000",
+        "Project `unknown-project: themis-code-preference-2025` challenger ECE 0.0764 > 0.0500",
+        "Project `unknown-project: themis-code-preference-2025` challenger lower 95% accuracy 0.5134 < 0.6000",
+        "SizeControlled `nloc-ratio-within-floor` challenger ECE 0.0779 > 0.0500",
+        "SizeControlled `nloc-ratio-within-floor` challenger lower 95% accuracy 0.5012 < 0.6000",
+        "one or more candidates have an explicit unknown transparent axis",
+        "the pair corpus includes non-human or broader-than-perceived-readability targets",
+        "no separately fitted language/role model family was evaluated; transparent evidence-only UX is required"
+      ]
+    },
+    "evaluation_data": [
+      "brains-on-code-aoc-frp-2026 @ zenodo-14229849 (Approved; task=TimedCorrectComprehension; population=24 experiment participants completing Java atoms-of-confusion comprehension trials)",
+      "deslop-controlled-m8-v1 @ deslop.m8-pilot/1 (Approved; task=ControlledPrimaryAxis; population=mixed human and LLM-assisted cleanup producers plus deterministic unsafe-near-miss oracles; row authorship blinded)",
+      "themis-code-preference-2025 @ 7c366b23590cc9ff8d372bb47280fcd474536344 (Approved; task=ReadabilityAndMaintainabilityPreference; population=pre-2019 permissively licensed merged commits selected by criterion classifiers and multi-model preference consensus)"
+    ],
+    "intended_use": "transparent per-axis triage and benchmark ranking; labels only when the embedded decision permits them",
+    "limitations": [
+      "1 projects observed; 3 required",
+      "Language `c#` challenger ECE 0.0850 > 0.0500",
+      "Language `c#` challenger lower 95% accuracy 0.3507 < 0.6000",
+      "Language `c#` gain over LexicalBaseline -0.0417 < 0.0200",
+      "Language `c#` gain over NlocComplexityBaseline 0.0000 < 0.0200",
+      "Language `c#` gain over SizeBaseline 0.0000 < 0.0200",
+      "Language `go` challenger ECE 0.1467 > 0.0500",
+      "Language `go` challenger lower 95% accuracy 0.3866 < 0.6000",
+      "Language `go` gain over LexicalBaseline -0.1000 < 0.0200",
+      "Language `java` challenger ECE 0.1445 > 0.0500",
+      "Language `java` challenger lower 95% accuracy 0.4903 < 0.6000",
+      "Language `javascript` challenger lower 95% accuracy 0.3746 < 0.6000",
+      "Language `javascript` gain over LexicalBaseline -0.0769 < 0.0200",
+      "Language `python` challenger ECE 0.1111 > 0.0500",
+      "Language `python` challenger lower 95% accuracy 0.4938 < 0.6000",
+      "Language `ruby` challenger ECE 0.0506 > 0.0500",
+      "Language `ruby` challenger lower 95% accuracy 0.4185 < 0.6000",
+      "Language `ruby` gain over LexicalBaseline -0.0154 < 0.0200",
+      "Overall `all` challenger ECE 0.0764 > 0.0500",
+      "Overall `all` challenger lower 95% accuracy 0.5134 < 0.6000",
+      "Project `unknown-project: themis-code-preference-2025` challenger ECE 0.0764 > 0.0500",
+      "Project `unknown-project: themis-code-preference-2025` challenger lower 95% accuracy 0.5134 < 0.6000",
+      "SizeControlled `nloc-ratio-within-floor` challenger ECE 0.0779 > 0.0500",
+      "SizeControlled `nloc-ratio-within-floor` challenger lower 95% accuracy 0.5012 < 0.6000",
+      "no separately fitted language/role model family was evaluated; transparent evidence-only UX is required",
+      "not imported: dorn-general-readability-2012 @ huggingface-main-observed-2026-07-16 (Rejected; task=PerceivedReadability; population=published human ratings; not imported): The observed dataset card provides no explicit redistribution license; public downloadability is insufficient authority to copy it.",
+      "one or more candidates have an explicit unknown transparent axis",
+      "the pair corpus includes non-human or broader-than-perceived-readability targets"
+    ],
+    "metrics": [
+      "pairwise accuracy with Wilson 95% interval",
+      "Brier score and 10-bin expected calibration error",
+      "leave-project-out and leave-language-out frozen-score evaluation",
+      "size-controlled post-hoc ablations against size, NLOC/CFG complexity, and lexical baselines"
+    ],
+    "prohibited_uses": [
+      "authorship or AI-generated-code detection",
+      "rewrite safety, removability, or behavior-preservation authority",
+      "individual developer evaluation"
+    ],
+    "schema": "deslop.readability-model-card/1",
+    "training_data": [
+      "no fitted model artifact; portable challenger coefficients were frozen before evaluation"
+    ],
+    "transparent_axes": [
+      "structural",
+      "lexical_visual",
+      "surprisal",
+      "entropy",
+      "redundancy",
+      "cohesion",
+      "impact",
+      "safety"
+    ]
+  },
+  "report": {
+    "ablations": [
+      {
+        "overall": {
+          "accuracy": 0.54,
+          "accuracy_ci95": {
+            "lower": 0.4834517097991302,
+            "method": "wilson-score-95/1",
+            "upper": 0.5955368525029061
+          },
+          "brier": 0.24972951045105393,
+          "correct": 162,
+          "ece": 0.04851592741429192,
+          "model": "portable_challenger",
+          "pairs": 300
+        },
+        "removed_axis": "structural",
+        "size_controlled": {
+          "accuracy": 0.5442477876106194,
+          "accuracy_ci95": {
+            "lower": 0.47911723512703447,
+            "method": "wilson-score-95/1",
+            "upper": 0.6078992679121433
+          },
+          "brier": 0.2497976981964274,
+          "correct": 123,
+          "ece": 0.05651112178258974,
+          "model": "portable_challenger",
+          "pairs": 226
+        }
+      },
+      {
+        "overall": {
+          "accuracy": 0.4766666666666667,
+          "accuracy_ci95": {
+            "lower": 0.42080166187431245,
+            "method": "wilson-score-95/1",
+            "upper": 0.533121676782833
+          },
+          "brier": 0.24960919542243398,
+          "correct": 143,
+          "ece": 0.02693957704134377,
+          "model": "portable_challenger",
+          "pairs": 300
+        },
+        "removed_axis": "lexical_visual",
+        "size_controlled": {
+          "accuracy": 0.47345132743362833,
+          "accuracy_ci95": {
+            "lower": 0.4093443280828985,
+            "method": "wilson-score-95/1",
+            "upper": 0.5384457700935947
+          },
+          "brier": 0.24975483279808458,
+          "correct": 107,
+          "ece": 0.04304027542078125,
+          "model": "portable_challenger",
+          "pairs": 226
+        }
+      },
+      {
+        "overall": {
+          "accuracy": 0.57,
+          "accuracy_ci95": {
+            "lower": 0.513441160762328,
+            "method": "wilson-score-95/1",
+            "upper": 0.6247888232662354
+          },
+          "brier": 0.24921668422527896,
+          "correct": 171,
+          "ece": 0.07639981649851615,
+          "model": "portable_challenger",
+          "pairs": 300
+        },
+        "removed_axis": "surprisal",
+        "size_controlled": {
+          "accuracy": 0.5663716814159292,
+          "accuracy_ci95": {
+            "lower": 0.5011844318594048,
+            "method": "wilson-score-95/1",
+            "upper": 0.6293403226993619
+          },
+          "brier": 0.24957502835795017,
+          "correct": 128,
+          "ece": 0.07788983955769796,
+          "model": "portable_challenger",
+          "pairs": 226
+        }
+      },
+      {
+        "overall": {
+          "accuracy": 0.5866666666666667,
+          "accuracy_ci95": {
+            "lower": 0.5301906151568371,
+            "method": "wilson-score-95/1",
+            "upper": 0.6409512698309082
+          },
+          "brier": 0.24909940762396401,
+          "correct": 176,
+          "ece": 0.09291707536692509,
+          "model": "portable_challenger",
+          "pairs": 300
+        },
+        "removed_axis": "entropy",
+        "size_controlled": {
+          "accuracy": 0.5929203539823009,
+          "accuracy_ci95": {
+            "lower": 0.527834005460683,
+            "method": "wilson-score-95/1",
+            "upper": 0.6549006509215906
+          },
+          "brier": 0.24959779259692702,
+          "correct": 134,
+          "ece": 0.10444520464343665,
+          "model": "portable_challenger",
+          "pairs": 226
+        }
+      },
+      {
+        "overall": {
+          "accuracy": 0.57,
+          "accuracy_ci95": {
+            "lower": 0.513441160762328,
+            "method": "wilson-score-95/1",
+            "upper": 0.6247888232662354
+          },
+          "brier": 0.24921668422527896,
+          "correct": 171,
+          "ece": 0.0763998164985161,
+          "model": "portable_challenger",
+          "pairs": 300
+        },
+        "removed_axis": "redundancy",
+        "size_controlled": {
+          "accuracy": 0.5663716814159292,
+          "accuracy_ci95": {
+            "lower": 0.5011844318594048,
+            "method": "wilson-score-95/1",
+            "upper": 0.6293403226993619
+          },
+          "brier": 0.24957502835795017,
+          "correct": 128,
+          "ece": 0.07788983955769796,
+          "model": "portable_challenger",
+          "pairs": 226
+        }
+      },
+      {
+        "overall": {
+          "accuracy": 0.57,
+          "accuracy_ci95": {
+            "lower": 0.513441160762328,
+            "method": "wilson-score-95/1",
+            "upper": 0.6247888232662354
+          },
+          "brier": 0.24921668422527896,
+          "correct": 171,
+          "ece": 0.0763998164985161,
+          "model": "portable_challenger",
+          "pairs": 300
+        },
+        "removed_axis": "cohesion",
+        "size_controlled": {
+          "accuracy": 0.5663716814159292,
+          "accuracy_ci95": {
+            "lower": 0.5011844318594048,
+            "method": "wilson-score-95/1",
+            "upper": 0.6293403226993619
+          },
+          "brier": 0.24957502835795017,
+          "correct": 128,
+          "ece": 0.07788983955769796,
+          "model": "portable_challenger",
+          "pairs": 226
+        }
+      },
+      {
+        "overall": {
+          "accuracy": 0.57,
+          "accuracy_ci95": {
+            "lower": 0.513441160762328,
+            "method": "wilson-score-95/1",
+            "upper": 0.6247888232662354
+          },
+          "brier": 0.24921668422527896,
+          "correct": 171,
+          "ece": 0.0763998164985161,
+          "model": "portable_challenger",
+          "pairs": 300
+        },
+        "removed_axis": "impact",
+        "size_controlled": {
+          "accuracy": 0.5663716814159292,
+          "accuracy_ci95": {
+            "lower": 0.5011844318594048,
+            "method": "wilson-score-95/1",
+            "upper": 0.6293403226993619
+          },
+          "brier": 0.24957502835795017,
+          "correct": 128,
+          "ece": 0.07788983955769796,
+          "model": "portable_challenger",
+          "pairs": 226
+        }
+      },
+      {
+        "overall": {
+          "accuracy": 0.57,
+          "accuracy_ci95": {
+            "lower": 0.513441160762328,
+            "method": "wilson-score-95/1",
+            "upper": 0.6247888232662354
+          },
+          "brier": 0.24921668422527896,
+          "correct": 171,
+          "ece": 0.0763998164985161,
+          "model": "portable_challenger",
+          "pairs": 300
+        },
+        "removed_axis": "safety",
+        "size_controlled": {
+          "accuracy": 0.5663716814159292,
+          "accuracy_ci95": {
+            "lower": 0.5011844318594048,
+            "method": "wilson-score-95/1",
+            "upper": 0.6293403226993619
+          },
+          "brier": 0.24957502835795017,
+          "correct": 128,
+          "ece": 0.07788983955769796,
+          "model": "portable_challenger",
+          "pairs": 226
+        }
+      }
+    ],
+    "capture_id": "rcp1_fba95f5be345e111f632d94a30ccde649a1e65a2d7f9da200f9207212d66675e",
+    "corpus": {
+      "all_axes_complete": false,
+      "all_labels_human_perceived_readability": false,
+      "cleanup_tasks": 240,
+      "comprehension_samples": 1727,
+      "languages": 8,
+      "pairs": 300,
+      "projects": 1,
+      "roles": 4,
+      "size_controlled_pairs": 226,
+      "unsafe_near_misses": 40
+    },
+    "decision": {
+      "disposition": "evidence_only",
+      "model_id": null,
+      "readability_label_permitted": false,
+      "reasons": [
+        "1 projects observed; 3 required",
+        "Language `c#` challenger ECE 0.0850 > 0.0500",
+        "Language `c#` challenger lower 95% accuracy 0.3507 < 0.6000",
+        "Language `c#` gain over LexicalBaseline -0.0417 < 0.0200",
+        "Language `c#` gain over NlocComplexityBaseline 0.0000 < 0.0200",
+        "Language `c#` gain over SizeBaseline 0.0000 < 0.0200",
+        "Language `go` challenger ECE 0.1467 > 0.0500",
+        "Language `go` challenger lower 95% accuracy 0.3866 < 0.6000",
+        "Language `go` gain over LexicalBaseline -0.1000 < 0.0200",
+        "Language `java` challenger ECE 0.1445 > 0.0500",
+        "Language `java` challenger lower 95% accuracy 0.4903 < 0.6000",
+        "Language `javascript` challenger lower 95% accuracy 0.3746 < 0.6000",
+        "Language `javascript` gain over LexicalBaseline -0.0769 < 0.0200",
+        "Language `python` challenger ECE 0.1111 > 0.0500",
+        "Language `python` challenger lower 95% accuracy 0.4938 < 0.6000",
+        "Language `ruby` challenger ECE 0.0506 > 0.0500",
+        "Language `ruby` challenger lower 95% accuracy 0.4185 < 0.6000",
+        "Language `ruby` gain over LexicalBaseline -0.0154 < 0.0200",
+        "Overall `all` challenger ECE 0.0764 > 0.0500",
+        "Overall `all` challenger lower 95% accuracy 0.5134 < 0.6000",
+        "Project `unknown-project: themis-code-preference-2025` challenger ECE 0.0764 > 0.0500",
+        "Project `unknown-project: themis-code-preference-2025` challenger lower 95% accuracy 0.5134 < 0.6000",
+        "SizeControlled `nloc-ratio-within-floor` challenger ECE 0.0779 > 0.0500",
+        "SizeControlled `nloc-ratio-within-floor` challenger lower 95% accuracy 0.5012 < 0.6000",
+        "one or more candidates have an explicit unknown transparent axis",
+        "the pair corpus includes non-human or broader-than-perceived-readability targets",
+        "no separately fitted language/role model family was evaluated; transparent evidence-only UX is required"
+      ]
+    },
+    "leave_language_out": [
+      {
+        "eligible": false,
+        "kind": "language",
+        "models": [
+          {
+            "accuracy": 0.4,
+            "accuracy_ci95": {
+              "lower": 0.11762077423264783,
+              "method": "wilson-score-95/1",
+              "upper": 0.769275718723987
+            },
+            "brier": 0.25037204379779043,
+            "correct": 2,
+            "ece": 0.10120755530224072,
+            "model": "portable_challenger",
+            "pairs": 5
+          },
+          {
+            "accuracy": 0.6,
+            "accuracy_ci95": {
+              "lower": 0.2307242812760128,
+              "method": "wilson-score-95/1",
+              "upper": 0.882379225767352
+            },
+            "brier": 0.2476075176350104,
+            "correct": 3,
+            "ece": 0.09414260620151886,
+            "model": "size_baseline",
+            "pairs": 5
+          },
+          {
+            "accuracy": 0.6,
+            "accuracy_ci95": {
+              "lower": 0.2307242812760128,
+              "method": "wilson-score-95/1",
+              "upper": 0.882379225767352
+            },
+            "brier": 0.2479061475515305,
+            "correct": 3,
+            "ece": 0.09459570843034226,
+            "model": "nloc_complexity_baseline",
+            "pairs": 5
+          },
+          {
+            "accuracy": 0.6,
+            "accuracy_ci95": {
+              "lower": 0.2307242812760128,
+              "method": "wilson-score-95/1",
+              "upper": 0.882379225767352
+            },
+            "brier": 0.2744941036305807,
+            "correct": 3,
+            "ece": 0.3202563634373488,
+            "model": "lexical_baseline",
+            "pairs": 5
+          }
+        ],
+        "value": "c"
+      },
+      {
+        "eligible": true,
+        "kind": "language",
+        "models": [
+          {
+            "accuracy": 0.5416666666666666,
+            "accuracy_ci95": {
+              "lower": 0.3507486535891948,
+              "method": "wilson-score-95/1",
+              "upper": 0.72108666268789
+            },
+            "brier": 0.2487165266146786,
+            "correct": 13,
+            "ece": 0.08503094551887382,
+            "model": "portable_challenger",
+            "pairs": 24
+          },
+          {
+            "accuracy": 0.5416666666666666,
+            "accuracy_ci95": {
+              "lower": 0.3507486535891948,
+              "method": "wilson-score-95/1",
+              "upper": 0.72108666268789
+            },
+            "brier": 0.2494577742547035,
+            "correct": 13,
+            "ece": 0.08319699975619188,
+            "model": "size_baseline",
+            "pairs": 24
+          },
+          {
+            "accuracy": 0.5416666666666666,
+            "accuracy_ci95": {
+              "lower": 0.3507486535891948,
+              "method": "wilson-score-95/1",
+              "upper": 0.72108666268789
+            },
+            "brier": 0.24949797396312665,
+            "correct": 13,
+            "ece": 0.08320055856892317,
+            "model": "nloc_complexity_baseline",
+            "pairs": 24
+          },
+          {
+            "accuracy": 0.5833333333333334,
+            "accuracy_ci95": {
+              "lower": 0.3883466586522876,
+              "method": "wilson-score-95/1",
+              "upper": 0.7553239739018824
+            },
+            "brier": 0.24451130024036805,
+            "correct": 14,
+            "ece": 0.08493706993570718,
+            "model": "lexical_baseline",
+            "pairs": 24
+          }
+        ],
+        "value": "c#"
+      },
+      {
+        "eligible": false,
+        "kind": "language",
+        "models": [
+          {
+            "accuracy": 1.0,
+            "accuracy_ci95": {
+              "lower": 0.5655175352168251,
+              "method": "wilson-score-95/1",
+              "upper": 1.0
+            },
+            "brier": 0.24795094978891066,
+            "correct": 5,
+            "ece": 0.4979422028533169,
+            "model": "portable_challenger",
+            "pairs": 5
+          },
+          {
+            "accuracy": 0.8,
+            "accuracy_ci95": {
+              "lower": 0.3755346297625253,
+              "method": "wilson-score-95/1",
+              "upper": 0.9637758913675698
+            },
+            "brier": 0.2484261347540319,
+            "correct": 4,
+            "ece": 0.49842102384773196,
+            "model": "size_baseline",
+            "pairs": 5
+          },
+          {
+            "accuracy": 0.8,
+            "accuracy_ci95": {
+              "lower": 0.3755346297625253,
+              "method": "wilson-score-95/1",
+              "upper": 0.9637758913675698
+            },
+            "brier": 0.24849871828215958,
+            "correct": 4,
+            "ece": 0.49849409354865915,
+            "model": "nloc_complexity_baseline",
+            "pairs": 5
+          },
+          {
+            "accuracy": 0.6,
+            "accuracy_ci95": {
+              "lower": 0.2307242812760128,
+              "method": "wilson-score-95/1",
+              "upper": 0.882379225767352
+            },
+            "brier": 0.24049274735046736,
+            "correct": 3,
+            "ece": 0.290272487917021,
+            "model": "lexical_baseline",
+            "pairs": 5
+          }
+        ],
+        "value": "c++"
+      },
+      {
+        "eligible": true,
+        "kind": "language",
+        "models": [
+          {
+            "accuracy": 0.6,
+            "accuracy_ci95": {
+              "lower": 0.38658150076225317,
+              "method": "wilson-score-95/1",
+              "upper": 0.7811934676271829
+            },
+            "brier": 0.24863006139579125,
+            "correct": 12,
+            "ece": 0.1467126602127984,
+            "model": "portable_challenger",
+            "pairs": 20
+          },
+          {
+            "accuracy": 0.45,
+            "accuracy_ci95": {
+              "lower": 0.2581978582556243,
+              "method": "wilson-score-95/1",
+              "upper": 0.6579146575496577
+            },
+            "brier": 0.24926083145830624,
+            "correct": 9,
+            "ece": 0.04981534501500465,
+            "model": "size_baseline",
+            "pairs": 20
+          },
+          {
+            "accuracy": 0.45,
+            "accuracy_ci95": {
+              "lower": 0.2581978582556243,
+              "method": "wilson-score-95/1",
+              "upper": 0.6579146575496577
+            },
+            "brier": 0.24930700521584734,
+            "correct": 9,
+            "ece": 0.04982748131905689,
+            "model": "nloc_complexity_baseline",
+            "pairs": 20
+          },
+          {
+            "accuracy": 0.7,
+            "accuracy_ci95": {
+              "lower": 0.4810271816464765,
+              "method": "wilson-score-95/1",
+              "upper": 0.8545227551323956
+            },
+            "brier": 0.23701401886094137,
+            "correct": 14,
+            "ece": 0.23436311280732813,
+            "model": "lexical_baseline",
+            "pairs": 20
+          }
+        ],
+        "value": "go"
+      },
+      {
+        "eligible": true,
+        "kind": "language",
+        "models": [
+          {
+            "accuracy": 0.6274509803921569,
+            "accuracy_ci95": {
+              "lower": 0.4902521346885088,
+              "method": "wilson-score-95/1",
+              "upper": 0.7467948053373558
+            },
+            "brier": 0.249540994258947,
+            "correct": 32,
+            "ece": 0.14446558510435256,
+            "model": "portable_challenger",
+            "pairs": 51
+          },
+          {
+            "accuracy": 0.29411764705882354,
+            "accuracy_ci95": {
+              "lower": 0.1870872642013547,
+              "method": "wilson-score-95/1",
+              "upper": 0.4299907557568642
+            },
+            "brier": 0.2499928055487332,
+            "correct": 15,
+            "ece": 0.03188912275209123,
+            "model": "size_baseline",
+            "pairs": 51
+          },
+          {
+            "accuracy": 0.29411764705882354,
+            "accuracy_ci95": {
+              "lower": 0.1870872642013547,
+              "method": "wilson-score-95/1",
+              "upper": 0.4299907557568642
+            },
+            "brier": 0.25002406615059863,
+            "correct": 15,
+            "ece": 0.03168291676006002,
+            "model": "nloc_complexity_baseline",
+            "pairs": 51
+          },
+          {
+            "accuracy": 0.47058823529411764,
+            "accuracy_ci95": {
+              "lower": 0.3405299020949959,
+              "method": "wilson-score-95/1",
+              "upper": 0.6047669578990353
+            },
+            "brier": 0.24938251749182416,
+            "correct": 24,
+            "ece": 0.03395285348890671,
+            "model": "lexical_baseline",
+            "pairs": 51
+          }
+        ],
+        "value": "java"
+      },
+      {
+        "eligible": true,
+        "kind": "language",
+        "models": [
+          {
+            "accuracy": 0.49230769230769234,
+            "accuracy_ci95": {
+              "lower": 0.37463839458541426,
+              "method": "wilson-score-95/1",
+              "upper": 0.6108354751272451
+            },
+            "brier": 0.25030771079524433,
+            "correct": 32,
+            "ece": 0.039028403586927204,
+            "model": "portable_challenger",
+            "pairs": 65
+          },
+          {
+            "accuracy": 0.3384615384615385,
+            "accuracy_ci95": {
+              "lower": 0.2353350331209667,
+              "method": "wilson-score-95/1",
+              "upper": 0.45961623084487946
+            },
+            "brier": 0.25166829409722363,
+            "correct": 22,
+            "ece": 0.03960206423531204,
+            "model": "size_baseline",
+            "pairs": 65
+          },
+          {
+            "accuracy": 0.3384615384615385,
+            "accuracy_ci95": {
+              "lower": 0.2353350331209667,
+              "method": "wilson-score-95/1",
+              "upper": 0.45961623084487946
+            },
+            "brier": 0.25144375097223737,
+            "correct": 22,
+            "ece": 0.03952882476738392,
+            "model": "nloc_complexity_baseline",
+            "pairs": 65
+          },
+          {
+            "accuracy": 0.5692307692307692,
+            "accuracy_ci95": {
+              "lower": 0.4483297467424587,
+              "method": "wilson-score-95/1",
+              "upper": 0.6824054258436073
+            },
+            "brier": 0.2435651144626277,
+            "correct": 37,
+            "ece": 0.08174039866373135,
+            "model": "lexical_baseline",
+            "pairs": 65
+          }
+        ],
+        "value": "javascript"
+      },
+      {
+        "eligible": true,
+        "kind": "language",
+        "models": [
+          {
+            "accuracy": 0.6153846153846154,
+            "accuracy_ci95": {
+              "lower": 0.493842028060131,
+              "method": "wilson-score-95/1",
+              "upper": 0.7240499262499791
+            },
+            "brier": 0.24817625852127737,
+            "correct": 40,
+            "ece": 0.11112834870378019,
+            "model": "portable_challenger",
+            "pairs": 65
+          },
+          {
+            "accuracy": 0.4307692307692308,
+            "accuracy_ci95": {
+              "lower": 0.3175945741563928,
+              "method": "wilson-score-95/1",
+              "upper": 0.5516702532575414
+            },
+            "brier": 0.2507361949697886,
+            "correct": 28,
+            "ece": 0.05058531795148252,
+            "model": "size_baseline",
+            "pairs": 65
+          },
+          {
+            "accuracy": 0.4307692307692308,
+            "accuracy_ci95": {
+              "lower": 0.3175945741563928,
+              "method": "wilson-score-95/1",
+              "upper": 0.5516702532575414
+            },
+            "brier": 0.25058059679070965,
+            "correct": 28,
+            "ece": 0.050874008292693604,
+            "model": "nloc_complexity_baseline",
+            "pairs": 65
+          },
+          {
+            "accuracy": 0.4461538461538462,
+            "accuracy_ci95": {
+              "lower": 0.33169527476665517,
+              "method": "wilson-score-95/1",
+              "upper": 0.5666218132219604
+            },
+            "brier": 0.24123932045681773,
+            "correct": 29,
+            "ece": 0.050829936174176124,
+            "model": "lexical_baseline",
+            "pairs": 65
+          }
+        ],
+        "value": "python"
+      },
+      {
+        "eligible": true,
+        "kind": "language",
+        "models": [
+          {
+            "accuracy": 0.5384615384615384,
+            "accuracy_ci95": {
+              "lower": 0.4185339926647454,
+              "method": "wilson-score-95/1",
+              "upper": 0.6540966587719579
+            },
+            "brier": 0.24928528800310473,
+            "correct": 35,
+            "ece": 0.05064861075789388,
+            "model": "portable_challenger",
+            "pairs": 65
+          },
+          {
+            "accuracy": 0.36923076923076925,
+            "accuracy_ci95": {
+              "lower": 0.2622939587407091,
+              "method": "wilson-score-95/1",
+              "upper": 0.4907618263744998
+            },
+            "brier": 0.2500146974951592,
+            "correct": 24,
+            "ece": 0.024772012852195626,
+            "model": "size_baseline",
+            "pairs": 65
+          },
+          {
+            "accuracy": 0.36923076923076925,
+            "accuracy_ci95": {
+              "lower": 0.2622939587407091,
+              "method": "wilson-score-95/1",
+              "upper": 0.4907618263744998
+            },
+            "brier": 0.2500071777709393,
+            "correct": 24,
+            "ece": 0.024674314324235575,
+            "model": "nloc_complexity_baseline",
+            "pairs": 65
+          },
+          {
+            "accuracy": 0.5538461538461539,
+            "accuracy_ci95": {
+              "lower": 0.43337818677803974,
+              "method": "wilson-score-95/1",
+              "upper": 0.6683047252333449
+            },
+            "brier": 0.24025156476557372,
+            "correct": 36,
+            "ece": 0.09659033389674415,
+            "model": "lexical_baseline",
+            "pairs": 65
+          }
+        ],
+        "value": "ruby"
+      }
+    ],
+    "leave_project_out": [
+      {
+        "eligible": true,
+        "kind": "project",
+        "models": [
+          {
+            "accuracy": 0.57,
+            "accuracy_ci95": {
+              "lower": 0.513441160762328,
+              "method": "wilson-score-95/1",
+              "upper": 0.6247888232662354
+            },
+            "brier": 0.24921668422527896,
+            "correct": 171,
+            "ece": 0.07639981649851604,
+            "model": "portable_challenger",
+            "pairs": 300
+          },
+          {
+            "accuracy": 0.3933333333333333,
+            "accuracy_ci95": {
+              "lower": 0.3397391051458938,
+              "method": "wilson-score-95/1",
+              "upper": 0.44962472871534254
+            },
+            "brier": 0.25036417227583585,
+            "correct": 118,
+            "ece": 0.017289569539133794,
+            "model": "size_baseline",
+            "pairs": 300
+          },
+          {
+            "accuracy": 0.3933333333333333,
+            "accuracy_ci95": {
+              "lower": 0.3397391051458938,
+              "method": "wilson-score-95/1",
+              "upper": 0.44962472871534254
+            },
+            "brier": 0.2502979744732789,
+            "correct": 118,
+            "ece": 0.017504351555524128,
+            "model": "nloc_complexity_baseline",
+            "pairs": 300
+          },
+          {
+            "accuracy": 0.5333333333333333,
+            "accuracy_ci95": {
+              "lower": 0.47681490758540607,
+              "method": "wilson-score-95/1",
+              "upper": 0.5890088943329576
+            },
+            "brier": 0.24343544736500733,
+            "correct": 160,
+            "ece": 0.08145637190884342,
+            "model": "lexical_baseline",
+            "pairs": 300
+          }
+        ],
+        "value": "unknown-project: themis-code-preference-2025"
+      }
+    ],
+    "overall": {
+      "eligible": true,
+      "kind": "overall",
+      "models": [
+        {
+          "accuracy": 0.57,
+          "accuracy_ci95": {
+            "lower": 0.513441160762328,
+            "method": "wilson-score-95/1",
+            "upper": 0.6247888232662354
+          },
+          "brier": 0.24921668422527896,
+          "correct": 171,
+          "ece": 0.07639981649851604,
+          "model": "portable_challenger",
+          "pairs": 300
+        },
+        {
+          "accuracy": 0.3933333333333333,
+          "accuracy_ci95": {
+            "lower": 0.3397391051458938,
+            "method": "wilson-score-95/1",
+            "upper": 0.44962472871534254
+          },
+          "brier": 0.25036417227583585,
+          "correct": 118,
+          "ece": 0.017289569539133794,
+          "model": "size_baseline",
+          "pairs": 300
+        },
+        {
+          "accuracy": 0.3933333333333333,
+          "accuracy_ci95": {
+            "lower": 0.3397391051458938,
+            "method": "wilson-score-95/1",
+            "upper": 0.44962472871534254
+          },
+          "brier": 0.2502979744732789,
+          "correct": 118,
+          "ece": 0.017504351555524128,
+          "model": "nloc_complexity_baseline",
+          "pairs": 300
+        },
+        {
+          "accuracy": 0.5333333333333333,
+          "accuracy_ci95": {
+            "lower": 0.47681490758540607,
+            "method": "wilson-score-95/1",
+            "upper": 0.5890088943329576
+          },
+          "brier": 0.24343544736500733,
+          "correct": 160,
+          "ece": 0.08145637190884342,
+          "model": "lexical_baseline",
+          "pairs": 300
+        }
+      ],
+      "value": "all"
+    },
+    "policy": {
+      "maximum_ece": 0.05,
+      "minimum_accuracy_gain": 0.02,
+      "minimum_accuracy_lower_95": 0.6,
+      "minimum_holdout_pairs": 20,
+      "minimum_languages": 3,
+      "minimum_projects": 3,
+      "schema": "deslop.readability-policy/1",
+      "size_control_ratio": 0.1
+    },
+    "schema": "deslop.readability-evaluation/1",
+    "size_controlled": {
+      "eligible": true,
+      "kind": "size_controlled",
+      "models": [
+        {
+          "accuracy": 0.5663716814159292,
+          "accuracy_ci95": {
+            "lower": 0.5011844318594048,
+            "method": "wilson-score-95/1",
+            "upper": 0.6293403226993619
+          },
+          "brier": 0.24957502835795017,
+          "correct": 128,
+          "ece": 0.07788983955769796,
+          "model": "portable_challenger",
+          "pairs": 226
+        },
+        {
+          "accuracy": 0.3495575221238938,
+          "accuracy_ci95": {
+            "lower": 0.2903757111311777,
+            "method": "wilson-score-95/1",
+            "upper": 0.4137681785356176
+          },
+          "brier": 0.24995666163898186,
+          "correct": 79,
+          "ece": 0.01703763240569553,
+          "model": "size_baseline",
+          "pairs": 226
+        },
+        {
+          "accuracy": 0.3495575221238938,
+          "accuracy_ci95": {
+            "lower": 0.2903757111311777,
+            "method": "wilson-score-95/1",
+            "upper": 0.4137681785356176
+          },
+          "brier": 0.2499559448016506,
+          "correct": 79,
+          "ece": 0.017074425457724477,
+          "model": "nloc_complexity_baseline",
+          "pairs": 226
+        },
+        {
+          "accuracy": 0.4823008849557522,
+          "accuracy_ci95": {
+            "lower": 0.4179961516641338,
+            "method": "wilson-score-95/1",
+            "upper": 0.5471972471201951
+          },
+          "brier": 0.24694913691672704,
+          "correct": 109,
+          "ece": 0.057120494278167365,
+          "model": "lexical_baseline",
+          "pairs": 226
+        }
+      ],
+      "value": "nloc-ratio-within-floor"
+    }
+  }
+}

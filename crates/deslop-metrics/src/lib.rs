@@ -7,11 +7,12 @@ use anyhow::{Context, Result};
 use deslop_core::{AnalysisStatus, FileAnalysis, Lang, Span, file_analyses_status};
 use deslop_lang::{LangPack, RegionClass, RegionSpan};
 use deslop_parse::{
-    DiscoveryPolicy, InclusiveSyntaxPolicy, NodeId, ParsedFile, ProjectAnalysis,
-    ProjectSnapshotPlanner, ProjectSnapshotRequest, ProjectionId, RepositorySpec, RootSpec,
-    ScopeSpec, SnapshotPresentationMap, SourceFile, SyntaxAdapterFacts,
+    ControlEdgePrecision, ControlFlowPolicyId, DiscoveryPolicy, FactCoverage,
+    InclusiveSyntaxPolicy, NodeId, NodeKey, ParsedFile, ProjectAnalysis, ProjectSnapshotPlanner,
+    ProjectSnapshotRequest, ProjectionId, RepositorySpec, RootSpec, ScopeSpec,
+    SnapshotPresentationMap, SourceFile, SyntaxAdapterFacts, lower_control_flow,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy)]
 pub struct MetricsConfig {
@@ -34,10 +35,12 @@ pub struct MetricsReport {
     pub heuristic_burden_distribution: Option<BurdenDistribution>,
     pub hotspots: Vec<Hotspot>,
     pub heuristic_model: HeuristicBurdenModel,
+    pub feature_schema: FeatureSchema,
+    pub readability_calibration: ReadabilityCalibration,
 }
 
 const METRICS_PROJECTION_SCHEMA: &str = "deslop.metrics.projection/1";
-const METRICS_CAPABILITIES: &[u8] = b"report=deslop.metrics/5\0heuristic=deslop-heuristic-burden/1";
+const METRICS_CAPABILITIES: &[u8] = b"report=deslop.metrics/6\0features=deslop.readability-features/1\0calibration=deslop.readability-evaluation/1\0heuristic=deslop-heuristic-burden/1";
 
 #[derive(Debug)]
 pub struct MetricsProjection {
@@ -66,6 +69,141 @@ pub struct RegionMetrics {
     pub expressivity: ExpressivityMetrics,
     pub halstead: HalsteadMetrics,
     pub heuristic_burden: HeuristicBurdenMetrics,
+    pub features: NodeFeatureVector,
+}
+
+pub const READABILITY_FEATURE_SCHEMA_ID: &str = "deslop.readability-features/1";
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct FeatureSchema {
+    pub id: &'static str,
+    pub locality: &'static str,
+    pub aggregation_policy: &'static str,
+    pub axes: &'static [FeatureAxisDefinition],
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct FeatureAxisDefinition {
+    pub name: &'static str,
+    pub meaning: &'static str,
+    pub aggregate: &'static str,
+}
+
+const READABILITY_AXES: &[FeatureAxisDefinition] = &[
+    FeatureAxisDefinition {
+        name: "structural",
+        meaning: "exclusive local control-flow and syntax load",
+        aggregate: "sum counts; maximum nesting; never sum normalized densities",
+    },
+    FeatureAxisDefinition {
+        name: "lexical_visual",
+        meaning: "exclusive local token, identifier, comment, indentation, and line-shape evidence",
+        aggregate: "sample-weighted mean; retain pooled sample count",
+    },
+    FeatureAxisDefinition {
+        name: "surprisal",
+        meaning: "role/language/project-conditioned token-model anomaly evidence",
+        aggregate: "sample-weighted mean only within the same model identity",
+    },
+    FeatureAxisDefinition {
+        name: "entropy",
+        meaning: "declared token, AST-category, or byte distributions",
+        aggregate: "recompute from pooled counts; weighted averages are not entropy",
+    },
+    FeatureAxisDefinition {
+        name: "redundancy",
+        meaning: "clone classes, repeated motifs, and duplicated responsibility",
+        aggregate: "set union by content-addressed class identity",
+    },
+    FeatureAxisDefinition {
+        name: "cohesion",
+        meaning: "dependence clusters, slices, state sharing, and coupling",
+        aggregate: "recompute on the aggregate dependence graph",
+    },
+    FeatureAxisDefinition {
+        name: "impact",
+        meaning: "callers, dependents, coverage, blast radius, and expected payoff",
+        aggregate: "set union by graph identity; do not double-count shared dependents",
+    },
+    FeatureAxisDefinition {
+        name: "safety",
+        meaning: "parse, adapter, static, dynamic, and verification authority",
+        aggregate: "minimum authority; union uncertainty and counter-evidence",
+    },
+];
+
+pub const READABILITY_FEATURE_SCHEMA: FeatureSchema = FeatureSchema {
+    id: READABILITY_FEATURE_SCHEMA_ID,
+    locality: "exclusive-owned-node",
+    aggregation_policy: "deslop.readability-aggregation/1; unknowns propagate and overlapping slices are forbidden",
+    axes: READABILITY_AXES,
+};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FeatureMeasurement {
+    pub value: f64,
+    pub estimator: String,
+    pub sample_size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FeatureAxisEvidence {
+    pub measurements: BTreeMap<String, FeatureMeasurement>,
+    pub unknowns: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReadabilityAxes {
+    pub structural: FeatureAxisEvidence,
+    pub lexical_visual: FeatureAxisEvidence,
+    pub surprisal: FeatureAxisEvidence,
+    pub entropy: FeatureAxisEvidence,
+    pub redundancy: FeatureAxisEvidence,
+    pub cohesion: FeatureAxisEvidence,
+    pub impact: FeatureAxisEvidence,
+    pub safety: FeatureAxisEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NodeFeatureVector {
+    pub schema: String,
+    pub id: String,
+    pub exclusive: bool,
+    pub aggregation_policy: String,
+    pub subject: FeatureSubject,
+    pub axes: ReadabilityAxes,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FeatureSubject {
+    pub lang: String,
+    pub name: String,
+    pub kind: String,
+    pub span: Span,
+}
+
+impl NodeFeatureVector {
+    pub fn validate(&self) -> Result<()> {
+        if self.schema != READABILITY_FEATURE_SCHEMA_ID {
+            anyhow::bail!("unsupported readability feature schema `{}`", self.schema);
+        }
+        if !self.exclusive {
+            anyhow::bail!("readability feature vector is not an exclusive owned slice");
+        }
+        if self.aggregation_policy != READABILITY_FEATURE_SCHEMA.aggregation_policy {
+            anyhow::bail!("readability feature aggregation policy mismatch");
+        }
+        let expected = feature_vector_id(&self.subject, &self.axes);
+        if self.id != expected {
+            anyhow::bail!("readability feature vector content identity mismatch");
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -76,6 +214,16 @@ pub struct HeuristicBurdenModel {
     pub authority: &'static str,
     pub gating_permitted: bool,
     pub meaning: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct ReadabilityCalibration {
+    pub schema: &'static str,
+    pub capture_id: &'static str,
+    pub disposition: &'static str,
+    pub readability_label_permitted: bool,
+    pub transparent_axes_preserved: bool,
+    pub evidence: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -200,7 +348,7 @@ pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<Metrics
     })?
     .build()?;
     let analysis = ProjectAnalysis::build(built.snapshot)?;
-    metrics_report(&analysis, config, Some(&built.presentation))
+    metrics_report(analysis, config, Some(&built.presentation))
 }
 
 /// Compute metrics from one already-owned immutable project analysis without reading or parsing.
@@ -212,7 +360,7 @@ pub fn metrics_analysis(
     policy.extend_from_slice(&config.sigma.to_bits().to_le_bytes());
     let id =
         analysis.derive_projection_id(METRICS_PROJECTION_SCHEMA, &policy, METRICS_CAPABILITIES)?;
-    let report = metrics_report(&analysis, config, None)?;
+    let report = metrics_report(Arc::clone(&analysis), config, None)?;
     Ok(MetricsProjection {
         id,
         analysis,
@@ -222,10 +370,11 @@ pub fn metrics_analysis(
 }
 
 fn metrics_report(
-    analysis: &ProjectAnalysis,
+    analysis: Arc<ProjectAnalysis>,
     config: MetricsConfig,
     presentation: Option<&SnapshotPresentationMap>,
 ) -> Result<MetricsReport> {
+    let cfg = cfg_complexity_by_owner(Arc::clone(&analysis))?;
     let mut functions = Vec::new();
     let mut analyses = Vec::new();
     for file in analysis.files() {
@@ -238,7 +387,7 @@ fn metrics_report(
             analysis: file.provenance().clone(),
         });
         if file.provenance().permits_rewrites() {
-            let mut file_metrics = metrics_file(analysis, file)?;
+            let mut file_metrics = metrics_file(&analysis, file, &cfg)?;
             for region in &mut file_metrics {
                 region.path.clone_from(&display_path);
             }
@@ -273,7 +422,7 @@ fn finish_metrics_report(
         Vec::new()
     };
     Ok(MetricsReport {
-        schema: "deslop.metrics/5",
+        schema: "deslop.metrics/6",
         status,
         analyses,
         functions,
@@ -288,7 +437,102 @@ fn finish_metrics_report(
             gating_permitted: false,
             meaning: "hand-set structural burden evidence for triage only; not readability, health, refactor need, probability, confidence, or safety",
         },
+        feature_schema: READABILITY_FEATURE_SCHEMA,
+        readability_calibration: ReadabilityCalibration {
+            schema: "deslop.readability-evaluation/1",
+            capture_id: "rcp1_fba95f5be345e111f632d94a30ccde649a1e65a2d7f9da200f9207212d66675e",
+            disposition: "evidence_only",
+            readability_label_permitted: false,
+            transparent_axes_preserved: true,
+            evidence: "crates/deslop-eval/evaluation/m8/evaluation_report.json",
+        },
     })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CfgComplexityEvidence {
+    cyclomatic: f64,
+    points: usize,
+    edges: usize,
+    components: usize,
+}
+
+fn cfg_complexity_by_owner(
+    analysis: Arc<ProjectAnalysis>,
+) -> Result<HashMap<NodeKey, CfgComplexityEvidence>> {
+    let policy = ControlFlowPolicyId::from_parts(&[b"deslop.metrics-cfg-complexity/1"])
+        .context("construct metrics CFG policy")?;
+    let lowered = lower_control_flow(analysis, policy).context("lower metrics CFG")?;
+    let Some(projection) = lowered.projection() else {
+        return Ok(HashMap::new());
+    };
+    let mut by_owner = HashMap::new();
+    for graph in projection.document().graphs() {
+        if graph.coverage().status() != FactCoverage::Complete
+            || graph.recovered_owner()
+            || graph.edges().iter().any(|edge| {
+                edge.precision() != &ControlEdgePrecision::Exact
+                    || edge.recovered_source()
+                    || edge.recovered_predicate()
+            })
+        {
+            continue;
+        }
+        let points = graph.points().len();
+        let edges = graph.edges().len();
+        let components = weak_cfg_components(graph);
+        let raw = edges as isize - points as isize + 2 * components as isize;
+        let cyclomatic = raw.max(1) as f64;
+        by_owner.insert(
+            graph.owner().clone(),
+            CfgComplexityEvidence {
+                cyclomatic,
+                points,
+                edges,
+                components,
+            },
+        );
+    }
+    Ok(by_owner)
+}
+
+fn weak_cfg_components(graph: &deslop_parse::ControlFlowGraph) -> usize {
+    let mut parent = (0..graph.points().len()).collect::<Vec<_>>();
+    let indices = graph
+        .points()
+        .iter()
+        .enumerate()
+        .map(|(index, point)| (point.key(), index))
+        .collect::<HashMap<_, _>>();
+    for edge in graph.edges() {
+        let Some(&from) = indices.get(edge.from()) else {
+            continue;
+        };
+        let Some(&to) = indices.get(edge.to()) else {
+            continue;
+        };
+        union_components(&mut parent, from, to);
+    }
+    let mut roots = BTreeSet::new();
+    for index in 0..parent.len() {
+        roots.insert(find_component(&mut parent, index));
+    }
+    roots.len().max(1)
+}
+
+fn find_component(parent: &mut [usize], index: usize) -> usize {
+    if parent[index] != index {
+        parent[index] = find_component(parent, parent[index]);
+    }
+    parent[index]
+}
+
+fn union_components(parent: &mut [usize], left: usize, right: usize) {
+    let left = find_component(parent, left);
+    let right = find_component(parent, right);
+    if left != right {
+        parent[right] = left;
+    }
 }
 
 struct MetricFile<'analysis> {
@@ -325,7 +569,11 @@ impl<'analysis> MetricFile<'analysis> {
     }
 }
 
-fn metrics_file(analysis: &ProjectAnalysis, file: &ParsedFile) -> Result<Vec<RegionMetrics>> {
+fn metrics_file(
+    analysis: &ProjectAnalysis,
+    file: &ParsedFile,
+    cfg: &HashMap<NodeKey, CfgComplexityEvidence>,
+) -> Result<Vec<RegionMetrics>> {
     let context = MetricFile::new(analysis, file)?;
     let pack = analysis
         .language_adapter(&file.key().path)
@@ -339,7 +587,7 @@ fn metrics_file(analysis: &ProjectAnalysis, file: &ParsedFile) -> Result<Vec<Reg
     let ownership = metric_ownership(pack, &context, &regions)?;
     Ok(regions
         .into_iter()
-        .map(|region| measure_region_owned(pack, &context, &ownership, region))
+        .map(|region| measure_region_owned(pack, &context, &ownership, cfg, region))
         .collect())
 }
 
@@ -356,7 +604,8 @@ pub fn metrics_source(source: &SourceFile) -> Result<Vec<RegionMetrics>> {
     if !file.provenance().permits_rewrites() {
         return Ok(Vec::new());
     }
-    let mut metrics = metrics_file(&analysis, file)?;
+    let cfg = cfg_complexity_by_owner(Arc::clone(&analysis))?;
+    let mut metrics = metrics_file(&analysis, file, &cfg)?;
     let display = built.presentation.display_path(&file.key().path);
     for region in &mut metrics {
         region.path = display.to_path_buf();
@@ -378,6 +627,13 @@ pub fn render_text(report: &MetricsReport, hotspots_only: bool) -> String {
             ));
         }
     }
+    out.push_str(&format!(
+        "Readability calibration: {} (labels-permitted={}; transparent-axes={}; {})\n",
+        report.readability_calibration.disposition,
+        report.readability_calibration.readability_label_permitted,
+        report.readability_calibration.transparent_axes_preserved,
+        report.readability_calibration.capture_id,
+    ));
     out.push_str(&metrics_summary_line(report));
     if !hotspots_only {
         out.push_str(&regions_text(&report.functions));
@@ -790,6 +1046,7 @@ fn measure_region_owned(
     pack: &dyn LangPack,
     source: &MetricFile<'_>,
     ownership: &MetricOwnership,
+    cfg_by_owner: &HashMap<NodeKey, CfgComplexityEvidence>,
     region: MetricRegion,
 ) -> RegionMetrics {
     let owner = region
@@ -827,7 +1084,13 @@ fn measure_region_owned(
         .node
         .map(|node| ast_complexity_owned(node, source, &reset_nodes))
         .unwrap_or_default();
-    let cyclomatic = ast.branch_count as f64 + 1.0;
+    let cfg = source
+        .analysis
+        .node_key(owner)
+        .ok()
+        .and_then(|key| cfg_by_owner.get(key))
+        .copied();
+    let cyclomatic = cfg.map_or(ast.branch_count as f64 + 1.0, |value| value.cyclomatic);
     let maintainability_index = maintainability_index(halstead.volume, cyclomatic, nloc);
     let complexity = complexity_metrics(ast, cyclomatic, nloc, maintainability_index);
     let expressivity = expressivity_from_evidence(
@@ -844,17 +1107,269 @@ fn measure_region_owned(
         ast.node_count,
         region.node.is_some(),
     );
+    let path = source.file.key().path.clone();
+    let span = span_from_region(region.span);
+    let features = node_feature_vector(NodeFeatureInput {
+        lang: source.file.grammar().lang(),
+        name: &region.name,
+        kind: &region.kind,
+        span,
+        complexity: &complexity,
+        expressivity: &expressivity,
+        halstead: &halstead,
+        cfg,
+        ast_nodes: ast.node_count,
+        byte_samples: bytes.len(),
+        parse_complete: source.file.provenance().permits_rewrites(),
+    });
     RegionMetrics {
-        path: source.file.key().path.clone(),
+        path,
         lang: source.file.grammar().lang(),
         name: region.name,
         kind: region.kind,
-        span: span_from_region(region.span),
+        span,
         complexity,
         expressivity,
         halstead,
         heuristic_burden,
+        features,
     }
+}
+
+struct NodeFeatureInput<'a> {
+    lang: Lang,
+    name: &'a str,
+    kind: &'a str,
+    span: Span,
+    complexity: &'a ComplexityMetrics,
+    expressivity: &'a ExpressivityMetrics,
+    halstead: &'a HalsteadMetrics,
+    cfg: Option<CfgComplexityEvidence>,
+    ast_nodes: usize,
+    byte_samples: usize,
+    parse_complete: bool,
+}
+
+fn node_feature_vector(input: NodeFeatureInput<'_>) -> NodeFeatureVector {
+    let mut structural = FeatureAxisEvidence::measured();
+    structural.measurements.insert(
+        "cyclomatic_complexity".into(),
+        FeatureMeasurement {
+            value: input.complexity.cyclomatic,
+            estimator: input.cfg.map_or_else(
+                || "syntax-branch-count-plus-one/fallback".into(),
+                |_| "cfg-mccabe-e-minus-n-plus-2p/1".into(),
+            ),
+            sample_size: input.cfg.map_or(input.ast_nodes, |cfg| cfg.edges),
+        },
+    );
+    structural.measurements.insert(
+        "cognitive_complexity".into(),
+        FeatureMeasurement {
+            value: input.complexity.cognitive,
+            estimator: "owned-syntax-nesting/1".into(),
+            sample_size: input.ast_nodes,
+        },
+    );
+    structural.measurements.insert(
+        "nloc".into(),
+        FeatureMeasurement {
+            value: input.complexity.nloc as f64,
+            estimator: "exclusive-nonblank-noncomment-lines/1".into(),
+            sample_size: input.complexity.nloc,
+        },
+    );
+    structural.measurements.insert(
+        "max_nesting".into(),
+        FeatureMeasurement {
+            value: input.complexity.max_nesting as f64,
+            estimator: "owned-syntax-max-nesting/1".into(),
+            sample_size: input.ast_nodes,
+        },
+    );
+    if let Some(cfg) = input.cfg {
+        for (name, value) in [
+            ("cfg_points", cfg.points),
+            ("cfg_edges", cfg.edges),
+            ("cfg_components", cfg.components),
+        ] {
+            structural.measurements.insert(
+                name.into(),
+                FeatureMeasurement {
+                    value: value as f64,
+                    estimator: "owned-cfg-count/1".into(),
+                    sample_size: value,
+                },
+            );
+        }
+    } else {
+        structural
+            .unknowns
+            .push("complete exact owned CFG unavailable; cyclomatic is marked fallback".into());
+    }
+
+    let mut lexical_visual = FeatureAxisEvidence::measured();
+    for (name, value, estimator, sample_size) in [
+        (
+            "token_count",
+            input.expressivity.tokens as f64,
+            "exclusive-token-count/1",
+            input.expressivity.tokens,
+        ),
+        (
+            "vocabulary_size",
+            input.expressivity.vocabulary as f64,
+            "exclusive-token-vocabulary/1",
+            input.expressivity.tokens,
+        ),
+        (
+            "unique_token_ratio",
+            input.expressivity.unique_token_ratio,
+            "exclusive-token-ratio/1",
+            input.expressivity.tokens,
+        ),
+        (
+            "comment_to_code_ratio",
+            input.expressivity.comment_to_code_ratio,
+            "exclusive-line-ratio/1",
+            input.complexity.nloc,
+        ),
+        (
+            "halstead_volume",
+            input.halstead.volume,
+            "halstead-volume/1",
+            input.halstead.total_operators + input.halstead.total_operands,
+        ),
+    ] {
+        lexical_visual.measurements.insert(
+            name.into(),
+            FeatureMeasurement {
+                value,
+                estimator: estimator.into(),
+                sample_size,
+            },
+        );
+    }
+    lexical_visual.unknowns.extend([
+        "identifier-quality model not captured in metrics projection".into(),
+        "line-shape and indentation distributions not captured in metrics projection".into(),
+    ]);
+
+    let surprisal = FeatureAxisEvidence::unavailable(
+        "no pinned language/role/project token model in this projection",
+    );
+    let mut entropy = FeatureAxisEvidence::measured();
+    for (name, value, estimator, sample_size) in [
+        (
+            "token_entropy_normalized",
+            input.expressivity.token_entropy,
+            "shannon-plugin-normalized-by-log2-support/1",
+            input.expressivity.tokens,
+        ),
+        (
+            "ast_kind_entropy_normalized",
+            input.expressivity.structural_entropy,
+            "shannon-plugin-normalized-by-log2-support/1",
+            input.ast_nodes,
+        ),
+        (
+            "byte_entropy_bits_per_byte",
+            input.expressivity.byte_entropy_bits_per_byte,
+            "shannon-plugin-bits-per-byte/1",
+            input.byte_samples,
+        ),
+    ] {
+        entropy.measurements.insert(
+            name.into(),
+            FeatureMeasurement {
+                value,
+                estimator: estimator.into(),
+                sample_size,
+            },
+        );
+    }
+
+    let redundancy = FeatureAxisEvidence::unavailable(
+        "clone-class and graph-motif projections are not joined into metrics",
+    );
+    let cohesion = FeatureAxisEvidence::unavailable(
+        "PDG cluster and responsibility evidence is not joined into metrics",
+    );
+    let impact = FeatureAxisEvidence::unavailable(
+        "dependency, coverage, churn, and payoff evidence is not joined into metrics",
+    );
+    let mut safety = FeatureAxisEvidence::measured();
+    safety.measurements.insert(
+        "parse_complete".into(),
+        FeatureMeasurement {
+            value: f64::from(input.parse_complete),
+            estimator: "stored-parse-provenance/1".into(),
+            sample_size: 1,
+        },
+    );
+    safety.unknowns.push(
+        "verification authority belongs to a verifier plan and is not inferred from metrics".into(),
+    );
+
+    let axes = ReadabilityAxes {
+        structural,
+        lexical_visual,
+        surprisal,
+        entropy,
+        redundancy,
+        cohesion,
+        impact,
+        safety,
+    };
+    let subject = FeatureSubject {
+        lang: input.lang.to_string(),
+        name: input.name.into(),
+        kind: input.kind.into(),
+        span: input.span,
+    };
+    NodeFeatureVector {
+        schema: READABILITY_FEATURE_SCHEMA_ID.into(),
+        id: feature_vector_id(&subject, &axes),
+        exclusive: true,
+        aggregation_policy: READABILITY_FEATURE_SCHEMA.aggregation_policy.into(),
+        subject,
+        axes,
+    }
+}
+
+fn feature_vector_id(subject: &FeatureSubject, axes: &ReadabilityAxes) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hash_feature_part(&mut hasher, READABILITY_FEATURE_SCHEMA_ID.as_bytes());
+    hash_feature_part(
+        &mut hasher,
+        READABILITY_FEATURE_SCHEMA.aggregation_policy.as_bytes(),
+    );
+    let subject = serde_json::to_vec(subject).expect("feature subject is serializable");
+    hash_feature_part(&mut hasher, &subject);
+    let axes = serde_json::to_vec(axes).expect("feature axes are serializable");
+    hash_feature_part(&mut hasher, &axes);
+    format!("rfv1_{}", hasher.finalize().to_hex())
+}
+
+impl FeatureAxisEvidence {
+    fn measured() -> Self {
+        Self {
+            measurements: BTreeMap::new(),
+            unknowns: Vec::new(),
+        }
+    }
+
+    fn unavailable(reason: &str) -> Self {
+        Self {
+            measurements: BTreeMap::new(),
+            unknowns: vec![reason.into()],
+        }
+    }
+}
+
+fn hash_feature_part(hasher: &mut blake3::Hasher, bytes: &[u8]) {
+    hasher.update(&(bytes.len() as u64).to_le_bytes());
+    hasher.update(bytes);
 }
 
 fn span_from_region(span: RegionSpan) -> Span {
@@ -1860,7 +2375,11 @@ mod tests {
         );
         let report = metrics_source(&source).expect("metrics");
         let function = report.iter().find(|region| region.name == "f").expect("f");
-        assert_eq!(function.complexity.cyclomatic, 4.0);
+        assert_eq!(function.complexity.cyclomatic, 3.0);
+        assert_eq!(
+            function.features.axes.structural.measurements["cyclomatic_complexity"].estimator,
+            "cfg-mccabe-e-minus-n-plus-2p/1"
+        );
     }
 
     #[test]
@@ -1893,7 +2412,7 @@ mod tests {
 
         let report = metrics_paths(&[malformed], MetricsConfig::default()).expect("metrics");
 
-        assert_eq!(report.schema, "deslop.metrics/5");
+        assert_eq!(report.schema, "deslop.metrics/6");
         assert_eq!(report.status, AnalysisStatus::Partial);
         assert!(report.functions.is_empty());
         assert!(report.heuristic_outliers.is_empty());
@@ -2023,7 +2542,7 @@ mod tests {
             assert!(!text.contains(forbidden), "unexpected text {forbidden}");
         }
         let json = serde_json::to_value(&report).expect("metrics JSON");
-        assert_eq!(json["schema"], "deslop.metrics/5");
+        assert_eq!(json["schema"], "deslop.metrics/6");
         assert_eq!(json["heuristic_model"]["authority"], "triage_only");
         assert_eq!(json["heuristic_model"]["gating_permitted"], false);
         for forbidden in [
@@ -2056,6 +2575,50 @@ mod tests {
         assert!((0.0..=1.0).contains(&function.heuristic_burden.score));
         assert!(function.heuristic_burden.measurement_support > 0.20);
         assert_eq!(function.heuristic_burden.basis, HEURISTIC_BASIS);
+    }
+
+    #[test]
+    fn m8_feature_schema_is_exclusive_versioned_and_tamper_evident() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn sample(value: i32) -> i32 { if value > 0 { value } else { 0 } }\n".to_string(),
+        );
+        let function = metrics_source(&source)
+            .expect("metrics")
+            .into_iter()
+            .find(|region| region.name == "sample")
+            .expect("sample");
+        assert_eq!(READABILITY_FEATURE_SCHEMA.axes.len(), 8);
+        assert_eq!(function.features.schema, READABILITY_FEATURE_SCHEMA_ID);
+        assert!(function.features.exclusive);
+        function.features.validate().expect("valid identity");
+        assert_eq!(
+            function.features.axes.structural.measurements["cyclomatic_complexity"].estimator,
+            "cfg-mccabe-e-minus-n-plus-2p/1"
+        );
+        for name in [
+            "token_entropy_normalized",
+            "ast_kind_entropy_normalized",
+            "byte_entropy_bits_per_byte",
+        ] {
+            let measurement = &function.features.axes.entropy.measurements[name];
+            assert!(!measurement.estimator.is_empty());
+            assert!(measurement.sample_size > 0);
+        }
+        assert!(!function.features.axes.surprisal.unknowns.is_empty());
+        assert!(!function.features.axes.redundancy.unknowns.is_empty());
+        assert!(!function.features.axes.cohesion.unknowns.is_empty());
+        assert!(!function.features.axes.impact.unknowns.is_empty());
+
+        let mut tampered = function.features;
+        tampered
+            .axes
+            .entropy
+            .measurements
+            .get_mut("token_entropy_normalized")
+            .expect("token entropy")
+            .value = 0.0;
+        assert!(tampered.validate().is_err());
     }
 
     #[test]

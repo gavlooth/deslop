@@ -495,7 +495,7 @@ Per region:
   eight regions and is disabled when the range is below `0.05` or standard deviation below `0.01`.
   This is unusualness within that scan, not an absolute candidate gate. In incomplete snapshots the
   distribution and every `repo_relative` value are `null`.
-- **JSON contract (`deslop.metrics/5`):** `/5` removes the uncalibrated `health_score`,
+- **JSON contract (`deslop.metrics/6`):** `/6` retains the `/5` removal of uncalibrated `health_score`,
   `readability_score`, `readability_model`, `refactor_candidates`, confidence bands, and
   `refactor_confidence_distribution` fields. Region traversal still retains nested containers and
   members so the transparent measurements remain inspectable. Client migration is explicit: the
@@ -503,9 +503,12 @@ Per region:
   survives, with downgraded triage-only authority. `measurement_confidence` becomes
   `measurement_support`, `compression_ratio` becomes `byte_entropy_bits_per_byte`, and Halstead
   `effort` becomes `lexical_effort`; `repo_relative` and the top-level burden distribution are
-  nullable when project context is incomplete. The removed health/readability scores,
-  refactor-confidence fields, and candidate gate have no direct replacement, and `/5` emits no
-  compatibility aliases for them.
+  nullable when project context is incomplete. `/6` adds the exclusive, content-addressed
+  `deslop.readability-features/1` vector with eight transparent axes, per-feature estimator/sample
+  metadata, CFG-grounded McCabe complexity where complete, and an embedded
+  `readability_calibration` disposition. The frozen M8 evaluation selected `evidence_only`, so
+  `readability_label_permitted=false`; removed health/readability scores, refactor-confidence
+  fields, and candidate gates still have no replacement or compatibility alias.
 
 For complete requested snapshots, metrics are compared against the run's own distribution. A hotspot is a
 region at least `--sigma` standard deviations from the repo median on high complexity or
@@ -525,7 +528,7 @@ It implements the core JSON-RPC MCP methods needed by coding agents:
 `initialize`, `tools/list`, and `tools/call`. Tool payloads reuse the existing
 `deslop.findings/2`, `deslop.workorder/3`, `deslop.fix/3`, `deslop.patch/3`,
 `deslop.characterization-test/3`, `deslop.verify/1`, `deslop.apply/1`, and
-`deslop.metrics/5`/`deslop.graph/2` schemas. The `fix` tool scans/proposes work orders, reuses
+`deslop.metrics/6`/`deslop.graph/2` schemas. The `fix` tool scans/proposes work orders, reuses
 `deslop_slim::build_prompt`, and returns prompt entries containing `workorder_id`, `path`,
 exact line/byte range, matching-only `region_fingerprint`, `revision_guard`, contract, findings,
 proposal context, and prompt text. The caller rewrites the region and submits `deslop.patch/3` patches through `apply`, so the existing

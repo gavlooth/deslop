@@ -4532,6 +4532,94 @@ including the executable DoD. Terminal `cargo fmt --all -- --check`, all-feature
 all-target clippy with `-D warnings` pass: 703 active unit/integration tests, 4 active doctests, and 3 explicit ignores.
 M7 is terminal; M8 was not started.
 
+## 2026-07-16 — M8 readability and ranking calibration
+
+Status: ACTIVE. M7 is terminal at `6e1aacae8c25`; M9 is out of scope until M8 closes.
+
+### Frozen ship bar
+
+M8 closes only when all five gates pass:
+
+1. `deslop.readability-features/1` is an exclusive per-node, content-addressed schema whose eight
+   transparent axes and roll-up policies are explicit; cyclomatic complexity comes from the owned CFG
+   when complete, and every entropy value names its estimator and sample size.
+2. A strict dataset registry preserves source revision/checksum, licence decision, task, population,
+   language/role limits, and prohibits unlicensed rows. The benchmark contains at least 300 blinded
+   multilingual preference pairs and timed/correct comprehension observations, plus at least 240 cleanup
+   or unsafe-near-miss tasks without row-level authorship labels.
+3. Every candidate feature vector is captured exactly once. One deterministic post-hoc run produces
+   size-controlled ablations, leave-project-out and leave-language-out results, calibration, 95% confidence
+   intervals, and size/NLOC-complexity/simple-lexical baselines from that immutable capture.
+4. A frozen decision policy permits a readability label only when the challenger improves pairwise accuracy
+   by at least 0.02 against every baseline on every eligible holdout, has 95% lower accuracy bound at least
+   0.60, ECE at most 0.05, at least three projects and three languages, and no missing transparent axis.
+   Otherwise the shipped decision is evidence-only UX; thresholds will not be tuned after the run.
+5. The capability matrix, dataset report, numerical evaluation, model card/decision, migration note, focused
+   tests, executable M8 definition-of-done, and full workspace fmt/build/test/clippy `-D warnings` are green.
+
+### Convergent experiment
+
+Capture the complete feature vector once and analyze the full baseline/ablation/holdout grid post hoc. Terminal
+outcomes are exhaustive: either a model clears every frozen gate and may label readability, or any failed gate
+forces evidence-only UX while preserving the eight axes. No serial coefficient tuning or label promotion from
+deslop's smoke corpus is allowed.
+
+### Current approach and validation
+
+Implement the runtime feature contract in `deslop-metrics` and the data/evaluation contracts in `deslop-eval`.
+Use only licence-approved published data; record rejected sources rather than copying them. Focused numerical
+tests cover CFG complexity, entropy metadata, exclusivity/content identity, dataset tamper/licence rejection,
+one-capture enforcement, holdout isolation, confidence intervals, calibration, ablations, baselines, and both
+decision outcomes. Then run the frozen benchmark once and the full workspace gates.
+
+### Negative-memory constraints
+
+- Published or downloadable does not mean redistributable; no explicit compatible licence means no import.
+- Perceived readability, comprehension correctness/time, broad maintainability preference, and authorship are
+  different targets and may not be silently merged.
+- Project-relative surprisal and entropy are evidence axes, not readability labels.
+- Unsupported languages/roles and incomplete CFGs remain explicit unknowns; they are never zero-filled.
+- A model that wins aggregate accuracy but fails a language/project holdout or calibration remains unshipped.
+
+Signature: Codex (GPT-5), M8 frozen calibration plan, 2026-07-16.
+
 Negative-memory constraint: Linux namespace tool presence is not sandbox availability. This host has both executables
 but denies namespace creation; never detect enforcement by executable lookup alone or fall back to an inherited shell.
 Exact graph-delta authority remains a required oracle, never a value copied from the candidate or inferred from tests.
+
+### M8 terminal checkpoint — evidence-only readability calibration
+
+deslop.readability-features/1 now gives every owned metric region one exclusive,
+content-addressed vector with structural, lexical/visual, surprisal, entropy, redundancy,
+cohesion, impact, and safety axes. Measured values retain estimator/sample metadata; unavailable
+joins retain explicit reasons. Complete exact owned CFGs supply McCabe E-N+2P, while the legacy
+syntax estimate is visibly fallback-only. deslop.metrics/6 publishes the feature/aggregation
+contract and the frozen calibration disposition.
+
+The licence registry pins exact Themis Apache-2.0 and AoC-FRP CC-BY-4.0 artifacts and rejects the
+observed Dorn mirror for missing redistribution authority. The normalized corpus has 300 blinded
+preference pairs across 8 languages/4 roles, 1,727 human timed/correct Java comprehension trials,
+160 published human-commit cleanup pairs, 40 controlled LLM-assisted cleanup pairs, and 40 unsafe
+near-misses. Row sides are deterministically swapped independently of the label, and the row schema
+contains no authorship field.
+
+One immutable capture contains 760 unique candidates. The same capture produces all four rankers,
+8 overall and size-controlled ablations, 8 language holdouts, the explicit unknown-project stratum,
+Wilson 95% intervals, Brier score, and 10-bin ECE. The challenger reaches 0.5700 accuracy
+(95% 0.5134–0.6248, ECE 0.0764), versus size and NLOC/complexity 0.3933 and lexical 0.5333.
+It fails the frozen lower-bound, calibration, project, target-authority, missing-axis, and several
+language/baseline gates. Evidence-only is therefore the terminal M8 product decision:
+readability_label_permitted=false, no model id, all transparent axes retained.
+
+ADR 0010, the M8 capability matrix, dataset report, migration note, pilot protocol, model card,
+normalized corpus, JSON evaluation, and executable DoD freeze the result. Focused metrics/eval
+tests and the terminal all-feature workspace gate pass. The test inventory is 718 listed tests and
+doctests: 711 active unit/integration tests, 4 active doctests, and 3 explicit ignored probes.
+M8.1–M8.10 and M8.DoD are terminal; M9 was not started.
+
+Negative-memory constraints: public downloadability is not licence authority; missing project
+identity is not a project split; a preferred variant may not occupy a fixed display side; tied
+ranker scores do not earn correctness; and an aggregate baseline win cannot override calibration
+or held-out failures.
+
+Signature: Codex (GPT-5), M8 calibration and terminal evaluation owner, 2026-07-16.

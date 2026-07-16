@@ -9,6 +9,7 @@ repository.workspace = true
 anyhow.workspace = true
 deslop-analyzer.workspace = true
 deslop-core.workspace = true
+deslop-metrics.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 blake3.workspace = true
@@ -16,6 +17,10 @@ blake3.workspace = true
 [[bin]]
 name = "m6-llm-benchmark"
 path = "src/bin/m6_llm_benchmark.rs"
+
+[[bin]]
+name = "m8-calibration"
+path = "src/bin/m8_calibration.rs"
 
 [dev-dependencies]
 deslop-parse.workspace = true

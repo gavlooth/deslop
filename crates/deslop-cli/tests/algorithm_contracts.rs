@@ -72,7 +72,7 @@ fn crates_metrics_and_graph_performance_probe() {
         "algorithm performance probe: metric_files={metric_files}, metric_regions={metric_regions}, graph_nodes={graph_nodes}, graph_edges={graph_edges}, metrics={metrics_elapsed:?}, graph={graph_elapsed:?}"
     );
 
-    assert_eq!(metrics["schema"], "deslop.metrics/5");
+    assert_eq!(metrics["schema"], "deslop.metrics/6");
     assert_eq!(metrics["status"], "complete");
     assert!(metric_files > 0);
     assert!(metric_regions > metric_files);
@@ -91,7 +91,7 @@ fn crates_metrics_and_graph_performance_probe() {
 }
 
 fn assert_metrics_probe(report: &Value, expected_files: usize) {
-    assert_eq!(report["schema"], "deslop.metrics/5");
+    assert_eq!(report["schema"], "deslop.metrics/6");
     assert_eq!(report["status"], "complete");
     assert_eq!(
         report["analyses"]

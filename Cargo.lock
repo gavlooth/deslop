@@ -348,6 +348,7 @@ dependencies = [
  "blake3",
  "deslop-analyzer",
  "deslop-core",
+ "deslop-metrics",
  "deslop-parse",
  "serde",
  "serde_json",
@@ -450,6 +451,7 @@ name = "deslop-metrics"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blake3",
  "deslop-core",
  "deslop-lang",
  "deslop-parse",
