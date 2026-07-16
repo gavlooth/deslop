@@ -415,10 +415,12 @@ dependencies = [
  "deslop-core",
  "deslop-fix",
  "deslop-parse",
+ "deslop-protocol",
  "lsp-server",
  "lsp-types",
  "serde",
  "serde_json",
+ "tempfile",
  "toml",
 ]
 

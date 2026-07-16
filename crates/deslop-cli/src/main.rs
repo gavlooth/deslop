@@ -23,10 +23,11 @@ use deslop_metrics::{
     render_text as render_metrics_text,
 };
 use deslop_protocol::{
-    propose_work_orders, propose_work_orders_with_exclusions, recipe_work_orders,
+    SharedWorkOrder, propose_work_orders, propose_work_orders_with_exclusions,
+    shared_finding_work_orders, shared_transformation_work_orders,
 };
 use deslop_recipes::{TransformationCandidate, detect_rust_recipe_report};
-use deslop_report::{render_agent, render_json, render_sarif, render_text};
+use deslop_report::{render_json, render_sarif, render_text};
 use deslop_slim::{
     AnthropicClient, DEFAULT_MODEL, EgressDecision, EgressSummary, OpenAiClient, RecordedClient,
     SlimOptions, SlimProgress, SlimProgressOutcome, SlimReport, egress_consent_error,
@@ -723,7 +724,7 @@ fn detect_recipes(args: RecipeDetectArgs) -> Result<()> {
         .candidates
         .retain(|candidate| candidate.recipe().name() == args.recipe);
     let candidates = report.candidates.clone();
-    let work_orders = recipe_work_orders(candidates.clone())?;
+    let work_orders = shared_transformation_work_orders(candidates.clone())?;
     let rendered = match args.format {
         RecipeDetectFormat::Candidates => serde_json::to_string_pretty(&candidates)?,
         RecipeDetectFormat::Workorders => serde_json::to_string_pretty(&work_orders)?,
@@ -854,7 +855,10 @@ fn scan(args: ScanArgs, config: &DeslopConfig) -> Result<()> {
             analyzer,
             &excluded,
         )?;
-        (batch.reports, Some(batch.work_orders))
+        (
+            batch.reports,
+            Some(shared_finding_work_orders(batch.work_orders)?),
+        )
     } else {
         (scan_paths_with_config(&paths, analyzer)?, None)
     };
@@ -872,7 +876,9 @@ fn scan(args: ScanArgs, config: &DeslopConfig) -> Result<()> {
         Format::Text => render_text(&reports),
         Format::Json => render_json(&reports)?,
         Format::Sarif => render_sarif(&reports)?,
-        Format::Agent => render_agent(agent_work_orders.as_deref().unwrap_or_default())?,
+        Format::Agent => {
+            render_shared_work_orders(agent_work_orders.as_deref().unwrap_or_default())?
+        }
     };
     print!("{rendered}");
 
@@ -1116,7 +1122,7 @@ fn propose(args: ProposeArgs, config: &DeslopConfig) -> Result<()> {
         print_analysis_diagnostics(&batch.reports);
         std::process::exit(2);
     }
-    let rendered = render_agent(&batch.work_orders)?;
+    let rendered = render_shared_work_orders(&shared_finding_work_orders(batch.work_orders)?)?;
     if let Some(output) = args.output {
         fs::write(&output, rendered)
             .with_context(|| format!("failed to write {}", output.display()))?;
@@ -1124,6 +1130,15 @@ fn propose(args: ProposeArgs, config: &DeslopConfig) -> Result<()> {
         print!("{rendered}");
     }
     Ok(())
+}
+
+fn render_shared_work_orders(work_orders: &[SharedWorkOrder]) -> Result<String> {
+    let mut output = String::new();
+    for work_order in work_orders {
+        output.push_str(&serde_json::to_string(work_order)?);
+        output.push('\n');
+    }
+    Ok(output)
 }
 
 fn print_analysis_diagnostics(reports: &[FileReport]) {

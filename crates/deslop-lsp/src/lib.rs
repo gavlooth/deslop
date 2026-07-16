@@ -17,6 +17,7 @@ use deslop_parse::{
     DiscoveryPolicy, ProjectAnalysis, ProjectSnapshotPlanner, ProjectSnapshotRequest,
     RepositorySpec, RootSpec, ScopeSpec, SnapshotPresentationMap,
 };
+use deslop_protocol::SharedWorkOrder;
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
@@ -788,6 +789,20 @@ pub fn code_actions(
     Ok(actions)
 }
 
+/// Represent one shared review transaction in LSP without granting edit authority.
+///
+/// The exact `deslop.work-order/1` wire is carried in `data`; clients must use the bounded protocol
+/// operations to propose and verify a patch before an edit can be offered.
+pub fn work_order_code_action(work_order: &SharedWorkOrder) -> Result<CodeActionOrCommand> {
+    work_order.validate()?;
+    Ok(CodeActionOrCommand::CodeAction(CodeAction {
+        title: format!("deslop: review {}", work_order.recipe().name),
+        kind: Some(CodeActionKind::REFACTOR_REWRITE),
+        data: Some(serde_json::to_value(work_order)?),
+        ..CodeAction::default()
+    }))
+}
+
 fn fix_all_action(
     uri: Uri,
     text: &str,
@@ -982,6 +997,7 @@ mod tests {
     use std::str::FromStr;
     use std::thread;
     use std::time::Duration;
+    use tempfile::tempdir;
 
     fn uri() -> Uri {
         Uri::from_str("file:///sample.clj").expect("uri")
@@ -997,6 +1013,30 @@ mod tests {
 
     fn requested_range() -> Range {
         Range::new(Position::new(0, 0), Position::new(10, 0))
+    }
+
+    #[test]
+    fn shared_work_order_action_carries_exact_protocol_wire_without_edit() -> Result<()> {
+        let temp = tempdir()?;
+        std::fs::write(
+            temp.path().join("sample.rs"),
+            "fn sample() { let value = 42; println!(\"{}\", value); }\n",
+        )?;
+        let batch = deslop_protocol::propose_work_orders(
+            temp.path(),
+            &[PathBuf::from("sample.rs")],
+            AnalyzerConfig::default(),
+        )?;
+        let shared = deslop_protocol::SharedWorkOrder::from_finding_order(
+            batch.work_orders.into_iter().next().expect("work order"),
+        )?;
+        let CodeActionOrCommand::CodeAction(action) = work_order_code_action(&shared)? else {
+            panic!("expected code action");
+        };
+        assert!(action.edit.is_none());
+        let decoded: SharedWorkOrder = serde_json::from_value(action.data.expect("protocol data"))?;
+        assert_eq!(decoded, shared);
+        Ok(())
     }
 
     #[test]

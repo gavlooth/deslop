@@ -11,6 +11,7 @@ deslop-analyzer.workspace = true
 deslop-core.workspace = true
 deslop-fix.workspace = true
 deslop-parse.workspace = true
+deslop-protocol.workspace = true
 lsp-server.workspace = true
 lsp-types.workspace = true
 serde.workspace = true
@@ -20,3 +21,6 @@ serde_json.workspace = true
 [[bin]]
 name = "deslop-lsp"
 path = "src/main.rs"
+
+[dev-dependencies]
+tempfile.workspace = true

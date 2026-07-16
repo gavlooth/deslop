@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use deslop_protocol::WorkOrder;
+use deslop_protocol::{SharedWorkOrder, WorkOrder, WorkOrderSubject};
 use serde_json::Value;
 
 #[test]
@@ -309,7 +309,14 @@ fn parse_workorders(output: &Output) -> Vec<WorkOrder> {
     String::from_utf8(output.stdout.clone())
         .expect("UTF-8 workorders")
         .lines()
-        .map(|line| serde_json::from_str(line).expect("workorder JSONL"))
+        .map(|line| {
+            let shared: SharedWorkOrder =
+                serde_json::from_str(line).expect("shared workorder JSONL");
+            match shared.subject() {
+                WorkOrderSubject::FindingProposal { order } => (**order).clone(),
+                WorkOrderSubject::Transformation { .. } => panic!("expected finding proposal"),
+            }
+        })
         .collect()
 }
 

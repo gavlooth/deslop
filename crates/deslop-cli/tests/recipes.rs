@@ -49,7 +49,7 @@ fn recipe_detect_preview_and_workorder_are_read_only() {
     assert!(workorders.status.success(), "{:?}", workorders.stderr);
     let orders = serde_json::from_slice::<Vec<Value>>(&workorders.stdout).unwrap();
     assert_eq!(orders.len(), 1);
-    assert_eq!(orders[0]["schema"], "deslop.recipe-workorder/1");
+    assert_eq!(orders[0]["schema"], "deslop.work-order/1");
 
     let diff = deslop()
         .args([
@@ -98,7 +98,7 @@ fn branch_factoring_is_reported_with_counter_evidence_and_cannot_apply() {
     assert!(detected.status.success(), "{:?}", detected.stderr);
     let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
     assert_eq!(orders.len(), 1);
-    let candidate = &orders[0]["candidate"];
+    let candidate = &orders[0]["subject"]["candidate"];
     assert_eq!(candidate["disposition"], "review-required");
     assert_eq!(candidate["safety"], "safe-with-precondition");
     assert_eq!(candidate["eligibility"]["eligible"], false);
@@ -171,7 +171,7 @@ fn adjacent_condition_merge_retains_short_circuit_evidence_and_cannot_apply() {
     assert!(detected.status.success(), "{:?}", detected.stderr);
     let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
     assert_eq!(orders.len(), 1);
-    let candidate = &orders[0]["candidate"];
+    let candidate = &orders[0]["subject"]["candidate"];
     assert_eq!(candidate["disposition"], "review-required");
     assert_eq!(candidate["edits"][0]["after"], "if (a) && (b) { act(); }");
     assert!(
@@ -243,7 +243,7 @@ fn branch_split_reports_unknown_slices_and_cannot_apply() {
     assert!(detected.status.success(), "{:?}", detected.stderr);
     let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
     assert_eq!(orders.len(), 1);
-    let candidate = &orders[0]["candidate"];
+    let candidate = &orders[0]["subject"]["candidate"];
     assert_eq!(candidate["disposition"], "review-required");
     assert!(
         candidate["required_results"]
@@ -306,7 +306,7 @@ fn guard_clause_reports_pst_exit_evidence_and_cannot_apply() {
     assert!(detected.status.success(), "{:?}", detected.stderr);
     let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
     assert_eq!(orders.len(), 1);
-    let candidate = &orders[0]["candidate"];
+    let candidate = &orders[0]["subject"]["candidate"];
     assert_eq!(candidate["disposition"], "review-required");
     assert_eq!(candidate["safety"], "safe-with-precondition");
     assert_eq!(
@@ -408,7 +408,7 @@ fn terminal_branch_recipes_report_graph_evidence_and_cannot_apply() {
         assert!(detected.status.success(), "{:?}", detected.stderr);
         let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
         assert_eq!(orders.len(), 1, "{recipe}");
-        let candidate = &orders[0]["candidate"];
+        let candidate = &orders[0]["subject"]["candidate"];
         assert_eq!(candidate["disposition"], "review-required");
         assert_eq!(candidate["safety"], "safe-with-precondition");
         assert_eq!(candidate["edits"][0]["after"], expected_edit);
@@ -478,7 +478,7 @@ fn extract_method_reports_exact_compiling_edit_and_cannot_apply() {
     assert!(detected.status.success(), "{:?}", detected.stderr);
     let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
     assert_eq!(orders.len(), 1);
-    let candidate = &orders[0]["candidate"];
+    let candidate = &orders[0]["subject"]["candidate"];
     assert_eq!(
         candidate["recipe"]["name"],
         "rust-extract-sese-branch-method"
@@ -569,7 +569,7 @@ fn responsibility_split_reports_one_atomic_multi_helper_workorder() {
     assert!(detected.status.success(), "{:?}", detected.stderr);
     let orders: Vec<Value> = serde_json::from_slice(&fs::read(&orders_path).unwrap()).unwrap();
     assert_eq!(orders.len(), 1);
-    let candidate = &orders[0]["candidate"];
+    let candidate = &orders[0]["subject"]["candidate"];
     assert_eq!(
         candidate["recipe"]["name"],
         "rust-split-dependence-cohesive-callable"

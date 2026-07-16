@@ -13,7 +13,7 @@ use deslop_graph::{GraphConfig, graph_paths};
 use deslop_metrics::{MetricsConfig, metrics_paths};
 use deslop_protocol::{
     CharacterizationTest, Patch, WorkOrder, WorkOrderKind, propose_work_orders,
-    workorder_revision_guard,
+    shared_finding_work_orders, workorder_revision_guard,
 };
 use deslop_report::render_json;
 use deslop_slim::build_prompt;
@@ -135,7 +135,7 @@ fn scan_tool_spec() -> Value {
 fn propose_tool_spec() -> Value {
     tool(
         "propose",
-        "Return deslop.workorder/3 JSONL-compatible work orders for proposal-eligible findings, excluding report-only never-auto evidence, with exact revision guards and self-contained proposal context.",
+        "Return deslop.work-order/1 JSONL-compatible transactions for proposal-eligible findings, excluding report-only never-auto evidence, with exact revision guards, access sets, budgets, provenance, and self-contained proposal context.",
         object_schema(json!({
             "paths": paths_schema(),
             "config": config_schema("Optional deslop.toml path for [analyzer] propose settings."),
@@ -521,12 +521,13 @@ fn scan_tool(args: &Value) -> Result<Value> {
 
 fn propose_tool(args: &Value) -> Result<Value> {
     let batch = proposed_work_orders(args)?;
+    let work_orders = shared_finding_work_orders(batch.work_orders)?;
     Ok(json!({
-        "schema": "deslop.workorders/3",
+        "schema": "deslop.work-orders/1",
         "status": batch.status,
         "analyses": batch.analyses,
         "blocked_files": batch.blocked_files,
-        "workorders": batch.work_orders,
+        "workorders": work_orders,
     }))
 }
 
@@ -1656,7 +1657,7 @@ mod tests {
                 .as_array()
                 .expect("workorders")
                 .iter()
-                .any(|work_order| work_order["findings"]
+                .any(|work_order| work_order["subject"]["order"]["findings"]
                     .as_array()
                     .expect("findings")
                     .iter()
@@ -2001,8 +2002,15 @@ mod tests {
 
     fn propose_first_work_order(path: &Path) -> WorkOrder {
         let proposed = call_tool("propose", json!({ "paths": [path] })).expect("propose");
-        serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
-            .expect("workorder")
+        let shared: deslop_protocol::SharedWorkOrder =
+            serde_json::from_value(structured_content(&proposed)["workorders"][0].to_owned())
+                .expect("shared workorder");
+        match shared.subject() {
+            deslop_protocol::WorkOrderSubject::FindingProposal { order } => (**order).clone(),
+            deslop_protocol::WorkOrderSubject::Transformation { .. } => {
+                panic!("expected finding proposal")
+            }
+        }
     }
 
     fn sample_fixture() -> SampleFixture {

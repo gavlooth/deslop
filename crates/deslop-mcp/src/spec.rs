@@ -79,7 +79,7 @@ fn scan_tool_spec() -> Value {
 fn propose_tool_spec() -> Value {
     tool(
         "propose",
-        "Read-only. Return deslop.workorder/3 work orders with exact revision guards and self-contained proposal context for proposal-eligible findings. safe-auto uses deterministic fixes; never-auto remains report-only and never enters a work order or prompt. No writes, no network.",
+        "Read-only. Return shared deslop.work-order/1 transactions with exact revision guards, access sets, budgets, provenance, and self-contained proposal context for proposal-eligible findings. safe-auto uses deterministic fixes; never-auto remains report-only and never enters a work order or prompt. No writes, no network.",
         ToolBehavior::read_only("Propose rewrite work orders"),
         object_schema(json!({
             "paths": paths_schema(),

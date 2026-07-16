@@ -1,7 +1,7 @@
 use std::fs;
 use std::process::{Command, Output};
 
-use deslop_protocol::WorkOrder;
+use deslop_protocol::{SharedWorkOrder, WorkOrderSubject};
 use serde_json::json;
 
 #[test]
@@ -12,15 +12,20 @@ fn cli_rejects_boundary_stale_and_legacy_patches_without_writing() {
 
     let proposed = cli(temp.path(), &["propose", "sample.clj"]);
     assert!(proposed.status.success(), "{}", stderr(&proposed));
-    let work_order: WorkOrder = serde_json::from_slice(
+    let shared: SharedWorkOrder = serde_json::from_slice(
         proposed
             .stdout
             .split(|byte| *byte == b'\n')
             .find(|line| !line.is_empty())
             .expect("workorder JSONL"),
     )
-    .expect("workorder");
-    assert_eq!(work_order.schema, "deslop.workorder/3");
+    .expect("shared workorder");
+    assert_eq!(shared.schema(), "deslop.work-order/1");
+    assert!(shared.id().as_str().starts_with("wo1_"));
+    let work_order = match shared.subject() {
+        WorkOrderSubject::FindingProposal { order } => (**order).clone(),
+        WorkOrderSubject::Transformation { .. } => panic!("expected finding proposal"),
+    };
     assert!(work_order.id.starts_with("wo3_"));
 
     let patch_path = temp.path().join("patch.jsonl");

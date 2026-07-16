@@ -14,16 +14,36 @@ use deslop_core::{
 use deslop_parse::{ProjectAnalysis, SourceFile, SyntaxOwner};
 use serde::{Deserialize, Serialize};
 
+mod lifecycle;
+mod planner;
 mod recipe;
+mod work_order;
 
+pub use lifecycle::{
+    ExpiredWorkOrder, WORK_ORDER_HANDLE_SCHEMA, WORK_ORDER_REPLAN_SCHEMA, WorkOrderHandle,
+    WorkOrderReplanResult, replan_after_commit,
+};
+pub use planner::{
+    AtomicWorkGroup, AtomicWorkGroupId, BlockedWorkGroup, ExplicitPrerequisite,
+    MutuallyExclusiveRecipes, WORK_ORDER_PLAN_SCHEMA, WorkOrderBlockReason, WorkOrderEdge,
+    WorkOrderEdgeKind, WorkOrderPlan, WorkOrderPlanId, WorkOrderPlannerConstraints,
+    WorkOrderScheduleWave, plan_work_orders,
+};
 pub use recipe::{
     RECIPE_WORK_ORDER_SCHEMA, RecipePatchBudget, RecipeResource, RecipeResourceKind,
     RecipeVerificationContract, RecipeWorkOrder, RecipeWorkOrderId, recipe_work_orders,
 };
+pub use work_order::{
+    SHARED_WORK_ORDER_SCHEMA, SharedWorkOrder, SharedWorkOrderId, WorkOrderAccess,
+    WorkOrderEvidence, WorkOrderEvidenceKind, WorkOrderImpact, WorkOrderParameter,
+    WorkOrderPatchBudget, WorkOrderProvenance, WorkOrderRecipe, WorkOrderResource,
+    WorkOrderResourceKind, WorkOrderSubject, WorkOrderTarget, WorkOrderUnknown,
+    WorkOrderVerification, shared_finding_work_orders, shared_transformation_work_orders,
+};
 
 macro_rules! protocol_struct {
     ($vis:vis struct $name:ident { $($field:ident: $type:ty),+ $(,)? }) => {
-        #[derive(Debug, Clone, Serialize, Deserialize)]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
         #[serde(deny_unknown_fields)]
         $vis struct $name {
             $(pub $field: $type),+

@@ -4318,3 +4318,73 @@ tests plus 1 explicit ignore. No M6 work was started.
 Negative-memory constraint: candidate matching, classification, semantic evidence, and the DoD audit never replace
 exact revision guards or runtime validation. A future detector must enter the canonical catalog and satisfy this
 audit before production emission.
+
+## 2026-07-16 — M6 work-order DAG and LLM protocol
+
+Active hypothesis: M6 must replace both finding-shaped and recipe-specific proposal envelopes with one immutable,
+versioned transaction model before scheduling or tool operations can be authoritative. The shared model must retain
+the existing exact proposal/revision context while adding recipe evidence, access sets, graph dependencies, budgets,
+verification, and explicit unknowns. CLI, MCP, LSP, slim, and library integrations must serialize and validate the
+same domain object rather than adapt several lookalike schemas.
+
+Current approach:
+
+1. Freeze one strict `deslop.work-order/1` transaction in `deslop-protocol`, with migration constructors from current
+   finding and recipe candidates. Include target/snapshot identity, recipe, evidence/counter-evidence, impact,
+   immutable safety, patch budget, verification, and typed Reads/Writes/Requires/Invalidates resources.
+2. Build a content-addressed planner over those transactions: prerequisite, invalidation, conflict, and mutually
+   exclusive edges; exact atomic groups; SCC detection; condensation scheduling; deterministic parallel waves with
+   conflict serialization.
+3. Revalidate every handle against its pinned revision and impacted resource set after a commit. Expire and replan;
+   never carry an order forward by adjusting a span.
+4. Expose one bounded operation service (`index`, `triage`, `explain`, `plan`, `propose_patch`, `verify`, gated
+   `apply`) and route CLI, MCP, LSP, slim, and library calls through the shared request/response schemas. Require
+   deterministic ordering, pagination/query/context budgets, provenance, unknowns, and schema negotiation.
+5. Add stale-handle, edit-overlap, concurrent-client, retry-idempotency, context-budget, and migration fixtures.
+   Finish with one frozen identical-budget benchmark comparing graph-grounded and baseline LLM tasks; M6.DoD requires
+   improved verified task success without more semantic regressions, not merely smaller prompts.
+
+CONVERGENCE: each slice ends only when its strict wire and negative cases pass. The terminal benchmark has two
+outcomes: graph grounding improves verified completion under the identical budget without increasing semantic
+regressions, permitting M6 closure; or it does not, leaving M6.10/M6.DoD open with the measured failure recorded.
+The final audit must join every TODO requirement to executable evidence and a clean all-feature workspace gate.
+
+Negative-memory constraints: old finding-shaped `deslop.workorder/3` IDs and recipe-work-order envelopes are
+migration inputs, not parallel authorities; normalized spans never rebase stale work; partial proposal context cannot
+be reconstructed as complete; dependency cycles cannot be broken by sort order; graph grounding cannot promote
+safety or verification authority.
+
+Ownership/checkpoint: `/root` owns integration, schema decisions, implementation, validation, benchmark evidence,
+terminal artifacts, and bookmark/push. No sub-agent work was requested. First checkpoint is M6.1–M6.2 shared schema
+and its focused cross-surface round-trip tests.
+
+### M6.1–M6.6 terminal checkpoint — shared transactions, planning, and stale lifecycle
+
+`deslop.work-order/1` is the one strict transaction envelope for finding proposals and M5 transformation candidates.
+It canonically binds target path/span/node/revision, recipe/parameters, evidence and counter-evidence, impact, immutable
+safety, patch budgets, verification, provenance/unknowns, and typed Reads/Writes/Requires/Invalidates. The embedded
+subject remains authoritative: deserialization recomputes every summary and content ID, rejecting safety, budget,
+access, provenance, or identity tampering. CLI and MCP emit the shared schema; slim and recipe apply accept it while
+retaining explicit old-schema migration; LSP embeds the exact object as review-only action data with no edit.
+
+`deslop.work-order-plan/1` derives prerequisite edges by indexed producer/requirement joins, invalidations by indexed
+resource joins, exact write conflicts, bucket-local interval overlap, explicit prerequisites, and named mutually
+exclusive recipe alternatives. Union-find collapses declared atomic groups. Tarjan SCCs block unresolved cycles
+instead of choosing by order; downstream dependents inherit the block. Remaining groups are topologically scheduled
+in deterministic conflict-free waves, so independent work can run together while snapshot/graph conflicts serialize.
+
+`deslop.work-order-handle/1` binds plan, order, and exact revision guard. Post-commit lifecycle combines declared and
+actual invalidations, expires impacted readers/requirements, and accepts only independently regenerated post-change
+orders. An expired identity cannot re-enter the replacement plan, so no byte-span rebasing exists.
+
+Measured validation: 3 shared-schema, 3 planner, and 2 lifecycle protocol tests plus one LSP cross-surface test pass;
+CLI shared finding and recipe fixtures, MCP propose/verify, slim migration, and recipe apply remain green. Full
+workspace fmt/build/test/clippy-with-warnings-denied passes with 767 active tests, 251 active parse tests plus one
+explicit ignore and 4 doctests, 63 active recipe tests plus one explicit ignore, and 29 active protocol tests.
+
+Next checkpoint: M6.7–M6.9 bounded operations, negotiation/pagination/budgets, shared propose/verify/apply state, and
+stale/overlap/concurrent/retry/context adversarial tests. Do not begin the LLM benchmark until that protocol closes.
+
+Negative-memory constraint: `deslop.workorder/3` and `deslop.recipe-workorder/1` remain migration subjects only.
+Neither is an independent live authority, and deterministic ordering cannot break a semantic cycle or refresh a stale
+handle.

@@ -7,7 +7,9 @@ use std::time::Instant;
 use anyhow::{Context, Result, bail};
 use deslop_core::{Lang, revision_guard};
 use deslop_parse::{SourceFile, source_parses_without_errors};
-use deslop_protocol::{RECIPE_WORK_ORDER_SCHEMA, RecipeWorkOrder};
+use deslop_protocol::{
+    RECIPE_WORK_ORDER_SCHEMA, RecipeWorkOrder, SharedWorkOrder, WorkOrderSubject,
+};
 use deslop_recipes::{CandidateDisposition, TransformationCandidate, detect_rust_recipes};
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
@@ -83,16 +85,41 @@ pub fn load_recipe_work_orders(path: &Path) -> Result<Vec<RecipeWorkOrder>> {
     if let Ok(orders) = serde_json::from_str::<Vec<RecipeWorkOrder>>(&text) {
         return validate_order_set(orders);
     }
+    if let Ok(orders) = serde_json::from_str::<Vec<SharedWorkOrder>>(&text) {
+        return validate_order_set(
+            orders
+                .into_iter()
+                .map(recipe_order_from_shared)
+                .collect::<Result<Vec<_>>>()?,
+        );
+    }
     let mut orders = Vec::new();
     for (index, line) in text.lines().enumerate() {
         if line.trim().is_empty() {
             continue;
         }
-        let order = serde_json::from_str::<RecipeWorkOrder>(line)
-            .with_context(|| format!("invalid recipe work order at line {}", index + 1))?;
+        let order = match serde_json::from_str::<RecipeWorkOrder>(line) {
+            Ok(order) => order,
+            Err(_) => recipe_order_from_shared(
+                serde_json::from_str::<SharedWorkOrder>(line).with_context(|| {
+                    format!("invalid shared or recipe work order at line {}", index + 1)
+                })?,
+            )?,
+        };
         orders.push(order);
     }
     validate_order_set(orders)
+}
+
+fn recipe_order_from_shared(order: SharedWorkOrder) -> Result<RecipeWorkOrder> {
+    match order.subject() {
+        WorkOrderSubject::Transformation { candidate } => {
+            RecipeWorkOrder::from_candidate((**candidate).clone())
+        }
+        WorkOrderSubject::FindingProposal { .. } => {
+            bail!("recipe apply requires transformation work orders, not finding proposals")
+        }
+    }
 }
 
 pub fn apply_recipe_work_orders(

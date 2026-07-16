@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::process::Command;
 
-use deslop_protocol::WorkOrder;
+use deslop_protocol::{SharedWorkOrder, WorkOrder, WorkOrderSubject};
 
 fn deslop() -> Command {
     Command::new(env!("CARGO_BIN_EXE_deslop"))
@@ -23,7 +23,14 @@ fn propose(paths: &[PathBuf]) -> Vec<WorkOrder> {
     String::from_utf8(output.stdout)
         .expect("UTF-8 propose output")
         .lines()
-        .map(|line| serde_json::from_str::<WorkOrder>(line).expect("work order JSONL"))
+        .map(|line| {
+            let shared =
+                serde_json::from_str::<SharedWorkOrder>(line).expect("shared work order JSONL");
+            match shared.subject() {
+                WorkOrderSubject::FindingProposal { order } => (**order).clone(),
+                WorkOrderSubject::Transformation { .. } => panic!("expected finding proposal"),
+            }
+        })
         .collect()
 }
 

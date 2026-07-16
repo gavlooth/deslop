@@ -11923,3 +11923,44 @@ failed approach requires durable negative memory; the exact SafeAuto frontier an
 are enforced in code.
 
 Signature: Codex `/root` — M5 terminal integration and verification owner
+
+## 2026-07-16T11:44:45+02:00 — M6.1–M6.6 shared transaction/planner terminal checkpoint
+
+**Objective/target:** establish one cross-surface transaction schema and the dependency, atomicity, scheduling, and
+post-commit lifecycle needed before exposing LLM-facing operations.
+
+**Changes:** added strict `deslop.work-order/1`, binding either one exact finding proposal or M5 transformation
+candidate to canonical target, recipe, evidence/counter-evidence, impact, safety, patch budget, verification,
+Reads/Writes/Requires/Invalidates, provenance, and unknowns. All summaries and `wo1_` identity are rederived on read.
+CLI/MCP now emit it; slim and recipe apply consume it with explicit old-schema migration; LSP carries it in review-only
+action data. Added `deslop.work-order-plan/1` with indexed resource edges, path-local overlap sweeps, explicit
+prerequisites/alternatives, union-find atomic groups, Tarjan SCC blocking, dependency propagation, and deterministic
+conflict-free topological waves. Added revision-bound handles and post-commit expiration/replanning that rejects reused
+expired identities instead of shifting spans.
+
+**Commands run/results:** focused protocol schema/planner/lifecycle tests, LSP shared-action test, MCP propose tests,
+CLI revision/recipe/work-order integration, slim shared loader, verify recipe loader, and focused clippy all pass. Two
+full gate attempts identified stale CLI tests that decoded the former top-level envelope; these were migrated to
+unwrap the strict subject. The complete gate was restarted and passes: `cargo fmt --all -- --check`, workspace
+all-feature build/test, and all-feature/all-target clippy with `-D warnings`. Counts: 767 active workspace tests, 251
+active parse tests plus 1 ignored probe, 4 parse doctests, 63 active recipe tests plus 1 ignored evidence gate, and 29
+active protocol tests.
+
+**Failure modes/invalidated assumptions:** shared schema rollout requires fixtures to distinguish envelope identity
+from the legacy subject identity; directly parsing CLI output as `/3` is no longer valid. Snapshot invalidation makes
+otherwise disjoint graph commits conflict unless explicitly grouped atomically. Atomic groups may share one pinned
+snapshot invalidation, but cannot contain overlapping writes or mutually exclusive recipes.
+
+**Current recommendation/checkpoint:** M6.1–M6.6 are terminal. Implement M6.7–M6.9 bounded operations and adversarial
+protocol tests next; do not run M6.10 until the operation surface is frozen.
+
+**Blockers/restart/dependencies:** none. No runtime restart, migration command, installed CLI replacement, or cache
+clear is required.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`, protocol work-order/planner/
+lifecycle modules, protocol exports, and CLI/MCP/LSP/slim/verify cross-surface integrations and fixtures.
+
+**Negative-memory status:** former `/3` and recipe work orders are migration inputs only; stale spans and sort-order
+cycle breaking are explicitly rejected. No unresolved failed algorithm requires another negative-memory record.
+
+Signature: Codex `/root` — M6.1–M6.6 integration and terminal verification owner

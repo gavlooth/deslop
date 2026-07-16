@@ -634,13 +634,20 @@ reports, benchmark records, and work orders.
 
 ## M6 — Work-order DAG and LLM protocol
 
-- [ ] M6.1 Version one shared `WorkOrder` schema for library, CLI, MCP, LSP, and slim.
-- [ ] M6.2 Include target identity, recipe, evidence/counter-evidence, impact, safety, patch budget,
+- [x] M6.1 Version one shared `WorkOrder` schema for library, CLI, MCP, LSP, and slim.
+  Strict `deslop.work-order/1` is library-owned; CLI/MCP emit it, slim and recipe apply consume it with explicit
+  legacy migration, and LSP carries the exact review-only wire. Summary tampering and stale identity reject.
+- [x] M6.2 Include target identity, recipe, evidence/counter-evidence, impact, safety, patch budget,
   verification contract, and machine-readable `Reads`/`Writes`/`Requires`/`Invalidates` sets.
-- [ ] M6.3 Add prerequisite, invalidation, conflict, and mutually-exclusive-recipe edges.
-- [ ] M6.4 Collapse atomic work groups, detect SCCs, and block unresolved planning cycles.
-- [ ] M6.5 Topologically schedule independent work and serialize conflicting graph commits.
-- [ ] M6.6 Expire/replan orders after impacted edits; never silently rebase by span.
+  Every field is canonically rederived from its authoritative finding-proposal or M5 transformation subject.
+- [x] M6.3 Add prerequisite, invalidation, conflict, and mutually-exclusive-recipe edges.
+- [x] M6.4 Collapse atomic work groups, detect SCCs, and block unresolved planning cycles.
+- [x] M6.5 Topologically schedule independent work and serialize conflicting graph commits.
+- [x] M6.6 Expire/replan orders after impacted edits; never silently rebase by span.
+  Content-addressed plans use indexed resource joins and path-local span sweeps, union-find atomic groups, exact
+  Tarjan SCCs, deterministic conflict-free waves, revision-bound handles, and post-commit expiration. Reusing an
+  expired identity instead of independently regenerating against the new revision fails closed. Nine focused shared
+  schema/planner/lifecycle tests and all 767 active workspace tests plus 4 doctests and full gates pass.
 - [ ] M6.7 Implement `index`, `triage`, bounded `explain`, `plan`, `propose_patch`, `verify`, and policy-gated `apply`.
 - [ ] M6.8 Add deterministic ordering, pagination, query budgets, provenance, unknowns, and schema negotiation.
 - [ ] M6.9 Add stale-handle, overlap, concurrent-client, retry, and context-budget tests.

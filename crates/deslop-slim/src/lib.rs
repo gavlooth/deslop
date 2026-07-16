@@ -6,8 +6,9 @@ use anyhow::{Context, Result, bail};
 use deslop_analyzer::AnalyzerConfig;
 use deslop_core::FileAnalysis;
 use deslop_protocol::{
-    CharacterizationTest, Patch, WorkOrder, WorkOrderKind, propose_work_orders as propose_batch,
-    reconstruct_proposal, validate_workorder_identity, workorder_revision_guard,
+    CharacterizationTest, Patch, SHARED_WORK_ORDER_SCHEMA, SharedWorkOrder, WorkOrder,
+    WorkOrderKind, WorkOrderSubject, propose_work_orders as propose_batch, reconstruct_proposal,
+    validate_workorder_identity, workorder_revision_guard,
 };
 use deslop_verify::{
     ApplyReport, CoverageConfig, MutationConfig, VerificationVerdict, VerifyOptions, VerifyReport,
@@ -1075,14 +1076,25 @@ pub fn parse_workorders_jsonl(text: &str) -> Result<Vec<WorkOrder>> {
             .get("schema")
             .and_then(serde_json::Value::as_str)
             .unwrap_or("<missing>");
-        if schema != "deslop.workorder/3" {
+        let work_order: WorkOrder = if schema == SHARED_WORK_ORDER_SCHEMA {
+            let shared: SharedWorkOrder = serde_json::from_value(value)
+                .with_context(|| format!("failed to parse workorder JSONL line {}", idx + 1))?;
+            match shared.subject() {
+                WorkOrderSubject::FindingProposal { order } => (**order).clone(),
+                WorkOrderSubject::Transformation { .. } => bail!(
+                    "line {} contains a transformation work order; slim rewrite prompts require a finding proposal",
+                    idx + 1
+                ),
+            }
+        } else if schema == "deslop.workorder/3" {
+            serde_json::from_value(value)
+                .with_context(|| format!("failed to parse workorder JSONL line {}", idx + 1))?
+        } else {
             bail!(
-                "line {} has unsupported schema `{schema}`; regenerate as deslop.workorder/3",
+                "line {} has unsupported schema `{schema}`; regenerate as {SHARED_WORK_ORDER_SCHEMA}",
                 idx + 1
             );
-        }
-        let work_order: WorkOrder = serde_json::from_value(value)
-            .with_context(|| format!("failed to parse workorder JSONL line {}", idx + 1))?;
+        };
         validate_workorder_identity(&work_order)
             .map_err(|error| anyhow::anyhow!("line {}: {error}", idx + 1))?;
         if let Some(first_line) = first_line_by_id.insert(work_order.id.to_owned(), idx + 1) {
@@ -1419,7 +1431,23 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("regenerate as deslop.workorder/3")
+                .contains("regenerate as deslop.work-order/1")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn workorder_jsonl_accepts_shared_schema_and_preserves_exact_legacy_subject() -> Result<()> {
+        let fixture = SlimTestFixture::identity()?;
+        let work_order = propose_work_orders(&[fixture.source])?.remove(0);
+        let shared = deslop_protocol::SharedWorkOrder::from_finding_order(work_order.clone())?;
+
+        let decoded = parse_workorders_jsonl(&serde_json::to_string(&shared)?)?;
+
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(
+            serde_json::to_value(&decoded[0])?,
+            serde_json::to_value(work_order)?
         );
         Ok(())
     }
