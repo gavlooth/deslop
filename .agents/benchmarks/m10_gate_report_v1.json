@@ -1,0 +1,65 @@
+{
+  "schema": "deslop.m10-gate-report/1",
+  "source_commit": "11341c4f134cadbefcd184b8751baf9547295c21",
+  "source_change": "smynomqo",
+  "recorded_at": "2026-07-16T00:00:00+02:00",
+  "clean_checkout": true,
+  "all_passed": true,
+  "focused": {
+    "status": "passed",
+    "elapsed_seconds": 60,
+    "command": "set -euo pipefail; cargo test --release -p deslop-eval m10_; cargo test -p deslop-protocol --all-features; cargo test -p deslop-verify --all-features; cargo test -p deslop-cli --all-features; strict canonical/external/dogfood verify",
+    "log": {
+      "path": "/tmp/deslop-m10-focused-gates-final.log",
+      "digest_algorithm": "sha256",
+      "digest": "07c8d1617708d8f07bbfa05558f51c55825c9a04043446b292e93fdcff68817e",
+      "bytes": 19479,
+      "lines": 348
+    },
+    "measured": {
+      "m10_tests_passed": 5,
+      "protocol_tests_passed": 32,
+      "verifier_unit_tests_passed": 80,
+      "verifier_definition_of_done_tests_passed": 1,
+      "cli_unit_tests_passed": 20,
+      "cli_integration_tests_passed": 29,
+      "canonical_cases_verified": 600,
+      "external_checkouts_verified": 18,
+      "dogfood_report_verified": true
+    }
+  },
+  "full_workspace": {
+    "status": "passed",
+    "elapsed_seconds": 112,
+    "command": "cargo fmt --all -- --check && cargo build --workspace --all-features && cargo test --workspace --all-features && cargo clippy --workspace --all-features --all-targets -- -D warnings",
+    "log": {
+      "path": "/tmp/deslop-m10-full-gates-final.log",
+      "digest_algorithm": "sha256",
+      "digest": "967954f66068188829b34adc5053e4fa337f74813ee7dc571f117f36d7092cec",
+      "bytes": 73179,
+      "lines": 1102
+    },
+    "fmt": "passed",
+    "build": "passed",
+    "test": "passed",
+    "clippy_deny_warnings": "passed"
+  },
+  "external_smoke": {
+    "status": "passed",
+    "manifest_id": "m10xp1_a29ec0c10de3ca851d3587089965b83be7b7aca06685087dfba5ba943485599e",
+    "report_id": "m10xr1_43b724f17dd62b0f519d256fe4e62fc8582ad2c0908013e0599aefac5cbce3dc",
+    "checkouts_verified": 18
+  },
+  "ignored_tests": [
+    {
+      "name": "crates_metrics_and_graph_performance_probe",
+      "reason": "slow self-scan probe; its algorithm-checkpoint evidence is frozen separately"
+    },
+    {
+      "name": "frozen_b2_slice_runs_once_and_meets_recipe_specific_b7_gates",
+      "reason": "release-mode 2,000-case evidence gate; its frozen B2/B7 artifact is verified separately"
+    }
+  ],
+  "failed_prior_runs_are_evidence": false,
+  "notes": "A prior full-gate attempt failed stale analyzer assertions and is explicitly excluded. This report records only the corrected fail-fast clean-revision runs."
+}

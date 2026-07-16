@@ -4868,3 +4868,19 @@ Signature: Codex (GPT-5), M10 release-evidence owner, 2026-07-16.
   abstentions, completed in 248.811 seconds, and peaked at 1,388,396,544 bytes RSS. The next and only
   active path is clean focused/full gates, gate artifact assembly, strict release join, and terminal
   ledger closure; no source-bound artifact may be regenerated after the gate revision is sealed.
+
+### M10 terminal stable-evidence release checkpoint (2026-07-16)
+
+- Clean focused gates passed in 60 seconds and the exact all-feature fmt/build/test/clippy
+  `-D warnings` gate passed in 112 seconds for source commit
+  `11341c4f134cadbefcd184b8751baf9547295c21`; strict canonical, external, and dogfood smoke
+  verification passed. Gate artifact: `deslop.m10-gate-report/1`.
+- Strict release join
+  `m10rel1_eb6311ce76c0d855bcebef48c1c2ec3b4847ff21e527e0885bd455654a9f8397`
+  assembled and immediately reverified 15 artifacts, nine documents, 12 capability rows, ten
+  terminal exceptions, frozen versions, numerical summaries, and all 32 M10/G/B decisions.
+- Release disposition is `stable-evidence-limited`. M10.2, G7, B1–B3, B5–B7, B9, and B11 are closed
+  through explicit scope downgrade/unshipping; no missing human approval, independent macro-F1,
+  global recipe precision, signing trust root, readability label, or 1-MLOC result is implied.
+- M10 is terminal. The only remaining repository action is to seal this ledger/report slice, audit
+  the final chain and clean status, advance `main`, push, and verify `main@origin`.

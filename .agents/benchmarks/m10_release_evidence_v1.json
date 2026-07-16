@@ -1,0 +1,561 @@
+{
+  "schema": "deslop.release-evidence/1",
+  "release_id": "m10rel1_eb6311ce76c0d855bcebef48c1c2ec3b4847ff21e527e0885bd455654a9f8397",
+  "product_version": "0.1.0-evidence.1",
+  "release_disposition": "stable-evidence-limited",
+  "versions": {
+    "adapter-capabilities": "deslop.language-adapter-capabilities/2",
+    "canonical-role-projection": "deslop.canonical-role-projection/1",
+    "graph-wire": "deslop.graph/2",
+    "readability-features": "deslop.readability-features/1",
+    "readability-model": "unshipped:evidence-only",
+    "recipe": "deslop.transformation-recipe/1",
+    "transformation-candidate": "deslop.transformation-candidate/1",
+    "work-order-legacy": "deslop.workorder/3",
+    "work-order-plan": "deslop.work-order-plan/1",
+    "work-order-service": "deslop.work-order-service/1",
+    "work-order-shared": "deslop.work-order/1"
+  },
+  "artifacts": [
+    {
+      "path": ".agents/benchmarks/m10_canonical_corpus_v1.json",
+      "schema": "deslop.m10-canonical-corpus/1",
+      "digest": "blake3:067a2f379f3d1a0b9dcca9a7368f7700c30bcc0a2803d750dafcc7a44d82cd61",
+      "bytes": 787214
+    },
+    {
+      "path": ".agents/benchmarks/m10_dogfood_report_v1.json",
+      "schema": "deslop.m10-dogfood/1",
+      "digest": "blake3:c8a01edf2c4891f1ff48e41338bbbb31820a276907211802a7ebf79f56e1eed5",
+      "bytes": 577240
+    },
+    {
+      "path": ".agents/benchmarks/m10_external_projects_v1.json",
+      "schema": "deslop.m10-external-projects/1",
+      "digest": "blake3:dfd2cde2f9f982989d3ef3a7b5870566c3efd9e5e00e69394c5a5b41cd02d938",
+      "bytes": 13096
+    },
+    {
+      "path": ".agents/benchmarks/m10_external_report_v1.json",
+      "schema": "deslop.m10-external-report/1",
+      "digest": "blake3:35f21e01dcb5e77636da22813531979ac65ecfb7f25494aa638cf8ccaa07d1d6",
+      "bytes": 34806
+    },
+    {
+      "path": ".agents/benchmarks/m10_gate_report_v1.json",
+      "schema": "deslop.m10-gate-report/1",
+      "digest": "blake3:9d8b1ce4f2a453da2da950afe24d9652109fcbb6d7eab6fa32da7183f0c79274",
+      "bytes": 2655
+    },
+    {
+      "path": ".agents/benchmarks/m6_llm_report_v1.json",
+      "schema": "deslop.m6-llm-benchmark-report/1",
+      "digest": "blake3:7b385d5285e5c9948f6acbb8c1e492847b953ead39a66c279ec817bb48550197",
+      "bytes": 233613
+    },
+    {
+      "path": ".agents/benchmarks/m6_llm_tasks_v1.json",
+      "schema": "deslop.m6-llm-task-manifest/1",
+      "digest": "blake3:453efbd24c1a27678f8a02ca5888c27d9eee60955527ecf9d33399dc1a00d5f3",
+      "bytes": 154654
+    },
+    {
+      "path": ".agents/benchmarks/m9_scale_report_v1.json",
+      "schema": "deslop.m9-scale-benchmark/1",
+      "digest": "blake3:ce67890baed74f99b56dad444436577ecc947ecc303d34bf093ba89a8e602c2d",
+      "bytes": 4808
+    },
+    {
+      "path": "crates/deslop-eval/evaluation/m8/corpus.json",
+      "schema": "deslop.readability-corpus/1",
+      "digest": "blake3:77ff5919564be1307588b8fa4400a4da989fe15cb5c42fe7ca43188ae8fe34e2",
+      "bytes": 794006
+    },
+    {
+      "path": "crates/deslop-eval/evaluation/m8/dataset_registry.json",
+      "schema": "deslop.readability-datasets/1",
+      "digest": "blake3:759f771277d5bfadc355a9d04731063ef8fbc538571e6613d304ed31b2bd414c",
+      "bytes": 4956
+    },
+    {
+      "path": "crates/deslop-eval/evaluation/m8/evaluation_report.json",
+      "schema": "deslop.readability-evaluation/1",
+      "digest": "blake3:a6819bd6e55f091c112e877bdc6157bf86930cef0677bfcb0a3223b5316797f6",
+      "bytes": 35650
+    },
+    {
+      "path": "crates/deslop-recipes/corpus/unreachable_literal_rust_v1.json",
+      "schema": "deslop.recipe-evaluation-corpus/1",
+      "digest": "blake3:96334f89cfa55138d6627b729fbc0cc246c53d1c72772b3d747dc0f2570655f1",
+      "bytes": 1708
+    },
+    {
+      "path": "crates/deslop-recipes/evaluation/unreachable_literal_rust_v1_report.json",
+      "schema": "deslop.recipe-evaluation-report/1",
+      "digest": "blake3:3ad130b84d9e754a0ee8af8f6f453300162ae3909a16d26be08f2657d5de2efc",
+      "bytes": 1404
+    },
+    {
+      "path": "tests/fixtures/m4_graph_gold.json",
+      "schema": "deslop.m4-graph-gold/1",
+      "digest": "blake3:4a52e5f3d63d663ff157456557e4842ae230db01fc513e02d3377530b3e3ca67",
+      "bytes": 8736
+    },
+    {
+      "path": "tests/fixtures/resolution_m3_7_adversarial_gold.json",
+      "schema": "deslop.resolution-adversarial-gold/1",
+      "digest": "blake3:564e17dc8d6039f8b17fe09875c556f18bcf8729415956d8ba40405c21bd33f1",
+      "bytes": 18896
+    }
+  ],
+  "documentation": [
+    "docs/ADAPTER_AUTHORING.md",
+    "docs/AGENT_INTEGRATION.md",
+    "docs/M10_CAPABILITY_MATRIX.md",
+    "docs/M10_FAILURE_RISK_REGISTER.md",
+    "docs/M10_MIGRATION.md",
+    "docs/M10_RELEASE_REPORT.md",
+    "docs/SECURITY.md",
+    "docs/UNDO_RECOVERY.md",
+    "docs/VERIFIER_POLICY.md"
+  ],
+  "capabilities": [
+    {
+      "surface": "agent-protocol",
+      "tier": "bounded-v1",
+      "disposition": "shipped",
+      "authority": "content-addressed handles, pagination, budgets, stale rejection"
+    },
+    {
+      "surface": "clojure",
+      "tier": "S1",
+      "disposition": "shipped-syntax",
+      "authority": "owned CST, canonical roles, explicit unknown S2-S4"
+    },
+    {
+      "surface": "dogfood-finding-proposal",
+      "tier": "whole-project",
+      "disposition": "unshipped",
+      "authority": "15-minute timeout; use bounded protocol operations"
+    },
+    {
+      "surface": "javascript",
+      "tier": "S1",
+      "disposition": "shipped-syntax",
+      "authority": "owned CST, canonical roles, explicit unknown S2-S4"
+    },
+    {
+      "surface": "julia",
+      "tier": "S1",
+      "disposition": "shipped-syntax",
+      "authority": "owned CST, canonical roles, explicit unknown S2-S4"
+    },
+    {
+      "surface": "python",
+      "tier": "S1",
+      "disposition": "shipped-syntax",
+      "authority": "owned CST, canonical roles, explicit unknown S2-S4"
+    },
+    {
+      "surface": "readability",
+      "tier": "evidence-only",
+      "disposition": "shipped-without-labels",
+      "authority": "transparent axes only; no probability or readability label"
+    },
+    {
+      "surface": "rust",
+      "tier": "S1+reviewed-graph-recipes",
+      "disposition": "shipped-limited",
+      "authority": "gold graph fixtures; B2/B7 SafeAuto authority only for frozen unreachable-literal recipe; budget abstentions stay explicit"
+    },
+    {
+      "surface": "scale",
+      "tier": "480-file-incremental",
+      "disposition": "shipped-limited",
+      "authority": "M9 measured; no 1-MLOC release claim"
+    },
+    {
+      "surface": "typescript",
+      "tier": "S1",
+      "disposition": "shipped-syntax",
+      "authority": "owned CST, canonical roles, explicit unknown S2-S4"
+    },
+    {
+      "surface": "upstream-project-tests",
+      "tier": "18-project-environment",
+      "disposition": "qualified",
+      "authority": "2 pass; failures/timeouts/unavailable tools retained"
+    },
+    {
+      "surface": "whole-recipe-catalog",
+      "tier": "review-only",
+      "disposition": "unshipped-safe-auto",
+      "authority": "only the frozen Rust recipe slice has B2/B7 numerical authority"
+    }
+  ],
+  "exceptions": [
+    {
+      "id": "EX-01",
+      "status": "closed",
+      "scope": "Python blank-run SafeAuto",
+      "evidence": "dogfood correction and focused tests",
+      "release_effect": "Python preserves two blank lines",
+      "recheck_condition": "recheck only with syntax-context proof"
+    },
+    {
+      "id": "EX-02",
+      "status": "downgraded",
+      "scope": "whole-project finding proposal",
+      "evidence": "dogfood 15-minute timeout",
+      "release_effect": "unshipped; bounded protocol only",
+      "recheck_condition": "measured whole-project time/RSS budget passes"
+    },
+    {
+      "id": "EX-03",
+      "status": "downgraded",
+      "scope": "oversized dogfood recipe partitions",
+      "evidence": "30-second partition abstentions",
+      "release_effect": "no candidate authority for those files",
+      "recheck_condition": "each partition completes below budget"
+    },
+    {
+      "id": "EX-04",
+      "status": "environment-qualified",
+      "scope": "external repository tests",
+      "evidence": "refreshed warm-cache report: 4 pass, 11 fail, 3 tool unavailable; prior run retained 2 timeouts",
+      "release_effect": "scan evidence only; no behavior-oracle claim",
+      "recheck_condition": "isolated pinned dependency caches/runtimes in a new report"
+    },
+    {
+      "id": "EX-05",
+      "status": "downgraded",
+      "scope": "readability labels",
+      "evidence": "M8 lower bound/ECE/holdout failures",
+      "release_effect": "evidence-only UX",
+      "recheck_condition": "all frozen M8 model gates pass"
+    },
+    {
+      "id": "EX-06",
+      "status": "downgraded",
+      "scope": "global transformation precision",
+      "evidence": "B2/B7 Rust unreachable-literal slice only",
+      "release_effect": "other recipes review-only",
+      "recheck_condition": "balanced per-language/family corpus passes"
+    },
+    {
+      "id": "EX-07",
+      "status": "downgraded",
+      "scope": "canonical macro F1",
+      "evidence": "600-case compatibility corpus lacks independent full gold annotations",
+      "release_effect": "ship syntax tiers backed by adapter gold fixtures, not a 600-case F1 claim",
+      "recheck_condition": "independent 600-case annotations meet B6"
+    },
+    {
+      "id": "EX-08",
+      "status": "downgraded",
+      "scope": "human preference",
+      "evidence": "M8 model decision and external review-pending workflow",
+      "release_effect": "no B9 or preference claim",
+      "recheck_condition": "blinded accepted-patch preference gate passes"
+    },
+    {
+      "id": "EX-09",
+      "status": "downgraded",
+      "scope": "one-million-LOC scale",
+      "evidence": "M9 covers three 480-file projects",
+      "release_effect": "no B11 1-MLOC claim",
+      "recheck_condition": "recorded 1-MLOC cold/incremental/RSS run passes"
+    },
+    {
+      "id": "EX-10",
+      "status": "downgraded",
+      "scope": "artifact signature trust",
+      "evidence": "all artifacts content-addressed; no signing trust root",
+      "release_effect": "digest integrity only",
+      "recheck_condition": "configured signing identity produces a verifiable signature"
+    }
+  ],
+  "gates": [
+    {
+      "id": "B1",
+      "status": "downgraded",
+      "evidence": [
+        "600-case six-language compatibility corpus"
+      ],
+      "limitation": "independent full-corpus gold F1 is not claimed"
+    },
+    {
+      "id": "B10",
+      "status": "pass",
+      "evidence": [
+        "M6 paired graph-grounding gates all pass"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "B11",
+      "status": "downgraded",
+      "evidence": [
+        "M9 480-file cold/incremental benchmark"
+      ],
+      "limitation": "no one-million-LOC claim"
+    },
+    {
+      "id": "B12",
+      "status": "pass",
+      "evidence": [
+        "macro/worst-slice/coverage/failure/prior-delta release report"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "B2",
+      "status": "downgraded",
+      "evidence": [
+        "1,000 opportunity + 1,000 negative Rust corpus"
+      ],
+      "limitation": "global language/family coverage remains unshipped"
+    },
+    {
+      "id": "B3",
+      "status": "downgraded",
+      "evidence": [
+        "18 exact repository pins and scans"
+      ],
+      "limitation": "upstream test/cache environment is qualified, not isolated or all-green"
+    },
+    {
+      "id": "B4",
+      "status": "pass",
+      "evidence": [
+        "300 readability pairs and 240 paired LLM tasks"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "B5",
+      "status": "downgraded",
+      "evidence": [
+        "licences/prompts/models/seeds/environment/schema digests"
+      ],
+      "limitation": "content digests are not a cryptographic signer trust root"
+    },
+    {
+      "id": "B6",
+      "status": "downgraded",
+      "evidence": [
+        "adapter/M3/M4 exact gold fixtures"
+      ],
+      "limitation": "no independent numerical macro F1 over all 600 compatibility cases"
+    },
+    {
+      "id": "B7",
+      "status": "downgraded",
+      "evidence": [
+        "Rust recipe B7 thresholds pass"
+      ],
+      "limitation": "other languages/families remain review-only"
+    },
+    {
+      "id": "B8",
+      "status": "pass",
+      "evidence": [
+        "zero known SafeAuto semantic failure; verifier authority retained"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "B9",
+      "status": "downgraded",
+      "evidence": [
+        "M8 evidence-only decision"
+      ],
+      "limitation": "no human-preference shipping claim"
+    },
+    {
+      "id": "G1",
+      "status": "pass",
+      "evidence": [
+        "dogfood seven unique transformation work orders, zero duplicates"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "G10",
+      "status": "pass",
+      "evidence": [
+        "current docs, schemas, fixtures, reports, and negative memory"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "G2",
+      "status": "pass",
+      "evidence": [
+        "M3 adversarial resolution gold and full gate"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "G3",
+      "status": "pass",
+      "evidence": [
+        "adapter capability manifests and full gate"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "G4",
+      "status": "pass",
+      "evidence": [
+        "zero dogfood production SafeAuto; verifier/demotion gates"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "G5",
+      "status": "pass",
+      "evidence": [
+        "M7 injected rollback tests and full gate"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "G6",
+      "status": "pass",
+      "evidence": [
+        "content-addressed artifacts and exact verification"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "G7",
+      "status": "downgraded",
+      "evidence": [
+        "M8 frozen evaluation"
+      ],
+      "limitation": "readability labels remain unshipped"
+    },
+    {
+      "id": "G8",
+      "status": "pass",
+      "evidence": [
+        "M6 +44.17pp paired improvement, CI excludes zero"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "G9",
+      "status": "pass",
+      "evidence": [
+        "M9 deterministic bounded incremental benchmark"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "M10.1",
+      "status": "pass",
+      "evidence": [
+        "m10 dogfood report and explicit dispositions"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "M10.2",
+      "status": "downgraded",
+      "evidence": [
+        "18-project workflow report"
+      ],
+      "limitation": "review workflow completed to review-pending; no synthetic human approval"
+    },
+    {
+      "id": "M10.3",
+      "status": "pass",
+      "evidence": [
+        "M6 paired 240-task graph/baseline report"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "M10.4",
+      "status": "pass",
+      "evidence": [
+        "M10 release report and joined artifact ledger"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "M10.5",
+      "status": "pass",
+      "evidence": [
+        "M10 capability matrix and failure/risk register"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "M10.6",
+      "status": "pass",
+      "evidence": [
+        "terminal ten-entry exception ledger"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "M10.7",
+      "status": "pass",
+      "evidence": [
+        "frozen version map and M10 migration guide"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "M10.8",
+      "status": "pass",
+      "evidence": [
+        "security/verifier/undo/adapter/agent documentation set"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "M10.9",
+      "status": "pass",
+      "evidence": [
+        "clean-checkout M10 gate report"
+      ],
+      "limitation": null
+    },
+    {
+      "id": "M10.DoD",
+      "status": "pass",
+      "evidence": [
+        "stable evidence-limited capability matrix"
+      ],
+      "limitation": null
+    }
+  ],
+  "summary": {
+    "canonical_programs": 600,
+    "canonical_languages": 6,
+    "external_projects": 18,
+    "external_source_files": 1198,
+    "external_source_lines": 198255,
+    "external_test_passes": 4,
+    "dogfood_files": 189,
+    "dogfood_lines": 139701,
+    "dogfood_findings": 1536,
+    "dogfood_production_safe_auto": 0,
+    "dogfood_recipe_candidates": 7,
+    "dogfood_recipe_abstentions": 9,
+    "llm_paired_tasks": 240,
+    "llm_accepted_patch_delta": 0.44166666666666665,
+    "llm_ci95_lower": 0.352443695621697,
+    "readability_pairs": 300,
+    "readability_disposition": "evidence_only",
+    "scale_projects": 3,
+    "scale_all_gates_pass": true,
+    "recipe_opportunities": 1000,
+    "recipe_hard_negatives": 1000,
+    "recipe_thresholds_pass": true,
+    "clean_checkout_gate_pass": true
+  }
+}

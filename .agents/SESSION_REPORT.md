@@ -12650,3 +12650,70 @@ working revision, and run the focused and exact full release gates without furth
 dogfood regeneration and invalidates the upcoming gate evidence.
 
 Signature: Codex (GPT-5), M10 final dogfood-source checkpoint, 2026-07-16.
+
+## 2026-07-16 — M10 clean release-gate checkpoint
+
+**Objective:** Prove the frozen M10 source with focused safety/integration checks and the exact full
+workspace terminal gate from a clean `jj` working revision.
+
+**Target:** Source commit `11341c4f134cadbefcd184b8751baf9547295c21`, strict frozen-evidence
+verification, and all-feature warning-free workspace health.
+
+**Changes:** Added `deslop.m10-gate-report/1` with the exact source identity, commands, outcomes,
+durations, SHA-256 log identities, test counts, external smoke identity, and explicit ignored-probe
+ledger. The earlier non-green full attempt remains excluded from evidence.
+
+**Commands run/results:** The fail-fast focused suite passed in 60 seconds: five M10 evaluator tests,
+32 protocol tests, 80 verifier tests plus M7 DoD, the complete CLI unit/integration suite, and strict
+verification of the 600-case canonical corpus, 18 pinned external checkouts/report, and dogfood
+report. The exact terminal command
+`cargo fmt --all -- --check && cargo build --workspace --all-features && cargo test --workspace
+--all-features && cargo clippy --workspace --all-features --all-targets -- -D warnings` passed in
+112 seconds.
+
+**Invalidated assumptions:** The first pre-correction full-gate attempt is not evidence even though
+its fmt/build stages passed; only the final single fail-fast green run is recorded.
+
+**Current recommendation/checkpoint:** Seal the gate artifact, assemble and strictly verify the
+release-evidence join, then close the terminal M10/G/B ledger with explicit downgrades intact.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** No restart. `/tmp` logs are ephemeral; their SHA-256 digests,
+byte/line counts, exact commands, and pass statuses are durable in the gate artifact.
+
+Signature: Codex (GPT-5), M10 clean release-gate checkpoint, 2026-07-16.
+
+## 2026-07-16 — M10 terminal stable-evidence release
+
+**Objective:** Assemble the complete M10 evidence graph, close every release decision honestly, and
+establish the terminal stable release boundary.
+
+**Target:** `deslop.release-evidence/1`, the M10/G/B TODO ledger, capability/exception/version joins,
+and a push-ready `jj` history.
+
+**Changes:** Assembled the strict release join and marked all 32 decisions terminally resolved. The
+TODO now distinguishes measured passes from explicit downgrades: review-pending external workflows,
+unshipped readability/human-preference/global-recipe/1-MLOC claims, compatibility-only canonical
+coverage, environment-qualified external tests, and digest integrity without a signer trust root.
+
+**Commands run/results:** `m10-release assemble` produced
+`m10rel1_eb6311ce76c0d855bcebef48c1c2ec3b4847ff21e527e0885bd455654a9f8397`;
+immediate `m10-release verify` passed. The join covers 15 frozen artifacts, nine documents, 12
+capability rows, ten terminal exceptions, the frozen version map, numerical summaries, and all 32
+M10/G/B decisions.
+
+**Invalidated assumptions:** A checked release-gate box does not imply a downgraded numerical bar was
+met. In this ledger it means the gate is terminally resolved by a measured pass or an explicit
+unshipped boundary, as named beside the checkboxes and inside the strict release artifact.
+
+**Current recommendation/checkpoint:** Seal this terminal slice, create a clean empty working change,
+audit the chain and release verifier once more, then advance and push `main` only if clean.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** Rebuild consumers to use the frozen public versions. No live
+service restart is required. `/tmp` gate logs are ephemeral; durable identities live in the gate
+artifact.
+
+Signature: Codex (GPT-5), M10 terminal stable-evidence release, 2026-07-16.
