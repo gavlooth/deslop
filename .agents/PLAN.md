@@ -4189,3 +4189,26 @@ clone conservatively but may not guess across incomplete resolution.
 
 Ownership/checkpoint: the primary agent owns schema, implementation, fixtures, validation, artifacts, bookmark
 advance, and push. Do not start M5.23 or collapse pair matches into clone classes.
+
+## 2026-07-16 — M5.23 maximal graph-verified clone classes
+
+Active hypothesis: accepted M5.22 pair edges define clone equivalence evidence within one normalized-fingerprint
+bucket. Enumerate pairs only inside each non-singleton bucket, union accepted graph-verified edges, and emit exactly
+one deterministic coordinated candidate for every maximal connected component with at least two members.
+
+Terminal result: M5.23 is complete. `maximal_clone_classes` confines pair enumeration to each existing M5.22 bucket,
+reuses `verify_pair` as the graph-context acceptance boundary, and collapses accepted edges with deterministic
+union-find. Rejected peers and singleton components are omitted. Each `deslop.clone-class/1` candidate has a
+content-addressed `ccl1_` identity over canonical sorted member IDs, one deterministic representative, the shared
+policy and normalized fingerprint, exact-versus-renamed classification, and measured bucket-local pair checks. The
+fixture produces one 3-member renamed class, excludes the same-fingerprint graph-context near miss and an unrelated
+singleton, and performs no cross-bucket comparisons. Clone classes remain coordination/matching evidence only: no
+edit, patch, revision guard, automatic application, or M5.24 classification was added. Focused maximal-class testing
+passes 1/1; full workspace build and all-feature tests pass, including 248 active parse tests (1 explicit ignore), 4
+parse doctests, and 55 active recipe tests (1 explicit ignore); workspace formatting and all-feature/all-target clippy
+with `-D warnings` pass. M5.23 is terminal. Proceed next to M5.24 classification, but do not infer abstraction or
+rewrite authority from class membership.
+
+Negative-memory constraint: transitive class membership is justified only by connected accepted M5.22 graph-verified
+pairs inside one normalized bucket. A class remains candidate evidence and never replaces exact revision-bound write
+guards.

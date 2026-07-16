@@ -516,6 +516,174 @@ impl CloneCandidateIndex {
             right: right.id().clone(),
         })
     }
+
+    /// Collapse verified bucket peers into maximal clone classes (M5.23).
+    ///
+    /// Within each normalized bucket, every pair is graph-verified. Connected
+    /// components of accepted pairs become one class with one coordinated
+    /// identity. Singleton buckets are omitted (no clone). Pair enumeration is
+    /// confined to each bucket (size k), never the whole index.
+    pub fn maximal_clone_classes(&self) -> Result<Vec<CloneClass>, CloneCandidateIndexError> {
+        let mut classes = Vec::new();
+        for indices in self.buckets.values() {
+            if indices.len() < 2 {
+                continue;
+            }
+            let n = indices.len();
+            let mut parent: Vec<usize> = (0..n).collect();
+            let mut rank = vec![0u8; n];
+            let mut edge_kinds = BTreeMap::<(usize, usize), CloneMatchKind>::new();
+            let mut pair_checks = 0u64;
+
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    pair_checks += 1;
+                    let left = &self.entries[indices[i]];
+                    let right = &self.entries[indices[j]];
+                    match self.verify_pair(left, right)? {
+                        ClonePairVerification::Accepted { match_kind, .. } => {
+                            union_find(&mut parent, &mut rank, i, j);
+                            edge_kinds.insert((i, j), match_kind);
+                        }
+                        ClonePairVerification::Rejected { .. } => {}
+                    }
+                }
+            }
+
+            let mut components = BTreeMap::<usize, Vec<usize>>::new();
+            for i in 0..n {
+                let root = find_root(&mut parent, i);
+                components.entry(root).or_default().push(i);
+            }
+
+            for mut members in components.into_values() {
+                if members.len() < 2 {
+                    continue;
+                }
+                members.sort_unstable();
+                let mut member_ids = members
+                    .iter()
+                    .map(|local| self.entries[indices[*local]].id().clone())
+                    .collect::<Vec<_>>();
+                member_ids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
+                let mut has_exact = false;
+                let mut has_renamed = false;
+                for ((i, j), kind) in &edge_kinds {
+                    if members.binary_search(i).is_ok() && members.binary_search(j).is_ok() {
+                        match kind {
+                            CloneMatchKind::Exact => has_exact = true,
+                            CloneMatchKind::RenamedStructure => has_renamed = true,
+                        }
+                    }
+                }
+                let match_kind = if has_exact && !has_renamed {
+                    CloneMatchKind::Exact
+                } else {
+                    CloneMatchKind::RenamedStructure
+                };
+
+                let representative = member_ids[0].clone();
+                let id = CloneClassId(digest_parts(
+                    CLASS_DOMAIN,
+                    "id",
+                    &member_ids.iter().map(|id| id.as_str()).collect::<Vec<_>>(),
+                ));
+                classes.push(CloneClass {
+                    schema: CLONE_CLASS_SCHEMA.into(),
+                    id,
+                    match_kind,
+                    representative,
+                    members: member_ids,
+                    policy: self.entries[indices[members[0]]].policy_id().clone(),
+                    normalized: self.entries[indices[members[0]]].normalized().clone(),
+                    bucket_pair_checks: pair_checks,
+                });
+            }
+        }
+
+        classes.sort_by(|left, right| {
+            (
+                left.policy.as_str(),
+                left.normalized.as_str(),
+                left.id.as_str(),
+            )
+                .cmp(&(
+                    right.policy.as_str(),
+                    right.normalized.as_str(),
+                    right.id.as_str(),
+                ))
+        });
+        Ok(classes)
+    }
+}
+
+pub const CLONE_CLASS_SCHEMA: &str = "deslop.clone-class/1";
+const CLASS_DOMAIN: &str = "deslop.clone-class/1";
+
+digest_id!(CloneClassId, "ccl1_");
+
+/// One maximal set of graph-verified clone members sharing a coordinated identity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloneClass {
+    schema: String,
+    id: CloneClassId,
+    match_kind: CloneMatchKind,
+    representative: CloneCandidateEntryId,
+    members: Vec<CloneCandidateEntryId>,
+    policy: SubtreeFingerprintPolicyId,
+    normalized: NormalizedSubtreeFingerprint,
+    bucket_pair_checks: u64,
+}
+
+impl CloneClass {
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    pub fn id(&self) -> &CloneClassId {
+        &self.id
+    }
+
+    pub fn match_kind(&self) -> &CloneMatchKind {
+        &self.match_kind
+    }
+
+    pub fn representative(&self) -> &CloneCandidateEntryId {
+        &self.representative
+    }
+
+    pub fn members(&self) -> &[CloneCandidateEntryId] {
+        &self.members
+    }
+
+    pub fn bucket_pair_checks(&self) -> u64 {
+        self.bucket_pair_checks
+    }
+}
+
+fn find_root(parent: &mut [usize], mut node: usize) -> usize {
+    while parent[node] != node {
+        parent[node] = parent[parent[node]];
+        node = parent[node];
+    }
+    node
+}
+
+fn union_find(parent: &mut [usize], rank: &mut [u8], left: usize, right: usize) {
+    let mut root_left = find_root(parent, left);
+    let mut root_right = find_root(parent, right);
+    if root_left == root_right {
+        return;
+    }
+    if rank[root_left] < rank[root_right] {
+        std::mem::swap(&mut root_left, &mut root_right);
+    }
+    parent[root_right] = root_left;
+    if rank[root_left] == rank[root_right] {
+        rank[root_left] = rank[root_left].saturating_add(1);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -595,7 +763,9 @@ fn digest_strings(domain: &str, label: &str, parts: &[impl AsRef<str>]) -> Strin
         hash_part(&mut hasher, part.as_ref().as_bytes());
     }
     let digest = hasher.finalize();
-    let prefix = if domain == CONTEXT_DOMAIN && label == "id" {
+    let prefix = if domain == CLASS_DOMAIN {
+        "ccl1_"
+    } else if domain == CONTEXT_DOMAIN && label == "id" {
         "cgc1_"
     } else if domain == ENTRY_DOMAIN && label == "id" {
         "cce1_"
@@ -905,5 +1075,65 @@ mod tests {
         // NodeKey wire shape may differ; only assert typed id validation helper.
         assert!(validate_digest("bad_prefix", "cgc1_").is_err());
         let _ = payload;
+    }
+
+    #[test]
+    fn maximal_clone_classes_collapse_verified_components_only() {
+        let a = fingerprint_fixture(
+            "fn run(alpha: i32) -> i32 { let beta = alpha + 1; beta }\n",
+            "block",
+            &[
+                ("alpha", "parameter", IdentifierSurface::Local),
+                ("beta", "result", IdentifierSurface::Local),
+            ],
+        );
+        let b = fingerprint_fixture(
+            "fn run(input: i32) -> i32 { let output = input + 1; output }\n",
+            "block",
+            &[
+                ("input", "parameter", IdentifierSurface::Local),
+                ("output", "result", IdentifierSurface::Local),
+            ],
+        );
+        let c = fingerprint_fixture(
+            "fn run(x: i32) -> i32 { let y = x + 1; y }\n",
+            "block",
+            &[
+                ("x", "parameter", IdentifierSurface::Local),
+                ("y", "result", IdentifierSurface::Local),
+            ],
+        );
+        let ea = entry_with_context(&a, "g", "topo", "boundary");
+        let eb = entry_with_context(&b, "g", "topo", "boundary");
+        let ec = entry_with_context(&c, "g", "topo", "boundary");
+        let d = fingerprint_fixture(
+            "fn run(p: i32) -> i32 { let q = p + 1; q }\n",
+            "block",
+            &[
+                ("p", "parameter", IdentifierSurface::Local),
+                ("q", "result", IdentifierSurface::Local),
+            ],
+        );
+        let ed = entry_with_context(&d, "g", "topo-other", "boundary");
+        let ed_id = ed.id().clone();
+        let unique = fingerprint_fixture(
+            "fn run(value: i32) -> i32 { value * 9 + 3 }\n",
+            "block",
+            &[("value", "parameter", IdentifierSurface::Local)],
+        );
+        let eu = entry_with_context(&unique, "g", "topo-u", "boundary-u");
+
+        let index =
+            CloneCandidateIndex::build(vec![ea.clone(), eb.clone(), ec.clone(), ed, eu]).unwrap();
+        let classes = index.maximal_clone_classes().unwrap();
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.members().len(), 3);
+        assert!(class.members().contains(ea.id()));
+        assert!(class.members().contains(eb.id()));
+        assert!(class.members().contains(ec.id()));
+        assert!(!class.members().contains(&ed_id));
+        assert_eq!(class.match_kind(), &CloneMatchKind::RenamedStructure);
+        assert!(class.bucket_pair_checks() >= 3);
     }
 }

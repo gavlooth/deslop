@@ -603,7 +603,11 @@ reports, benchmark records, and work orders.
   BTreeMap normalized-fingerprint buckets with zero construction pair comparisons,
   graph-context pair verification (exact vs renamed), fail-closed incomplete contexts.
   Six focused tests; full workspace tests pass (parse 247 active + 1 ignored).
-- [ ] M5.23 Collapse pair matches into maximal clone classes and one coordinated candidate.
+- [x] M5.23 Collapse pair matches into maximal clone classes and one coordinated candidate.
+  Added bucket-local graph-verified connected-component collapse into deterministic `deslop.clone-class/1`
+  coordinated candidates. Singleton and rejected peers are omitted; no whole-index pair scan or rewrite authority was
+  added. The focused maximal-class test, 248 active parse tests (1 explicit ignore), 4 doctests, 55 active recipe
+  tests (1 explicit ignore), and full workspace fmt/build/test/clippy-with-warnings-denied gates pass.
 - [ ] M5.24 Classify generated/schema/test/public-API/intentional repetition before abstraction proposals.
 - [ ] M5.25 Add graph-grounded forwarding, conversion/allocation, wrapper, repeated-error, and dead-code candidates.
   Partial vertical slice complete: `rust-remove-unreachable-literal-statement` removes only exact

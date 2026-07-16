@@ -217,9 +217,10 @@ pub use semantic_resolution::{
 };
 
 pub use clone_candidate_index::{
-    CLONE_CANDIDATE_INDEX_SCHEMA, CLONE_GRAPH_CONTEXT_SCHEMA, CloneCandidateEntry,
-    CloneCandidateEntryId, CloneCandidateIndex, CloneCandidateIndexError, CloneCandidateIndexId,
-    CloneGraphContext, CloneGraphContextId, CloneMatchKind, ClonePairVerification,
+    CLONE_CANDIDATE_INDEX_SCHEMA, CLONE_CLASS_SCHEMA, CLONE_GRAPH_CONTEXT_SCHEMA,
+    CloneCandidateEntry, CloneCandidateEntryId, CloneCandidateIndex, CloneCandidateIndexError,
+    CloneCandidateIndexId, CloneClass, CloneClassId, CloneGraphContext, CloneGraphContextId,
+    CloneMatchKind, ClonePairVerification,
 };
 pub use snapshot::{
     DiscoveryPolicy, ExactZeroWidthNodes, ExclusiveSyntaxKind, ExclusiveSyntaxLookupError,

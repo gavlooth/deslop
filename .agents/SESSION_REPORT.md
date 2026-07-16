@@ -11710,6 +11710,51 @@ evidence only and never write authority. No new recurring failed implementation 
 
 Signature: Codex `/root` — M5.21 integration and terminal verification owner
 
+## 2026-07-16 — M5.23 terminal maximal clone classes
+
+**Objective:** close M5.23 by collapsing M5.22 graph-verified pair matches into maximal clone classes with one
+coordinated candidate per class, without starting M5.24 or granting rewrite authority.
+
+**Target:** enumerate candidate pairs only inside normalized-fingerprint buckets, retain only graph-context-verified
+edges, calculate deterministic maximal connected components, and omit singletons/rejected peers.
+
+**Changes:** added `CloneClassId`, strict `deslop.clone-class/1` coordinated candidate evidence, and
+`CloneCandidateIndex::maximal_clone_classes`. Bucket-local pair enumeration calls the existing M5.22 verifier, then
+uses deterministic union-find to collapse accepted edges. Canonical sorted member IDs determine the class identity
+and representative. Each class retains the shared fingerprint policy, normalized digest, exact/renamed match kind,
+and measured bucket-local pair-check count. Public parse exports expose the new types. No mutation path, edit,
+revision guard, whole-index pair scan, or M5.24 classification was introduced.
+
+**Commands run/results:** `cargo test -p deslop-parse maximal_clone` passed 1/1. `cargo fmt --all`, `cargo build
+--workspace --all-features`, `cargo test --workspace --all-features`, and `cargo clippy --workspace --all-features
+--all-targets -- -D warnings` all passed. Workspace tests include 248 active parse tests with 1 explicit ignored probe,
+4 parse doctests, and 55 active recipe tests with 1 explicit ignored evidence gate.
+
+**Numerical evidence:** one normalized bucket containing four structurally matching entries performs only its six
+bucket-local pair checks. Three entries with equal graph context form exactly one class of size 3; the fourth entry
+with different topology is excluded. One unrelated singleton bucket emits no class. The class is categorized
+`RenamedStructure` and has one deterministic representative and content-addressed `ccl1_` identity.
+
+**Invalidated assumptions/authority lessons:** normalized-bucket membership is only an enumeration boundary; it
+cannot make a rejected graph-context peer a class member. Connected accepted-pair evidence can coordinate a maximal
+class, but class membership remains non-authoritative for rewriting.
+
+**Current recommendation/checkpoint:** M5.23 is terminal. The next permitted milestone is M5.24 generated/schema/
+test/public-API/intentional-repetition classification. Do not propose abstraction or edits from a class before that
+classification evidence exists.
+
+**Blockers/restart/dependencies:** no blockers and no runtime restart, migration, installed CLI replacement, or cache
+clear is required. Advancing and pushing `main` is permitted only after the described M5.23 change has a clean empty
+successor and the bookmark chain is verified.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-parse/src/clone_candidate_index.rs`, and `crates/deslop-parse/src/lib.rs`.
+
+**Negative-memory status:** existing M5.21/M5.22 matching-only authority constraints remain enforced; no new failed
+approach required durable negative memory.
+
+Signature: Codex `/root` — M5.23 integration and terminal verification owner
+
 ## 2026-07-16 — M5.22 clone candidate index (integration)
 
 - **Objective:** scalable fingerprint indexing + graph-context clone pair verification without whole-project pair scan.
