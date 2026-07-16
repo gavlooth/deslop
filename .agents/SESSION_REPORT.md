@@ -11964,3 +11964,39 @@ lifecycle modules, protocol exports, and CLI/MCP/LSP/slim/verify cross-surface i
 cycle breaking are explicitly rejected. No unresolved failed algorithm requires another negative-memory record.
 
 Signature: Codex `/root` — M6.1–M6.6 integration and terminal verification owner
+
+## 2026-07-16T11:59:07+02:00 — M6.7–M6.9 bounded operation protocol terminal checkpoint
+
+**Objective/target:** expose the complete bounded LLM operation sequence through identical cross-surface objects, with
+deterministic budgets, stale/overlap protection, concurrency, and retry behavior.
+
+**Changes:** added `deslop.work-order-service/1`, shared operation request/response enums, index metadata, ranked
+paginated triage, bounded explain, exact plan response, scoped/budgeted patch proposal, required-check verification
+receipts, policy authorization, and an idempotent gated executor. Added revision-bound cursors, schema negotiation,
+hard item/evidence/byte ceilings, operation provenance, explicit unknown/truncation records, and content-addressed
+service/cursor/patch/verification/authorization/apply-receipt identities. CLI `work-orders`, MCP `work_orders`, LSP,
+and slim execute the same library request. Recipe target spans now retain the owned candidate target so coordinated
+multi-edit recipes remain representable.
+
+**Commands run/results:** focused service tests pass 3/3; shared CLI, MCP, LSP, and slim operation tests pass; focused
+all-feature/all-target clippy passes. Full `cargo fmt --all -- --check`, workspace all-feature build/test, and
+all-feature/all-target clippy with `-D warnings` pass. Counts: 772 active workspace tests, 251 active parse tests plus
+1 ignored probe, 4 parse doctests, 63 active recipe tests plus 1 ignored evidence gate, and 32 protocol tests.
+
+**Numerical/adversarial evidence:** a two-item triage uses two deterministic one-item pages; explain honors a one-
+evidence ceiling and marks incomplete provenance. Eight simultaneous clients receive identical triage/apply receipts,
+while the executor callback runs exactly once. Stale revision handles, overlapping edits, foreign/out-of-scope edits,
+oversized budgets, missing schema families, and mismatched recipe-grounded patches reject.
+
+**Current recommendation/checkpoint:** M6.7–M6.9 are terminal. Run the frozen paired M6.10 LLM benchmark next, then
+audit M6.DoD. Do not start M7.
+
+**Blockers/restart/dependencies:** none for the protocol. M6.10 still requires measured paired LLM evidence.
+
+**Files/artifacts:** protocol service and exports, CLI/MCP/LSP/slim integrations and tests, plus M6 planning/TODO/
+session artifacts.
+
+**Negative-memory status:** client observations cannot grant M7 semantic authority; remote apply produces an
+authorization, and only a server-owned gated executor can perform effects. No unresolved failed algorithm remains.
+
+Signature: Codex `/root` — M6.7–M6.9 integration and terminal verification owner

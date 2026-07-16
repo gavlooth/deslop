@@ -10,6 +10,14 @@ use deslop_protocol::{
     WorkOrderKind, WorkOrderSubject, propose_work_orders as propose_batch, reconstruct_proposal,
     validate_workorder_identity, workorder_revision_guard,
 };
+
+/// Execute the same bounded work-order operation used by library, CLI, MCP, and LSP clients.
+pub fn execute_work_order_protocol(
+    input: deslop_protocol::WorkOrderProtocolInput,
+    request: deslop_protocol::WorkOrderProtocolRequest,
+) -> Result<deslop_protocol::WorkOrderProtocolResponse> {
+    deslop_protocol::WorkOrderService::from_input(input)?.execute(request)
+}
 use deslop_verify::{
     ApplyReport, CoverageConfig, MutationConfig, VerificationVerdict, VerifyOptions, VerifyReport,
     apply_patches, characterization_work_orders_for_patches, verify_characterization_tests,
@@ -1449,6 +1457,25 @@ mod tests {
             serde_json::to_value(&decoded[0])?,
             serde_json::to_value(work_order)?
         );
+        let response = execute_work_order_protocol(
+            deslop_protocol::WorkOrderProtocolInput {
+                orders: vec![shared],
+                constraints: Default::default(),
+                metadata: deslop_protocol::WorkOrderServiceMetadata {
+                    capabilities: vec!["slim".into()],
+                    parse_gaps: Vec::new(),
+                    architecture_summary: vec!["prompt".into()],
+                    cache_state: vec!["loaded".into()],
+                    provenance: vec!["slim-test".into()],
+                    unknowns: Vec::new(),
+                },
+            },
+            deslop_protocol::WorkOrderProtocolRequest::Index,
+        )?;
+        let deslop_protocol::WorkOrderProtocolResponse::Index(index) = response else {
+            panic!("index response")
+        };
+        assert_eq!(index.total_orders, 1);
         Ok(())
     }
 

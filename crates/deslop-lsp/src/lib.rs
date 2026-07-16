@@ -17,7 +17,9 @@ use deslop_parse::{
     DiscoveryPolicy, ProjectAnalysis, ProjectSnapshotPlanner, ProjectSnapshotRequest,
     RepositorySpec, RootSpec, ScopeSpec, SnapshotPresentationMap,
 };
-use deslop_protocol::SharedWorkOrder;
+use deslop_protocol::{
+    SharedWorkOrder, WorkOrderProtocolRequest, WorkOrderProtocolResponse, WorkOrderService,
+};
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
@@ -803,6 +805,14 @@ pub fn work_order_code_action(work_order: &SharedWorkOrder) -> Result<CodeAction
     }))
 }
 
+/// Execute one bounded shared protocol request for an LSP client.
+pub fn execute_work_order_protocol(
+    service: &WorkOrderService,
+    request: WorkOrderProtocolRequest,
+) -> Result<WorkOrderProtocolResponse> {
+    service.execute(request)
+}
+
 fn fix_all_action(
     uri: Uri,
     text: &str,
@@ -1036,6 +1046,24 @@ mod tests {
         assert!(action.edit.is_none());
         let decoded: SharedWorkOrder = serde_json::from_value(action.data.expect("protocol data"))?;
         assert_eq!(decoded, shared);
+        let service = WorkOrderService::new(
+            vec![decoded],
+            Default::default(),
+            deslop_protocol::WorkOrderServiceMetadata {
+                capabilities: vec!["lsp".into()],
+                parse_gaps: Vec::new(),
+                architecture_summary: vec!["document".into()],
+                cache_state: vec!["overlay".into()],
+                provenance: vec!["lsp-test".into()],
+                unknowns: Vec::new(),
+            },
+        )?;
+        let WorkOrderProtocolResponse::Index(index) =
+            execute_work_order_protocol(&service, WorkOrderProtocolRequest::Index)?
+        else {
+            panic!("index response")
+        };
+        assert_eq!(index.total_orders, 1);
         Ok(())
     }
 

@@ -115,6 +115,7 @@ fn tool_definitions() -> Vec<Value> {
         apply_tool_spec(),
         metrics_tool_spec(),
         graph_tool_spec(),
+        work_orders_tool_spec(),
         rules_tool_spec(),
     ]
 }
@@ -282,6 +283,20 @@ fn rules_tool_spec() -> Value {
         "rules",
         "Return the built-in rule catalog.",
         object_schema(json!({})),
+    )
+}
+
+fn work_orders_tool_spec() -> Value {
+    tool(
+        "work_orders",
+        "Execute the shared bounded deslop.work-order-service/1 index, triage, explain, plan, propose_patch, verify, or policy-gated apply-authorization operation. Requests and responses are identical to the library, CLI, LSP, and slim domain objects.",
+        required_schema(
+            &["input", "request"],
+            json!({
+                "input": { "type": "object" },
+                "request": { "type": "object" }
+            }),
+        ),
     )
 }
 
@@ -494,10 +509,27 @@ fn tools_call_result(params: &Value) -> Result<Value> {
         "apply" => apply_tool(args)?,
         "metrics" => metrics_tool(args)?,
         "graph" => graph_tool(args)?,
+        "work_orders" => work_orders_tool(args)?,
         "rules" => json!({ "rules": deslop_core::rules::render_table() }),
         other => bail!("unknown tool `{other}`"),
     };
     tool_result(payload)
+}
+
+fn work_orders_tool(args: &Value) -> Result<Value> {
+    let input: deslop_protocol::WorkOrderProtocolInput = serde_json::from_value(
+        args.get("input")
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("work_orders requires input"))?,
+    )?;
+    let request: deslop_protocol::WorkOrderProtocolRequest = serde_json::from_value(
+        args.get("request")
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("work_orders requires request"))?,
+    )?;
+    Ok(serde_json::to_value(
+        deslop_protocol::WorkOrderService::from_input(input)?.execute(request)?,
+    )?)
 }
 
 fn tool_result(payload: Value) -> Result<Value> {
@@ -1232,6 +1264,34 @@ mod tests {
     }
 
     #[test]
+    fn shared_work_orders_tool_executes_same_index_request() {
+        let fixture = sample_fixture();
+        let proposed = propose_tool(&json!({ "paths": [fixture.path] })).expect("propose");
+        let response = work_orders_tool(&json!({
+            "input": {
+                "orders": proposed["workorders"],
+                "constraints": {
+                    "prerequisites": [],
+                    "atomic_groups": [],
+                    "mutually_exclusive_recipes": []
+                },
+                "metadata": {
+                    "capabilities": ["mcp"],
+                    "parse_gaps": [],
+                    "architecture_summary": ["fixture"],
+                    "cache_state": ["cold"],
+                    "provenance": ["mcp-test"],
+                    "unknowns": []
+                }
+            },
+            "request": { "operation": "index" }
+        }))
+        .expect("work order service");
+        assert_eq!(response["operation"], "index");
+        assert_eq!(response["response"]["total_orders"], 1);
+    }
+
+    #[test]
     fn never_auto_findings_remain_scannable_without_workorders_or_prompts() {
         let temp = tempfile::tempdir().expect("tempdir");
         fs::write(temp.path().join("settings.toml"), "phantom_knob = 4\n")
@@ -1373,6 +1433,7 @@ mod tests {
                 "apply",
                 "metrics",
                 "graph",
+                "work_orders",
                 "rules"
             ]
         );

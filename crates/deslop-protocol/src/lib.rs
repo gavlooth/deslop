@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 mod lifecycle;
 mod planner;
 mod recipe;
+mod service;
 mod work_order;
 
 pub use lifecycle::{
@@ -32,6 +33,20 @@ pub use planner::{
 pub use recipe::{
     RECIPE_WORK_ORDER_SCHEMA, RecipePatchBudget, RecipeResource, RecipeResourceKind,
     RecipeVerificationContract, RecipeWorkOrder, RecipeWorkOrderId, recipe_work_orders,
+};
+pub use service::{
+    ApplyExecution, ApplyLedger, ApplyPolicy, ExplainResponse, MAX_QUERY_BYTES, MAX_QUERY_EVIDENCE,
+    MAX_QUERY_ITEMS, OperationProvenance, PageRequest, PatchIntent, PatchIntentKind,
+    ProposedWorkOrderEdit, QueryBudget, SchemaNegotiation, SchemaOffer, SchemaSelection,
+    TriageItem, TriageResponse, VerificationCheckStatus, VerificationObservation,
+    WORK_ORDER_APPLY_AUTHORIZATION_SCHEMA, WORK_ORDER_APPLY_RECEIPT_SCHEMA,
+    WORK_ORDER_CURSOR_SCHEMA, WORK_ORDER_PATCH_PROPOSAL_SCHEMA, WORK_ORDER_SERVICE_SCHEMA,
+    WORK_ORDER_VERIFICATION_SCHEMA, WorkOrderApplyAuthorization, WorkOrderApplyAuthorizationId,
+    WorkOrderApplyReceipt, WorkOrderApplyReceiptId, WorkOrderCursor, WorkOrderCursorId,
+    WorkOrderIndexResponse, WorkOrderOperation, WorkOrderPatchProposal, WorkOrderPatchProposalId,
+    WorkOrderProtocolInput, WorkOrderProtocolRequest, WorkOrderProtocolResponse, WorkOrderService,
+    WorkOrderServiceId, WorkOrderServiceMetadata, WorkOrderVerificationId,
+    WorkOrderVerificationReceipt, WorkOrderVerificationStatus,
 };
 pub use work_order::{
     SHARED_WORK_ORDER_SCHEMA, SharedWorkOrder, SharedWorkOrderId, WorkOrderAccess,

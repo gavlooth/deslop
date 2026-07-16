@@ -538,7 +538,7 @@ impl CanonicalWorkOrder {
             .ok_or_else(|| anyhow::anyhow!("transformation work order requires an edit"))?;
         let target = WorkOrderTarget {
             path: candidate.target().node.file().path.clone(),
-            span: first_edit.span,
+            span: candidate.target().span,
             revision_guard: first_edit.revision_guard.clone(),
             node: Some(candidate.target().node.clone()),
             fingerprint: candidate

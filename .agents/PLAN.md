@@ -4388,3 +4388,35 @@ stale/overlap/concurrent/retry/context adversarial tests. Do not begin the LLM b
 Negative-memory constraint: `deslop.workorder/3` and `deslop.recipe-workorder/1` remain migration subjects only.
 Neither is an independent live authority, and deterministic ordering cannot break a semantic cycle or refresh a stale
 handle.
+
+### M6.7–M6.9 terminal checkpoint — bounded operation service
+
+`deslop.work-order-service/1` owns one typed operation request/response vocabulary for `index`, `triage`, bounded
+`explain`, `plan`, `propose_patch`, `verify`, and policy-gated `apply`. The same objects execute in the protocol
+library, CLI `work-orders`, MCP `work_orders`, LSP, and slim. Index returns capability/gap/architecture/cache state;
+triage ranks deterministically and paginates; explain retains target, evidence, graph impact, verification, resources,
+provenance, and explicit truncation unknowns; plan returns the exact content-bound planner record.
+
+Patch proposals bind the current service/plan/handle/revision, declared intent, author, exact scope, non-overlapping
+edits, and byte/edit budgets. Recipe-grounded patches must equal the candidate edits exactly. Verification receipts
+bind canonical observations and required check coverage. Serialized apply returns only a policy authorization;
+`apply_with` is the sole side-effect hook, runs only after current patch/receipt/safety validation, serializes through
+an idempotency ledger, and returns the cached receipt for concurrent retries. M7 remains responsible for supplying
+semantic verifier authority and durable atomic writes.
+
+Schema negotiation requires the exact service/work-order/plan/handle families. Cursors bind service, plan, operation,
+and offset. Hard ceilings are 256 items, 512 evidence records, and 1 MiB; caller budgets can only narrow them.
+Responses carry operation provenance and explicit unknowns whenever context is truncated.
+
+Measured validation: focused service tests exercise negotiation, two-page deterministic triage, context truncation,
+stale handles, overlapping edits, eight concurrent clients, identical responses, and one executor invocation. CLI,
+MCP, LSP, and slim each run the shared index request; all focused clippy gates pass. Full workspace fmt/build/test/
+clippy-with-warnings-denied passes with 772 active tests, 251 active parse tests plus one explicit ignore and four
+doctests, 63 active recipe tests plus one explicit ignore, and 32 active protocol tests.
+
+Next checkpoint: freeze and run M6.10's paired identical-budget LLM benchmark. Close M6 only if the declared success,
+regression, scope, abstention, pairing, and confidence gates are measured and pass; otherwise record the failed gate.
+
+Negative-memory constraint: client-supplied verification observations are protocol evidence, not M7 semantic
+authority. Remote apply never writes; only a server-owned gated executor may do so, and durable verifier/write
+authority remains a later milestone.

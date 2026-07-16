@@ -648,9 +648,17 @@ reports, benchmark records, and work orders.
   Tarjan SCCs, deterministic conflict-free waves, revision-bound handles, and post-commit expiration. Reusing an
   expired identity instead of independently regenerating against the new revision fails closed. Nine focused shared
   schema/planner/lifecycle tests and all 767 active workspace tests plus 4 doctests and full gates pass.
-- [ ] M6.7 Implement `index`, `triage`, bounded `explain`, `plan`, `propose_patch`, `verify`, and policy-gated `apply`.
-- [ ] M6.8 Add deterministic ordering, pagination, query budgets, provenance, unknowns, and schema negotiation.
-- [ ] M6.9 Add stale-handle, overlap, concurrent-client, retry, and context-budget tests.
+- [x] M6.7 Implement `index`, `triage`, bounded `explain`, `plan`, `propose_patch`, `verify`, and policy-gated `apply`.
+  `deslop.work-order-service/1` exposes one typed request/response enum through library, CLI, MCP, LSP, and slim.
+  Apply serialization yields a policy authorization; the library's gated executor is idempotent and is the sole
+  side-effect hook, preserving M7's separate semantic-verifier authority.
+- [x] M6.8 Add deterministic ordering, pagination, query budgets, provenance, unknowns, and schema negotiation.
+  Revision-bound cursors, hard item/evidence/byte ceilings, canonical response order, explicit truncation unknowns,
+  operation provenance, and exact family negotiation fail closed on foreign, stale, unsupported, or oversized input.
+- [x] M6.9 Add stale-handle, overlap, concurrent-client, retry, and context-budget tests.
+  Focused tests cover stale revision/plan handles, overlapping/out-of-scope edits, eight concurrent clients with
+  identical output, exactly one executor call across retries, pagination, and evidence/byte truncation. Cross-surface
+  CLI/MCP/LSP/slim tests and all 772 active workspace tests plus 4 doctests and full gates pass.
 - [ ] M6.10 Benchmark LLM workflows with and without graph-grounded work orders under identical budgets.
 - [ ] M6.DoD Demonstrate one reviewable transaction per candidate, valid dependency ordering, safe stale-order
   rejection, and a measured LLM task-success improvement without more semantic regressions.

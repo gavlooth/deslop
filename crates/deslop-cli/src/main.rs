@@ -23,8 +23,9 @@ use deslop_metrics::{
     render_text as render_metrics_text,
 };
 use deslop_protocol::{
-    SharedWorkOrder, propose_work_orders, propose_work_orders_with_exclusions,
-    shared_finding_work_orders, shared_transformation_work_orders,
+    SharedWorkOrder, WorkOrderProtocolInput, WorkOrderProtocolRequest, WorkOrderService,
+    propose_work_orders, propose_work_orders_with_exclusions, shared_finding_work_orders,
+    shared_transformation_work_orders,
 };
 use deslop_recipes::{TransformationCandidate, detect_rust_recipe_report};
 use deslop_report::{render_json, render_sarif, render_text};
@@ -80,6 +81,19 @@ enum Command {
     Undo(PathArgs),
     Rules,
     Recipes(RecipesArgs),
+    WorkOrders(WorkOrderProtocolArgs),
+}
+
+#[derive(Debug, Args)]
+struct WorkOrderProtocolArgs {
+    #[arg(long)]
+    input: PathBuf,
+
+    #[arg(long)]
+    request: PathBuf,
+
+    #[arg(short, long)]
+    output: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -665,7 +679,30 @@ fn main() -> Result<()> {
         Command::Undo(args) => undo(args),
         Command::Rules => rules(),
         Command::Recipes(args) => recipes(args),
+        Command::WorkOrders(args) => work_order_protocol(args),
     }
+}
+
+fn work_order_protocol(args: WorkOrderProtocolArgs) -> Result<()> {
+    let input: WorkOrderProtocolInput = serde_json::from_slice(
+        &fs::read(&args.input)
+            .with_context(|| format!("failed to read {}", args.input.display()))?,
+    )
+    .with_context(|| format!("invalid protocol input {}", args.input.display()))?;
+    let request: WorkOrderProtocolRequest = serde_json::from_slice(
+        &fs::read(&args.request)
+            .with_context(|| format!("failed to read {}", args.request.display()))?,
+    )
+    .with_context(|| format!("invalid protocol request {}", args.request.display()))?;
+    let response = WorkOrderService::from_input(input)?.execute(request)?;
+    let rendered = format!("{}\n", serde_json::to_string_pretty(&response)?);
+    if let Some(output) = args.output {
+        fs::write(&output, rendered)
+            .with_context(|| format!("failed to write {}", output.display()))?;
+    } else {
+        print!("{rendered}");
+    }
+    Ok(())
 }
 
 fn recipes(args: RecipesArgs) -> Result<()> {
