@@ -55,3 +55,44 @@ fn malformed_scan_returns_incomplete_exit_with_structured_output() {
             .is_empty()
     );
 }
+
+#[test]
+fn changed_scan_uses_git_diff_scope_and_excludes_unchanged_files() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let git = |args: &[&str]| {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(temp.path())
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "m9@example.invalid"]);
+    git(&["config", "user.name", "M9 Test"]);
+    fs::write(temp.path().join("changed.rs"), "fn value() -> i32 { 1 }\n").unwrap();
+    fs::write(temp.path().join("stable.rs"), "fn stable() -> i32 { 2 }\n").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-qm", "base"]);
+    fs::write(
+        temp.path().join("changed.rs"),
+        "fn value() -> i32 { todo!(\"implement\") }\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_deslop"))
+        .args(["scan", "--changed=HEAD", "--format", "json", "."])
+        .current_dir(temp.path())
+        .output()
+        .expect("run changed scan");
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("scan JSON");
+    let reports = value["reports"].as_array().unwrap();
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["path"], "changed.rs");
+}

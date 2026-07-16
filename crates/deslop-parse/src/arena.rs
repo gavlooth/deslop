@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use anyhow::{Result, bail};
+use serde::{Deserialize, Serialize};
 use tree_sitter::{Node, Tree};
 
 use crate::containment::ContainmentIndex;
@@ -54,7 +55,8 @@ impl ArenaSegmentIndex {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SourcePoint {
     row: usize,
     /// Zero-based byte offset within the row, not a character or UTF-16 column.
@@ -75,7 +77,8 @@ impl SourcePoint {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SyntaxSpan {
     start_byte: usize,
     end_byte: usize,

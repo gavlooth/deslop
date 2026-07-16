@@ -4,7 +4,7 @@ use std::hash::Hash;
 use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use anyhow::{Context, Result, bail};
 use deslop_core::{AnalysisDiagnostic, AnalysisProvenance, Lang};
@@ -265,7 +265,7 @@ impl LanguageAdapterIdentity {
         &self.control_flow_rules
     }
 
-    fn identity_bytes(&self) -> Vec<u8> {
+    pub(crate) fn identity_bytes(&self) -> Vec<u8> {
         fn push_part(bytes: &mut Vec<u8>, part: &[u8]) {
             bytes.extend_from_slice(&(part.len() as u64).to_le_bytes());
             bytes.extend_from_slice(part);
@@ -1190,6 +1190,95 @@ impl ProjectSnapshotBuilder {
     }
 }
 
+/// Reconstruct one immutable portable snapshot from checksum-verified persisted entries.
+///
+/// Tree-sitter trees are intentionally not persisted. A later `ProjectAnalysis::build`
+/// reparses source entries and its parse ledger therefore remains truthful.
+pub(crate) fn restore_project_snapshot(
+    expected_id: &str,
+    repository: RepositoryId,
+    root: PathBuf,
+    requested_scope: Vec<ScopeEntry>,
+    persisted_entries: Vec<(PathBuf, SnapshotEntryKind, Vec<u8>)>,
+    store: Arc<SourceStore>,
+) -> Result<Arc<ProjectSnapshot>> {
+    let root = root.canonicalize().with_context(|| {
+        format!(
+            "failed to resolve persisted repository root {}",
+            root.display()
+        )
+    })?;
+    if !root.is_dir() {
+        bail!(
+            "persisted repository root {} is not a directory",
+            root.display()
+        );
+    }
+    for entry in &requested_scope {
+        if normalize_logical_path(&entry.path)? != entry.path {
+            bail!(
+                "persisted scope path {} is not canonical",
+                entry.path.display()
+            );
+        }
+    }
+    if requested_scope
+        .windows(2)
+        .any(|window| window[0] >= window[1])
+    {
+        bail!("persisted snapshot scope must be sorted and unique");
+    }
+
+    let registry = Registry::default();
+    let mut entries = BTreeMap::new();
+    for (path, kind, bytes) in persisted_entries {
+        if normalize_logical_path(&path)? != path {
+            bail!("persisted entry path {} is not canonical", path.display());
+        }
+        let analysis = match kind {
+            SnapshotEntryKind::Source => {
+                let (selection, language, adapter) = resolve_grammar(&path, &registry)?;
+                EntryAnalysis::Source {
+                    selection,
+                    language,
+                    adapter: Box::new(adapter),
+                }
+            }
+            SnapshotEntryKind::AnalysisInput => EntryAnalysis::AnalysisInput,
+        };
+        let source = store.intern(bytes);
+        if entries
+            .insert(
+                path.clone(),
+                SnapshotEntry {
+                    path,
+                    source,
+                    analysis,
+                },
+            )
+            .is_some()
+        {
+            bail!("persisted snapshot contains duplicate entry paths");
+        }
+    }
+    let id = snapshot_id(&repository, &requested_scope, &entries);
+    if id.as_str() != expected_id {
+        bail!(
+            "persisted snapshot identity mismatch: expected {expected_id}, reconstructed {}",
+            id.as_str()
+        );
+    }
+    Ok(Arc::new(ProjectSnapshot {
+        id,
+        repository,
+        root,
+        requested_scope,
+        entries,
+        store,
+        read_counts: BTreeMap::new(),
+    }))
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FileParseCount {
     pub requested: usize,
@@ -1253,6 +1342,7 @@ pub struct ParsedFile {
     pub(crate) tree: Option<Tree>,
     pub(crate) arena: Option<SyntaxArena>,
     pub(crate) query_node_index: Option<Box<[(usize, u32)]>>,
+    pub(crate) node_keys: Arc<[NodeKey]>,
     pub(crate) provenance: AnalysisProvenance,
     pub(crate) line_starts: Vec<usize>,
 }
@@ -1345,8 +1435,7 @@ pub struct ProjectAnalysis {
     ledger: Arc<ParseLedger>,
     owner: u64,
     node_ranges: Box<[NodeFileRange]>,
-    node_keys: Box<[NodeKey]>,
-    node_key_index: Box<[NodeKeyIndexEntry]>,
+    node_key_index: OnceLock<Box<[NodeKeyIndexEntry]>>,
 }
 
 #[derive(Debug)]
@@ -1836,14 +1925,14 @@ impl ProjectAnalysis {
             })
             .map_err(|_| anyhow::anyhow!("project analysis owner tag space exhausted"))?;
         let mut node_ranges = Vec::new();
-        let mut node_keys = Vec::new();
+        let mut next_node = 0usize;
         for (path, file) in &files {
-            let start = u32::try_from(node_keys.len())
+            let start = u32::try_from(next_node)
                 .map_err(|_| anyhow::anyhow!("project analysis exceeds {} nodes", u32::MAX))?;
-            if let Some(arena) = &file.arena {
-                node_keys.extend(build_node_keys(&file.key, arena)?);
-            }
-            let end = u32::try_from(node_keys.len())
+            next_node = next_node
+                .checked_add(file.node_keys.len())
+                .ok_or_else(|| anyhow::anyhow!("project analysis node count overflow"))?;
+            let end = u32::try_from(next_node)
                 .map_err(|_| anyhow::anyhow!("project analysis exceeds {} nodes", u32::MAX))?;
             node_ranges.push(NodeFileRange {
                 path: path.clone(),
@@ -1851,15 +1940,6 @@ impl ProjectAnalysis {
                 end,
             });
         }
-        let mut node_key_index = node_keys
-            .iter()
-            .enumerate()
-            .map(|(index, key)| NodeKeyIndexEntry {
-                digest: key.lookup_digest(),
-                index: index as u32,
-            })
-            .collect::<Vec<_>>();
-        node_key_index.sort_unstable();
         Ok(Arc::new(Self {
             id,
             snapshot,
@@ -1867,8 +1947,7 @@ impl ProjectAnalysis {
             ledger,
             owner,
             node_ranges: node_ranges.into_boxed_slice(),
-            node_keys: node_keys.into_boxed_slice(),
-            node_key_index: node_key_index.into_boxed_slice(),
+            node_key_index: OnceLock::new(),
         }))
     }
 
@@ -1928,6 +2007,40 @@ impl ProjectAnalysis {
 
     pub fn parse_counts(&self) -> BTreeMap<FileRevisionKey, FileParseCount> {
         self.ledger.counts()
+    }
+
+    fn node_keys(&self) -> impl Iterator<Item = &NodeKey> {
+        self.files.values().flat_map(|file| file.node_keys.iter())
+    }
+
+    fn node_key_at(&self, index: u32) -> Option<&NodeKey> {
+        let range = self.node_ranges[..self
+            .node_ranges
+            .partition_point(|range| range.start <= index)]
+            .last()
+            .filter(|range| index < range.end)?;
+        let file = self.files.get(&range.path)?;
+        file.node_keys.get((index - range.start) as usize)
+    }
+
+    fn node_key_index(&self) -> &[NodeKeyIndexEntry] {
+        self.node_key_index.get_or_init(|| {
+            let mut entries = Vec::with_capacity(self.node_count());
+            for range in &self.node_ranges {
+                let file = self
+                    .files
+                    .get(&range.path)
+                    .expect("node range path belongs to analysis file map");
+                entries.extend(file.node_keys.iter().enumerate().map(|(local, key)| {
+                    NodeKeyIndexEntry {
+                        digest: key.lookup_digest(),
+                        index: range.start + local as u32,
+                    }
+                }));
+            }
+            entries.sort_unstable();
+            entries.into_boxed_slice()
+        })
     }
 
     /// Measure deterministic ownership, structure, and visible retained-storage lower bounds.
@@ -2009,13 +2122,14 @@ impl ProjectAnalysis {
                         .len()
                 })
                 .sum::<usize>();
-        memory.node_key_lookup_index_bytes =
-            self.node_key_index.len() * std::mem::size_of::<NodeKeyIndexEntry>();
+        memory.node_key_lookup_index_bytes = self.node_key_index.get().map_or(0, |index| {
+            index.len() * std::mem::size_of::<NodeKeyIndexEntry>()
+        });
         let mut order_hasher = domain_hasher("deslop node order instrumentation v1");
         let mut node_key_heap = 0;
         let mut previous_node_key_file: Option<&FileRevisionKey> = None;
         let mut seen_field_paths = BTreeSet::new();
-        for key in &self.node_keys {
+        for key in self.node_keys() {
             let (heap, file_payload, field_bytes, field_entries) = key.instrumentation();
             node_key_heap += heap;
             if previous_node_key_file != Some(key.file()) {
@@ -2033,7 +2147,7 @@ impl ProjectAnalysis {
             key.update_order_digest(&mut order_hasher);
         }
         memory.node_key_bytes_lower_bound =
-            self.node_keys.len() * std::mem::size_of::<NodeKey>() + node_key_heap;
+            self.node_count() * std::mem::size_of::<NodeKey>() + node_key_heap;
         memory.parse_ledger_bytes_lower_bound = counts.len()
             * (std::mem::size_of::<FileRevisionKey>() + std::mem::size_of::<FileParseCount>())
             + counts
@@ -2050,7 +2164,7 @@ impl ProjectAnalysis {
             + memory.node_key_bytes_lower_bound
             + memory.parse_ledger_bytes_lower_bound;
 
-        debug_assert_eq!(structure.nodes, self.node_keys.len());
+        debug_assert_eq!(structure.nodes, self.node_count());
         ProjectAnalysisInstrumentation {
             parse,
             structure,
@@ -2060,14 +2174,16 @@ impl ProjectAnalysis {
     }
 
     pub fn node_count(&self) -> usize {
-        self.node_keys.len()
+        self.node_ranges
+            .last()
+            .map_or(0, |range| range.end as usize)
     }
 
     pub fn node_ids(&self) -> NodeIds {
         NodeIds {
             owner: self.owner,
             next: 0,
-            end: self.node_keys.len() as u32,
+            end: self.node_count() as u32,
         }
     }
 
@@ -2088,10 +2204,10 @@ impl ProjectAnalysis {
         if id.owner != self.owner {
             return Err(NodeLookupError::WrongAnalysis);
         }
-        if id.index as usize >= self.node_keys.len() {
+        if id.index as usize >= self.node_count() {
             return Err(NodeLookupError::OutOfRange {
                 requested: id.index,
-                node_count: self.node_keys.len() as u32,
+                node_count: self.node_count() as u32,
             });
         }
         let range = self.node_ranges[..self
@@ -2120,8 +2236,8 @@ impl ProjectAnalysis {
     }
 
     pub fn node_key(&self, id: NodeId) -> Result<&NodeKey, NodeLookupError> {
-        self.node(id)?;
-        Ok(&self.node_keys[id.index as usize])
+        let node = self.node(id)?;
+        Ok(&node.file.node_keys[node.local.as_usize()])
     }
 
     pub fn node_by_key(&self, key: &NodeKey) -> Result<NodeView<'_>, NodeKeyLookupError> {
@@ -2136,14 +2252,15 @@ impl ProjectAnalysis {
             return Err(NodeKeyLookupError::FileRevisionExpired);
         }
         let digest = key.lookup_digest();
-        let start = self
-            .node_key_index
-            .partition_point(|entry| entry.digest < digest);
-        let index = self.node_key_index[start..]
+        let index_entries = self.node_key_index();
+        let start = index_entries.partition_point(|entry| entry.digest < digest);
+        let index = index_entries[start..]
             .iter()
             .take_while(|entry| entry.digest == digest)
             .find_map(|entry| {
-                (self.node_keys[entry.index as usize] == *key).then_some(entry.index as usize)
+                self.node_key_at(entry.index)
+                    .is_some_and(|candidate| candidate == key)
+                    .then_some(entry.index as usize)
             })
             .ok_or(NodeKeyLookupError::NotFound)?;
         self.node(NodeId {
@@ -2302,12 +2419,12 @@ impl ProjectAnalysis {
                     error: NodeLookupError::WrongAnalysis,
                 });
             }
-            if id.index as usize >= self.node_keys.len() {
+            if id.index as usize >= self.node_count() {
                 return Err(SyntaxAggregationError::InvalidResetNode {
                     node: id,
                     error: NodeLookupError::OutOfRange {
                         requested: id.index,
-                        node_count: self.node_keys.len() as u32,
+                        node_count: self.node_count() as u32,
                     },
                 });
             }
@@ -2763,7 +2880,7 @@ impl<'analysis> NodeView<'analysis> {
     }
 
     pub fn key(&self) -> &NodeKey {
-        &self.analysis.node_keys[self.id.index as usize]
+        &self.file.node_keys[self.local.as_usize()]
     }
 
     pub fn file_key(&self) -> &FileRevisionKey {
@@ -2909,6 +3026,7 @@ pub(crate) fn parse_owned_file(
                 tree: None,
                 arena: None,
                 query_node_index: None,
+                node_keys: Arc::from([]),
                 provenance: AnalysisProvenance::failed(vec![AnalysisDiagnostic {
                     code: "invalid-utf8".to_string(),
                     message: format!("source is not valid UTF-8: {error}"),
@@ -2934,6 +3052,7 @@ pub(crate) fn parse_owned_file(
         .with_context(|| format!("failed to own syntax arena for {}", entry.path.display()))?;
     let query_node_index = crate::query::build_query_node_index(&tree, &arena)
         .with_context(|| format!("failed to index query nodes for {}", entry.path.display()))?;
+    let node_keys = Arc::from(build_node_keys(&key, &arena)?);
     Ok(ParsedFile {
         key,
         source: entry.source.clone(),
@@ -2942,6 +3061,7 @@ pub(crate) fn parse_owned_file(
         tree: Some(tree),
         arena: Some(arena),
         query_node_index: Some(query_node_index),
+        node_keys,
         provenance,
         line_starts,
     })

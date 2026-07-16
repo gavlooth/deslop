@@ -1,0 +1,176 @@
+{
+  "schema": "deslop.m9-scale-benchmark/1",
+  "config": {
+    "iterations": 5,
+    "files_per_project": 480
+  },
+  "environment": {
+    "os": "linux",
+    "architecture": "aarch64",
+    "logical_workers": 20,
+    "rustc": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
+    "build_profile": "release",
+    "filesystem_root": "/home/christos/code/deslop",
+    "cache_state": "cold-empty; warm-content-addressed; cache_root=/tmp/deslop-m9-cache-final-77771c1d",
+    "peak_rss_bytes": 118497280
+  },
+  "projects": [
+    {
+      "project": "fixture-rust-library",
+      "language": "rust",
+      "files": 480,
+      "source_bytes": 38290,
+      "nodes": 18240,
+      "cold_full_micros": [
+        1112727,
+        1016788,
+        960071,
+        1099535,
+        1136426
+      ],
+      "warm_incremental_micros": [
+        20854,
+        24430,
+        19780,
+        20151,
+        21142
+      ],
+      "successor_micros": [
+        5782,
+        5323,
+        4415,
+        4417,
+        4498
+      ],
+      "changed_region_micros": [
+        13970,
+        17916,
+        14394,
+        14802,
+        15596
+      ],
+      "cold_full_p95_micros": 1136426,
+      "warm_incremental_p95_micros": 24430,
+      "incremental_to_full_ratio": 0.021497220232553637,
+      "cold_parse_count": 480,
+      "incremental_parse_count_max": 1,
+      "incremental_reused_files_min": 479,
+      "candidate_cache_hits_min": 479,
+      "candidate_cache_misses_max": 1,
+      "candidate_cache_hit_rate_min": 0.9979166666666667,
+      "retained_memory_bytes_lower_bound": 11619326,
+      "invalidation_fan_out_max": 1,
+      "full_projection_files": 480,
+      "incremental_projection_files_max": 1,
+      "clean_incremental_digest_equal": true,
+      "analyzer_output_digest_equal": true,
+      "throughput_bytes_per_second": 33693.350908902125
+    },
+    {
+      "project": "fixture-python-package",
+      "language": "python",
+      "files": 480,
+      "source_bytes": 46930,
+      "nodes": 12960,
+      "cold_full_micros": [
+        668636,
+        627998,
+        624489,
+        821043,
+        830711
+      ],
+      "warm_incremental_micros": [
+        14903,
+        15688,
+        17301,
+        26661,
+        16591
+      ],
+      "successor_micros": [
+        4187,
+        3970,
+        4819,
+        6756,
+        4299
+      ],
+      "changed_region_micros": [
+        9818,
+        10840,
+        11465,
+        18375,
+        11373
+      ],
+      "cold_full_p95_micros": 830711,
+      "warm_incremental_p95_micros": 26661,
+      "incremental_to_full_ratio": 0.03209419400970975,
+      "cold_parse_count": 480,
+      "incremental_parse_count_max": 1,
+      "incremental_reused_files_min": 479,
+      "candidate_cache_hits_min": 479,
+      "candidate_cache_misses_max": 1,
+      "candidate_cache_hit_rate_min": 0.9979166666666667,
+      "retained_memory_bytes_lower_bound": 8219516,
+      "invalidation_fan_out_max": 1,
+      "full_projection_files": 480,
+      "incremental_projection_files_max": 1,
+      "clean_incremental_digest_equal": true,
+      "analyzer_output_digest_equal": true,
+      "throughput_bytes_per_second": 56493.77460994257
+    },
+    {
+      "project": "fixture-typescript-app",
+      "language": "typescript",
+      "files": 480,
+      "source_bytes": 42610,
+      "nodes": 17760,
+      "cold_full_micros": [
+        761449,
+        1083809,
+        872704,
+        823060,
+        832336
+      ],
+      "warm_incremental_micros": [
+        22214,
+        17671,
+        17357,
+        29487,
+        17260
+      ],
+      "successor_micros": [
+        5374,
+        4487,
+        4446,
+        7761,
+        4253
+      ],
+      "changed_region_micros": [
+        15617,
+        12188,
+        11948,
+        19963,
+        12031
+      ],
+      "cold_full_p95_micros": 1083809,
+      "warm_incremental_p95_micros": 29487,
+      "incremental_to_full_ratio": 0.027206823342489313,
+      "cold_parse_count": 480,
+      "incremental_parse_count_max": 1,
+      "incremental_reused_files_min": 479,
+      "candidate_cache_hits_min": 479,
+      "candidate_cache_misses_max": 1,
+      "candidate_cache_hit_rate_min": 0.9979166666666667,
+      "retained_memory_bytes_lower_bound": 11701400,
+      "invalidation_fan_out_max": 1,
+      "full_projection_files": 480,
+      "incremental_projection_files_max": 1,
+      "clean_incremental_digest_equal": true,
+      "analyzer_output_digest_equal": true,
+      "throughput_bytes_per_second": 39315.045363159006
+    }
+  ],
+  "all_deterministic": true,
+  "all_incremental_parse_advantage": true,
+  "all_bounded_fan_out": true,
+  "all_measured_latency_advantage": true
+}

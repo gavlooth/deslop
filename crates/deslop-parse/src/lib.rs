@@ -48,6 +48,10 @@ mod module_restructure;
 mod non_structured_control;
 mod planner;
 mod program_dependence;
+mod project_cache;
+mod project_invalidation;
+mod project_runtime;
+mod project_session;
 mod query;
 mod resolution;
 mod resolution_gate;
@@ -169,6 +173,27 @@ pub use program_dependence::{
     ProgramDependenceGapKey, ProgramDependenceGapKind, ProgramDependenceGraph,
     ProgramDependenceGraphKey, ProgramDependenceNode, ProgramDependenceNodeKey,
     ProgramDependencePolicyId, ProgramDependenceProjection, derive_program_dependence,
+};
+pub use project_cache::{
+    ARTIFACT_CACHE_KEY_SCHEMA, ARTIFACT_CACHE_RECORD_SCHEMA, ArtifactCacheKey, ArtifactCacheKeyId,
+    ArtifactKind, CacheLookup, CacheSemanticVersions, CacheStatistics, PersistentArtifactCache,
+    ProjectCacheError,
+};
+pub use project_invalidation::{
+    INVALIDATION_PLAN_SCHEMA, InvalidationDependencyEvidence, InvalidationReason,
+    InvalidationScope, ProjectInvalidationPlan, ProjectionDependencyIndex, ProjectionInvalidation,
+    ProjectionKind,
+};
+pub use project_runtime::{
+    ANALYSIS_BUDGET_SCHEMA, AnalysisBudget, AnalysisBudgetError, AnalysisContinuation,
+    AnalysisWorkCost, BudgetExhaustionReason, BudgetStatus, BudgetedAnalysis,
+    DETERMINISTIC_COMMIT_SCHEMA, DeterministicCommitBatch, DeterministicCommitEntry,
+    DeterministicRegionExecutor, RegionExecutionError, RegionWorkItem,
+};
+pub use project_session::{
+    PROJECT_SESSION_MANIFEST_SCHEMA, ProjectSessionCapture, ProjectSessionError, ProjectSessionId,
+    ProjectSessionStore, RestoredProjectSession, capture_snapshot_from_environment,
+    project_file_semantic_versions, project_session_semantic_versions,
 };
 pub use query::{
     CompiledQueryFamily, LANGUAGE_QUERY_PROJECTION_SCHEMA, LanguageQueryProjection,

@@ -10,9 +10,12 @@ use deslop_core::{
 use deslop_external::{CljKondoAnalyzer, ExternalAnalyzer as ExternalAnalyzerTrait, JuliaAnalyzer};
 use deslop_lang::LangPack;
 use deslop_parse::{
-    DiscoveryPolicy, NodeId, ParsedFile, ProjectAnalysis, ProjectSnapshotPlanner,
-    ProjectSnapshotRequest, ProjectionId, RepositorySpec, RootSpec, ScopeSpec,
-    SnapshotPresentationMap, SourceFile, SyntaxAdapterFacts,
+    AnalysisWorkCost, ArtifactCacheKey, ArtifactKind, CacheLookup, DeterministicCommitBatch,
+    DeterministicRegionExecutor, DiscoveryPolicy, NodeId, ParsedFile, PersistentArtifactCache,
+    ProjectAnalysis, ProjectSessionId, ProjectSnapshotPlanner, ProjectSnapshotRequest,
+    ProjectionId, RegionWorkItem, RepositorySpec, RootSpec, ScopeSpec, SnapshotPresentationMap,
+    SourceFile, SyntaxAdapterFacts, capture_snapshot_from_environment,
+    project_file_semantic_versions, project_session_semantic_versions,
 };
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
@@ -159,6 +162,11 @@ pub struct ExternalCapability {
 #[derive(Debug, Clone)]
 pub struct ScanContext {
     pub analysis: Arc<ProjectAnalysis>,
+    pub project_session: Option<ProjectSessionId>,
+    pub local_commit_id: String,
+    pub local_cache_hits: usize,
+    pub local_cache_misses: usize,
+    pub project_semantics_complete: bool,
     pub presentation: SnapshotPresentationMap,
     pub reports: Vec<FileReport>,
     pub input_contents: BTreeMap<PathBuf, String>,
@@ -174,6 +182,10 @@ const PREPARED_ANALYZER_CAPABILITIES: &[u8] =
 #[derive(Debug)]
 pub struct AnalyzerProjection {
     pub id: ProjectionId,
+    pub local_commit_id: String,
+    pub local_cache_hits: usize,
+    pub local_cache_misses: usize,
+    pub project_semantics_complete: bool,
     pub analysis: Arc<ProjectAnalysis>,
     pub presentation: SnapshotPresentationMap,
     pub config: AnalyzerConfigSnapshot,
@@ -745,7 +757,55 @@ pub fn scan_analysis(
             "owned source-only analysis cannot prove config-boundary coverage; disable boundary analysis or use a prepared analyzer input manifest"
         );
     }
-    scan_owned_analysis(analysis, None, None, config)
+    scan_owned_analysis(
+        analysis,
+        None,
+        None,
+        config,
+        PersistentArtifactCache::from_environment()?,
+        None,
+    )
+}
+
+/// Explicit cache-injected entry point for evaluators, benchmarks, and long-lived agents.
+pub fn scan_analysis_with_cache(
+    analysis: Arc<ProjectAnalysis>,
+    config: AnalyzerConfig,
+    cache: PersistentArtifactCache,
+) -> Result<AnalyzerProjection> {
+    if config.boundary.enabled {
+        bail!(
+            "owned source-only analysis cannot prove config-boundary coverage; disable boundary analysis or use a prepared analyzer input manifest"
+        );
+    }
+    scan_owned_analysis(analysis, None, None, config, Some(cache), None)
+}
+
+/// Analyze only invalidated files. Project-wide joins remain explicitly
+/// incomplete until the caller refreshes their affected dependency/clone buckets.
+pub fn scan_analysis_regions_with_cache(
+    analysis: Arc<ProjectAnalysis>,
+    mut paths: Vec<PathBuf>,
+    config: AnalyzerConfig,
+    cache: PersistentArtifactCache,
+) -> Result<AnalyzerProjection> {
+    if config.boundary.enabled {
+        bail!("bounded region analysis does not provide project-boundary authority");
+    }
+    paths.sort();
+    paths.dedup();
+    if paths.is_empty() {
+        bail!("bounded region analysis requires at least one path");
+    }
+    for path in &paths {
+        if analysis.file(path).is_none() {
+            bail!(
+                "bounded analysis path {} is not in the project",
+                path.display()
+            );
+        }
+    }
+    scan_owned_analysis(analysis, None, None, config, Some(cache), Some(&paths))
 }
 
 /// Run source-only analyzer rules with an already-pinned presentation map.
@@ -762,7 +822,14 @@ pub fn scan_analysis_with_presentation(
             "owned source-only analysis cannot prove config-boundary coverage; disable boundary analysis or use a prepared analyzer input manifest"
         );
     }
-    scan_owned_analysis(analysis, Some(presentation), None, config)
+    scan_owned_analysis(
+        analysis,
+        Some(presentation),
+        None,
+        config,
+        PersistentArtifactCache::from_environment()?,
+        None,
+    )
 }
 
 /// Run analyzer rules over a project analysis whose project-level inputs were pinned by the
@@ -784,6 +851,8 @@ pub fn scan_prepared_analysis(
         Some(&prepared.presentation),
         Some(&prepared.inputs),
         config,
+        PersistentArtifactCache::from_environment()?,
+        None,
     )
 }
 
@@ -792,6 +861,8 @@ fn scan_owned_analysis(
     presentation: Option<&SnapshotPresentationMap>,
     inputs: Option<&AnalyzerInputManifest>,
     config: AnalyzerConfig,
+    cache: Option<PersistentArtifactCache>,
+    report_filter: Option<&[PathBuf]>,
 ) -> Result<AnalyzerProjection> {
     let mut config = config;
     config.suppression.match_root = None;
@@ -815,6 +886,12 @@ fn scan_owned_analysis(
                 .context("serialize analyzer presentation paths")?,
         );
     }
+    let local_policy = policy.clone();
+    if let Some(report_filter) = report_filter {
+        policy.extend_from_slice(
+            &serde_json::to_vec(report_filter).context("serialize bounded analyzer paths")?,
+        );
+    }
     let id = analysis.derive_projection_id(ANALYZER_PROJECTION_SCHEMA, &policy, capabilities)?;
     let mut reports = Vec::new();
     let mut input_contents = BTreeMap::new();
@@ -823,6 +900,7 @@ fn scan_owned_analysis(
         .files()
         .filter(|parsed| {
             parsed.provenance().permits_rewrites()
+                && report_filter.is_none_or(|paths| paths.binary_search(&parsed.key().path).is_ok())
                 && inputs.is_none_or(|manifest| {
                     manifest
                         .report_sources
@@ -839,6 +917,9 @@ fn scan_owned_analysis(
         })
         .collect::<Result<Vec<_>>>()?;
     for parsed in analysis.files() {
+        if report_filter.is_some_and(|paths| paths.binary_search(&parsed.key().path).is_err()) {
+            continue;
+        }
         if inputs.is_some_and(|manifest| {
             manifest
                 .report_sources
@@ -852,42 +933,121 @@ fn scan_owned_analysis(
         if let Some(text) = parsed.text() {
             input_contents.insert(path.clone(), text.to_string());
         }
-        let provenance = parsed.provenance().clone();
-        if !provenance.permits_rewrites() {
+        if !parsed.provenance().permits_rewrites() {
             reports.push(FileReport {
                 path,
                 lang: parsed.grammar().lang(),
-                analysis: provenance,
+                analysis: parsed.provenance().clone(),
                 findings: Vec::new(),
             });
-            continue;
         }
-        let file = analyzer_files
-            .iter()
-            .find(|file| file.file.key().path == logical_path)
-            .expect("complete prepared source has one analyzer view");
+    }
+    #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct LocalAnalysisOutput {
+        report: FileReport,
+        external_capabilities: Vec<ExternalCapability>,
+    }
+    let workers = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1);
+    let analyze_file = |item: &RegionWorkItem<usize>| {
+        let file = &analyzer_files[*item.input()];
         let mut findings = agnostic::findings_analysis(file, &config);
-        findings.extend(match file.adapter().name() {
+        let pack_findings = match file.adapter().name() {
             "clojure" => clojure::findings(file.source()),
             "julia" => julia::findings(file.source()),
             "python" => packs::python::python_findings(file.source()),
             "javascript" | "typescript" => packs::javascript::javascript_findings(file.source()),
             "rust" => packs::rust::rust_findings_analysis(file),
-            adapter => bail!(
-                "stored language adapter {adapter:?} has no owned analyzer pack for {}",
-                logical_path.display()
-            ),
-        });
-        record_unavailable_external(file, &config, &mut external_capabilities);
+            adapter => {
+                return Err(format!(
+                    "stored language adapter {adapter:?} has no owned analyzer pack for {}",
+                    file.file.key().path.display()
+                ));
+            }
+        };
+        findings.extend(pack_findings);
+        let mut capabilities = Vec::new();
+        record_unavailable_external(file, &config, &mut capabilities);
         config.suppression.retain(&mut findings);
         apply_inline_suppression_analysis(file, &mut findings);
         sort_findings(&mut findings);
-        reports.push(FileReport {
-            path,
-            lang: parsed.grammar().lang(),
-            analysis: provenance,
-            findings,
-        });
+        serde_json::to_vec(&LocalAnalysisOutput {
+            report: FileReport {
+                path: file.source().path.clone(),
+                lang: file.file.grammar().lang(),
+                analysis: file.file.provenance().clone(),
+                findings,
+            },
+            external_capabilities: capabilities,
+        })
+        .map_err(|error| error.to_string())
+    };
+    let mut policy_hasher = blake3::Hasher::new_derive_key("deslop analyzer local policy v1");
+    policy_hasher.update(&(local_policy.len() as u64).to_le_bytes());
+    policy_hasher.update(&local_policy);
+    policy_hasher.update(&(capabilities.len() as u64).to_le_bytes());
+    policy_hasher.update(capabilities);
+    let policy_id = policy_hasher.finalize().to_hex();
+    let mut artifacts = Vec::with_capacity(analyzer_files.len());
+    let mut cache_keys = BTreeMap::new();
+    let mut work = Vec::new();
+    let mut local_cache_hits = 0usize;
+    for (index, file) in analyzer_files.iter().enumerate() {
+        let key = file
+            .file
+            .key()
+            .path
+            .to_str()
+            .expect("snapshot paths are validated Unicode")
+            .to_string();
+        let cache_key = if cache.is_some() {
+            Some(ArtifactCacheKey::new(
+                ArtifactKind::Candidates,
+                format!("analyzer-local:{policy_id}:{key}"),
+                vec![file.file.key().clone()],
+                project_file_semantic_versions(analysis.snapshot(), &file.file.key().path)?,
+            )?)
+        } else {
+            None
+        };
+        if let (Some(cache), Some(cache_key)) = (cache.as_ref(), cache_key.as_ref())
+            && let CacheLookup::Hit(payload) = cache.get_bytes(cache_key)?
+        {
+            artifacts.push((key, (*payload).clone()));
+            local_cache_hits += 1;
+            continue;
+        }
+        if let Some(cache_key) = cache_key {
+            cache_keys.insert(key.clone(), cache_key);
+        }
+        work.push(RegionWorkItem::new(
+            key,
+            AnalysisWorkCost {
+                files: 1,
+                nodes: file.node_ids().len() as u64,
+                input_bytes: file.file.source().len() as u64,
+                results: 1,
+                evidence_bytes: file.file.source().len() as u64,
+            },
+            index,
+        )?);
+    }
+    let local_cache_misses = if cache.is_some() { work.len() } else { 0 };
+    let computed = DeterministicRegionExecutor::new(workers)?.execute(work, analyze_file)?;
+    for entry in computed.entries() {
+        if let (Some(cache), Some(cache_key)) = (cache.as_ref(), cache_keys.get(entry.key())) {
+            cache.put_bytes(cache_key, entry.artifact())?;
+        }
+        artifacts.push((entry.key().to_string(), entry.artifact().to_vec()));
+    }
+    let local_commit = DeterministicCommitBatch::from_artifacts(artifacts)?;
+    for entry in local_commit.entries() {
+        let output: LocalAnalysisOutput = serde_json::from_slice(entry.artifact())
+            .context("decode deterministic local analyzer commit")?;
+        reports.push(output.report);
+        external_capabilities.extend(output.external_capabilities);
     }
     if reports_permit_rewrites(&reports) && reports.len() >= 2 {
         let mut cross_file =
@@ -990,6 +1150,10 @@ fn scan_owned_analysis(
             )?);
     Ok(AnalyzerProjection {
         id,
+        local_commit_id: local_commit.id().into(),
+        local_cache_hits,
+        local_cache_misses,
+        project_semantics_complete: report_filter.is_none(),
         analysis,
         presentation: projection_presentation,
         config: config_snapshot,
@@ -1067,7 +1231,9 @@ pub fn scan_paths_with_context(paths: &[PathBuf], config: AnalyzerConfig) -> Res
         }
     };
     let built = planner.build()?;
-    let analysis = ProjectAnalysis::build(built.snapshot)?;
+    let versions = project_session_semantic_versions(&built.snapshot)?;
+    let (snapshot, project_session) = capture_snapshot_from_environment(built.snapshot, versions)?;
+    let analysis = ProjectAnalysis::build(snapshot)?;
     let report_sources = analysis
         .files()
         .map(|file| file.key().path.clone())
@@ -1086,6 +1252,11 @@ pub fn scan_paths_with_context(paths: &[PathBuf], config: AnalyzerConfig) -> Res
     let projection = scan_prepared_analysis(prepared, config)?;
     Ok(ScanContext {
         analysis: projection.analysis,
+        project_session,
+        local_commit_id: projection.local_commit_id,
+        local_cache_hits: projection.local_cache_hits,
+        local_cache_misses: projection.local_cache_misses,
+        project_semantics_complete: projection.project_semantics_complete,
         presentation: projection.presentation,
         reports: projection.reports,
         input_contents: projection.input_contents,
@@ -1128,7 +1299,9 @@ pub fn scan_source_with_config(source: &SourceFile, config: AnalyzerConfig) -> F
             &source.path,
             source.text.as_bytes().to_vec(),
         )?;
-        let analysis = ProjectAnalysis::build(built.snapshot)?;
+        let versions = project_session_semantic_versions(&built.snapshot)?;
+        let (snapshot, _) = capture_snapshot_from_environment(built.snapshot, versions)?;
+        let analysis = ProjectAnalysis::build(snapshot)?;
         let report_sources = analysis
             .files()
             .map(|file| file.key().path.clone())

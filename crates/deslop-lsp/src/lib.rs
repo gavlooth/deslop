@@ -16,6 +16,7 @@ use deslop_fix::apply_findings_to_text;
 use deslop_parse::{
     DiscoveryPolicy, ProjectAnalysis, ProjectSnapshotPlanner, ProjectSnapshotRequest,
     RepositorySpec, RootSpec, ScopeSpec, SnapshotPresentationMap,
+    capture_snapshot_from_environment, project_session_semantic_versions,
 };
 use deslop_protocol::{
     SharedWorkOrder, WorkOrderProtocolRequest, WorkOrderProtocolResponse, WorkOrderService,
@@ -530,9 +531,11 @@ fn analyze_workspace(
         )?;
     }
     let built = planner.build()?;
+    let versions = project_session_semantic_versions(&built.snapshot)?;
+    let (snapshot, _) = capture_snapshot_from_environment(built.snapshot, versions)?;
     let analysis = match previous {
-        Some(previous) => previous.successor(built.snapshot)?.into_current(),
-        None => ProjectAnalysis::build(built.snapshot)?,
+        Some(previous) => previous.successor(snapshot)?.into_current(),
+        None => ProjectAnalysis::build(snapshot)?,
     };
     let projection = scan_analysis_with_presentation(
         Arc::clone(&analysis),

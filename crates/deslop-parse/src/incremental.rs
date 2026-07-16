@@ -9,7 +9,7 @@ use tree_sitter::{InputEdit, Parser, Point};
 
 use crate::analysis_provenance_for_tree;
 use crate::arena::{SourcePoint, SyntaxArena, SyntaxSpan, tree_nodes_preorder};
-use crate::identity::{NodeId, NodeKey, NodeKeyLookupError};
+use crate::identity::{NodeId, NodeKey, NodeKeyLookupError, build_node_keys};
 use crate::instrumentation::ProjectAnalysisUpdateInstrumentation;
 use crate::snapshot::{
     FileRevisionKey, ParseLedger, ParsedFile, ProjectAnalysis, ProjectSnapshot, RepositoryId,
@@ -812,6 +812,12 @@ fn parse_incremental_file(
         .as_ref()
         .map(|arena| crate::query::build_query_node_index(&tree, arena))
         .transpose()?;
+    let node_keys = Arc::from(build_node_keys(
+        &key,
+        arena
+            .as_ref()
+            .expect("incremental parse always owns an arena"),
+    )?);
     Ok((
         ParsedFile {
             key,
@@ -821,6 +827,7 @@ fn parse_incremental_file(
             tree: Some(tree),
             arena,
             query_node_index,
+            node_keys,
             provenance,
             line_starts: byte_line_starts(entry.bytes()),
         },

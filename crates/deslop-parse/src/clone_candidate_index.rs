@@ -305,6 +305,30 @@ pub struct CloneCandidateEntry {
     graph_context: CloneGraphContext,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CloneCandidateEntryWire {
+    id: CloneCandidateEntryId,
+    fingerprint: SubtreeFingerprint,
+    graph_context: CloneGraphContext,
+}
+
+impl<'de> Deserialize<'de> for CloneCandidateEntry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = CloneCandidateEntryWire::deserialize(deserializer)?;
+        let rebuilt = Self::new(wire.fingerprint, wire.graph_context).map_err(D::Error::custom)?;
+        if wire.id != rebuilt.id {
+            return Err(D::Error::custom(
+                "clone candidate entry identity does not match its fingerprint and graph context",
+            ));
+        }
+        Ok(rebuilt)
+    }
+}
+
 impl CloneCandidateEntry {
     pub fn new(
         fingerprint: SubtreeFingerprint,
@@ -367,6 +391,41 @@ pub struct CloneCandidateIndex {
     /// policy_id\0normalized -> sorted entry indices
     buckets: BTreeMap<String, Vec<usize>>,
     construction_pair_comparisons: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CloneCandidateIndexWire {
+    schema: String,
+    id: CloneCandidateIndexId,
+    entries: Vec<CloneCandidateEntry>,
+    buckets: BTreeMap<String, Vec<usize>>,
+    construction_pair_comparisons: u64,
+}
+
+impl<'de> Deserialize<'de> for CloneCandidateIndex {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = CloneCandidateIndexWire::deserialize(deserializer)?;
+        if wire.schema != CLONE_CANDIDATE_INDEX_SCHEMA {
+            return Err(D::Error::custom(format!(
+                "unsupported clone candidate index schema {}",
+                wire.schema
+            )));
+        }
+        let rebuilt = Self::build(wire.entries).map_err(D::Error::custom)?;
+        if wire.id != rebuilt.id
+            || wire.buckets != rebuilt.buckets
+            || wire.construction_pair_comparisons != rebuilt.construction_pair_comparisons
+        {
+            return Err(D::Error::custom(
+                "clone candidate index does not match canonical bucket construction",
+            ));
+        }
+        Ok(rebuilt)
+    }
 }
 
 impl CloneCandidateIndex {

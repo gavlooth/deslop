@@ -821,6 +821,52 @@ fn path_deduplication_is_input_order_invariant_and_prefers_relative_paths() {
 }
 
 #[test]
+fn per_file_candidate_cache_reuses_exact_repeat_and_only_misses_changed_successor() {
+    let root = tempfile::tempdir().unwrap();
+    let cache_root = tempfile::tempdir().unwrap();
+    let cache = PersistentArtifactCache::open(cache_root.path()).unwrap();
+    let repository = RepositoryId::explicit("analyzer-incremental-cache").unwrap();
+    let build = |left: &[u8]| {
+        ProjectSnapshotBuilder::new(root.path(), repository.clone())
+            .unwrap()
+            .with_overlay("src/a.rs", left.to_vec())
+            .unwrap()
+            .with_overlay("src/b.rs", b"fn stable() -> i32 { 2 }\n".to_vec())
+            .unwrap()
+            .build()
+            .unwrap()
+    };
+    let mut config = AnalyzerConfig::default();
+    config.boundary.enabled = false;
+    let analysis = ProjectAnalysis::build(build(b"fn value() -> i32 { 1 }\n")).unwrap();
+
+    let cold = scan_analysis_with_cache(analysis.clone(), config.clone(), cache.clone()).unwrap();
+    assert_eq!((cold.local_cache_hits, cold.local_cache_misses), (0, 2));
+    let repeated =
+        scan_analysis_with_cache(analysis.clone(), config.clone(), cache.clone()).unwrap();
+    assert_eq!(
+        (repeated.local_cache_hits, repeated.local_cache_misses),
+        (2, 0)
+    );
+    assert_eq!(cold.local_commit_id, repeated.local_commit_id);
+    assert_eq!(
+        serde_json::to_value(&cold.reports).unwrap(),
+        serde_json::to_value(&repeated.reports).unwrap()
+    );
+
+    let update = analysis
+        .successor(build(b"fn value() -> i32 { 3 }\n"))
+        .unwrap();
+    assert_eq!(update.instrumentation().incremental_files, 1);
+    assert_eq!(update.instrumentation().reused_files, 1);
+    let successor = scan_analysis_with_cache(update.into_current(), config, cache).unwrap();
+    assert_eq!(
+        (successor.local_cache_hits, successor.local_cache_misses),
+        (1, 1)
+    );
+}
+
+#[test]
 fn prepared_projection_identity_binds_presentation_paths() {
     let root = tempfile::tempdir().expect("tempdir");
     let snapshot = ProjectSnapshotBuilder::new(

@@ -748,16 +748,39 @@ reports, benchmark records, and work orders.
 
 ## M9 — Incremental project scale and integrations
 
-- [ ] M9.1 Persist caches keyed by content, grammar, adapter, graph schema, recipe, and model versions.
-- [ ] M9.2 Implement changed-range and dependency-driven invalidation for scopes, CFG/PDG, clones, metrics, and candidates.
-- [ ] M9.3 Add indexed clone buckets and eliminate all-pairs project comparison.
-- [ ] M9.4 Parallelize independent file/region analysis with serialized deterministic graph commits.
-- [ ] M9.5 Add query/response budgets and explicit partial/pending project analysis.
-- [ ] M9.6 Implement git-changed scans, baselines/ratchets, false-positive feedback, SARIF/CI, and editor refresh.
-- [ ] M9.7 Reuse persistent snapshots across CLI, MCP, LSP, evaluator, and agent sessions.
-- [ ] M9.8 Benchmark cold/full and warm/incremental latency, throughput, parse count, cache hit, memory, and fan-out.
-- [ ] M9.DoD Demonstrate deterministic results and measured incremental advantage with bounded changed-region
+- [x] M9.1 Persist caches keyed by content, grammar, adapter, graph schema, recipe, and model versions.
+  `deslop.artifact-cache-key/1` binds exact `FileRevisionKey` inputs and all semantic versions; immutable no-clobber
+  records checksum, strict identity, conflict, tamper, and exact-reuse tests pass. Analyzer candidate artifacts use
+  per-file keys; typed M5 clone indexes persist through the same cache namespace.
+- [x] M9.2 Implement changed-range and dependency-driven invalidation for scopes, CFG/PDG, clones, metrics, and candidates.
+  `deslop.project-invalidation-plan/1` covers every named projection, walks complete reverse dependencies, preserves
+  unrelated files, and expands downstream invalidation project-wide when dependency evidence is missing.
+- [x] M9.3 Add indexed clone buckets and eliminate all-pairs project comparison.
+  The persisted M5 normalized-fingerprint index reconstructs canonical buckets with zero construction pair checks;
+  graph verification and maximal-class enumeration remain bucket-local and validating deserialization rejects drift.
+- [x] M9.4 Parallelize independent file/region analysis with serialized deterministic graph commits.
+  File-local analyzer rules run through the parallel region executor; `deslop.deterministic-graph-commit/1` sorts,
+  checksums, validates, and commits one byte-identical stream across worker counts before project joins.
+- [x] M9.5 Add query/response budgets and explicit partial/pending project analysis.
+  `deslop.analysis-budget/1` bounds files/nodes/input/results/evidence/elapsed work with deterministic continuation.
+  Focused tests lock complete, resumable partial, oversized-first-item pending, and invalid-wire rejection; bounded
+  analyzer regions expose `project_semantics_complete=false` until dependency/clone joins refresh.
+- [x] M9.6 Implement git-changed scans, baselines/ratchets, false-positive feedback, SARIF/CI, and editor refresh.
+  Focused CLI/eval/report/LSP tests pass Git-diff-only selection, baseline identity/ratchet behavior, corpus feedback,
+  SARIF shape, and one incremental parse per document revision; `docs/CI.md` and the checked workflow cover CI upload.
+- [x] M9.7 Reuse persistent snapshots across CLI, MCP, LSP, evaluator, and agent sessions.
+  `deslop.project-session/1` deduplicates source blobs, restores exact snapshot identity, rejects corrupt/stale/version-
+  mismatched pins, and truthfully reparses process-local trees. Analyzer-backed CLI/MCP/evaluator/agent paths and LSP
+  resolve `DESLOP_CACHE_DIR`; optional `DESLOP_SESSION_ID` pins the shared revision.
+- [x] M9.8 Benchmark cold/full and warm/incremental latency, throughput, parse count, cache hit, memory, and fan-out.
+  The frozen release report measures 5 iterations over 480-file Rust/Python/TypeScript projects, including all named
+  axes, machine/toolchain/profile/cache state, peak RSS, successor and region timing, and clean/incremental digests.
+- [x] M9.DoD Demonstrate deterministic results and measured incremental advantage with bounded changed-region
   invalidation on representative repositories before advertising project-scale incrementality.
+  `.agents/benchmarks/m9_scale_report_v1.json` passes the executable DoD: p95 warm/full ratios are 0.0215 Rust,
+  0.0321 Python, and 0.0272 TypeScript (24.430/26.661/29.487 ms, all below 500 ms); each edit parses 1 of 480 files,
+  reuses 479 candidate artifacts, misses/fans out/projects exactly 1, and matches clean syntax and analyzer digests.
+  Terminal all-feature workspace fmt/build/test/clippy `-D warnings` passes.
 
 ## M10 — Dogfood, external evaluation, and stable release
 

@@ -4623,3 +4623,78 @@ ranker scores do not earn correctness; and an aggregate baseline win cannot over
 or held-out failures.
 
 Signature: Codex (GPT-5), M8 calibration and terminal evaluation owner, 2026-07-16.
+
+## 2026-07-16 — M9 incremental project scale and integrations
+
+Status: ACTIVE. M8 is terminal at `86d89ad98788`; M10 remains out of scope until M9 closes.
+
+### Frozen terminal bar
+
+M9 closes only when all eight numbered requirements and the executable definition of done pass:
+
+1. Every persistent artifact address binds source content, grammar, adapter, graph schema, recipe, and model
+   versions. Records are checksum-verified, atomically published, deterministic, and fail closed on corrupt,
+   mismatched, or incomplete metadata.
+2. One successor update produces an explicit dependency invalidation plan for syntax ranges, scopes, CFG/PDG,
+   clone buckets, metrics, and candidates. Unchanged files/projections remain reusable; missing dependency evidence
+   expands or rejects invalidation rather than silently retaining stale facts.
+3. Clone lookup persists the M5 normalized-fingerprint buckets and measures zero whole-project pair scans;
+   graph verification and maximal-class construction remain bucket-local.
+4. Independent file/region computation may run concurrently, but results enter the project graph through one
+   stable sorted commit stream. Identical pinned inputs produce byte-identical committed output across worker counts.
+5. File, node, byte, result, evidence, and elapsed-work budgets produce explicit `complete`, `partial`, or `pending`
+   states with a deterministic continuation cursor; exhaustion is never represented as an empty complete result.
+6. Git-changed selection, baseline/ratchet comparison, false-positive suppression, SARIF/CI output, and editor
+   refresh consume the same revision-pinned analysis state and expose stale/budgeted outcomes.
+7. CLI, MCP, LSP, evaluator, and agent entry points resolve the same persistent snapshot/session identity and reuse
+   its cache namespace rather than constructing consumer-specific cache keys.
+8. A fixed representative multi-language matrix records cold/full and warm/incremental latency, throughput, parse
+   count, cache hits, retained memory, and invalidation fan-out. Clean and incremental result digests must match;
+   the measured single-file warm path must parse fewer files and do less projection work than a clean full scan.
+
+Terminal validation is focused cache/invalidation/scheduler/budget/integration testing, an executable M9 DoD,
+the frozen benchmark report with machine/corpus/toolchain/cache state, and workspace fmt/build/test/clippy with
+all features and `-D warnings`. `.agents/TODO.md` is checked only from that measured evidence.
+
+### Current approach and convergence
+
+Extend the owned `ProjectAnalysis` successor boundary instead of creating a second parser. Store immutable artifacts
+under version-complete content addresses, derive one conservative invalidation DAG from exact file changes, reuse
+the M5 clone index as persisted buckets, and serialize worker output in canonical key order. Integrations share a
+session manifest and revision guard. Instrument the full cold/repeated/one-file-incremental matrix once; its terminal
+outcomes are either deterministic bounded reuse with a measured advantage, or M9 remains unadvertised.
+
+### Negative-memory constraints
+
+- A persisted source manifest is not proof of persisted parse or projection reuse; cache-hit and parse counters must
+  distinguish those cases.
+- Tree-sitter trees are process-local. Persist portable owned artifacts and reconstruct any process-local syntax
+  state explicitly rather than pretending a serialized tree exists.
+- Existing M5 fingerprint buckets are the clone candidate path; do not reintroduce an all-pairs project detector.
+- Empty or truncated output is not a successful bounded analysis; budget exhaustion remains explicit and resumable.
+- Incremental speed alone is insufficient: clean/incremental result identity and bounded invalidation are mandatory.
+
+Signature: Codex (GPT-5), M9 integration owner, 2026-07-16.
+
+### M9 terminal checkpoint — bounded persistent project incrementality
+
+M9 is terminal. Immutable artifact keys bind exact source/grammar inputs plus adapter, graph, recipe, and model
+versions; strict no-clobber records reject corruption and deterministic conflicts. Successor changes now produce one
+conservative invalidation plan across syntax, scopes, CFG/PDG, clone buckets, metrics, and candidates. Missing
+dependency evidence expands rather than suppresses work. Persisted clone indexes reconstruct the M5 buckets and do
+not introduce an all-project pair path.
+
+File-local analyzer misses execute in parallel and enter one canonical graph commit stream. Cache granularity is one
+file/adapter/policy, so unchanged successor files retain artifacts. Versioned budgets expose complete, partial, and
+pending states with deterministic continuation; region responses retain `project_semantics_complete=false` until
+project joins refresh. Portable session manifests and deduplicated sources are shared by analyzer-backed CLI/MCP/
+evaluator/agent paths and LSP; process-local Tree-sitter state is reparsed honestly.
+
+The first debug/full-response experiment was invalidated: a project-wide candidate key and all-report materialization
+gave 45.6–53.8% ratios. Per-file caching, bounded region output, and reuse of immutable per-file `NodeKey` arrays
+reduced release successor p95 work to single-digit milliseconds. The frozen 5x480-file release matrix records exact
+parity and p95 warm/full ratios 2.15% Rust, 3.21% Python, and 2.72% TypeScript; every edit parses/misses/fans out to one
+file and retains 479. Peak process RSS is 118,497,280 bytes. The executable M9 DoD and terminal all-feature workspace
+fmt/build/test/clippy gate pass. M10 was not started.
+
+Signature: Codex (GPT-5), M9 incremental-scale terminal owner, 2026-07-16.

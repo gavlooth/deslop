@@ -12176,3 +12176,98 @@ split; public availability is not redistribution authority; aggregate wins canno
 calibration/holdout gates.
 
 Signature: Codex /root — M8 feature, dataset, evaluation, product-decision, and terminal verification owner
+
+## 2026-07-16 — M9 persistent/incremental runtime checkpoint
+
+**Date/time:** 2026-07-16T16:56:02+02:00
+
+**Objective/target:** implement M9 project-scale incrementality. This checkpoint covers the core M9.1–M9.5
+contracts; integrations, the frozen benchmark, the executable DoD, terminal gates, and TODO closure remain open.
+
+**Changes:** added immutable artifact addresses over exact repository/file content plus stored grammar selection and
+explicit adapter, graph-schema, recipe, and model versions. The persistent cache checksum-validates strict records,
+publishes with no-clobber atomic links, rejects conflicting deterministic outputs, and records hit/miss/write/reuse/
+corruption counters. The existing M5 clone index now has validating entry/index deserialization and a typed persistent
+path that reconstructs canonical buckets and preserves zero construction pair comparisons. Added dependency-indexed
+successor invalidation for owned syntax, scopes, CFG, PDG, clone buckets, metrics, and candidates; incomplete dependency
+evidence expands downstream invalidation project-wide instead of retaining possibly stale projections. Added a sorted
+parallel region executor with one serialized content-addressed graph commit stream, plus file/node/input/result/evidence/
+elapsed budgets with deterministic continuation and explicit complete/partial/pending states.
+
+**Commands run/results:** `cargo fmt --all`; focused `deslop-parse` cache, invalidation, and runtime tests; and the
+combined `cargo test -p deslop-parse project_ -- --nocapture`. The combined run passes 13 active tests with one explicit
+pre-existing ignored instrumentation probe. Full workspace gates have not yet run.
+
+**Invalidated assumptions/failure modes:** M5 clone indexes were serialize-only, so direct generic cache loading was
+not safe. The implemented load path rebuilds every entry identity and bucket map and rejects disagreement. Syntax spans
+were not wire types; they now have strict serde representations so changed-range plans are portable. Empty bounded
+output cannot imply completion: an oversized first item is explicitly pending and requires a larger budget.
+
+**Current recommendation/checkpoint:** build persistent snapshot/session reuse and route analyzer/LSP consumers through
+it; then bind the already-existing Git-changed, baseline/ratchet, false-positive, SARIF/CI, and editor-refresh paths to
+the same revision guard. Finish with the one-shot cold/repeated/incremental benchmark and clean/full parity DoD.
+
+**Blockers/restart/dependencies:** no blocker. No new dependency was added. Persistent cache records are a new /1
+schema and no existing cache migration or process restart is required.
+
+**Files/artifacts:** `project_cache.rs`, `project_invalidation.rs`, `project_runtime.rs`, clone-index validating load,
+wire-safe syntax spans, parse exports, M9 PLAN checkpoint, and this report.
+
+**Negative-memory status:** recorded locally in PLAN: a stored source manifest is not a persisted Tree-sitter tree or
+parse hit; future benchmark counters must keep those claims separate. No unresolved failed implementation path remains.
+
+Signature: Codex /root — M9 incremental runtime and integration owner
+
+## 2026-07-16 — M9 incremental project scale terminal checkpoint
+
+**Date/time:** 2026-07-16T17:43:11+02:00
+
+**Objective/target:** close M9.1–M9.8 and M9.DoD with persistent version-complete caches, bounded dependency
+invalidation, deterministic parallel commits, explicit budgets, shared sessions/integrations, and measured release
+advantage with clean/incremental parity.
+
+**Changes:** implemented strict immutable artifact caching, typed persisted M5 clone buckets, project invalidation
+plans, deterministic parallel region commits, resource/elapsed budgets, portable persistent session manifests, and
+environment-shared CLI/MCP/LSP/evaluator/agent cache wiring. Analyzer candidate caching is per exact file/adapter/
+policy and reports hit/miss/commit evidence. Bounded region projections are explicitly project-incomplete. Reused
+`ParsedFile` values now retain immutable per-file `NodeKey` arrays and global key lookup is lazy, preserving public
+identity semantics while removing eager all-project successor rehash/sort work. Added Git-changed integration
+coverage, ADR 0011, capability/migration documents, the M9 benchmark binary/report, and executable DoD.
+
+**Numerical evidence:** optimized aarch64/Linux, rustc 1.94.0, 20 logical workers, five iterations per 480-file
+project. Rust cold/full p95 1,136.426 ms versus warm incremental 24.430 ms (2.15%); Python 830.711 versus 26.661 ms
+(3.21%); TypeScript 1,083.809 versus 29.487 ms (2.72%). Every edit parses one file, reuses 479, has 479 retained
+candidate artifacts/one miss, invalidation fan-out one, and projection work one file. Clean/incremental node-order and
+analyzer-output digests agree in every run. Peak process RSS is 118,497,280 bytes; per-project retained lower bounds
+are 8.22–11.70 MB. The report also records throughput, source bytes/nodes, cache state, toolchain, successor timing,
+and changed-region timing.
+
+**Commands run/results:** focused cache/invalidation/runtime/session/analyzer tests; Git-changed, baseline, false-
+positive, SARIF, and LSP refresh tests; M1 numerical DoD; M9 benchmark structural test; optimized
+`m9-scale-benchmark ... 5 480`; executable M9 DoD. Terminal command passed: `cargo fmt --all -- --check`,
+`cargo build --workspace --all-features`, `cargo test --workspace --all-features`, and
+`cargo clippy --workspace --all-features --all-targets -- -D warnings`.
+
+**Invalidated assumptions/failure modes:** a project-wide candidate-cache key invalidated all files and was removed.
+Materializing every cached report and rerunning project joins is not an incremental editor response. Debug timing is
+not release evidence. The initial harness discarded failed measurements before writing; it now always preserves the
+report before applying terminal gates. Eager global `NodeKey` rebuild/sort dominated successor time at scale; key
+ownership moved to reusable file state and the lookup index became lazy. File presence of cache/session bytes is not
+a parse hit, and restored process-local syntax continues to increment truthful parse counters.
+
+**Current recommendation/checkpoint:** M9 is terminal. Keep M10 separate: dogfood on deslop and independent pinned
+projects, publish external evidence/failure taxonomy, freeze migrations, and release only demonstrated tiers.
+
+**Blockers/restart/dependencies:** no repository blocker. Consumers opt into shared persistence with
+`DESLOP_CACHE_DIR`; a pinned `DESLOP_SESSION_ID` must be advanced or removed when an editor revision changes. Existing
+deployments need no migration; older unmatched cache objects may be garbage-collected later.
+
+**Files/artifacts:** parse cache/invalidation/runtime/session modules; snapshot/incremental key reuse; analyzer/LSP
+integration; eval benchmark and DoD; Git-changed test; frozen report; ADR 0011; M9 capability/migration documents;
+TODO/PLAN; this report.
+
+**Negative-memory status:** the failed project-wide cache/full-response benchmark and eager-key bottleneck are
+recorded locally and queued for repo Hindsight. Preferred path: per-file semantic keys, bounded region responses,
+retained previous results, and lazy global indexes; recheck only if projection identity or dependency authority changes.
+
+Signature: Codex /root — M9 persistent incrementality, integration, benchmark, and terminal verification owner
