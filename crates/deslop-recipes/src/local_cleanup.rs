@@ -1,8 +1,8 @@
 use deslop_core::{Lang, SafetyClass};
 use deslop_parse::{
-    DataFlowAccessKind, FactCoverage, GraphEligibilityDecision, GraphEvidenceLayer,
-    ProgramDependenceGraph, ProgramDependenceNode, ProgramDependenceProjection, ProjectAnalysis,
-    evaluate_program_graph_recipe_eligibility,
+    DataFlowAccessKind, DataFlowEffectKind, FactCoverage, GraphEligibilityDecision,
+    GraphEvidenceLayer, ProgramDependenceGraph, ProgramDependenceNode, ProgramDependenceProjection,
+    ProjectAnalysis, evaluate_program_graph_recipe_eligibility,
 };
 
 use crate::branch::{condition, fixture, graph_entity, span};
@@ -41,12 +41,18 @@ pub enum LocalCleanupRecipeError {
 #[derive(Clone, Copy)]
 enum CleanupKind {
     InlineTemporary,
+    InlineConversionAllocation,
     RemoveExpression,
     RemoveDeadLocal,
 }
 
 pub fn inline_single_use_temporary_recipe() -> Result<TransformationRecipe, RecipeContractError> {
     cleanup_recipe(CleanupKind::InlineTemporary)
+}
+
+pub fn inline_single_use_conversion_allocation_recipe()
+-> Result<TransformationRecipe, RecipeContractError> {
+    cleanup_recipe(CleanupKind::InlineConversionAllocation)
 }
 
 pub fn remove_unused_pure_expression_recipe() -> Result<TransformationRecipe, RecipeContractError> {
@@ -61,6 +67,7 @@ pub fn detect_local_cleanup_candidates(
     projection: &ProgramDependenceProjection,
 ) -> Result<Vec<TransformationCandidate>, LocalCleanupRecipeError> {
     let temporary = inline_single_use_temporary_recipe()?;
+    let conversion = inline_single_use_conversion_allocation_recipe()?;
     let expression = remove_unused_pure_expression_recipe()?;
     let dead_local = remove_independent_dead_local_recipe()?;
     let data_flow = projection.data_flow();
@@ -90,11 +97,13 @@ pub fn detect_local_cleanup_candidates(
             continue;
         }
         let temporary_eligibility = eligibility(projection, graph, &temporary)?;
+        let conversion_eligibility = eligibility(projection, graph, &conversion)?;
         let expression_eligibility = eligibility(projection, graph, &expression)?;
         let dead_local_eligibility = eligibility(projection, graph, &dead_local)?;
         if !temporary_eligibility.eligible()
             || !expression_eligibility.eligible()
             || !dead_local_eligibility.eligible()
+            || !conversion_eligibility.eligible()
         {
             continue;
         }
@@ -140,9 +149,13 @@ pub fn detect_local_cleanup_candidates(
                         == Some(local.pattern.key())
                 })
                 .collect::<Vec<_>>();
-            if definitions.len() != 1 || !empty_point(data, root.point(), true) {
+            if definitions.len() != 1 {
                 continue;
             }
+            let primitive_initializer = empty_point(data, root.point(), true)
+                && is_closed_expression(analysis, local.value)?;
+            let conversion_initializer = conversion_allocation_point(data, root.point())
+                && is_conversion_allocation_call(analysis, local.value)?;
             let definition = definitions[0];
             let accesses = data
                 .accesses()
@@ -150,7 +163,10 @@ pub fn detect_local_cleanup_candidates(
                 .filter(|access| access.symbol() == Some(definition.symbol()))
                 .collect::<Vec<_>>();
 
-            if accesses.is_empty() && is_closed_literal(analysis, local.value)? {
+            if accesses.is_empty()
+                && primitive_initializer
+                && is_closed_literal(analysis, local.value)?
+            {
                 candidates.push(removal_candidate(
                     projection,
                     graph,
@@ -164,7 +180,7 @@ pub fn detect_local_cleanup_candidates(
                 )?);
             }
 
-            if accesses.len() != 1 || !is_closed_expression(analysis, local.value)? {
+            if accesses.len() != 1 || (!primitive_initializer && !conversion_initializer) {
                 continue;
             }
             let access = accesses[0];
@@ -187,6 +203,8 @@ pub fn detect_local_cleanup_candidates(
             if use_node.raw_grammar_kind() != "identifier"
                 || !adjacent(analysis, local.statement, use_statement)?
                 || forbidden_use_ancestor(analysis, use_node, use_statement)?
+                || (conversion_initializer
+                    && !conversion_use_position(analysis, use_node, use_statement)?)
             {
                 continue;
             }
@@ -195,6 +213,11 @@ pub fn detect_local_cleanup_candidates(
                 .iter()
                 .find(|node| node.point() == access.point())
                 .ok_or_else(|| missing("PDG use node", access.point().as_str()))?;
+            let (selected_recipe, selected_eligibility) = if conversion_initializer {
+                (conversion.clone(), conversion_eligibility.clone())
+            } else {
+                (temporary.clone(), temporary_eligibility.clone())
+            };
             candidates.push(inline_candidate(
                 projection,
                 graph,
@@ -205,8 +228,9 @@ pub fn detect_local_cleanup_candidates(
                 access,
                 local,
                 use_node,
-                temporary.clone(),
-                temporary_eligibility.clone(),
+                selected_recipe,
+                selected_eligibility,
+                conversion_initializer,
             )?);
         }
     }
@@ -234,6 +258,7 @@ fn inline_candidate(
     use_node: deslop_parse::NodeView<'_>,
     recipe: TransformationRecipe,
     eligibility: GraphEligibilityDecision,
+    conversion_allocation: bool,
 ) -> Result<TransformationCandidate, LocalCleanupRecipeError> {
     let analysis = projection
         .data_flow()
@@ -263,7 +288,11 @@ fn inline_candidate(
                 proven(
                     EFFECTS,
                     data_entity(data, definition_root.data_flow_point().as_str()),
-                    "The initializer point has no other access, boundary, or effect.",
+                    if conversion_allocation {
+                        "The initializer point has exactly retained call/allocation effects and no competing access or boundary."
+                    } else {
+                        "The initializer point has no other access, boundary, or effect."
+                    },
                 ),
                 proven(
                     SINGLE_USE,
@@ -273,7 +302,11 @@ fn inline_candidate(
                 proven(
                     CLOSED,
                     control_entity(graph, definition_root.point()),
-                    "The initializer is a closed primitive expression.",
+                    if conversion_allocation {
+                        "The initializer is one explicit supported conversion/allocation constructor call."
+                    } else {
+                        "The initializer is a closed primitive expression."
+                    },
                 ),
                 result(
                     LOCATION,
@@ -282,7 +315,12 @@ fn inline_candidate(
                     "Diagnostic and panic source locations require review.",
                 ),
             ],
-            forbidden_results: disproven_common(graph, data, definition_root),
+            forbidden_results: disproven_common(
+                graph,
+                data,
+                definition_root,
+                conversion_allocation,
+            ),
             impact: program_dependence_impact_cone(
                 projection,
                 graph.key(),
@@ -322,7 +360,11 @@ fn inline_candidate(
                     format!("({})", local.value.text()),
                 ),
             ],
-            safety: SafetyClass::SafeWithPrecondition,
+            safety: if conversion_allocation {
+                SafetyClass::RiskySuggest
+            } else {
+                SafetyClass::SafeWithPrecondition
+            },
             disposition: CandidateDisposition::ReviewRequired,
             validation_plan: recipe.validation_plan().clone(),
             rollback_plan: recipe.rollback_plan().clone(),
@@ -390,7 +432,7 @@ fn removal_candidate(
             },
             eligibility,
             required_results: required,
-            forbidden_results: disproven_common(graph, data, root),
+            forbidden_results: disproven_common(graph, data, root, false),
             impact: program_dependence_impact_cone(
                 projection,
                 graph.key(),
@@ -519,6 +561,81 @@ fn empty_point(
             .iter()
             .find(|item| item.point() == point)
             .is_some_and(|item| item.uncertainty().is_none() && item.effects().is_empty())
+}
+
+fn conversion_allocation_point(
+    data: &deslop_parse::DataFlowGraph,
+    point: &deslop_parse::ControlPointKey,
+) -> bool {
+    data.definitions()
+        .iter()
+        .filter(|item| item.point() == point)
+        .count()
+        == 1
+        && data.accesses().iter().all(|item| item.point() != point)
+        && data.boundaries().iter().all(|item| item.point() != point)
+        && data
+            .effects()
+            .iter()
+            .find(|item| item.point() == point)
+            .is_some_and(|item| {
+                item.uncertainty().is_none()
+                    && item.effects().contains(&DataFlowEffectKind::Allocates)
+                    && item.effects().iter().all(|effect| {
+                        matches!(
+                            effect,
+                            DataFlowEffectKind::Allocates | DataFlowEffectKind::Calls
+                        )
+                    })
+            })
+}
+
+fn is_conversion_allocation_call(
+    analysis: &ProjectAnalysis,
+    node: deslop_parse::NodeView<'_>,
+) -> Result<bool, LocalCleanupRecipeError> {
+    if node.raw_grammar_kind() != "call_expression" || bad_syntax(analysis, node)? {
+        return Ok(false);
+    }
+    let Some(function) = field(analysis, node, "function")? else {
+        return Ok(false);
+    };
+    Ok(matches!(
+        function.text(),
+        "Box::new"
+            | "Rc::new"
+            | "Arc::new"
+            | "String::from"
+            | "Vec::from"
+            | "String::try_from"
+            | "Vec::try_from"
+    ))
+}
+
+fn conversion_use_position(
+    analysis: &ProjectAnalysis,
+    use_node: deslop_parse::NodeView<'_>,
+    statement: deslop_parse::NodeView<'_>,
+) -> Result<bool, LocalCleanupRecipeError> {
+    let mut current = use_node;
+    while current.id() != statement.id() {
+        let Some(parent_id) = current.parent() else {
+            return Ok(false);
+        };
+        let parent = analysis
+            .node(parent_id)
+            .map_err(|error| LocalCleanupRecipeError::Projection(error.to_string()))?;
+        let permitted = match parent.raw_grammar_kind() {
+            "parenthesized_expression" | "unary_expression" | "return_expression" => true,
+            "let_declaration" => current.field() == Some("value"),
+            _ => false,
+        };
+        if !permitted {
+            return Ok(false);
+        }
+        current = parent;
+    }
+    Ok(true)
 }
 
 fn direct_block_child(analysis: &ProjectAnalysis, node: deslop_parse::NodeView<'_>) -> bool {
@@ -677,6 +794,38 @@ fn cleanup_recipe(kind: CleanupKind) -> Result<TransformationRecipe, RecipeContr
             ],
             fixtures_for(kind),
         ),
+        CleanupKind::InlineConversionAllocation => (
+            "rust-inline-single-use-conversion-allocation",
+            SafetyClass::RiskySuggest,
+            vec![
+                req(
+                    DEF_USE,
+                    "Complete def/use proves one definition and its only reaching read.",
+                    GraphEvidenceLayer::DataFlow,
+                ),
+                req(
+                    EFFECTS,
+                    "The initializer has exactly retained call/allocation effects.",
+                    GraphEvidenceLayer::DataFlow,
+                ),
+                req(
+                    SINGLE_USE,
+                    "The sole use is the immediately following direct-body value.",
+                    GraphEvidenceLayer::ControlFlow,
+                ),
+                req(
+                    CLOSED,
+                    "The initializer is one explicit supported conversion/allocation constructor.",
+                    GraphEvidenceLayer::ControlFlow,
+                ),
+                req(
+                    LOCATION,
+                    "Allocation lifetime, drop timing, diagnostics, and panic locations require review.",
+                    GraphEvidenceLayer::ControlFlow,
+                ),
+            ],
+            fixtures_for(kind),
+        ),
         CleanupKind::RemoveExpression => (
             "rust-remove-unused-pure-literal-expression",
             SafetyClass::SafeAuto,
@@ -778,6 +927,24 @@ fn fixtures_for(kind: CleanupKind) -> Vec<crate::RecipeFixture> {
             (
                 "foreign-reaching-definition",
                 "Spelling cannot replace exact definition identity.",
+            ),
+        ),
+        CleanupKind::InlineConversionAllocation => (
+            (
+                "adjacent-box-allocation",
+                "One exact Box allocation reaches one adjacent first-evaluated read.",
+            ),
+            (
+                "non-constructor-call",
+                "An arbitrary call is not classified as conversion/allocation cleanup.",
+            ),
+            (
+                "preceding-argument",
+                "Inlining cannot reorder allocation after another evaluated argument.",
+            ),
+            (
+                "partial-effects",
+                "Missing call/allocation effects cannot authorize the candidate.",
             ),
         ),
         CleanupKind::RemoveExpression => (
@@ -960,6 +1127,7 @@ fn disproven_common(
     graph: &ProgramDependenceGraph,
     data: &deslop_parse::DataFlowGraph,
     root: &ProgramDependenceNode,
+    conversion_allocation: bool,
 ) -> Vec<ConditionResult> {
     vec![
         result(
@@ -972,7 +1140,11 @@ fn disproven_common(
             EFFECTFUL,
             ProofState::Disproven,
             data_entity(data, data.key().as_str()),
-            "The selected point has the required empty effect frontier.",
+            if conversion_allocation {
+                "The selected point has only the exact permitted call/allocation effect frontier."
+            } else {
+                "The selected point has the required empty effect frontier."
+            },
         ),
         result(
             BAD_SHAPE,
@@ -998,6 +1170,7 @@ fn missing(kind: &str, identity: &str) -> LocalCleanupRecipeError {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::path::Path;
     use std::process::Command;
     use std::sync::Arc;
 
@@ -1028,6 +1201,8 @@ mod tests {
         let source = "fn run() -> i32 {\n\
                       \x20   let temporary = 1 + 2;\n\
                       \x20   let result = temporary * 3;\n\
+                      \x20   let boxed = Box::new(13);\n\
+                      \x20   let unboxed = *boxed;\n\
                       \x20   99;\n\
                       \x20   let unused = 7;\n\
                       \x20   let live = 5;\n\
@@ -1063,7 +1238,7 @@ mod tests {
         let body = nodes("block")[0];
         let source_root = nodes("source_file")[0];
         let body_children = named_children(&analysis, analysis.node(body).unwrap()).unwrap();
-        assert_eq!(body_children.len(), 10);
+        assert_eq!(body_children.len(), 12);
         let roles = |node| {
             let path = analysis.node(node).unwrap().path().to_path_buf();
             analysis
@@ -1111,6 +1286,8 @@ mod tests {
         let names = [
             "temporary",
             "result",
+            "boxed",
+            "unboxed",
             "unused",
             "live",
             "first",
@@ -1356,7 +1533,15 @@ mod tests {
                 .iter()
                 .map(|point| DataFlowEffectDraft {
                     point: point.key().clone(),
-                    effects: vec![],
+                    effects: point
+                        .source()
+                        .filter(|source| {
+                            source.file().path.as_path() == Path::new("fixture.inliners")
+                        })
+                        .and_then(|source| analysis.node_by_key(source).ok())
+                        .filter(|source| source.text().contains("let boxed ="))
+                        .map(|_| vec![DataFlowEffectKind::Allocates, DataFlowEffectKind::Calls])
+                        .unwrap_or_default(),
                     uncertainty: None,
                 })
                 .collect(),
@@ -1424,17 +1609,21 @@ mod tests {
     }
 
     #[test]
-    fn complete_fixture_emits_three_disjoint_behavior_preserving_cleanups() {
+    fn complete_fixture_emits_four_disjoint_behavior_preserving_cleanups() {
         let fixture = fixture();
         let candidates = detect_local_cleanup_candidates(&fixture.projection).unwrap();
-        assert_eq!(candidates.len(), 3);
+        assert_eq!(candidates.len(), 4);
         let by_name = candidates
             .iter()
             .map(|candidate| (candidate.recipe().name(), candidate))
             .collect::<BTreeMap<_, _>>();
-        assert_eq!(by_name.len(), 3);
+        assert_eq!(by_name.len(), 4);
         assert_eq!(
             by_name["rust-inline-exact-single-use-temporary"].disposition(),
+            CandidateDisposition::ReviewRequired
+        );
+        assert_eq!(
+            by_name["rust-inline-single-use-conversion-allocation"].disposition(),
             CandidateDisposition::ReviewRequired
         );
         for name in [
@@ -1445,9 +1634,11 @@ mod tests {
         }
         let rewritten = apply_all(&fixture.source, &candidates);
         assert!(!rewritten.contains("let temporary"));
+        assert!(!rewritten.contains("let boxed"));
         assert!(!rewritten.contains("99;"));
         assert!(!rewritten.contains("let unused"));
         assert!(rewritten.contains("let result = (1 + 2) * 3;"));
+        assert!(rewritten.contains("let unboxed = *(Box::new(13));"));
         assert!(rewritten.contains("let typed: i32 = 11;"));
         assert!(rewritten.contains("1 + 2;"));
         assert_eq!(run_rust(&fixture.source), run_rust(&rewritten));

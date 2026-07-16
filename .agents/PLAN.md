@@ -4248,3 +4248,27 @@ or automatic path. Ten focused clone-index/classification tests pass; full works
 including 251 active parse tests (1 explicit ignore), 4 parse doctests, and 55 active recipe tests (1 explicit ignore);
 workspace formatting and all-feature/all-target clippy with `-D warnings` pass. M5.24 is terminal. Proceed to M5.25
 only in a later slice; do not infer rewrite authority from review eligibility.
+
+## 2026-07-16 — M5.25 graph-grounded clarity candidates
+
+Terminal result: M5.25 is complete. `deslop.graph-grounded-clarity-candidate/1` projects real guarded
+`TransformationCandidate` records into forwarding, conversion/allocation, wrapper, repeated-error, and dead-code
+families only when their recipe and required ProgramDependence/DataFlow graph layers support that label. Repeated
+error classification additionally requires exact error-shaped replacement evidence, so ordinary branch factoring is
+not relabelled. The projection retains the underlying content-addressed candidate identity and grants no new edit or
+write authority.
+
+The new `rust-inline-single-use-conversion-allocation` recipe extends the local-cleanup candidate path for an exact
+single adjacent use of an explicitly allowlisted Rust conversion/allocation constructor. It requires one reaching
+definition, complete `Allocates`/`Calls` effect evidence, a comment/recovery-free call, and a use position that cannot
+reorder argument evaluation. Its guarded replacement, expected delta, validation, and rollback remain review-only;
+the existing primitive single-use cleanup remains unchanged.
+
+Measured validation: focused clarity tests pass 2/2; the conversion fixture passes 1/1 and compiles/runs before and
+after with identical output. Full `cargo fmt --all -- --check`, workspace all-feature build/test, and all-feature/
+all-target clippy with `-D warnings` pass: 753 active tests, 251 active parse tests plus 1 explicit ignore and 4
+doctests, and 57 active recipe tests plus 1 explicit ignore. Proceed to M5.26 only; do not broaden conversion
+constructors or infer automatic authority from a clarity label.
+
+Negative-memory constraint: graph-grounded family labels describe existing candidate evidence. They cannot replace
+recipe preconditions, revision guards, validation, or rollback, and exact effects may conservatively abstain.

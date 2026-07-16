@@ -1,6 +1,7 @@
 mod branch;
 mod branch_split;
 mod branch_terminal;
+mod clarity;
 mod condition_merge;
 mod contract;
 mod evaluation;
@@ -25,6 +26,10 @@ pub use branch_terminal::{
     DeadArmGraphEvidence, ExhaustiveChainGraphEvidence, TerminalBranchRecipeError,
     detect_exhaustive_chain_matches, detect_literal_dead_arms, exhaustive_chain_to_match_recipe,
     literal_dead_arm_recipe,
+};
+pub use clarity::{
+    ClarityCandidateKind, GRAPH_GROUNDED_CLARITY_CANDIDATE_SCHEMA, GraphGroundedClarityCandidate,
+    graph_grounded_clarity_candidates,
 };
 pub use condition_merge::{
     ConditionMergeRecipeError, adjacent_condition_merge_recipe, detect_adjacent_condition_merges,
@@ -63,7 +68,8 @@ pub use inline_helper::{
     inline_single_use_helper_recipe,
 };
 pub use local_cleanup::{
-    LocalCleanupRecipeError, detect_local_cleanup_candidates, inline_single_use_temporary_recipe,
+    LocalCleanupRecipeError, detect_local_cleanup_candidates,
+    inline_single_use_conversion_allocation_recipe, inline_single_use_temporary_recipe,
     remove_independent_dead_local_recipe, remove_unused_pure_expression_recipe,
 };
 pub use ordering::{

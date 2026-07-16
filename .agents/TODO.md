@@ -614,10 +614,12 @@ reports, benchmark records, and work orders.
   explicitly ordinary production repetition becomes abstraction-review evidence, never write authority. Ten focused
   tests, 251 active parse tests (1 explicit ignore), 4 doctests, 55 active recipe tests (1 explicit ignore), and full
   workspace fmt/build/test/clippy-with-warnings-denied gates pass.
-- [ ] M5.25 Add graph-grounded forwarding, conversion/allocation, wrapper, repeated-error, and dead-code candidates.
-  Partial vertical slice complete: `rust-remove-unreachable-literal-statement` removes only exact
-  entry-unreachable inert Rust literal statements, fails closed on recovered/conservative/non-structured or
-  non-literal forms, and completes candidate -> guarded patch -> expected delta -> validation -> rollback.
+- [x] M5.25 Add graph-grounded forwarding, conversion/allocation, wrapper, repeated-error, and dead-code candidates.
+  `deslop.graph-grounded-clarity-candidate/1` classifies actual guarded transformation candidates into the five
+  graph-grounded families without adding write authority. The new Rust single-use conversion/allocation recipe
+  requires exact def/use and allocation/call effects, preserves evaluation order, and remains review-only. Focused
+  classification tests pass 2/2; the conversion fixture passes 1/1 with compiling before/after output; all 753
+  active workspace tests, 4 parse doctests, fmt/build, and all-feature/all-target clippy with `-D warnings` pass.
 - [ ] M5.26 Add role/scope-aware identifier and comment evidence without automatic rationale deletion.
 - [ ] M5.DoD Every enabled detector completes graph fact -> unique candidate -> patch -> expected delta ->
   verification -> rollback on its fixtures, with no known unsafe `safe-auto` counterexample.

@@ -11808,3 +11808,43 @@ Signature: Codex `/root` — M5.24 integration and terminal verification owner
 - **Evidence:** 6/6 focused tests; workspace `cargo test --workspace --all-features` green; clippy -D warnings on deslop-parse green.
 - **Constraint:** fingerprints and verified pairs are matching evidence only; no rewrite authority; no M5.23 class collapse.
 - **Signature:** opencode (xai/grok-4.5), M5.22 implemented after Codex research stall, 2026-07-16.
+
+## 2026-07-16T10:35:58+02:00 — M5.25 terminal graph-grounded clarity candidates
+
+**Objective/target:** complete the forwarding, conversion/allocation, wrapper, repeated-error, and dead-code
+candidate families on retained graph evidence, without granting clone or clarity evidence independent rewrite
+authority.
+
+**Changes:** added strict `deslop.graph-grounded-clarity-candidate/1` evidence over actual guarded transformation
+candidates, retaining their content identity and required ProgramDependence/DataFlow layers. Recipe-specific mapping
+covers all five M5.25 families; repeated-error evidence additionally requires an exact error-shaped replacement.
+Added `rust-inline-single-use-conversion-allocation`, which accepts only allowlisted Rust constructor calls with one
+definition, one adjacent reaching read, complete allocation/call effects, comment/recovery-free syntax, and a use
+position that cannot reorder argument evaluation. It emits an exact guarded review-only patch with expected delta,
+validation, and rollback. The existing primitive single-use automatic cleanup is unchanged.
+
+**Commands run/results:** `cargo check -p deslop-recipes`; focused clarity tests 2/2; focused conversion fixture 1/1
+with successful before/after compilation and identical output; `cargo fmt --all -- --check`; `cargo build --workspace
+--all-features`; `cargo test --workspace --all-features`; and `cargo clippy --workspace --all-features --all-targets
+-- -D warnings` all passed. The workspace run contains 753 active tests, including 251 active parse tests with 1
+explicit ignore, 4 parse doctests, and 57 active recipe tests with 1 explicit ignore.
+
+**Failure modes/invalidated assumptions:** the first focused conversion run exposed that a `RiskySuggest` recipe may
+not carry a stronger `SafeWithPrecondition` candidate label. The candidate now uses the recipe's review-only safety;
+the rerun and terminal gates pass. Exact effect evidence remains deliberately narrow and fails closed.
+
+**Current recommendation/checkpoint:** M5.25 is terminal. Begin only M5.26 role/scope-aware identifier and comment
+evidence next. Do not broaden the Rust constructor allowlist, start M5.DoD early, or infer automatic write authority
+from clarity classification.
+
+**Blockers/restart/dependencies:** none. No runtime restart, migration, CLI replacement, or cache clear is required.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-recipes/src/clarity.rs`, `crates/deslop-recipes/src/lib.rs`, and
+`crates/deslop-recipes/src/local_cleanup.rs`.
+
+**Negative-memory status:** the transient safety-rank mismatch is fixed and covered by focused and full tests; no
+repeating invalid path requires a durable negative-memory entry. Existing matching/classification-is-not-write-
+authority constraints remain enforced.
+
+Signature: Codex `/root` — M5.25 integration and terminal verification owner
