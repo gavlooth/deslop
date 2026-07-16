@@ -12544,3 +12544,44 @@ release join.
 commit and checkout; release evidence is assembled only after that artifact exists.
 
 Signature: Codex (GPT-5), M10 final-source evidence / clean-gate handoff, 2026-07-16.
+
+## 2026-07-16 — M10 focused-gate correction checkpoint
+
+**Objective:** Run the focused release gates fail-closed and correct any contract regression before
+the full workspace gate.
+
+**Target:** M10 focused evaluator/protocol/verifier/CLI integration and artifact smoke suite on the
+sealed implementation tree.
+
+**Changes:** The first aggregate shell continued after a failed command, so its final zero exit was
+rejected as gate evidence. The actual failure was M2's frozen finding total: Python's now-valid two
+blank-line separators removed two findings, but the DoD still expected four. Updated the M2 test to
+assert that Python emits no `consecutive-blank-lines` finding for that fixture and changed the exact
+total to the remaining two. Replaced numeric recipe-timeout wording in compiled release policy with a
+report-bound limitation, regenerated final dogfood, and synchronized release docs.
+
+**Commands run/results:** Initial focused M10 tests passed 5/5; protocol passed 32/32; verifier passed
+80/80 plus M7 DoD; CLI M0/M1 passed and M2 failed 2 versus 4. Isolated corrected M2 test then passed.
+Canonical, external, and dogfood smoke verification all passed. The initial aggregate is **not** a
+passing gate because it did not use fail-fast shell semantics.
+
+**Final dogfood after correction:** report
+`m10df1_b977948931e4bcf7b78ea028c488dce50b224667f86ec0ee5b25f6c87b707c32`, source
+`m10src1_e6d719b1a76db6e727c8dffc775b045267504800cea88bec27a402a065041232`,
+189 files / 139,703 lines, 182 Complete + seven Partial, 1,536 findings, seven recipe candidates,
+nine report-bound timeout abstentions, 243.970 seconds, 1,387,225,088-byte peak RSS, zero accepted,
+five rejected, 1,538 unsafe/unverified, zero stale.
+
+**Invalidated assumption:** A pipeline's final exit code is not gate evidence unless the shell exits
+on the first failed subcommand or explicitly aggregates every status. Subsequent successful smoke
+commands masked the M2 failure in the first runner.
+
+**Current recommendation/checkpoint:** Rerun the complete focused suite with `set -euo pipefail`, then
+run the full all-feature workspace fmt/build/test/clippy command with the same fail-fast behavior.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** None; rebuild/test source. The terminal dogfood report already
+matches the corrected source manifest.
+
+Signature: Codex (GPT-5), M10 focused-gate correction owner, 2026-07-16.

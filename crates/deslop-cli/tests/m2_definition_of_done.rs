@@ -351,6 +351,15 @@ fn m2_adapter_definition_of_done_joins_every_fact_to_exact_authority() {
     assert!(graph.edges.iter().all(|edge| {
         edge.kind == GraphEdgeKind::Contains || edge.confidence != GraphConfidence::Resolved
     }));
+    assert!(
+        analyzer
+            .reports
+            .iter()
+            .filter(|report| report.path == Path::new("adapter_matrix.py"))
+            .flat_map(|report| &report.findings)
+            .all(|finding| finding.rule != "consecutive-blank-lines"),
+        "Python's valid two-blank-line module separators are not SafeAuto findings"
+    );
 
     assert_eq!(
         analyzer
@@ -358,7 +367,7 @@ fn m2_adapter_definition_of_done_joins_every_fact_to_exact_authority() {
             .iter()
             .map(|report| report.findings.len())
             .sum::<usize>(),
-        4
+        2
     );
     assert_eq!(metrics.functions.len(), 15);
     assert_eq!(graph.nodes.len(), 44);

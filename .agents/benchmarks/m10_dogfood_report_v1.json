@@ -1,7 +1,7 @@
 {
   "schema": "deslop.m10-dogfood/1",
-  "report_id": "m10df1_fba1b3b9d498ec4d8032c5ab97dd5f339341a04b7126a0e887a900d68dfdd884",
-  "source_revision": "m10src1_2fe1dac3e149f6e1be0e5f69909dd12b91ec98e493be7e9d188a9ccd02d1e19a",
+  "report_id": "m10df1_b977948931e4bcf7b78ea028c488dce50b224667f86ec0ee5b25f6c87b707c32",
+  "source_revision": "m10src1_e6d719b1a76db6e727c8dffc775b045267504800cea88bec27a402a065041232",
   "sources": [
     {
       "path": "/home/christos/code/deslop/crates/deslop-analyzer/src/agnostic.rs",
@@ -101,9 +101,9 @@
     },
     {
       "path": "/home/christos/code/deslop/crates/deslop-cli/tests/m2_definition_of_done.rs",
-      "digest": "blake3:7b8faeb682cd41777a14e3feaec353f7abfd1e267e38e208ca0485f6241158f0",
-      "bytes": 15707,
-      "lines": 392
+      "digest": "blake3:4c5c26f903e84cd4b095ff7ddde940bf6506ee31e4eb3a89ce1b36c7181aca31",
+      "bytes": 16065,
+      "lines": 401
     },
     {
       "path": "/home/christos/code/deslop/crates/deslop-cli/tests/propose_workorders.rs",
@@ -209,8 +209,8 @@
     },
     {
       "path": "/home/christos/code/deslop/crates/deslop-eval/src/m10_release.rs",
-      "digest": "blake3:714386631722fc4e3394ef5b71f21e484008048d9235422674b187dc566f4e18",
-      "bytes": 33465,
+      "digest": "blake3:8d3e513917ef08366cabb5df98171fdd4bb28cd4abda842319713bf09d7e29ee",
+      "bytes": 33499,
       "lines": 944
     },
     {
@@ -1139,7 +1139,7 @@
     }
   ],
   "source_files": 189,
-  "source_lines": 139694,
+  "source_lines": 139703,
   "project_analysis_status": "partial",
   "analysis_statuses": {
     "complete": 182,
@@ -2173,7 +2173,7 @@
       "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
     },
     {
-      "fingerprint": "13a2351ac342de89",
+      "fingerprint": "21a909e4b5537a1b",
       "path": "crates/deslop-cli/tests/m2_definition_of_done.rs",
       "rule": "near-duplicate",
       "safety": "llm-only",
@@ -2182,7 +2182,7 @@
       "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
     },
     {
-      "fingerprint": "8ec8ff273ea37cf0",
+      "fingerprint": "98fb534b8d77e262",
       "path": "crates/deslop-cli/tests/m2_definition_of_done.rs",
       "rule": "long-method",
       "safety": "llm-only",
@@ -2902,15 +2902,6 @@
       "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
     },
     {
-      "fingerprint": "218936f20b25fd6b",
-      "path": "crates/deslop-eval/src/m10_release.rs",
-      "rule": "long-method",
-      "safety": "llm-only",
-      "classification": "production-unknown",
-      "disposition": "unsafe",
-      "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
-    },
-    {
       "fingerprint": "30c2481d60cd6ada",
       "path": "crates/deslop-eval/src/m10_release.rs",
       "rule": "magic-number",
@@ -2974,6 +2965,15 @@
       "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
     },
     {
+      "fingerprint": "83a1f46f90ce8fad",
+      "path": "crates/deslop-eval/src/m10_release.rs",
+      "rule": "long-method",
+      "safety": "llm-only",
+      "classification": "production-unknown",
+      "disposition": "unsafe",
+      "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
+    },
+    {
       "fingerprint": "966c3b86a480fcbe",
       "path": "crates/deslop-eval/src/m10_release.rs",
       "rule": "near-duplicate",
@@ -3001,7 +3001,7 @@
       "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
     },
     {
-      "fingerprint": "c7e29661be9ecee3",
+      "fingerprint": "c573f466cf1fa188",
       "path": "crates/deslop-eval/src/m10_release.rs",
       "rule": "long-method",
       "safety": "llm-only",
@@ -14984,7 +14984,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 812,
+      "elapsed_millis": 760,
       "abstention_reasons": []
     },
     {
@@ -14993,7 +14993,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 4137,
+      "elapsed_millis": 3506,
       "abstention_reasons": []
     },
     {
@@ -15002,7 +15002,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 276,
+      "elapsed_millis": 263,
       "abstention_reasons": []
     },
     {
@@ -15011,7 +15011,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 164,
+      "elapsed_millis": 144,
       "abstention_reasons": []
     },
     {
@@ -15020,7 +15020,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 7494,
+      "elapsed_millis": 5833,
       "abstention_reasons": []
     },
     {
@@ -15029,7 +15029,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 237,
+      "elapsed_millis": 54,
       "abstention_reasons": []
     },
     {
@@ -15038,7 +15038,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 167,
+      "elapsed_millis": 33,
       "abstention_reasons": []
     },
     {
@@ -15047,7 +15047,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 283,
+      "elapsed_millis": 55,
       "abstention_reasons": []
     },
     {
@@ -15056,7 +15056,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1017,
+      "elapsed_millis": 515,
       "abstention_reasons": []
     },
     {
@@ -15065,7 +15065,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 6452,
+      "elapsed_millis": 5323,
       "abstention_reasons": []
     },
     {
@@ -15074,7 +15074,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2460,
+      "elapsed_millis": 2009,
       "abstention_reasons": []
     },
     {
@@ -15083,7 +15083,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 2,
       "abstention_count": 0,
-      "elapsed_millis": 26262,
+      "elapsed_millis": 25763,
       "abstention_reasons": []
     },
     {
@@ -15092,7 +15092,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 311,
+      "elapsed_millis": 183,
       "abstention_reasons": []
     },
     {
@@ -15101,7 +15101,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 325,
+      "elapsed_millis": 184,
       "abstention_reasons": []
     },
     {
@@ -15110,7 +15110,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 529,
+      "elapsed_millis": 441,
       "abstention_reasons": []
     },
     {
@@ -15119,7 +15119,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 278,
+      "elapsed_millis": 143,
       "abstention_reasons": []
     },
     {
@@ -15128,7 +15128,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 521,
+      "elapsed_millis": 305,
       "abstention_reasons": []
     },
     {
@@ -15137,7 +15137,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 710,
+      "elapsed_millis": 267,
       "abstention_reasons": []
     },
     {
@@ -15146,7 +15146,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 891,
+      "elapsed_millis": 673,
       "abstention_reasons": []
     },
     {
@@ -15155,7 +15155,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 128,
+      "elapsed_millis": 106,
       "abstention_reasons": []
     },
     {
@@ -15164,7 +15164,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 126,
+      "elapsed_millis": 103,
       "abstention_reasons": []
     },
     {
@@ -15173,7 +15173,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 288,
+      "elapsed_millis": 76,
       "abstention_reasons": []
     },
     {
@@ -15182,7 +15182,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1546,
+      "elapsed_millis": 1399,
       "abstention_reasons": []
     },
     {
@@ -15191,7 +15191,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 200,
+      "elapsed_millis": 47,
       "abstention_reasons": []
     },
     {
@@ -15200,7 +15200,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 284,
+      "elapsed_millis": 61,
       "abstention_reasons": []
     },
     {
@@ -15209,7 +15209,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 297,
+      "elapsed_millis": 65,
       "abstention_reasons": []
     },
     {
@@ -15218,7 +15218,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 194,
+      "elapsed_millis": 58,
       "abstention_reasons": []
     },
     {
@@ -15227,7 +15227,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 121,
+      "elapsed_millis": 85,
       "abstention_reasons": []
     },
     {
@@ -15236,7 +15236,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 584,
+      "elapsed_millis": 78,
       "abstention_reasons": []
     },
     {
@@ -15245,7 +15245,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 243,
+      "elapsed_millis": 54,
       "abstention_reasons": []
     },
     {
@@ -15254,7 +15254,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1383,
+      "elapsed_millis": 1030,
       "abstention_reasons": []
     },
     {
@@ -15263,7 +15263,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 808,
+      "elapsed_millis": 641,
       "abstention_reasons": []
     },
     {
@@ -15272,7 +15272,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3246,
+      "elapsed_millis": 2627,
       "abstention_reasons": []
     },
     {
@@ -15281,7 +15281,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2671,
+      "elapsed_millis": 1905,
       "abstention_reasons": []
     },
     {
@@ -15290,7 +15290,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2374,
+      "elapsed_millis": 1832,
       "abstention_reasons": []
     },
     {
@@ -15299,7 +15299,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3770,
+      "elapsed_millis": 3679,
       "abstention_reasons": []
     },
     {
@@ -15308,7 +15308,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 9119,
+      "elapsed_millis": 9032,
       "abstention_reasons": []
     },
     {
@@ -15317,7 +15317,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1408,
+      "elapsed_millis": 1159,
       "abstention_reasons": []
     },
     {
@@ -15326,7 +15326,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 263,
+      "elapsed_millis": 71,
       "abstention_reasons": []
     },
     {
@@ -15335,7 +15335,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 411,
+      "elapsed_millis": 128,
       "abstention_reasons": []
     },
     {
@@ -15344,7 +15344,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 199,
+      "elapsed_millis": 302,
       "abstention_reasons": []
     },
     {
@@ -15353,7 +15353,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2362,
+      "elapsed_millis": 2317,
       "abstention_reasons": []
     },
     {
@@ -15362,7 +15362,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1010,
+      "elapsed_millis": 618,
       "abstention_reasons": []
     },
     {
@@ -15371,7 +15371,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2618,
+      "elapsed_millis": 2734,
       "abstention_reasons": []
     },
     {
@@ -15380,7 +15380,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 1,
       "abstention_count": 0,
-      "elapsed_millis": 5477,
+      "elapsed_millis": 5474,
       "abstention_reasons": []
     },
     {
@@ -15389,7 +15389,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 868,
+      "elapsed_millis": 886,
       "abstention_reasons": []
     },
     {
@@ -15398,7 +15398,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3699,
+      "elapsed_millis": 3146,
       "abstention_reasons": []
     },
     {
@@ -15407,7 +15407,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 113,
+      "elapsed_millis": 497,
       "abstention_reasons": []
     },
     {
@@ -15416,7 +15416,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 193,
+      "elapsed_millis": 194,
       "abstention_reasons": []
     },
     {
@@ -15425,7 +15425,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1492,
+      "elapsed_millis": 1769,
       "abstention_reasons": []
     },
     {
@@ -15434,7 +15434,7 @@
       "analyzed_rust_files": 0,
       "candidate_count": 0,
       "abstention_count": 1,
-      "elapsed_millis": 30029,
+      "elapsed_millis": 30030,
       "abstention_reasons": [
         "partition exceeded the 30-second release budget"
       ]
@@ -15445,7 +15445,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3812,
+      "elapsed_millis": 3475,
       "abstention_reasons": []
     },
     {
@@ -15454,7 +15454,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 6763,
+      "elapsed_millis": 6948,
       "abstention_reasons": []
     },
     {
@@ -15463,7 +15463,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 175,
+      "elapsed_millis": 47,
       "abstention_reasons": []
     },
     {
@@ -15472,7 +15472,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 13274,
+      "elapsed_millis": 13775,
       "abstention_reasons": []
     },
     {
@@ -15481,610 +15481,11 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 677,
+      "elapsed_millis": 814,
       "abstention_reasons": []
     },
     {
       "path": "crates/deslop-metrics/src/lib.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 0,
-      "candidate_count": 0,
-      "abstention_count": 1,
-      "elapsed_millis": 30019,
-      "abstention_reasons": [
-        "partition exceeded the 30-second release budget"
-      ]
-    },
-    {
-      "path": "crates/deslop-mutate/src/lib.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2187,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/adapter.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 25658,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/aggregation.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 462,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/architecture.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 14820,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/arena.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 1478,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/clone_candidate_index.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 7056,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/containment.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 627,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/control_flow.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 0,
-      "candidate_count": 0,
-      "abstention_count": 1,
-      "elapsed_millis": 30020,
-      "abstention_reasons": [
-        "partition exceeded the 30-second release budget"
-      ]
-    },
-    {
-      "path": "crates/deslop-parse/src/control_regions.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 1,
-      "abstention_count": 0,
-      "elapsed_millis": 26386,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/cycle_seam.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 6798,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/data_flow.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 0,
-      "candidate_count": 0,
-      "abstention_count": 1,
-      "elapsed_millis": 30017,
-      "abstention_reasons": [
-        "partition exceeded the 30-second release budget"
-      ]
-    },
-    {
-      "path": "crates/deslop-parse/src/dependency.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 1,
-      "abstention_count": 0,
-      "elapsed_millis": 16015,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/graph_eligibility.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 4455,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/identity.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 1624,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/incremental.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 10010,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/instrumentation.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 78,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/lib.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2544,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/module_restructure.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 0,
-      "candidate_count": 0,
-      "abstention_count": 1,
-      "elapsed_millis": 30027,
-      "abstention_reasons": [
-        "partition exceeded the 30-second release budget"
-      ]
-    },
-    {
-      "path": "crates/deslop-parse/src/non_structured_control.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 6668,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/planner.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2599,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/program_dependence.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 16271,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/project_cache.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2332,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/project_invalidation.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 459,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/project_runtime.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 1974,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/project_session.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 1827,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/query.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 8377,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/resolution.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 0,
-      "candidate_count": 0,
-      "abstention_count": 1,
-      "elapsed_millis": 30022,
-      "abstention_reasons": [
-        "partition exceeded the 30-second release budget"
-      ]
-    },
-    {
-      "path": "crates/deslop-parse/src/resolution_gate.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 956,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/resolution_traversal.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 3634,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/scope_graph.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 13663,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/semantic_resolution.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2330,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/snapshot.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 0,
-      "candidate_count": 0,
-      "abstention_count": 1,
-      "elapsed_millis": 30031,
-      "abstention_reasons": [
-        "partition exceeded the 30-second release budget"
-      ]
-    },
-    {
-      "path": "crates/deslop-parse/src/subtree_fingerprint.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2314,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-parse/src/system_dependence.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 0,
-      "candidate_count": 0,
-      "abstention_count": 1,
-      "elapsed_millis": 30015,
-      "abstention_reasons": [
-        "partition exceeded the 30-second release budget"
-      ]
-    },
-    {
-      "path": "crates/deslop-protocol/src/lib.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 6159,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-protocol/src/lifecycle.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 778,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-protocol/src/planner.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2823,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-protocol/src/recipe.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 840,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-protocol/src/service.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 1,
-      "abstention_count": 0,
-      "elapsed_millis": 9590,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-protocol/src/work_order.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2242,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/branch.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2601,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/branch_split.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2358,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/branch_terminal.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 4293,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/clarity.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 171,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/condition_merge.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2221,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/contract.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 5442,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/definition_of_done.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 792,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/evaluation.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 1242,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/extract_method.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 18287,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/guard_clause.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 3465,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/impact.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 1,
-      "abstention_count": 0,
-      "elapsed_millis": 416,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/inline_helper.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 7192,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/lib.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 67,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/local_cleanup.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 6976,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/ordering.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 5229,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/project.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 800,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/semantic_evidence.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 738,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-recipes/src/unreachable.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 2824,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-report/src/lib.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 486,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-slim/src/lib.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 9028,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-verify/src/atomic.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 1167,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-verify/src/authority.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 3117,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-verify/src/demotion.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 799,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-verify/src/evidence.rs",
-      "selected_rust_files": 1,
-      "analyzed_rust_files": 1,
-      "candidate_count": 0,
-      "abstention_count": 0,
-      "elapsed_millis": 1005,
-      "abstention_reasons": []
-    },
-    {
-      "path": "crates/deslop-verify/src/lib.rs",
       "selected_rust_files": 1,
       "analyzed_rust_files": 0,
       "candidate_count": 0,
@@ -16095,12 +15496,611 @@
       ]
     },
     {
+      "path": "crates/deslop-mutate/src/lib.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 1907,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/adapter.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 24847,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/aggregation.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 566,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/architecture.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 13835,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/arena.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 1885,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/clone_candidate_index.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 7748,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/containment.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 658,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/control_flow.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 0,
+      "candidate_count": 0,
+      "abstention_count": 1,
+      "elapsed_millis": 30018,
+      "abstention_reasons": [
+        "partition exceeded the 30-second release budget"
+      ]
+    },
+    {
+      "path": "crates/deslop-parse/src/control_regions.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 1,
+      "abstention_count": 0,
+      "elapsed_millis": 29665,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/cycle_seam.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 7188,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/data_flow.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 0,
+      "candidate_count": 0,
+      "abstention_count": 1,
+      "elapsed_millis": 30013,
+      "abstention_reasons": [
+        "partition exceeded the 30-second release budget"
+      ]
+    },
+    {
+      "path": "crates/deslop-parse/src/dependency.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 1,
+      "abstention_count": 0,
+      "elapsed_millis": 15377,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/graph_eligibility.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 3998,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/identity.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 1765,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/incremental.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 9973,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/instrumentation.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 144,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/lib.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2631,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/module_restructure.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 0,
+      "candidate_count": 0,
+      "abstention_count": 1,
+      "elapsed_millis": 30025,
+      "abstention_reasons": [
+        "partition exceeded the 30-second release budget"
+      ]
+    },
+    {
+      "path": "crates/deslop-parse/src/non_structured_control.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 5680,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/planner.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2059,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/program_dependence.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 17577,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/project_cache.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2252,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/project_invalidation.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 581,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/project_runtime.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2202,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/project_session.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2172,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/query.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 8070,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/resolution.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 0,
+      "candidate_count": 0,
+      "abstention_count": 1,
+      "elapsed_millis": 30038,
+      "abstention_reasons": [
+        "partition exceeded the 30-second release budget"
+      ]
+    },
+    {
+      "path": "crates/deslop-parse/src/resolution_gate.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 685,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/resolution_traversal.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 4123,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/scope_graph.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 13655,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/semantic_resolution.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2676,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/snapshot.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 0,
+      "candidate_count": 0,
+      "abstention_count": 1,
+      "elapsed_millis": 30042,
+      "abstention_reasons": [
+        "partition exceeded the 30-second release budget"
+      ]
+    },
+    {
+      "path": "crates/deslop-parse/src/subtree_fingerprint.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2453,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-parse/src/system_dependence.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 0,
+      "candidate_count": 0,
+      "abstention_count": 1,
+      "elapsed_millis": 30018,
+      "abstention_reasons": [
+        "partition exceeded the 30-second release budget"
+      ]
+    },
+    {
+      "path": "crates/deslop-protocol/src/lib.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 6513,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-protocol/src/lifecycle.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 628,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-protocol/src/planner.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2544,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-protocol/src/recipe.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 948,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-protocol/src/service.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 1,
+      "abstention_count": 0,
+      "elapsed_millis": 9376,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-protocol/src/work_order.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2278,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/branch.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2530,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/branch_split.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2409,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/branch_terminal.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 4343,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/clarity.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 273,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/condition_merge.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2357,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/contract.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 5774,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/definition_of_done.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 410,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/evaluation.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 1326,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/extract_method.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 19609,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/guard_clause.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 3286,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/impact.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 1,
+      "abstention_count": 0,
+      "elapsed_millis": 427,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/inline_helper.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 7681,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/lib.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 150,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/local_cleanup.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 7136,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/ordering.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 5984,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/project.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 1130,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/semantic_evidence.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 1176,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-recipes/src/unreachable.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 2435,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-report/src/lib.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 622,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-slim/src/lib.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 9762,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-verify/src/atomic.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 1238,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-verify/src/authority.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 3089,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-verify/src/demotion.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 575,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-verify/src/evidence.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 1,
+      "candidate_count": 0,
+      "abstention_count": 0,
+      "elapsed_millis": 1071,
+      "abstention_reasons": []
+    },
+    {
+      "path": "crates/deslop-verify/src/lib.rs",
+      "selected_rust_files": 1,
+      "analyzed_rust_files": 0,
+      "candidate_count": 0,
+      "abstention_count": 1,
+      "elapsed_millis": 30020,
+      "abstention_reasons": [
+        "partition exceeded the 30-second release budget"
+      ]
+    },
+    {
       "path": "crates/deslop-verify/src/recipe.rs",
       "selected_rust_files": 1,
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2178,
+      "elapsed_millis": 1886,
       "abstention_reasons": []
     },
     {
@@ -16109,7 +16109,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 736,
+      "elapsed_millis": 1098,
       "abstention_reasons": []
     },
     {
@@ -16118,7 +16118,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2873,
+      "elapsed_millis": 3192,
       "abstention_reasons": []
     },
     {
@@ -16127,7 +16127,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 770,
+      "elapsed_millis": 369,
       "abstention_reasons": []
     },
     {
@@ -16136,7 +16136,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 155,
+      "elapsed_millis": 206,
       "abstention_reasons": []
     },
     {
@@ -16145,7 +16145,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 186,
+      "elapsed_millis": 148,
       "abstention_reasons": []
     },
     {
@@ -16154,7 +16154,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 204,
+      "elapsed_millis": 468,
       "abstention_reasons": []
     },
     {
@@ -16163,7 +16163,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 163,
+      "elapsed_millis": 203,
       "abstention_reasons": []
     },
     {
@@ -16172,7 +16172,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 339,
+      "elapsed_millis": 346,
       "abstention_reasons": []
     },
     {
@@ -16181,7 +16181,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 227,
+      "elapsed_millis": 216,
       "abstention_reasons": []
     },
     {
@@ -16190,7 +16190,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 205,
+      "elapsed_millis": 407,
       "abstention_reasons": []
     },
     {
@@ -16199,7 +16199,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 243,
+      "elapsed_millis": 176,
       "abstention_reasons": []
     },
     {
@@ -16208,7 +16208,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 188,
+      "elapsed_millis": 193,
       "abstention_reasons": []
     },
     {
@@ -16217,7 +16217,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 172,
+      "elapsed_millis": 63,
       "abstention_reasons": []
     },
     {
@@ -16226,7 +16226,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 87,
+      "elapsed_millis": 173,
       "abstention_reasons": []
     },
     {
@@ -16235,7 +16235,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 53,
+      "elapsed_millis": 166,
       "abstention_reasons": []
     }
   ],
@@ -16317,8 +16317,8 @@
     "stale": 0,
     "unsafe": 7
   },
-  "recipe_elapsed_millis": 245550,
-  "peak_rss_bytes": 1386401792,
+  "recipe_elapsed_millis": 243970,
+  "peak_rss_bytes": 1387225088,
   "work_orders": {
     "status": "finding-proposal-timed-out-downgraded",
     "exception": "whole-project finding proposal construction exceeded the measured 15-minute release ceiling; stable release exposes bounded protocol index/triage/explain/plan operations and does not claim an interactive exhaustive proposal batch",

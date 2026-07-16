@@ -17,7 +17,8 @@
 
 1. Python two-blank-line `SafeAuto` false positives are closed by the language-aware policy and tests.
 2. Whole-project finding proposals exceeded 15 minutes and are unshipped; bounded protocol operations remain.
-3. Nine large dogfood Rust files exceeded 30 seconds; those partitions grant no candidate authority.
+3. The terminal dogfood report retained nine Rust partitions that exceeded 30 seconds; timed-out partitions grant no
+   candidate authority, and the exact count remains report-bound because scheduling at the hard boundary varies.
 4. Refreshed external commands yielded 4 passes, 11 failures, and 3 unavailable Leiningen results with ambient
    dependency caches; the prior run retained 2 Julia timeouts. This qualifies the environment; it neither
    invalidates scans nor proves behavior.

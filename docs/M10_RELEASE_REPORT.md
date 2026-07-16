@@ -8,9 +8,9 @@ in [M10_CAPABILITY_MATRIX.md](M10_CAPABILITY_MATRIX.md); every other numerical b
 | Area | Result |
 |---|---|
 | Canonical compatibility | 600 deterministic programs, 100 each Clojure/JavaScript/Julia/Python/Rust/TypeScript; 120 malformed/opaque |
-| Dogfood | 189 files / 139,694 lines; 182 Complete + 7 Partial reports; 1,536 findings; zero production `SafeAuto` |
+| Dogfood | 189 files / 139,703 lines; 182 Complete + 7 Partial reports; 1,536 findings; zero production `SafeAuto` |
 | Dogfood dispositions | 0 accepted, 5 intentional-fixture rejected, 1,538 unsafe/unverified, 0 naturally stale |
-| Dogfood recipes | 138 isolated files; 7 candidates; 9 timeout abstentions; 245.550 s; 1,386,401,792-byte peak RSS |
+| Dogfood recipes | 138 isolated files; 7 candidates; 9 timeout abstentions; 243.970 s; 1,387,225,088-byte peak RSS |
 | Dogfood work orders | 7 transformation orders / 7 unique IDs / 0 duplicates; 4 edges; 2 waves; no blocked group |
 | External projects | 18 exact revisions, three per language/size grid; 1,198 reports / 198,255 lines / 8,322 findings |
 | External commands | Refreshed warm-cache run: 4 passed, 11 failed, 3 tool-unavailable; prior run had 2 Julia timeouts |
@@ -24,7 +24,7 @@ in [M10_CAPABILITY_MATRIX.md](M10_CAPABILITY_MATRIX.md); every other numerical b
 - Readability worst/holdout gates fail and labels are unshipped; results are not pooled into a success claim.
 - Transformation precision is numerically demonstrated for one Rust recipe slice only; other languages/families
   remain review-only.
-- Nine dogfood recipe partitions timed out and whole-project finding proposals missed 15 minutes. Both are
+- Nine terminal dogfood recipe partitions timed out and whole-project finding proposals missed 15 minutes. Both are
   unshipped, with bounded protocol operations retained.
 - External build/test outcomes are environment-qualified; read-only scans succeeded for all pins.
 - One-million-LOC cold/RSS performance, independent 600-case macro F1, human patch preference, and artifact signing

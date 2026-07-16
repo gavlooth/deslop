@@ -471,7 +471,7 @@ fn shipped_capabilities() -> Vec<ShippedCapability> {
             "rust",
             "S1+reviewed-graph-recipes",
             "shipped-limited",
-            "gold graph fixtures; B2/B7 SafeAuto authority only for frozen unreachable-literal recipe",
+            "gold graph fixtures; B2/B7 SafeAuto authority only for frozen unreachable-literal recipe; budget abstentions stay explicit",
         ),
         capability(
             "scale",
@@ -532,7 +532,7 @@ fn release_exceptions() -> Vec<ReleaseException> {
         exception(
             "EX-03",
             "downgraded",
-            "nine oversized dogfood recipe files",
+            "oversized dogfood recipe partitions",
             "30-second partition abstentions",
             "no candidate authority for those files",
             "each partition completes below budget",
