@@ -8,6 +8,8 @@ use deslop_core::{FileReport, Finding};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+pub mod m6_benchmark;
+
 const DEFAULT_EPSILON: f64 = 0.0001;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

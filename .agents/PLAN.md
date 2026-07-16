@@ -4420,3 +4420,34 @@ regression, scope, abstention, pairing, and confidence gates are measured and pa
 Negative-memory constraint: client-supplied verification observations are protocol evidence, not M7 semantic
 authority. Remote apply never writes; only a server-owned gated executor may do so, and durable verifier/write
 authority remains a later milestone.
+
+### M6.10/M6.DoD terminal checkpoint — measured graph-grounded LLM improvement
+
+The frozen benchmark is one paired OpenAI Batch run over 240 synthetic holdout tasks: six languages by five M5.25
+opportunity families by four variants by safe/unsafe label. Each task has a source-only baseline request and a
+graph-grounded work-order request, producing 480 requests. Both arms use `gpt-5.6-luna`, reasoning effort `none`, no
+tools, the same strict answer schema, a 4,000-character input ceiling, and 256 maximum output tokens. Safe success is
+exact whole-replacement equality; unsafe success is an exact abstain decision with an empty replacement. Prompts,
+manifest, raw Batch input/output, result report, file hashes, API identifiers, token use, split/licence, model setup,
+and reference-machine metadata are retained in `.agents/benchmarks/`.
+
+The graph arm accepted 120/120 safe patches and abstained on 120/120 unsafe cases. The baseline accepted 67/120 safe
+patches and abstained on 118/120 unsafe cases. Accepted-patch improvement is +44.1667 percentage points; the
+predeclared normal paired 95% confidence interval over per-safe-task graph-minus-baseline outcomes is [+35.2444,
++53.0890] points. Graph out-of-scope edits are 0/240 and semantic regressions are 0, versus 3/240 and 2 baseline.
+Every language improves by 40–50 points; no family regresses. All eight frozen B10 gates pass.
+
+`m6-llm-benchmark` deterministically generates Batch assets, strictly scores exactly 480 unique completed responses,
+and verifies a stored report by recomputing counters, slices, confidence bounds, and gates from its manifest and
+observations. The executable M6 DoD test binds the checked-in evidence to the 240-task contract. Earlier protocol
+tests already enforce one strict transaction per unique candidate, deterministic dependency/conflict/SCC planning,
+and stale plan/revision rejection. Together these close M6.DoD without granting M7 verification authority.
+
+Terminal validation passes `cargo fmt --all -- --check`, workspace all-feature build/test, and all-feature/all-target
+clippy with `-D warnings`: 675 active unit/integration tests, 4 active doctests, and 3 explicit ignored probes. M6 is
+terminal; the next implementation milestone is M7, but no M7 work was started in this slice.
+
+Negative-memory constraint: the first stored-report verifier used exact `f64` equality after JSON round-trip; that
+invalidated comparison was replaced with 1e-12-tolerant numeric checks while all integer counts, observations,
+identities, gates, and schema fields remain exact. Benchmark thresholds, prompts, and samples were never changed
+after submission.

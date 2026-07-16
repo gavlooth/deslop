@@ -659,9 +659,18 @@ reports, benchmark records, and work orders.
   Focused tests cover stale revision/plan handles, overlapping/out-of-scope edits, eight concurrent clients with
   identical output, exactly one executor call across retries, pagination, and evidence/byte truncation. Cross-surface
   CLI/MCP/LSP/slim tests and all 772 active workspace tests plus 4 doctests and full gates pass.
-- [ ] M6.10 Benchmark LLM workflows with and without graph-grounded work orders under identical budgets.
-- [ ] M6.DoD Demonstrate one reviewable transaction per candidate, valid dependency ordering, safe stale-order
+- [x] M6.10 Benchmark LLM workflows with and without graph-grounded work orders under identical budgets.
+  One frozen OpenAI Batch run paired 240 tasks across 6 languages, 5 opportunity families, and equal safe/unsafe
+  cases using `gpt-5.6-luna`, reasoning `none`, no tools, a 4,000-character context ceiling, and 256 output tokens.
+  Graph-grounded accepted patches were 120/120 versus 67/120 baseline: +44.17 percentage points with paired 95%
+  CI [+35.24, +53.09] points. Graph unsafe abstention was 120/120, out-of-scope edits 0/240, and semantic
+  regressions 0 versus 2 baseline. All 480 API requests completed; the frozen manifest, prompts, raw output,
+  report, hashes, and environment metadata are retained under `.agents/benchmarks/`.
+- [x] M6.DoD Demonstrate one reviewable transaction per candidate, valid dependency ordering, safe stale-order
   rejection, and a measured LLM task-success improvement without more semantic regressions.
+  Strict work-order batch uniqueness, planner dependency/conflict/SCC tests, lifecycle stale-handle rejection, and
+  the tamper-recomputing M6 benchmark DoD test jointly close the contract. Terminal workspace fmt/build/test/clippy
+  passes with 675 active unit/integration tests, 4 active doctests, and 3 explicit ignored probes.
 
 ## M7 — Verification authority
 
@@ -760,8 +769,10 @@ reports, benchmark records, and work orders.
   zero confirmed semantic failures or verification bypasses in `safe-auto`.
 - [ ] B9 Meet blinded human-preference lower 95% bound >= 0.60 overall/0.55 per language and improve the
   declared primary quality axis in at least 90% of accepted patches without displaced project regressions.
-- [ ] B10 Show graph-rich LLM work orders improve accepted-patch rate by >= 10 percentage points with paired
+- [x] B10 Show graph-rich LLM work orders improve accepted-patch rate by >= 10 percentage points with paired
   95% confidence excluding zero, <= 2% out-of-scope edits, and >= 90% correct unsafe/impossible abstention.
+  Frozen M6 evidence measures +44.17 percentage points accepted-patch rate, paired 95% CI [+35.24, +53.09],
+  0% graph out-of-scope edits, 100% unsafe/impossible abstention, and no language or family regression over 5 points.
 - [ ] B11 On the recorded reference machine, scan 1 MLOC cold in <= 60 seconds and <= 3 GiB RSS; process a
   single-file incremental edit at p95 <= 500 ms and <= 5% of a full scan; preserve exact clean/incremental parity.
 - [ ] B12 Publish macro/worst-language/worst-family results, confidence intervals, abstention/coverage, failure

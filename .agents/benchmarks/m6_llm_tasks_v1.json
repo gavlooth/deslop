@@ -1,0 +1,4210 @@
+{
+  "schema": "deslop.m6-llm-task-manifest/1",
+  "digest": "m6b1_a835c79d7cb21c9e0f5870dda772279021485c596e3203156df3aa631418fe42",
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "none",
+  "maximum_output_tokens": 256,
+  "context_character_budget": 4000,
+  "tasks": [
+    {
+      "id": "m6-clojure-conversion-allocation-0-safe",
+      "language": "clojure",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_0\n(let [boxed0 (atom 2)] @boxed0)",
+      "expected_replacement": ";; KEEP_API_0\n@(atom 2)",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-conversion-allocation-0-unsafe",
+      "language": "clojure",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_0\n(let [boxed0 (atom 2)] (observe boxed0) @boxed0)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-conversion-allocation-1-safe",
+      "language": "clojure",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_1\n(let [boxed1 (atom 3)] @boxed1)",
+      "expected_replacement": ";; KEEP_API_1\n@(atom 3)",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-conversion-allocation-1-unsafe",
+      "language": "clojure",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_1\n(let [boxed1 (atom 3)] (observe boxed1) @boxed1)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-conversion-allocation-2-safe",
+      "language": "clojure",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_2\n(let [boxed2 (atom 4)] @boxed2)",
+      "expected_replacement": ";; KEEP_API_2\n@(atom 4)",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-conversion-allocation-2-unsafe",
+      "language": "clojure",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_2\n(let [boxed2 (atom 4)] (observe boxed2) @boxed2)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-conversion-allocation-3-safe",
+      "language": "clojure",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_3\n(let [boxed3 (atom 5)] @boxed3)",
+      "expected_replacement": ";; KEEP_API_3\n@(atom 5)",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-conversion-allocation-3-unsafe",
+      "language": "clojure",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_3\n(let [boxed3 (atom 5)] (observe boxed3) @boxed3)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-dead-code-0-safe",
+      "language": "clojure",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_0\n(defn f0 [] (if true 2 99))",
+      "expected_replacement": ";; KEEP_API_0\n(defn f0 [] 2)",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-dead-code-0-unsafe",
+      "language": "clojure",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_0\n(defn f0 [flag] (if flag 2 99))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-dead-code-1-safe",
+      "language": "clojure",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_1\n(defn f1 [] (if true 3 99))",
+      "expected_replacement": ";; KEEP_API_1\n(defn f1 [] 3)",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-dead-code-1-unsafe",
+      "language": "clojure",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_1\n(defn f1 [flag] (if flag 3 99))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-dead-code-2-safe",
+      "language": "clojure",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_2\n(defn f2 [] (if true 4 99))",
+      "expected_replacement": ";; KEEP_API_2\n(defn f2 [] 4)",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-dead-code-2-unsafe",
+      "language": "clojure",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_2\n(defn f2 [flag] (if flag 4 99))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-dead-code-3-safe",
+      "language": "clojure",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_3\n(defn f3 [] (if true 5 99))",
+      "expected_replacement": ";; KEEP_API_3\n(defn f3 [] 5)",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-dead-code-3-unsafe",
+      "language": "clojure",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_3\n(defn f3 [flag] (if flag 5 99))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-forwarding-0-safe",
+      "language": "clojure",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_0\n(defn target0 [x] (inc x))\n(defn- helper0 [x] (target0 x))\n(def value (helper0 2))",
+      "expected_replacement": ";; KEEP_API_0\n(defn target0 [x] (inc x))\n(def value (target0 2))",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-forwarding-0-unsafe",
+      "language": "clojure",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_0\n(defn helper0 [x] (do (audit x) (target0 x)))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-forwarding-1-safe",
+      "language": "clojure",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_1\n(defn target1 [x] (inc x))\n(defn- helper1 [x] (target1 x))\n(def value (helper1 3))",
+      "expected_replacement": ";; KEEP_API_1\n(defn target1 [x] (inc x))\n(def value (target1 3))",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-forwarding-1-unsafe",
+      "language": "clojure",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_1\n(defn helper1 [x] (do (audit x) (target1 x)))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-forwarding-2-safe",
+      "language": "clojure",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_2\n(defn target2 [x] (inc x))\n(defn- helper2 [x] (target2 x))\n(def value (helper2 4))",
+      "expected_replacement": ";; KEEP_API_2\n(defn target2 [x] (inc x))\n(def value (target2 4))",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-forwarding-2-unsafe",
+      "language": "clojure",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_2\n(defn helper2 [x] (do (audit x) (target2 x)))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-forwarding-3-safe",
+      "language": "clojure",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_3\n(defn target3 [x] (inc x))\n(defn- helper3 [x] (target3 x))\n(def value (helper3 5))",
+      "expected_replacement": ";; KEEP_API_3\n(defn target3 [x] (inc x))\n(def value (target3 5))",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-forwarding-3-unsafe",
+      "language": "clojure",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_3\n(defn helper3 [x] (do (audit x) (target3 x)))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-repeated-error-0-safe",
+      "language": "clojure",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_0\n(defn f0 [flag] (if flag (throw (ex-info \"E2\" {})) (throw (ex-info \"E2\" {}))))",
+      "expected_replacement": ";; KEEP_API_0\n(defn f0 [_flag] (throw (ex-info \"E2\" {})))",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-repeated-error-0-unsafe",
+      "language": "clojure",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_0\n(defn f0 [flag] (if flag (throw (ex-info \"E2\" {})) (throw (ex-info \"E3\" {}))))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-repeated-error-1-safe",
+      "language": "clojure",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_1\n(defn f1 [flag] (if flag (throw (ex-info \"E3\" {})) (throw (ex-info \"E3\" {}))))",
+      "expected_replacement": ";; KEEP_API_1\n(defn f1 [_flag] (throw (ex-info \"E3\" {})))",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-repeated-error-1-unsafe",
+      "language": "clojure",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_1\n(defn f1 [flag] (if flag (throw (ex-info \"E3\" {})) (throw (ex-info \"E4\" {}))))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-repeated-error-2-safe",
+      "language": "clojure",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_2\n(defn f2 [flag] (if flag (throw (ex-info \"E4\" {})) (throw (ex-info \"E4\" {}))))",
+      "expected_replacement": ";; KEEP_API_2\n(defn f2 [_flag] (throw (ex-info \"E4\" {})))",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-repeated-error-2-unsafe",
+      "language": "clojure",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_2\n(defn f2 [flag] (if flag (throw (ex-info \"E4\" {})) (throw (ex-info \"E5\" {}))))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-repeated-error-3-safe",
+      "language": "clojure",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_3\n(defn f3 [flag] (if flag (throw (ex-info \"E5\" {})) (throw (ex-info \"E5\" {}))))",
+      "expected_replacement": ";; KEEP_API_3\n(defn f3 [_flag] (throw (ex-info \"E5\" {})))",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-repeated-error-3-unsafe",
+      "language": "clojure",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_3\n(defn f3 [flag] (if flag (throw (ex-info \"E5\" {})) (throw (ex-info \"E6\" {}))))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-wrapper-0-safe",
+      "language": "clojure",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_0\n(defn target0 [x] (inc x))\n(defn- helper0 [x] (target0 x))\n(def value (helper0 2))",
+      "expected_replacement": ";; KEEP_API_0\n(defn target0 [x] (inc x))\n(def value (target0 2))",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-wrapper-0-unsafe",
+      "language": "clojure",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_0\n(defn helper0 [x] (do (audit x) (target0 x)))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-wrapper-1-safe",
+      "language": "clojure",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_1\n(defn target1 [x] (inc x))\n(defn- helper1 [x] (target1 x))\n(def value (helper1 3))",
+      "expected_replacement": ";; KEEP_API_1\n(defn target1 [x] (inc x))\n(def value (target1 3))",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-wrapper-1-unsafe",
+      "language": "clojure",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_1\n(defn helper1 [x] (do (audit x) (target1 x)))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-wrapper-2-safe",
+      "language": "clojure",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_2\n(defn target2 [x] (inc x))\n(defn- helper2 [x] (target2 x))\n(def value (helper2 4))",
+      "expected_replacement": ";; KEEP_API_2\n(defn target2 [x] (inc x))\n(def value (target2 4))",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-wrapper-2-unsafe",
+      "language": "clojure",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_2\n(defn helper2 [x] (do (audit x) (target2 x)))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-clojure-wrapper-3-safe",
+      "language": "clojure",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": ";; KEEP_API_3\n(defn target3 [x] (inc x))\n(defn- helper3 [x] (target3 x))\n(def value (helper3 5))",
+      "expected_replacement": ";; KEEP_API_3\n(defn target3 [x] (inc x))\n(def value (target3 5))",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-clojure-wrapper-3-unsafe",
+      "language": "clojure",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": ";; KEEP_API_3\n(defn helper3 [x] (do (audit x) (target3 x)))",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-conversion-allocation-0-safe",
+      "language": "javascript",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nconst boxed0=new Number(2);\nconst value=boxed0.valueOf();",
+      "expected_replacement": "// KEEP_API_0\nconst value=(new Number(2)).valueOf();",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-conversion-allocation-0-unsafe",
+      "language": "javascript",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nconst boxed0=new Number(2);\nobserve(boxed0);\nconst value=boxed0.valueOf();",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-conversion-allocation-1-safe",
+      "language": "javascript",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nconst boxed1=new Number(3);\nconst value=boxed1.valueOf();",
+      "expected_replacement": "// KEEP_API_1\nconst value=(new Number(3)).valueOf();",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-conversion-allocation-1-unsafe",
+      "language": "javascript",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nconst boxed1=new Number(3);\nobserve(boxed1);\nconst value=boxed1.valueOf();",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-conversion-allocation-2-safe",
+      "language": "javascript",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nconst boxed2=new Number(4);\nconst value=boxed2.valueOf();",
+      "expected_replacement": "// KEEP_API_2\nconst value=(new Number(4)).valueOf();",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-conversion-allocation-2-unsafe",
+      "language": "javascript",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nconst boxed2=new Number(4);\nobserve(boxed2);\nconst value=boxed2.valueOf();",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-conversion-allocation-3-safe",
+      "language": "javascript",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nconst boxed3=new Number(5);\nconst value=boxed3.valueOf();",
+      "expected_replacement": "// KEEP_API_3\nconst value=(new Number(5)).valueOf();",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-conversion-allocation-3-unsafe",
+      "language": "javascript",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nconst boxed3=new Number(5);\nobserve(boxed3);\nconst value=boxed3.valueOf();",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-dead-code-0-safe",
+      "language": "javascript",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfunction f0() { return 2; 99; }",
+      "expected_replacement": "// KEEP_API_0\nfunction f0() { return 2; }",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-dead-code-0-unsafe",
+      "language": "javascript",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfunction f0(flag) { return flag ? 2 : 99; }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-dead-code-1-safe",
+      "language": "javascript",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfunction f1() { return 3; 99; }",
+      "expected_replacement": "// KEEP_API_1\nfunction f1() { return 3; }",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-dead-code-1-unsafe",
+      "language": "javascript",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfunction f1(flag) { return flag ? 3 : 99; }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-dead-code-2-safe",
+      "language": "javascript",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfunction f2() { return 4; 99; }",
+      "expected_replacement": "// KEEP_API_2\nfunction f2() { return 4; }",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-dead-code-2-unsafe",
+      "language": "javascript",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfunction f2(flag) { return flag ? 4 : 99; }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-dead-code-3-safe",
+      "language": "javascript",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfunction f3() { return 5; 99; }",
+      "expected_replacement": "// KEEP_API_3\nfunction f3() { return 5; }",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-dead-code-3-unsafe",
+      "language": "javascript",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfunction f3(flag) { return flag ? 5 : 99; }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-forwarding-0-safe",
+      "language": "javascript",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nconst target0=x=>x+1;\nconst helper0=x=>target0(x);\nconst value=helper0(2);",
+      "expected_replacement": "// KEEP_API_0\nconst target0=x=>x+1;\nconst value=target0(2);",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-forwarding-0-unsafe",
+      "language": "javascript",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nexport const helper0=x=>{audit(x);return target0(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-forwarding-1-safe",
+      "language": "javascript",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nconst target1=x=>x+1;\nconst helper1=x=>target1(x);\nconst value=helper1(3);",
+      "expected_replacement": "// KEEP_API_1\nconst target1=x=>x+1;\nconst value=target1(3);",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-forwarding-1-unsafe",
+      "language": "javascript",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nexport const helper1=x=>{audit(x);return target1(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-forwarding-2-safe",
+      "language": "javascript",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nconst target2=x=>x+1;\nconst helper2=x=>target2(x);\nconst value=helper2(4);",
+      "expected_replacement": "// KEEP_API_2\nconst target2=x=>x+1;\nconst value=target2(4);",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-forwarding-2-unsafe",
+      "language": "javascript",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nexport const helper2=x=>{audit(x);return target2(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-forwarding-3-safe",
+      "language": "javascript",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nconst target3=x=>x+1;\nconst helper3=x=>target3(x);\nconst value=helper3(5);",
+      "expected_replacement": "// KEEP_API_3\nconst target3=x=>x+1;\nconst value=target3(5);",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-forwarding-3-unsafe",
+      "language": "javascript",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nexport const helper3=x=>{audit(x);return target3(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-repeated-error-0-safe",
+      "language": "javascript",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfunction f0(flag){if(flag)throw new Error('E2');else throw new Error('E2');}",
+      "expected_replacement": "// KEEP_API_0\nfunction f0(_flag){throw new Error('E2');}",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-repeated-error-0-unsafe",
+      "language": "javascript",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfunction f0(flag){if(flag)throw new Error('E2');else throw new Error('E3');}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-repeated-error-1-safe",
+      "language": "javascript",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfunction f1(flag){if(flag)throw new Error('E3');else throw new Error('E3');}",
+      "expected_replacement": "// KEEP_API_1\nfunction f1(_flag){throw new Error('E3');}",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-repeated-error-1-unsafe",
+      "language": "javascript",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfunction f1(flag){if(flag)throw new Error('E3');else throw new Error('E4');}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-repeated-error-2-safe",
+      "language": "javascript",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfunction f2(flag){if(flag)throw new Error('E4');else throw new Error('E4');}",
+      "expected_replacement": "// KEEP_API_2\nfunction f2(_flag){throw new Error('E4');}",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-repeated-error-2-unsafe",
+      "language": "javascript",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfunction f2(flag){if(flag)throw new Error('E4');else throw new Error('E5');}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-repeated-error-3-safe",
+      "language": "javascript",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfunction f3(flag){if(flag)throw new Error('E5');else throw new Error('E5');}",
+      "expected_replacement": "// KEEP_API_3\nfunction f3(_flag){throw new Error('E5');}",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-repeated-error-3-unsafe",
+      "language": "javascript",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfunction f3(flag){if(flag)throw new Error('E5');else throw new Error('E6');}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-wrapper-0-safe",
+      "language": "javascript",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nconst target0=x=>x+1;\nconst helper0=x=>target0(x);\nconst value=helper0(2);",
+      "expected_replacement": "// KEEP_API_0\nconst target0=x=>x+1;\nconst value=target0(2);",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-wrapper-0-unsafe",
+      "language": "javascript",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nexport const helper0=x=>{audit(x);return target0(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-wrapper-1-safe",
+      "language": "javascript",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nconst target1=x=>x+1;\nconst helper1=x=>target1(x);\nconst value=helper1(3);",
+      "expected_replacement": "// KEEP_API_1\nconst target1=x=>x+1;\nconst value=target1(3);",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-wrapper-1-unsafe",
+      "language": "javascript",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nexport const helper1=x=>{audit(x);return target1(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-wrapper-2-safe",
+      "language": "javascript",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nconst target2=x=>x+1;\nconst helper2=x=>target2(x);\nconst value=helper2(4);",
+      "expected_replacement": "// KEEP_API_2\nconst target2=x=>x+1;\nconst value=target2(4);",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-wrapper-2-unsafe",
+      "language": "javascript",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nexport const helper2=x=>{audit(x);return target2(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-javascript-wrapper-3-safe",
+      "language": "javascript",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nconst target3=x=>x+1;\nconst helper3=x=>target3(x);\nconst value=helper3(5);",
+      "expected_replacement": "// KEEP_API_3\nconst target3=x=>x+1;\nconst value=target3(5);",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-javascript-wrapper-3-unsafe",
+      "language": "javascript",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nexport const helper3=x=>{audit(x);return target3(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-conversion-allocation-0-safe",
+      "language": "julia",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nboxed0=Ref(2)\nvalue=boxed0[]",
+      "expected_replacement": "// KEEP_API_0\nvalue=Ref(2)[]",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-conversion-allocation-0-unsafe",
+      "language": "julia",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nboxed0=Ref(2)\nobserve(boxed0)\nvalue=boxed0[]",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-conversion-allocation-1-safe",
+      "language": "julia",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nboxed1=Ref(3)\nvalue=boxed1[]",
+      "expected_replacement": "// KEEP_API_1\nvalue=Ref(3)[]",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-conversion-allocation-1-unsafe",
+      "language": "julia",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nboxed1=Ref(3)\nobserve(boxed1)\nvalue=boxed1[]",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-conversion-allocation-2-safe",
+      "language": "julia",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nboxed2=Ref(4)\nvalue=boxed2[]",
+      "expected_replacement": "// KEEP_API_2\nvalue=Ref(4)[]",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-conversion-allocation-2-unsafe",
+      "language": "julia",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nboxed2=Ref(4)\nobserve(boxed2)\nvalue=boxed2[]",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-conversion-allocation-3-safe",
+      "language": "julia",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nboxed3=Ref(5)\nvalue=boxed3[]",
+      "expected_replacement": "// KEEP_API_3\nvalue=Ref(5)[]",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-conversion-allocation-3-unsafe",
+      "language": "julia",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nboxed3=Ref(5)\nobserve(boxed3)\nvalue=boxed3[]",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-dead-code-0-safe",
+      "language": "julia",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfunction f0()\n    return 2\n    99\nend",
+      "expected_replacement": "// KEEP_API_0\nfunction f0()\n    return 2\nend",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-dead-code-0-unsafe",
+      "language": "julia",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nf0(flag) = flag ? 2 : 99",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-dead-code-1-safe",
+      "language": "julia",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfunction f1()\n    return 3\n    99\nend",
+      "expected_replacement": "// KEEP_API_1\nfunction f1()\n    return 3\nend",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-dead-code-1-unsafe",
+      "language": "julia",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nf1(flag) = flag ? 3 : 99",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-dead-code-2-safe",
+      "language": "julia",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfunction f2()\n    return 4\n    99\nend",
+      "expected_replacement": "// KEEP_API_2\nfunction f2()\n    return 4\nend",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-dead-code-2-unsafe",
+      "language": "julia",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nf2(flag) = flag ? 4 : 99",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-dead-code-3-safe",
+      "language": "julia",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfunction f3()\n    return 5\n    99\nend",
+      "expected_replacement": "// KEEP_API_3\nfunction f3()\n    return 5\nend",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-dead-code-3-unsafe",
+      "language": "julia",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nf3(flag) = flag ? 5 : 99",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-forwarding-0-safe",
+      "language": "julia",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\ntarget0(x)=x+1\nhelper0(x)=target0(x)\nvalue=helper0(2)",
+      "expected_replacement": "// KEEP_API_0\ntarget0(x)=x+1\nvalue=target0(2)",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-forwarding-0-unsafe",
+      "language": "julia",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfunction helper0(x)\n audit(x)\n target0(x)\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-forwarding-1-safe",
+      "language": "julia",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\ntarget1(x)=x+1\nhelper1(x)=target1(x)\nvalue=helper1(3)",
+      "expected_replacement": "// KEEP_API_1\ntarget1(x)=x+1\nvalue=target1(3)",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-forwarding-1-unsafe",
+      "language": "julia",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfunction helper1(x)\n audit(x)\n target1(x)\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-forwarding-2-safe",
+      "language": "julia",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\ntarget2(x)=x+1\nhelper2(x)=target2(x)\nvalue=helper2(4)",
+      "expected_replacement": "// KEEP_API_2\ntarget2(x)=x+1\nvalue=target2(4)",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-forwarding-2-unsafe",
+      "language": "julia",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfunction helper2(x)\n audit(x)\n target2(x)\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-forwarding-3-safe",
+      "language": "julia",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\ntarget3(x)=x+1\nhelper3(x)=target3(x)\nvalue=helper3(5)",
+      "expected_replacement": "// KEEP_API_3\ntarget3(x)=x+1\nvalue=target3(5)",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-forwarding-3-unsafe",
+      "language": "julia",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfunction helper3(x)\n audit(x)\n target3(x)\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-repeated-error-0-safe",
+      "language": "julia",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfunction f0(flag)\n if flag; error(\"E2\"); else; error(\"E2\"); end\nend",
+      "expected_replacement": "// KEEP_API_0\nfunction f0(_flag)\n error(\"E2\")\nend",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-repeated-error-0-unsafe",
+      "language": "julia",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfunction f0(flag)\n if flag; error(\"E2\"); else; error(\"E3\"); end\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-repeated-error-1-safe",
+      "language": "julia",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfunction f1(flag)\n if flag; error(\"E3\"); else; error(\"E3\"); end\nend",
+      "expected_replacement": "// KEEP_API_1\nfunction f1(_flag)\n error(\"E3\")\nend",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-repeated-error-1-unsafe",
+      "language": "julia",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfunction f1(flag)\n if flag; error(\"E3\"); else; error(\"E4\"); end\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-repeated-error-2-safe",
+      "language": "julia",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfunction f2(flag)\n if flag; error(\"E4\"); else; error(\"E4\"); end\nend",
+      "expected_replacement": "// KEEP_API_2\nfunction f2(_flag)\n error(\"E4\")\nend",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-repeated-error-2-unsafe",
+      "language": "julia",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfunction f2(flag)\n if flag; error(\"E4\"); else; error(\"E5\"); end\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-repeated-error-3-safe",
+      "language": "julia",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfunction f3(flag)\n if flag; error(\"E5\"); else; error(\"E5\"); end\nend",
+      "expected_replacement": "// KEEP_API_3\nfunction f3(_flag)\n error(\"E5\")\nend",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-repeated-error-3-unsafe",
+      "language": "julia",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfunction f3(flag)\n if flag; error(\"E5\"); else; error(\"E6\"); end\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-wrapper-0-safe",
+      "language": "julia",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\ntarget0(x)=x+1\nhelper0(x)=target0(x)\nvalue=helper0(2)",
+      "expected_replacement": "// KEEP_API_0\ntarget0(x)=x+1\nvalue=target0(2)",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-wrapper-0-unsafe",
+      "language": "julia",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfunction helper0(x)\n audit(x)\n target0(x)\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-wrapper-1-safe",
+      "language": "julia",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\ntarget1(x)=x+1\nhelper1(x)=target1(x)\nvalue=helper1(3)",
+      "expected_replacement": "// KEEP_API_1\ntarget1(x)=x+1\nvalue=target1(3)",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-wrapper-1-unsafe",
+      "language": "julia",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfunction helper1(x)\n audit(x)\n target1(x)\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-wrapper-2-safe",
+      "language": "julia",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\ntarget2(x)=x+1\nhelper2(x)=target2(x)\nvalue=helper2(4)",
+      "expected_replacement": "// KEEP_API_2\ntarget2(x)=x+1\nvalue=target2(4)",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-wrapper-2-unsafe",
+      "language": "julia",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfunction helper2(x)\n audit(x)\n target2(x)\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-julia-wrapper-3-safe",
+      "language": "julia",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\ntarget3(x)=x+1\nhelper3(x)=target3(x)\nvalue=helper3(5)",
+      "expected_replacement": "// KEEP_API_3\ntarget3(x)=x+1\nvalue=target3(5)",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-julia-wrapper-3-unsafe",
+      "language": "julia",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfunction helper3(x)\n audit(x)\n target3(x)\nend",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-conversion-allocation-0-safe",
+      "language": "python",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "# KEEP_API_0\nboxed0=int('2')\nvalue=boxed0+1",
+      "expected_replacement": "# KEEP_API_0\nvalue=int('2')+1",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-conversion-allocation-0-unsafe",
+      "language": "python",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_0\nboxed0=int('2')\nobserve(boxed0)\nvalue=boxed0+1",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-conversion-allocation-1-safe",
+      "language": "python",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "# KEEP_API_1\nboxed1=int('3')\nvalue=boxed1+1",
+      "expected_replacement": "# KEEP_API_1\nvalue=int('3')+1",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-conversion-allocation-1-unsafe",
+      "language": "python",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_1\nboxed1=int('3')\nobserve(boxed1)\nvalue=boxed1+1",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-conversion-allocation-2-safe",
+      "language": "python",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "# KEEP_API_2\nboxed2=int('4')\nvalue=boxed2+1",
+      "expected_replacement": "# KEEP_API_2\nvalue=int('4')+1",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-conversion-allocation-2-unsafe",
+      "language": "python",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_2\nboxed2=int('4')\nobserve(boxed2)\nvalue=boxed2+1",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-conversion-allocation-3-safe",
+      "language": "python",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "# KEEP_API_3\nboxed3=int('5')\nvalue=boxed3+1",
+      "expected_replacement": "# KEEP_API_3\nvalue=int('5')+1",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-conversion-allocation-3-unsafe",
+      "language": "python",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_3\nboxed3=int('5')\nobserve(boxed3)\nvalue=boxed3+1",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-dead-code-0-safe",
+      "language": "python",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "# KEEP_API_0\ndef f0():\n    return 2\n    99",
+      "expected_replacement": "# KEEP_API_0\ndef f0():\n    return 2",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-dead-code-0-unsafe",
+      "language": "python",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_0\ndef f0(flag):\n    return 2 if flag else 99",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-dead-code-1-safe",
+      "language": "python",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "# KEEP_API_1\ndef f1():\n    return 3\n    99",
+      "expected_replacement": "# KEEP_API_1\ndef f1():\n    return 3",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-dead-code-1-unsafe",
+      "language": "python",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_1\ndef f1(flag):\n    return 3 if flag else 99",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-dead-code-2-safe",
+      "language": "python",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "# KEEP_API_2\ndef f2():\n    return 4\n    99",
+      "expected_replacement": "# KEEP_API_2\ndef f2():\n    return 4",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-dead-code-2-unsafe",
+      "language": "python",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_2\ndef f2(flag):\n    return 4 if flag else 99",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-dead-code-3-safe",
+      "language": "python",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "# KEEP_API_3\ndef f3():\n    return 5\n    99",
+      "expected_replacement": "# KEEP_API_3\ndef f3():\n    return 5",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-dead-code-3-unsafe",
+      "language": "python",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_3\ndef f3(flag):\n    return 5 if flag else 99",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-forwarding-0-safe",
+      "language": "python",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "# KEEP_API_0\ndef target0(x): return x+1\ndef helper0(x): return target0(x)\nvalue=helper0(2)",
+      "expected_replacement": "# KEEP_API_0\ndef target0(x): return x+1\nvalue=target0(2)",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-forwarding-0-unsafe",
+      "language": "python",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_0\ndef helper0(x):\n    audit(x)\n    return target0(x)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-forwarding-1-safe",
+      "language": "python",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "# KEEP_API_1\ndef target1(x): return x+1\ndef helper1(x): return target1(x)\nvalue=helper1(3)",
+      "expected_replacement": "# KEEP_API_1\ndef target1(x): return x+1\nvalue=target1(3)",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-forwarding-1-unsafe",
+      "language": "python",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_1\ndef helper1(x):\n    audit(x)\n    return target1(x)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-forwarding-2-safe",
+      "language": "python",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "# KEEP_API_2\ndef target2(x): return x+1\ndef helper2(x): return target2(x)\nvalue=helper2(4)",
+      "expected_replacement": "# KEEP_API_2\ndef target2(x): return x+1\nvalue=target2(4)",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-forwarding-2-unsafe",
+      "language": "python",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_2\ndef helper2(x):\n    audit(x)\n    return target2(x)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-forwarding-3-safe",
+      "language": "python",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "# KEEP_API_3\ndef target3(x): return x+1\ndef helper3(x): return target3(x)\nvalue=helper3(5)",
+      "expected_replacement": "# KEEP_API_3\ndef target3(x): return x+1\nvalue=target3(5)",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-forwarding-3-unsafe",
+      "language": "python",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_3\ndef helper3(x):\n    audit(x)\n    return target3(x)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-repeated-error-0-safe",
+      "language": "python",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "# KEEP_API_0\ndef f0(flag):\n    if flag: raise ValueError('E2')\n    else: raise ValueError('E2')",
+      "expected_replacement": "# KEEP_API_0\ndef f0(_flag):\n    raise ValueError('E2')",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-repeated-error-0-unsafe",
+      "language": "python",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_0\ndef f0(flag):\n    if flag: raise ValueError('E2')\n    else: raise ValueError('E3')",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-repeated-error-1-safe",
+      "language": "python",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "# KEEP_API_1\ndef f1(flag):\n    if flag: raise ValueError('E3')\n    else: raise ValueError('E3')",
+      "expected_replacement": "# KEEP_API_1\ndef f1(_flag):\n    raise ValueError('E3')",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-repeated-error-1-unsafe",
+      "language": "python",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_1\ndef f1(flag):\n    if flag: raise ValueError('E3')\n    else: raise ValueError('E4')",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-repeated-error-2-safe",
+      "language": "python",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "# KEEP_API_2\ndef f2(flag):\n    if flag: raise ValueError('E4')\n    else: raise ValueError('E4')",
+      "expected_replacement": "# KEEP_API_2\ndef f2(_flag):\n    raise ValueError('E4')",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-repeated-error-2-unsafe",
+      "language": "python",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_2\ndef f2(flag):\n    if flag: raise ValueError('E4')\n    else: raise ValueError('E5')",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-repeated-error-3-safe",
+      "language": "python",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "# KEEP_API_3\ndef f3(flag):\n    if flag: raise ValueError('E5')\n    else: raise ValueError('E5')",
+      "expected_replacement": "# KEEP_API_3\ndef f3(_flag):\n    raise ValueError('E5')",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-repeated-error-3-unsafe",
+      "language": "python",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_3\ndef f3(flag):\n    if flag: raise ValueError('E5')\n    else: raise ValueError('E6')",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-wrapper-0-safe",
+      "language": "python",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "# KEEP_API_0\ndef target0(x): return x+1\ndef helper0(x): return target0(x)\nvalue=helper0(2)",
+      "expected_replacement": "# KEEP_API_0\ndef target0(x): return x+1\nvalue=target0(2)",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-wrapper-0-unsafe",
+      "language": "python",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_0\ndef helper0(x):\n    audit(x)\n    return target0(x)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-wrapper-1-safe",
+      "language": "python",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "# KEEP_API_1\ndef target1(x): return x+1\ndef helper1(x): return target1(x)\nvalue=helper1(3)",
+      "expected_replacement": "# KEEP_API_1\ndef target1(x): return x+1\nvalue=target1(3)",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-wrapper-1-unsafe",
+      "language": "python",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_1\ndef helper1(x):\n    audit(x)\n    return target1(x)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-wrapper-2-safe",
+      "language": "python",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "# KEEP_API_2\ndef target2(x): return x+1\ndef helper2(x): return target2(x)\nvalue=helper2(4)",
+      "expected_replacement": "# KEEP_API_2\ndef target2(x): return x+1\nvalue=target2(4)",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-wrapper-2-unsafe",
+      "language": "python",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_2\ndef helper2(x):\n    audit(x)\n    return target2(x)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-python-wrapper-3-safe",
+      "language": "python",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "# KEEP_API_3\ndef target3(x): return x+1\ndef helper3(x): return target3(x)\nvalue=helper3(5)",
+      "expected_replacement": "# KEEP_API_3\ndef target3(x): return x+1\nvalue=target3(5)",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-python-wrapper-3-unsafe",
+      "language": "python",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "# KEEP_API_3\ndef helper3(x):\n    audit(x)\n    return target3(x)",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-conversion-allocation-0-safe",
+      "language": "rust",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfn f0()->i32{let boxed=Box::new(2);*boxed}",
+      "expected_replacement": "// KEEP_API_0\nfn f0()->i32{*(Box::new(2))}",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-conversion-allocation-0-unsafe",
+      "language": "rust",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfn f0()->i32{let boxed=Box::new(2);log(&boxed);*boxed}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-conversion-allocation-1-safe",
+      "language": "rust",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfn f1()->i32{let boxed=Box::new(3);*boxed}",
+      "expected_replacement": "// KEEP_API_1\nfn f1()->i32{*(Box::new(3))}",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-conversion-allocation-1-unsafe",
+      "language": "rust",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfn f1()->i32{let boxed=Box::new(3);log(&boxed);*boxed}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-conversion-allocation-2-safe",
+      "language": "rust",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfn f2()->i32{let boxed=Box::new(4);*boxed}",
+      "expected_replacement": "// KEEP_API_2\nfn f2()->i32{*(Box::new(4))}",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-conversion-allocation-2-unsafe",
+      "language": "rust",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfn f2()->i32{let boxed=Box::new(4);log(&boxed);*boxed}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-conversion-allocation-3-safe",
+      "language": "rust",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfn f3()->i32{let boxed=Box::new(5);*boxed}",
+      "expected_replacement": "// KEEP_API_3\nfn f3()->i32{*(Box::new(5))}",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-conversion-allocation-3-unsafe",
+      "language": "rust",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfn f3()->i32{let boxed=Box::new(5);log(&boxed);*boxed}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-dead-code-0-safe",
+      "language": "rust",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfn f0() -> i32 { return 2; 99; }",
+      "expected_replacement": "// KEEP_API_0\nfn f0() -> i32 { return 2; }",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-dead-code-0-unsafe",
+      "language": "rust",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfn f0(flag: bool) -> i32 { if flag { 2 } else { 99 } }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-dead-code-1-safe",
+      "language": "rust",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfn f1() -> i32 { return 3; 99; }",
+      "expected_replacement": "// KEEP_API_1\nfn f1() -> i32 { return 3; }",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-dead-code-1-unsafe",
+      "language": "rust",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfn f1(flag: bool) -> i32 { if flag { 3 } else { 99 } }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-dead-code-2-safe",
+      "language": "rust",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfn f2() -> i32 { return 4; 99; }",
+      "expected_replacement": "// KEEP_API_2\nfn f2() -> i32 { return 4; }",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-dead-code-2-unsafe",
+      "language": "rust",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfn f2(flag: bool) -> i32 { if flag { 4 } else { 99 } }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-dead-code-3-safe",
+      "language": "rust",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfn f3() -> i32 { return 5; 99; }",
+      "expected_replacement": "// KEEP_API_3\nfn f3() -> i32 { return 5; }",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-dead-code-3-unsafe",
+      "language": "rust",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfn f3(flag: bool) -> i32 { if flag { 5 } else { 99 } }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-forwarding-0-safe",
+      "language": "rust",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfn target0(x:i32)->i32{x+1}\nfn helper0(x:i32)->i32{target0(x)}\nfn use0()->i32{helper0(2)}",
+      "expected_replacement": "// KEEP_API_0\nfn target0(x:i32)->i32{x+1}\nfn use0()->i32{target0(2)}",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-forwarding-0-unsafe",
+      "language": "rust",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfn target0(x:i32)->i32{x+1}\npub fn helper0(x:i32)->i32{target0(x)}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-forwarding-1-safe",
+      "language": "rust",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfn target1(x:i32)->i32{x+1}\nfn helper1(x:i32)->i32{target1(x)}\nfn use1()->i32{helper1(3)}",
+      "expected_replacement": "// KEEP_API_1\nfn target1(x:i32)->i32{x+1}\nfn use1()->i32{target1(3)}",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-forwarding-1-unsafe",
+      "language": "rust",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfn target1(x:i32)->i32{x+1}\npub fn helper1(x:i32)->i32{target1(x)}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-forwarding-2-safe",
+      "language": "rust",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfn target2(x:i32)->i32{x+1}\nfn helper2(x:i32)->i32{target2(x)}\nfn use2()->i32{helper2(4)}",
+      "expected_replacement": "// KEEP_API_2\nfn target2(x:i32)->i32{x+1}\nfn use2()->i32{target2(4)}",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-forwarding-2-unsafe",
+      "language": "rust",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfn target2(x:i32)->i32{x+1}\npub fn helper2(x:i32)->i32{target2(x)}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-forwarding-3-safe",
+      "language": "rust",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfn target3(x:i32)->i32{x+1}\nfn helper3(x:i32)->i32{target3(x)}\nfn use3()->i32{helper3(5)}",
+      "expected_replacement": "// KEEP_API_3\nfn target3(x:i32)->i32{x+1}\nfn use3()->i32{target3(5)}",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-forwarding-3-unsafe",
+      "language": "rust",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfn target3(x:i32)->i32{x+1}\npub fn helper3(x:i32)->i32{target3(x)}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-repeated-error-0-safe",
+      "language": "rust",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfn f0(flag:bool)->Result<(),i32>{if flag{return Err(2);}else{return Err(2);}}",
+      "expected_replacement": "// KEEP_API_0\nfn f0(_flag:bool)->Result<(),i32>{return Err(2);}",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-repeated-error-0-unsafe",
+      "language": "rust",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfn f0(flag:bool)->Result<(),i32>{if flag{return Err(2);}else{return Err(3);}}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-repeated-error-1-safe",
+      "language": "rust",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfn f1(flag:bool)->Result<(),i32>{if flag{return Err(3);}else{return Err(3);}}",
+      "expected_replacement": "// KEEP_API_1\nfn f1(_flag:bool)->Result<(),i32>{return Err(3);}",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-repeated-error-1-unsafe",
+      "language": "rust",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfn f1(flag:bool)->Result<(),i32>{if flag{return Err(3);}else{return Err(4);}}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-repeated-error-2-safe",
+      "language": "rust",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfn f2(flag:bool)->Result<(),i32>{if flag{return Err(4);}else{return Err(4);}}",
+      "expected_replacement": "// KEEP_API_2\nfn f2(_flag:bool)->Result<(),i32>{return Err(4);}",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-repeated-error-2-unsafe",
+      "language": "rust",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfn f2(flag:bool)->Result<(),i32>{if flag{return Err(4);}else{return Err(5);}}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-repeated-error-3-safe",
+      "language": "rust",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfn f3(flag:bool)->Result<(),i32>{if flag{return Err(5);}else{return Err(5);}}",
+      "expected_replacement": "// KEEP_API_3\nfn f3(_flag:bool)->Result<(),i32>{return Err(5);}",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-repeated-error-3-unsafe",
+      "language": "rust",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfn f3(flag:bool)->Result<(),i32>{if flag{return Err(5);}else{return Err(6);}}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-wrapper-0-safe",
+      "language": "rust",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfn target0(x:i32)->i32{x+1}\nfn helper0(x:i32)->i32{target0(x)}\nfn use0()->i32{helper0(2)}",
+      "expected_replacement": "// KEEP_API_0\nfn target0(x:i32)->i32{x+1}\nfn use0()->i32{target0(2)}",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-wrapper-0-unsafe",
+      "language": "rust",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfn target0(x:i32)->i32{x+1}\npub fn helper0(x:i32)->i32{target0(x)}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-wrapper-1-safe",
+      "language": "rust",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfn target1(x:i32)->i32{x+1}\nfn helper1(x:i32)->i32{target1(x)}\nfn use1()->i32{helper1(3)}",
+      "expected_replacement": "// KEEP_API_1\nfn target1(x:i32)->i32{x+1}\nfn use1()->i32{target1(3)}",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-wrapper-1-unsafe",
+      "language": "rust",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfn target1(x:i32)->i32{x+1}\npub fn helper1(x:i32)->i32{target1(x)}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-wrapper-2-safe",
+      "language": "rust",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfn target2(x:i32)->i32{x+1}\nfn helper2(x:i32)->i32{target2(x)}\nfn use2()->i32{helper2(4)}",
+      "expected_replacement": "// KEEP_API_2\nfn target2(x:i32)->i32{x+1}\nfn use2()->i32{target2(4)}",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-wrapper-2-unsafe",
+      "language": "rust",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfn target2(x:i32)->i32{x+1}\npub fn helper2(x:i32)->i32{target2(x)}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-rust-wrapper-3-safe",
+      "language": "rust",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfn target3(x:i32)->i32{x+1}\nfn helper3(x:i32)->i32{target3(x)}\nfn use3()->i32{helper3(5)}",
+      "expected_replacement": "// KEEP_API_3\nfn target3(x:i32)->i32{x+1}\nfn use3()->i32{target3(5)}",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-rust-wrapper-3-unsafe",
+      "language": "rust",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfn target3(x:i32)->i32{x+1}\npub fn helper3(x:i32)->i32{target3(x)}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-conversion-allocation-0-safe",
+      "language": "typescript",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nconst boxed0=new Number(2);\nconst value=boxed0.valueOf();",
+      "expected_replacement": "// KEEP_API_0\nconst value=(new Number(2)).valueOf();",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-conversion-allocation-0-unsafe",
+      "language": "typescript",
+      "family": "conversion-allocation",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nconst boxed0=new Number(2);\nobserve(boxed0);\nconst value=boxed0.valueOf();",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-conversion-allocation-1-safe",
+      "language": "typescript",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nconst boxed1=new Number(3);\nconst value=boxed1.valueOf();",
+      "expected_replacement": "// KEEP_API_1\nconst value=(new Number(3)).valueOf();",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-conversion-allocation-1-unsafe",
+      "language": "typescript",
+      "family": "conversion-allocation",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nconst boxed1=new Number(3);\nobserve(boxed1);\nconst value=boxed1.valueOf();",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-conversion-allocation-2-safe",
+      "language": "typescript",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nconst boxed2=new Number(4);\nconst value=boxed2.valueOf();",
+      "expected_replacement": "// KEEP_API_2\nconst value=(new Number(4)).valueOf();",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-conversion-allocation-2-unsafe",
+      "language": "typescript",
+      "family": "conversion-allocation",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nconst boxed2=new Number(4);\nobserve(boxed2);\nconst value=boxed2.valueOf();",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-conversion-allocation-3-safe",
+      "language": "typescript",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nconst boxed3=new Number(5);\nconst value=boxed3.valueOf();",
+      "expected_replacement": "// KEEP_API_3\nconst value=(new Number(5)).valueOf();",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-conversion-allocation-3-unsafe",
+      "language": "typescript",
+      "family": "conversion-allocation",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nconst boxed3=new Number(5);\nobserve(boxed3);\nconst value=boxed3.valueOf();",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-dead-code-0-safe",
+      "language": "typescript",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfunction f0() { return 2; 99; }",
+      "expected_replacement": "// KEEP_API_0\nfunction f0() { return 2; }",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-dead-code-0-unsafe",
+      "language": "typescript",
+      "family": "dead-code",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfunction f0(flag) { return flag ? 2 : 99; }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-dead-code-1-safe",
+      "language": "typescript",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfunction f1() { return 3; 99; }",
+      "expected_replacement": "// KEEP_API_1\nfunction f1() { return 3; }",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-dead-code-1-unsafe",
+      "language": "typescript",
+      "family": "dead-code",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfunction f1(flag) { return flag ? 3 : 99; }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-dead-code-2-safe",
+      "language": "typescript",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfunction f2() { return 4; 99; }",
+      "expected_replacement": "// KEEP_API_2\nfunction f2() { return 4; }",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-dead-code-2-unsafe",
+      "language": "typescript",
+      "family": "dead-code",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfunction f2(flag) { return flag ? 4 : 99; }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-dead-code-3-safe",
+      "language": "typescript",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfunction f3() { return 5; 99; }",
+      "expected_replacement": "// KEEP_API_3\nfunction f3() { return 5; }",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-dead-code-3-unsafe",
+      "language": "typescript",
+      "family": "dead-code",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfunction f3(flag) { return flag ? 5 : 99; }",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-forwarding-0-safe",
+      "language": "typescript",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nconst target0=x=>x+1;\nconst helper0=x=>target0(x);\nconst value=helper0(2);",
+      "expected_replacement": "// KEEP_API_0\nconst target0=x=>x+1;\nconst value=target0(2);",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-forwarding-0-unsafe",
+      "language": "typescript",
+      "family": "forwarding",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nexport const helper0=x=>{audit(x);return target0(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-forwarding-1-safe",
+      "language": "typescript",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nconst target1=x=>x+1;\nconst helper1=x=>target1(x);\nconst value=helper1(3);",
+      "expected_replacement": "// KEEP_API_1\nconst target1=x=>x+1;\nconst value=target1(3);",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-forwarding-1-unsafe",
+      "language": "typescript",
+      "family": "forwarding",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nexport const helper1=x=>{audit(x);return target1(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-forwarding-2-safe",
+      "language": "typescript",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nconst target2=x=>x+1;\nconst helper2=x=>target2(x);\nconst value=helper2(4);",
+      "expected_replacement": "// KEEP_API_2\nconst target2=x=>x+1;\nconst value=target2(4);",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-forwarding-2-unsafe",
+      "language": "typescript",
+      "family": "forwarding",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nexport const helper2=x=>{audit(x);return target2(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-forwarding-3-safe",
+      "language": "typescript",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nconst target3=x=>x+1;\nconst helper3=x=>target3(x);\nconst value=helper3(5);",
+      "expected_replacement": "// KEEP_API_3\nconst target3=x=>x+1;\nconst value=target3(5);",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-forwarding-3-unsafe",
+      "language": "typescript",
+      "family": "forwarding",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nexport const helper3=x=>{audit(x);return target3(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-repeated-error-0-safe",
+      "language": "typescript",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nfunction f0(flag){if(flag)throw new Error('E2');else throw new Error('E2');}",
+      "expected_replacement": "// KEEP_API_0\nfunction f0(_flag){throw new Error('E2');}",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-repeated-error-0-unsafe",
+      "language": "typescript",
+      "family": "repeated-error",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nfunction f0(flag){if(flag)throw new Error('E2');else throw new Error('E3');}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-repeated-error-1-safe",
+      "language": "typescript",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nfunction f1(flag){if(flag)throw new Error('E3');else throw new Error('E3');}",
+      "expected_replacement": "// KEEP_API_1\nfunction f1(_flag){throw new Error('E3');}",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-repeated-error-1-unsafe",
+      "language": "typescript",
+      "family": "repeated-error",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nfunction f1(flag){if(flag)throw new Error('E3');else throw new Error('E4');}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-repeated-error-2-safe",
+      "language": "typescript",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nfunction f2(flag){if(flag)throw new Error('E4');else throw new Error('E4');}",
+      "expected_replacement": "// KEEP_API_2\nfunction f2(_flag){throw new Error('E4');}",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-repeated-error-2-unsafe",
+      "language": "typescript",
+      "family": "repeated-error",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nfunction f2(flag){if(flag)throw new Error('E4');else throw new Error('E5');}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-repeated-error-3-safe",
+      "language": "typescript",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nfunction f3(flag){if(flag)throw new Error('E5');else throw new Error('E5');}",
+      "expected_replacement": "// KEEP_API_3\nfunction f3(_flag){throw new Error('E5');}",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-repeated-error-3-unsafe",
+      "language": "typescript",
+      "family": "repeated-error",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nfunction f3(flag){if(flag)throw new Error('E5');else throw new Error('E6');}",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-wrapper-0-safe",
+      "language": "typescript",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "safe-patch",
+      "source": "// KEEP_API_0\nconst target0=x=>x+1;\nconst helper0=x=>target0(x);\nconst value=helper0(2);",
+      "expected_replacement": "// KEEP_API_0\nconst target0=x=>x+1;\nconst value=target0(2);",
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-wrapper-0-unsafe",
+      "language": "typescript",
+      "family": "wrapper",
+      "variant": 0,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_0\nexport const helper0=x=>{audit(x);return target0(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_0"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-wrapper-1-safe",
+      "language": "typescript",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "safe-patch",
+      "source": "// KEEP_API_1\nconst target1=x=>x+1;\nconst helper1=x=>target1(x);\nconst value=helper1(3);",
+      "expected_replacement": "// KEEP_API_1\nconst target1=x=>x+1;\nconst value=target1(3);",
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-wrapper-1-unsafe",
+      "language": "typescript",
+      "family": "wrapper",
+      "variant": 1,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_1\nexport const helper1=x=>{audit(x);return target1(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_1"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-wrapper-2-safe",
+      "language": "typescript",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "safe-patch",
+      "source": "// KEEP_API_2\nconst target2=x=>x+1;\nconst helper2=x=>target2(x);\nconst value=helper2(4);",
+      "expected_replacement": "// KEEP_API_2\nconst target2=x=>x+1;\nconst value=target2(4);",
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-wrapper-2-unsafe",
+      "language": "typescript",
+      "family": "wrapper",
+      "variant": 2,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_2\nexport const helper2=x=>{audit(x);return target2(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_2"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    },
+    {
+      "id": "m6-typescript-wrapper-3-safe",
+      "language": "typescript",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "safe-patch",
+      "source": "// KEEP_API_3\nconst target3=x=>x+1;\nconst helper3=x=>target3(x);\nconst value=helper3(5);",
+      "expected_replacement": "// KEEP_API_3\nconst target3=x=>x+1;\nconst value=target3(5);",
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [
+        "complete owned syntax and graph context",
+        "exact candidate patch is within the declared resource budget",
+        "no public API, comment, literal, operator, or effect counter-evidence"
+      ],
+      "graph_counter_evidence": []
+    },
+    {
+      "id": "m6-typescript-wrapper-3-unsafe",
+      "language": "typescript",
+      "family": "wrapper",
+      "variant": 3,
+      "label": "unsafe-abstain",
+      "source": "// KEEP_API_3\nexport const helper3=x=>{audit(x);return target3(x);};",
+      "expected_replacement": null,
+      "protected_fragments": [
+        "KEEP_API_3"
+      ],
+      "graph_evidence": [],
+      "graph_counter_evidence": [
+        "semantic authority is incomplete or contradicts the cleanup",
+        "a public API, rationale, effect, differing literal/operator, or extra use is protected"
+      ]
+    }
+  ]
+}

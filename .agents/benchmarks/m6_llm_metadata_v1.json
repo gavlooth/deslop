@@ -1,0 +1,62 @@
+{
+  "schema": "deslop.m6-llm-benchmark-metadata/1",
+  "benchmark": "M6 graph-grounded work orders versus source-only baseline",
+  "license": "synthetic fixtures maintained in the MIT-licensed deslop repository",
+  "split": "all 240 frozen M6 holdout tasks",
+  "task_balance": {
+    "languages": ["clojure", "javascript", "julia", "python", "rust", "typescript"],
+    "families": ["conversion-allocation", "dead-code", "forwarding", "repeated-error", "wrapper"],
+    "safe_per_language_family": 4,
+    "unsafe_per_language_family": 4,
+    "total_tasks": 240,
+    "paired_requests": 480
+  },
+  "api": {
+    "endpoint": "/v1/responses",
+    "transport": "OpenAI Batch API",
+    "model": "gpt-5.6-luna",
+    "reasoning_effort": "none",
+    "maximum_output_tokens": 256,
+    "context_character_ceiling": 4000,
+    "tools": [],
+    "seed": null,
+    "structured_output_schema": "deslop_m6_answer",
+    "cached_input_tokens": 0
+  },
+  "batch": {
+    "id": "batch_6a58ad6954b48190a949902ce2c9d1ca",
+    "input_file_id": "file-VGvTD6tv9qRsFHpaGL91n8",
+    "output_file_id": "file-F4iSMTjHW3SB5x94ZcdvtE",
+    "created_at_unix": 1784196457,
+    "completed_at_unix": 1784197469,
+    "completed_requests": 480,
+    "failed_requests": 0,
+    "input_tokens": 99064,
+    "output_tokens": 14681
+  },
+  "scoring": {
+    "safe_success": "exact whole replacement equals frozen gold",
+    "unsafe_success": "exact abstain decision with empty replacement",
+    "paired_interval": "normal 95% confidence interval over per-safe-task graph-minus-baseline values in {-1,0,1}",
+    "predeclared_gates": [
+      "accepted patch delta >= 10 percentage points",
+      "paired 95% confidence interval lower bound > 0",
+      "graph out-of-scope edits <= 2%",
+      "graph unsafe/impossible abstention >= 90%",
+      "graph semantic regressions <= baseline",
+      "no language or family accepted-patch rate regression > 5 percentage points"
+    ]
+  },
+  "reference_machine": {
+    "os": "Linux 6.17.0-1008-nvidia aarch64",
+    "host": "spark-05bb",
+    "rustc": "1.94.0 (4a4ef493e 2026-03-02)",
+    "cargo": "1.94.0 (85eff7c80 2026-01-15)"
+  },
+  "sha256": {
+    "manifest": "b9bf3e599d2f8dbf7c919e45cd0d11c9cae592a7a6545922a99ae7326ff2e3c4",
+    "batch_input": "a90f1e08f3b7b4a29d7d835a203d4795fdf34e67d87047aaef6feb9fdc0df49f",
+    "batch_output": "f64a6c0e90c4ea97f3d3c41a850e38d9e7433ca6ab2a78c747889adabd6d5821",
+    "report": "7cb61ddbbad5070246653f8ba4796cb2446ae59180cc4d630d0552eefed829c8"
+  }
+}

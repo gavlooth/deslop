@@ -1,0 +1,11 @@
+{
+  "object": "file",
+  "id": "file-VGvTD6tv9qRsFHpaGL91n8",
+  "purpose": "batch",
+  "filename": "m6_llm_batch_input_v1.jsonl",
+  "bytes": 604592,
+  "created_at": 1784196455,
+  "expires_at": 1786788455,
+  "status": "processed",
+  "status_details": null
+}

@@ -12000,3 +12000,49 @@ session artifacts.
 authorization, and only a server-owned gated executor can perform effects. No unresolved failed algorithm remains.
 
 Signature: Codex `/root` — M6.7–M6.9 integration and terminal verification owner
+
+## 2026-07-16T12:31:03+02:00 — M6.10/M6 definition-of-done terminal checkpoint
+
+**Objective/target:** close M6 only with a frozen identical-budget paired LLM benchmark that improves accepted-patch
+rate with confidence, respects scope/abstention/regression bounds, and joins that evidence to the existing strict
+transaction, planner, and stale-order contracts.
+
+**Changes:** added the deterministic `m6-llm-benchmark` generator/scorer/verifier and a 240-task holdout balanced over
+six languages, five opportunity families, four variants, and safe/unsafe labels. The two arms use the same model,
+reasoning, no-tool, answer-schema, context-ceiling, and output-token budgets. Added an executable DoD test that
+recomputes the stored report from its frozen observations and rejects manifest, observation, counter, slice,
+confidence, or gate tampering. Retained the exact manifest, 480-request Batch input, raw 480-response output, report,
+Batch records, SHA-256 hashes, split/licence, prompt/model/tool/seed/cache setup, and reference-machine metadata.
+
+**Commands run/results:** focused benchmark tests pass 3/3, including the checked evidence DoD test; strict focused
+clippy passes. OpenAI Batch `batch_6a58ad6954b48190a949902ce2c9d1ca` completed 480/480 requests with zero failures.
+The terminal rerun passes `cargo fmt --all -- --check`, `cargo build --workspace --all-features`,
+`cargo test --workspace --all-features`, and `cargo clippy --workspace --all-features --all-targets -- -D warnings`.
+There are 675 active unit/integration tests, 4 active doctests, and 3 explicit ignored probes.
+
+**Numerical evidence:** baseline accepted 67/120 safe patches (55.83%), correctly abstained on 118/120 unsafe tasks,
+made 3/240 out-of-scope edits, and made 2 semantic regressions. Graph grounding accepted 120/120 (100%), correctly
+abstained on 120/120, made 0 out-of-scope edits, and made 0 semantic regressions. Accepted-patch delta is +44.17
+percentage points with paired 95% CI [+35.24, +53.09]. All languages improve by 40–50 points and no family regresses.
+
+**Invalidated assumptions/failure modes:** jj initially refused the 1,062,931-byte raw output under its 1 MiB
+new-file ceiling; repository-local `snapshot.max-new-file-size` was raised to that exact measured size so raw evidence
+is versioned. Exact `f64` equality was not stable after JSON round-trip for two derived baseline/slice values; the
+verifier now uses 1e-12 tolerance only for derived floating values while every identity, observation, integer count,
+gate, schema field, and pass decision remains exact. Neither issue changed the frozen prompt, sample, thresholds, or
+Batch result.
+
+**Current recommendation/checkpoint:** M6.1–M6.10 and M6.DoD are terminal, and B10 is measured closed. Describe this
+slice, create a clean empty successor, advance `main` through the three M6 changes, and push only if jj status is clean.
+Do not begin M7 in this slice.
+
+**Blockers/restart/dependencies:** none. The official OpenAI developer-docs MCP was installed during model/API
+verification but becomes available only in a new Codex session; it is not required by the repository runtime.
+
+**Files/artifacts:** `crates/deslop-eval` benchmark module, binary, DoD test, Cargo wiring, `.agents/benchmarks/` raw
+and derived evidence, `.agents/TODO.md`, `.agents/PLAN.md`, and this report.
+
+**Negative-memory status:** exact post-JSON float equality is invalidated for derived benchmark rates; use tight
+tolerance for derived floats and retain exact checks for all discrete evidence. No unresolved failed approach remains.
+
+Signature: Codex `/root` — M6 terminal integration, benchmark, and verification owner

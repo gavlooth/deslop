@@ -11,6 +11,11 @@ deslop-analyzer.workspace = true
 deslop-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+blake3.workspace = true
+
+[[bin]]
+name = "m6-llm-benchmark"
+path = "src/bin/m6_llm_benchmark.rs"
 
 [dev-dependencies]
 deslop-parse.workspace = true
