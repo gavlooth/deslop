@@ -64,9 +64,11 @@ pub struct ProjectScaleMeasurement {
     pub cold_parse_count: usize,
     pub incremental_parse_count_max: usize,
     pub incremental_reused_files_min: usize,
-    pub candidate_cache_hits_min: usize,
+    pub repeated_cache_hits: usize,
+    pub repeated_cache_misses: usize,
+    pub repeated_cache_hit_rate: f64,
+    pub incremental_candidate_artifacts_reused_min: usize,
     pub candidate_cache_misses_max: usize,
-    pub candidate_cache_hit_rate_min: f64,
     pub retained_memory_bytes_lower_bound: usize,
     pub invalidation_fan_out_max: usize,
     pub full_projection_files: usize,
@@ -109,6 +111,9 @@ impl M9ScaleBenchmarkReport {
                 || project.cold_parse_count != project.files
                 || project.incremental_parse_count_max >= project.cold_parse_count
                 || project.incremental_projection_files_max >= project.full_projection_files
+                || project.repeated_cache_hits != project.files
+                || project.repeated_cache_misses != 0
+                || project.incremental_candidate_artifacts_reused_min >= project.files
                 || project.invalidation_fan_out_max >= project.files
                 || !project.clean_incremental_digest_equal
                 || !project.analyzer_output_digest_equal
@@ -320,13 +325,21 @@ fn measure_project(
     if seeded.local_cache_misses != spec.paths.len() {
         bail!("warm benchmark seed did not populate every file artifact");
     }
-    let mut retained_reports = seeded.reports;
+    let repeated =
+        scan_analysis_with_cache(current.clone(), analyzer_config.clone(), warm_cache.clone())?;
+    if repeated.local_cache_hits != spec.paths.len() || repeated.local_cache_misses != 0 {
+        bail!("exact-repeat benchmark did not hit every persisted file artifact");
+    }
+    let repeated_cache_hits = repeated.local_cache_hits;
+    let repeated_cache_misses = repeated.local_cache_misses;
+    let repeated_cache_hit_rate = ratio(repeated_cache_hits, spec.paths.len());
+    let mut retained_reports = repeated.reports;
     let mut warm_incremental_micros = Vec::new();
     let mut successor_micros = Vec::new();
     let mut changed_region_micros = Vec::new();
     let mut incremental_parse_count_max = 0;
     let mut incremental_reused_files_min = usize::MAX;
-    let mut candidate_cache_hits_min = usize::MAX;
+    let mut incremental_candidate_artifacts_reused_min = usize::MAX;
     let mut candidate_cache_misses_max = 0;
     let mut invalidation_fan_out_max = 0;
     let mut incremental_projection_files_max = 0;
@@ -363,8 +376,8 @@ fn measure_project(
             incremental_parse_count_max.max(incremental.instrumentation().parse.parser_invocations);
         incremental_reused_files_min =
             incremental_reused_files_min.min(update_instrumentation.reused_files);
-        candidate_cache_hits_min =
-            candidate_cache_hits_min.min(update_instrumentation.reused_files);
+        incremental_candidate_artifacts_reused_min =
+            incremental_candidate_artifacts_reused_min.min(update_instrumentation.reused_files);
         candidate_cache_misses_max = candidate_cache_misses_max.max(projection.local_cache_misses);
         invalidation_fan_out_max = invalidation_fan_out_max.max(invalidation.fan_out());
         incremental_projection_files_max =
@@ -398,7 +411,6 @@ fn measure_project(
         warm_incremental_p95_micros as usize,
         cold_full_p95_micros as usize,
     );
-    let candidate_cache_hit_rate_min = ratio(candidate_cache_hits_min, spec.paths.len());
     let throughput_bytes_per_second = if cold_full_p95_micros == 0 {
         0.0
     } else {
@@ -420,9 +432,11 @@ fn measure_project(
         cold_parse_count,
         incremental_parse_count_max,
         incremental_reused_files_min,
-        candidate_cache_hits_min,
+        repeated_cache_hits,
+        repeated_cache_misses,
+        repeated_cache_hit_rate,
+        incremental_candidate_artifacts_reused_min,
         candidate_cache_misses_max,
-        candidate_cache_hit_rate_min,
         retained_memory_bytes_lower_bound,
         invalidation_fan_out_max,
         full_projection_files: spec.paths.len(),
@@ -550,7 +564,9 @@ mod tests {
         report.validate_structural().unwrap();
         assert!(report.projects.iter().all(|project| {
             project.incremental_parse_count_max == 1
-                && project.candidate_cache_hits_min == 5
+                && project.repeated_cache_hits == 6
+                && project.repeated_cache_misses == 0
+                && project.incremental_candidate_artifacts_reused_min == 5
                 && project.candidate_cache_misses_max == 1
                 && project.invalidation_fan_out_max == 1
         }));

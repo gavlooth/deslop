@@ -4693,8 +4693,8 @@ evaluator/agent paths and LSP; process-local Tree-sitter state is reparsed hones
 The first debug/full-response experiment was invalidated: a project-wide candidate key and all-report materialization
 gave 45.6–53.8% ratios. Per-file caching, bounded region output, and reuse of immutable per-file `NodeKey` arrays
 reduced release successor p95 work to single-digit milliseconds. The frozen 5x480-file release matrix records exact
-parity and p95 warm/full ratios 2.15% Rust, 3.21% Python, and 2.72% TypeScript; every edit parses/misses/fans out to one
-file and retains 479. Peak process RSS is 118,497,280 bytes. The executable M9 DoD and terminal all-feature workspace
+parity and p95 warm/full ratios 2.83% Rust, 3.05% Python, and 2.26% TypeScript; exact repeats hit all 480 cache entries,
+while every edit parses/misses/fans out to one file and retains 479. Peak process RSS is 117,506,048 bytes. The executable M9 DoD and terminal all-feature workspace
 fmt/build/test/clippy gate pass. M10 was not started.
 
 Signature: Codex (GPT-5), M9 incremental-scale terminal owner, 2026-07-16.

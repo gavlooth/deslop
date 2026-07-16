@@ -777,9 +777,10 @@ reports, benchmark records, and work orders.
   axes, machine/toolchain/profile/cache state, peak RSS, successor and region timing, and clean/incremental digests.
 - [x] M9.DoD Demonstrate deterministic results and measured incremental advantage with bounded changed-region
   invalidation on representative repositories before advertising project-scale incrementality.
-  `.agents/benchmarks/m9_scale_report_v1.json` passes the executable DoD: p95 warm/full ratios are 0.0215 Rust,
-  0.0321 Python, and 0.0272 TypeScript (24.430/26.661/29.487 ms, all below 500 ms); each edit parses 1 of 480 files,
-  reuses 479 candidate artifacts, misses/fans out/projects exactly 1, and matches clean syntax and analyzer digests.
+  `.agents/benchmarks/m9_scale_report_v1.json` passes the executable DoD: p95 warm/full ratios are 0.0283 Rust,
+  0.0305 Python, and 0.0226 TypeScript (35.406/26.004/24.909 ms, all below 500 ms); exact repeats measure
+  480 cache hits/0 misses, and each edit parses 1 of 480 files, retains 479 candidate artifacts, misses/fans out/
+  projects exactly 1, and matches clean syntax and analyzer digests.
   Terminal all-feature workspace fmt/build/test/clippy `-D warnings` passes.
 
 ## M10 — Dogfood, external evaluation, and stable release

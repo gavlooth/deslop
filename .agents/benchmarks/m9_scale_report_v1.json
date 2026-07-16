@@ -11,8 +11,8 @@
     "rustc": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
     "build_profile": "release",
     "filesystem_root": "/home/christos/code/deslop",
-    "cache_state": "cold-empty; warm-content-addressed; cache_root=/tmp/deslop-m9-cache-final-77771c1d",
-    "peak_rss_bytes": 118497280
+    "cache_state": "cold-empty; warm-content-addressed; cache_root=/tmp/deslop-m9-cache-evidence-89528c68",
+    "peak_rss_bytes": 117506048
   },
   "projects": [
     {
@@ -22,49 +22,51 @@
       "source_bytes": 38290,
       "nodes": 18240,
       "cold_full_micros": [
-        1112727,
-        1016788,
-        960071,
-        1099535,
-        1136426
+        1038660,
+        1248905,
+        914364,
+        1120550,
+        1028667
       ],
       "warm_incremental_micros": [
-        20854,
-        24430,
-        19780,
-        20151,
-        21142
+        35406,
+        19686,
+        24675,
+        20623,
+        22506
       ],
       "successor_micros": [
-        5782,
-        5323,
-        4415,
-        4417,
-        4498
+        7916,
+        4143,
+        4140,
+        4419,
+        4996
       ],
       "changed_region_micros": [
-        13970,
-        17916,
-        14394,
-        14802,
-        15596
+        25741,
+        14611,
+        19559,
+        15133,
+        16397
       ],
-      "cold_full_p95_micros": 1136426,
-      "warm_incremental_p95_micros": 24430,
-      "incremental_to_full_ratio": 0.021497220232553637,
+      "cold_full_p95_micros": 1248905,
+      "warm_incremental_p95_micros": 35406,
+      "incremental_to_full_ratio": 0.028349634279628954,
       "cold_parse_count": 480,
       "incremental_parse_count_max": 1,
       "incremental_reused_files_min": 479,
-      "candidate_cache_hits_min": 479,
+      "repeated_cache_hits": 480,
+      "repeated_cache_misses": 0,
+      "repeated_cache_hit_rate": 1.0,
+      "incremental_candidate_artifacts_reused_min": 479,
       "candidate_cache_misses_max": 1,
-      "candidate_cache_hit_rate_min": 0.9979166666666667,
       "retained_memory_bytes_lower_bound": 11619326,
       "invalidation_fan_out_max": 1,
       "full_projection_files": 480,
       "incremental_projection_files_max": 1,
       "clean_incremental_digest_equal": true,
       "analyzer_output_digest_equal": true,
-      "throughput_bytes_per_second": 33693.350908902125
+      "throughput_bytes_per_second": 30658.85715887117
     },
     {
       "project": "fixture-python-package",
@@ -73,49 +75,51 @@
       "source_bytes": 46930,
       "nodes": 12960,
       "cold_full_micros": [
-        668636,
-        627998,
-        624489,
-        821043,
-        830711
+        644464,
+        810418,
+        853918,
+        696241,
+        717977
       ],
       "warm_incremental_micros": [
-        14903,
-        15688,
-        17301,
-        26661,
-        16591
+        23762,
+        16445,
+        22394,
+        17568,
+        26004
       ],
       "successor_micros": [
-        4187,
-        3970,
-        4819,
-        6756,
-        4299
+        6607,
+        4231,
+        4494,
+        4674,
+        7505
       ],
       "changed_region_micros": [
-        9818,
-        10840,
-        11465,
-        18375,
-        11373
+        15611,
+        11243,
+        16525,
+        11848,
+        16755
       ],
-      "cold_full_p95_micros": 830711,
-      "warm_incremental_p95_micros": 26661,
-      "incremental_to_full_ratio": 0.03209419400970975,
+      "cold_full_p95_micros": 853918,
+      "warm_incremental_p95_micros": 26004,
+      "incremental_to_full_ratio": 0.030452572729465825,
       "cold_parse_count": 480,
       "incremental_parse_count_max": 1,
       "incremental_reused_files_min": 479,
-      "candidate_cache_hits_min": 479,
+      "repeated_cache_hits": 480,
+      "repeated_cache_misses": 0,
+      "repeated_cache_hit_rate": 1.0,
+      "incremental_candidate_artifacts_reused_min": 479,
       "candidate_cache_misses_max": 1,
-      "candidate_cache_hit_rate_min": 0.9979166666666667,
       "retained_memory_bytes_lower_bound": 8219516,
       "invalidation_fan_out_max": 1,
       "full_projection_files": 480,
       "incremental_projection_files_max": 1,
       "clean_incremental_digest_equal": true,
       "analyzer_output_digest_equal": true,
-      "throughput_bytes_per_second": 56493.77460994257
+      "throughput_bytes_per_second": 54958.43863228086
     },
     {
       "project": "fixture-typescript-app",
@@ -124,49 +128,51 @@
       "source_bytes": 42610,
       "nodes": 17760,
       "cold_full_micros": [
-        761449,
-        1083809,
-        872704,
-        823060,
-        832336
+        960126,
+        874977,
+        1102970,
+        941368,
+        847547
       ],
       "warm_incremental_micros": [
-        22214,
-        17671,
-        17357,
-        29487,
-        17260
+        18902,
+        18145,
+        17651,
+        24909,
+        24594
       ],
       "successor_micros": [
-        5374,
-        4487,
-        4446,
-        7761,
-        4253
+        4690,
+        4228,
+        4175,
+        6036,
+        4584
       ],
       "changed_region_micros": [
-        15617,
-        12188,
-        11948,
-        19963,
-        12031
+        13128,
+        12943,
+        12487,
+        17393,
+        18929
       ],
-      "cold_full_p95_micros": 1083809,
-      "warm_incremental_p95_micros": 29487,
-      "incremental_to_full_ratio": 0.027206823342489313,
+      "cold_full_p95_micros": 1102970,
+      "warm_incremental_p95_micros": 24909,
+      "incremental_to_full_ratio": 0.02258356981604214,
       "cold_parse_count": 480,
       "incremental_parse_count_max": 1,
       "incremental_reused_files_min": 479,
-      "candidate_cache_hits_min": 479,
+      "repeated_cache_hits": 480,
+      "repeated_cache_misses": 0,
+      "repeated_cache_hit_rate": 1.0,
+      "incremental_candidate_artifacts_reused_min": 479,
       "candidate_cache_misses_max": 1,
-      "candidate_cache_hit_rate_min": 0.9979166666666667,
       "retained_memory_bytes_lower_bound": 11701400,
       "invalidation_fan_out_max": 1,
       "full_projection_files": 480,
       "incremental_projection_files_max": 1,
       "clean_incremental_digest_equal": true,
       "analyzer_output_digest_equal": true,
-      "throughput_bytes_per_second": 39315.045363159006
+      "throughput_bytes_per_second": 38632.05708224158
     }
   ],
   "all_deterministic": true,

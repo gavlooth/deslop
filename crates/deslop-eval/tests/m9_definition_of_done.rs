@@ -20,7 +20,10 @@ fn m9_definition_of_done_is_locked_to_release_measurements_and_integrations() {
             && project.cold_parse_count == 480
             && project.incremental_parse_count_max == 1
             && project.incremental_reused_files_min == 479
-            && project.candidate_cache_hits_min == 479
+            && project.repeated_cache_hits == 480
+            && project.repeated_cache_misses == 0
+            && project.repeated_cache_hit_rate == 1.0
+            && project.incremental_candidate_artifacts_reused_min == 479
             && project.candidate_cache_misses_max == 1
             && project.invalidation_fan_out_max == 1
             && project.incremental_projection_files_max == 1

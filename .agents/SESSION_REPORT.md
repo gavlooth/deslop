@@ -12235,10 +12235,11 @@ identity semantics while removing eager all-project successor rehash/sort work. 
 coverage, ADR 0011, capability/migration documents, the M9 benchmark binary/report, and executable DoD.
 
 **Numerical evidence:** optimized aarch64/Linux, rustc 1.94.0, 20 logical workers, five iterations per 480-file
-project. Rust cold/full p95 1,136.426 ms versus warm incremental 24.430 ms (2.15%); Python 830.711 versus 26.661 ms
-(3.21%); TypeScript 1,083.809 versus 29.487 ms (2.72%). Every edit parses one file, reuses 479, has 479 retained
-candidate artifacts/one miss, invalidation fan-out one, and projection work one file. Clean/incremental node-order and
-analyzer-output digests agree in every run. Peak process RSS is 118,497,280 bytes; per-project retained lower bounds
+project. Rust cold/full p95 1,248.905 ms versus warm incremental 35.406 ms (2.83%); Python 853.918 versus 26.004 ms
+(3.05%); TypeScript 1,102.970 versus 24.909 ms (2.26%). Exact repeats measure 480 cache hits/zero misses per project.
+Every edit parses one file, retains 479 candidate artifacts, has one miss, invalidation fan-out one, and projection
+work one file. Clean/incremental node-order and analyzer-output digests agree in every run. Peak process RSS is
+117,506,048 bytes; per-project retained lower bounds
 are 8.22–11.70 MB. The report also records throughput, source bytes/nodes, cache state, toolchain, successor timing,
 and changed-region timing.
 
