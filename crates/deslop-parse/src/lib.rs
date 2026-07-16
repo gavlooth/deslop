@@ -33,6 +33,7 @@ mod aggregation;
 mod architecture;
 #[allow(dead_code)]
 mod arena;
+mod clone_candidate_index;
 mod containment;
 mod control_flow;
 mod control_regions;
@@ -215,6 +216,11 @@ pub use semantic_resolution::{
     SemanticResolutionFactError, SemanticResolutionFactKey, SemanticResolutionFacts,
 };
 
+pub use clone_candidate_index::{
+    CLONE_CANDIDATE_INDEX_SCHEMA, CLONE_GRAPH_CONTEXT_SCHEMA, CloneCandidateEntry,
+    CloneCandidateEntryId, CloneCandidateIndex, CloneCandidateIndexError, CloneCandidateIndexId,
+    CloneGraphContext, CloneGraphContextId, CloneMatchKind, ClonePairVerification,
+};
 pub use snapshot::{
     DiscoveryPolicy, ExactZeroWidthNodes, ExclusiveSyntaxKind, ExclusiveSyntaxLookupError,
     ExclusiveSyntaxOwner, ExclusiveSyntaxRegion, ExclusiveSyntaxRegions, FileParseCount,

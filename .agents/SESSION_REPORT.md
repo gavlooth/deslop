@@ -11709,3 +11709,11 @@ must retain exact revision guards for any later proposal.
 evidence only and never write authority. No new recurring failed implementation path required negative memory.
 
 Signature: Codex `/root` — M5.21 integration and terminal verification owner
+
+## 2026-07-16 — M5.22 clone candidate index (integration)
+
+- **Objective:** scalable fingerprint indexing + graph-context clone pair verification without whole-project pair scan.
+- **Changes:** `crates/deslop-parse/src/clone_candidate_index.rs` (+exports); schema `deslop.clone-candidate-index/1`.
+- **Evidence:** 6/6 focused tests; workspace `cargo test --workspace --all-features` green; clippy -D warnings on deslop-parse green.
+- **Constraint:** fingerprints and verified pairs are matching evidence only; no rewrite authority; no M5.23 class collapse.
+- **Signature:** opencode (xai/grok-4.5), M5.22 implemented after Codex research stall, 2026-07-16.

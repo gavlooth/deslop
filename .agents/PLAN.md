@@ -4151,3 +4151,41 @@ index/detector was started. Six focused fingerprint tests, 241 active parse test
 doctests, 55 active recipe tests (1 explicit ignore), and full workspace fmt/build/test/clippy-with-warnings-denied
 all pass. Proceed to M5.22 scalable indexing and graph-context verification; consume these typed fingerprints without
 turning normalized equality into rewrite legality.
+
+## 2026-07-16 — M5.22 scalable clone candidate indexing and graph verification
+
+Active hypothesis: M5.21 normalized equality is an efficient candidate key but not sufficient clone evidence. Build
+one deterministic ordered index from retained subtree fingerprints, then verify only requested bucket peers against
+complete retained ProgramDependence context. This avoids a whole-project all-pairs scan while making graph context,
+not fingerprint equality, the acceptance boundary.
+
+Current approach: add a parser-owned `deslop.clone-candidate-index/1` projection. Its primary lookup is a `BTreeMap`
+from policy-bound normalized fingerprint to sorted entry indices, yielding `O(log n + k)` bucket lookup and recording
+zero pair comparisons during construction. Each entry retains its exact M5.21 fingerprint plus a canonical graph
+context derived from the unique containing complete PDG: control-point kind/ordinal, relative owned syntax position,
+reachability, internal control/flow topology, and exact external boundary endpoints. Pair verification requires
+distinct revision-bound roots, one index bucket, and equal full canonical graph contexts; it reports exact versus
+renamed structural matches but grants no rewrite authority. Partial coverage, PDG gaps, missing/ambiguous containing
+graphs, foreign roots, and noncanonical/tampered records fail closed.
+
+CONVERGENCE: one focused fixture matrix must prove direct indexed lookup over a large mostly-unique corpus performs no
+whole-project pair enumeration; exact and renamed fingerprint peers with equal graph context verify; an equal
+fingerprint with different internal topology or external dependency endpoint rejects; different fingerprint buckets
+never reach graph verification; incomplete graph context cannot enter the index; deterministic wire round-trip and
+tamper rejection hold. Terminal outcomes are: (a) whole-project nested pair loops are required—invalid; (b)
+fingerprint equality alone verifies—invalid; (c) partial/unresolved graph evidence verifies—invalid; (d) verified
+pairs are collapsed into classes—invalid M5.23 work; or (e) focused and workspace gates pass, closing M5.22.
+
+Validation path: focused clone-index and graph-context tests first, including measured index size, bucket count,
+largest bucket, lookup size, and construction pair-comparison count. Then run full workspace `cargo fmt --all --
+--check`, `cargo build --workspace --all-features`, `cargo test --workspace --all-features`, and `cargo clippy
+--workspace --all-features --all-targets -- -D warnings`. Mark TODO and write terminal artifacts only after all gates
+pass; immediately `jj describe`, create a clean empty successor, advance `main` to the closed M5.22 commit, and push
+only after final clean/status/bookmark checks.
+
+Negative-memory constraint: normalized fingerprints and verified graph-context pairs remain matching/candidate
+evidence. Neither replaces exact `NodeKey` revision lookup or `RevisionGuard`, and graph context may reject a true
+clone conservatively but may not guess across incomplete resolution.
+
+Ownership/checkpoint: the primary agent owns schema, implementation, fixtures, validation, artifacts, bookmark
+advance, and push. Do not start M5.23 or collapse pair matches into clone classes.
