@@ -4212,3 +4212,39 @@ rewrite authority from class membership.
 Negative-memory constraint: transitive class membership is justified only by connected accepted M5.22 graph-verified
 pairs inside one normalized bucket. A class remains candidate evidence and never replaces exact revision-bound write
 guards.
+
+## 2026-07-16 — M5.24 repetition classification before abstraction
+
+Active hypothesis: a graph-verified clone class is not automatically abstraction-worthy. Require explicit canonical
+evidence for every class member and aggregate generated, schema-derived, test, public-API, and intentional-repetition
+roles before any downstream abstraction proposal. Only classes whose members are all explicitly ordinary production
+repetition may become review candidates; every protected category is a classified non-candidate.
+
+Current approach: add content-addressed `deslop.clone-repetition-classification/1` evidence beside the M5.22/M5.23
+index. Evidence is keyed by exact clone-entry identity, canonical and complete over maximal-class members, and may
+carry one or more protected roles. Missing, extra, duplicate, empty-detail, or contradictory ordinary-plus-protected
+evidence fails closed. Classification recomputes maximal classes from the index, emits one deterministic record per
+class, retains member evidence and aggregate roles, and carries only `abstraction-review-candidate` or
+`classified-non-candidate` readiness—never an edit or write authorization.
+
+CONVERGENCE: focused fixtures must classify each of the five protected roles, preserve mixed roles, admit an ordinary
+fully-evidenced class only for review, reject incomplete/extra/contradictory evidence, and produce deterministic
+content identities. Full workspace fmt/build/test/clippy-with-warnings-denied gates then close M5.24. Do not add the
+M5.25 detector families or an abstraction rewrite path.
+
+Negative-memory constraint: clone fingerprints, verified pairs, maximal classes, and repetition classification are
+progressively stronger proposal evidence but remain non-authoritative for writes; exact revision guards are still
+mandatory for any future transformation.
+
+Terminal result: M5.24 is complete. `deslop.clone-repetition-classification/1` now requires exact canonical evidence
+for every member of every recomputed maximal M5.23 class. Evidence distinguishes ordinary production repetition from
+generated output, schema-derived code, tests, public API surfaces, and explicitly intentional duplication, retaining
+exact generator/schema/suite/surface/reason details. Protected and mixed roles produce `classified-non-candidate`;
+only an entirely ordinary, fully evidenced class produces `abstraction-review-candidate`. Evidence must exactly cover
+maximal-class members: missing, extra, duplicate, empty-detail, contradictory ordinary-plus-protected, and
+noncanonical wire ordering all fail closed. Each classification has a deterministic `crc1_` content identity over
+the class, readiness, aggregate roles, members, and exact details. The output contains no edit, patch, revision guard,
+or automatic path. Ten focused clone-index/classification tests pass; full workspace build and all-feature tests pass,
+including 251 active parse tests (1 explicit ignore), 4 parse doctests, and 55 active recipe tests (1 explicit ignore);
+workspace formatting and all-feature/all-target clippy with `-D warnings` pass. M5.24 is terminal. Proceed to M5.25
+only in a later slice; do not infer rewrite authority from review eligibility.

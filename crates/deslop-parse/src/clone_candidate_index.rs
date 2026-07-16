@@ -23,6 +23,7 @@ pub const CLONE_GRAPH_CONTEXT_SCHEMA: &str = "deslop.clone-graph-context/1";
 const INDEX_DOMAIN: &str = "deslop.clone-candidate-index/1";
 const CONTEXT_DOMAIN: &str = "deslop.clone-graph-context/1";
 const ENTRY_DOMAIN: &str = "deslop.clone-candidate-entry/1";
+const CLASSIFICATION_DOMAIN: &str = "deslop.clone-repetition-classification/1";
 
 macro_rules! digest_id {
     ($name:ident, $prefix:literal) => {
@@ -58,6 +59,7 @@ macro_rules! digest_id {
 digest_id!(CloneCandidateIndexId, "cci1_");
 digest_id!(CloneGraphContextId, "cgc1_");
 digest_id!(CloneCandidateEntryId, "cce1_");
+digest_id!(CloneRepetitionClassificationId, "crc1_");
 
 /// Canonical retained PDG context used for clone pair verification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -663,6 +665,276 @@ impl CloneClass {
     }
 }
 
+pub const CLONE_REPETITION_CLASSIFICATION_SCHEMA: &str = "deslop.clone-repetition-classification/1";
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "detail", rename_all = "kebab-case")]
+pub enum CloneMemberRepetitionRole {
+    OrdinaryProduction,
+    Generated { generator: String },
+    Schema { schema: String },
+    Test { suite: String },
+    PublicApi { surface: String },
+    Intentional { reason: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CloneRepetitionKind {
+    Generated,
+    Schema,
+    Test,
+    PublicApi,
+    Intentional,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AbstractionReadiness {
+    AbstractionReviewCandidate,
+    ClassifiedNonCandidate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloneMemberRepetitionEvidence {
+    member: CloneCandidateEntryId,
+    roles: Vec<CloneMemberRepetitionRole>,
+}
+
+impl CloneMemberRepetitionEvidence {
+    pub fn new(
+        member: CloneCandidateEntryId,
+        mut roles: Vec<CloneMemberRepetitionRole>,
+    ) -> Result<Self, CloneCandidateIndexError> {
+        roles.sort();
+        if roles.is_empty() || roles.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(CloneCandidateIndexError::Invalid(
+                "clone repetition roles must be nonempty and distinct".into(),
+            ));
+        }
+        for role in &roles {
+            validate_repetition_role(role)?;
+        }
+        if roles.len() > 1
+            && roles
+                .iter()
+                .any(|role| matches!(role, CloneMemberRepetitionRole::OrdinaryProduction))
+        {
+            return Err(CloneCandidateIndexError::Invalid(
+                "ordinary production evidence cannot coexist with protected repetition roles"
+                    .into(),
+            ));
+        }
+        Ok(Self { member, roles })
+    }
+
+    pub fn member(&self) -> &CloneCandidateEntryId {
+        &self.member
+    }
+
+    pub fn roles(&self) -> &[CloneMemberRepetitionRole] {
+        &self.roles
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloneRepetitionClassification {
+    schema: String,
+    id: CloneRepetitionClassificationId,
+    clone_class: CloneClassId,
+    members: Vec<CloneMemberRepetitionEvidence>,
+    kinds: Vec<CloneRepetitionKind>,
+    readiness: AbstractionReadiness,
+}
+
+impl CloneRepetitionClassification {
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    pub fn id(&self) -> &CloneRepetitionClassificationId {
+        &self.id
+    }
+
+    pub fn clone_class(&self) -> &CloneClassId {
+        &self.clone_class
+    }
+
+    pub fn members(&self) -> &[CloneMemberRepetitionEvidence] {
+        &self.members
+    }
+
+    pub fn kinds(&self) -> &[CloneRepetitionKind] {
+        &self.kinds
+    }
+
+    pub fn readiness(&self) -> AbstractionReadiness {
+        self.readiness
+    }
+}
+
+/// Classify every maximal graph-verified clone class before abstraction review.
+///
+/// The returned records are proposal evidence only. They contain no edits and never authorize a
+/// write; any future transformation still requires exact revision-bound guards.
+pub fn classify_clone_repetition(
+    index: &CloneCandidateIndex,
+    mut evidence: Vec<CloneMemberRepetitionEvidence>,
+) -> Result<Vec<CloneRepetitionClassification>, CloneCandidateIndexError> {
+    let classes = index.maximal_clone_classes()?;
+    for item in &evidence {
+        let canonical =
+            CloneMemberRepetitionEvidence::new(item.member.clone(), item.roles.clone())?;
+        if &canonical != item {
+            return Err(CloneCandidateIndexError::Invalid(
+                "clone repetition evidence roles are not canonical".into(),
+            ));
+        }
+    }
+    let expected = classes
+        .iter()
+        .flat_map(|class| class.members.iter().cloned())
+        .collect::<std::collections::BTreeSet<_>>();
+    evidence.sort_by(|left, right| left.member.cmp(&right.member));
+    if evidence
+        .windows(2)
+        .any(|pair| pair[0].member == pair[1].member)
+    {
+        return Err(CloneCandidateIndexError::Invalid(
+            "clone repetition evidence repeats one class member".into(),
+        ));
+    }
+    let supplied = evidence
+        .iter()
+        .map(|item| item.member.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    if supplied != expected {
+        return Err(CloneCandidateIndexError::Invalid(
+            "clone repetition evidence must exactly cover maximal-class members".into(),
+        ));
+    }
+    let by_member = evidence
+        .into_iter()
+        .map(|item| (item.member.clone(), item))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut classifications = Vec::with_capacity(classes.len());
+    for class in classes {
+        let members = class
+            .members
+            .iter()
+            .map(|member| {
+                by_member.get(member).cloned().ok_or_else(|| {
+                    CloneCandidateIndexError::Invalid(
+                        "clone repetition evidence is incomplete".into(),
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let kinds = members
+            .iter()
+            .flat_map(|member| member.roles.iter().filter_map(repetition_kind))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let readiness = if kinds.is_empty()
+            && members
+                .iter()
+                .all(|member| member.roles == [CloneMemberRepetitionRole::OrdinaryProduction])
+        {
+            AbstractionReadiness::AbstractionReviewCandidate
+        } else {
+            AbstractionReadiness::ClassifiedNonCandidate
+        };
+        let mut identity_parts = vec![
+            class.id.as_str().to_string(),
+            readiness_tag(readiness).into(),
+        ];
+        identity_parts.extend(kinds.iter().map(|kind| repetition_kind_tag(*kind).into()));
+        for member in &members {
+            identity_parts.push(member.member.as_str().into());
+            identity_parts.extend(member.roles.iter().map(repetition_role_tag));
+        }
+        let id = CloneRepetitionClassificationId(digest_parts(
+            CLASSIFICATION_DOMAIN,
+            "id",
+            &identity_parts
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+        ));
+        classifications.push(CloneRepetitionClassification {
+            schema: CLONE_REPETITION_CLASSIFICATION_SCHEMA.into(),
+            id,
+            clone_class: class.id,
+            members,
+            kinds,
+            readiness,
+        });
+    }
+    Ok(classifications)
+}
+
+fn validate_repetition_role(
+    role: &CloneMemberRepetitionRole,
+) -> Result<(), CloneCandidateIndexError> {
+    let detail = match role {
+        CloneMemberRepetitionRole::OrdinaryProduction => return Ok(()),
+        CloneMemberRepetitionRole::Generated { generator } => generator,
+        CloneMemberRepetitionRole::Schema { schema } => schema,
+        CloneMemberRepetitionRole::Test { suite } => suite,
+        CloneMemberRepetitionRole::PublicApi { surface } => surface,
+        CloneMemberRepetitionRole::Intentional { reason } => reason,
+    };
+    if detail.trim().is_empty() {
+        return Err(CloneCandidateIndexError::Invalid(
+            "protected clone repetition evidence requires exact nonempty detail".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn repetition_kind(role: &CloneMemberRepetitionRole) -> Option<CloneRepetitionKind> {
+    match role {
+        CloneMemberRepetitionRole::OrdinaryProduction => None,
+        CloneMemberRepetitionRole::Generated { .. } => Some(CloneRepetitionKind::Generated),
+        CloneMemberRepetitionRole::Schema { .. } => Some(CloneRepetitionKind::Schema),
+        CloneMemberRepetitionRole::Test { .. } => Some(CloneRepetitionKind::Test),
+        CloneMemberRepetitionRole::PublicApi { .. } => Some(CloneRepetitionKind::PublicApi),
+        CloneMemberRepetitionRole::Intentional { .. } => Some(CloneRepetitionKind::Intentional),
+    }
+}
+
+fn repetition_role_tag(role: &CloneMemberRepetitionRole) -> String {
+    match role {
+        CloneMemberRepetitionRole::OrdinaryProduction => "ordinary-production".into(),
+        CloneMemberRepetitionRole::Generated { generator } => format!("generated:{generator}"),
+        CloneMemberRepetitionRole::Schema { schema } => format!("schema:{schema}"),
+        CloneMemberRepetitionRole::Test { suite } => format!("test:{suite}"),
+        CloneMemberRepetitionRole::PublicApi { surface } => format!("public-api:{surface}"),
+        CloneMemberRepetitionRole::Intentional { reason } => format!("intentional:{reason}"),
+    }
+}
+
+fn repetition_kind_tag(kind: CloneRepetitionKind) -> &'static str {
+    match kind {
+        CloneRepetitionKind::Generated => "generated",
+        CloneRepetitionKind::Schema => "schema",
+        CloneRepetitionKind::Test => "test",
+        CloneRepetitionKind::PublicApi => "public-api",
+        CloneRepetitionKind::Intentional => "intentional",
+    }
+}
+
+fn readiness_tag(readiness: AbstractionReadiness) -> &'static str {
+    match readiness {
+        AbstractionReadiness::AbstractionReviewCandidate => "abstraction-review-candidate",
+        AbstractionReadiness::ClassifiedNonCandidate => "classified-non-candidate",
+    }
+}
+
 fn find_root(parent: &mut [usize], mut node: usize) -> usize {
     while parent[node] != node {
         parent[node] = parent[parent[node]];
@@ -763,7 +1035,9 @@ fn digest_strings(domain: &str, label: &str, parts: &[impl AsRef<str>]) -> Strin
         hash_part(&mut hasher, part.as_ref().as_bytes());
     }
     let digest = hasher.finalize();
-    let prefix = if domain == CLASS_DOMAIN {
+    let prefix = if domain == CLASSIFICATION_DOMAIN {
+        "crc1_"
+    } else if domain == CLASS_DOMAIN {
         "ccl1_"
     } else if domain == CONTEXT_DOMAIN && label == "id" {
         "cgc1_"
@@ -1135,5 +1409,144 @@ mod tests {
         assert!(!class.members().contains(&ed_id));
         assert_eq!(class.match_kind(), &CloneMatchKind::RenamedStructure);
         assert!(class.bucket_pair_checks() >= 3);
+    }
+
+    fn repetition_index() -> (
+        CloneCandidateIndex,
+        CloneCandidateEntry,
+        CloneCandidateEntry,
+    ) {
+        let first = fingerprint_fixture(
+            "fn run(alpha: i32) -> i32 { let beta = alpha + 1; beta }\n",
+            "block",
+            &[
+                ("alpha", "parameter", IdentifierSurface::Local),
+                ("beta", "result", IdentifierSurface::Local),
+            ],
+        );
+        let renamed = fingerprint_fixture(
+            "fn run(input: i32) -> i32 { let output = input + 1; output }\n",
+            "block",
+            &[
+                ("input", "parameter", IdentifierSurface::Local),
+                ("output", "result", IdentifierSurface::Local),
+            ],
+        );
+        let left = entry_with_context(&first, "g", "topology", "boundary");
+        let right = entry_with_context(&renamed, "g", "topology", "boundary");
+        let index = CloneCandidateIndex::build(vec![left.clone(), right.clone()]).unwrap();
+        (index, left, right)
+    }
+
+    fn evidence(
+        entry: &CloneCandidateEntry,
+        role: CloneMemberRepetitionRole,
+    ) -> CloneMemberRepetitionEvidence {
+        CloneMemberRepetitionEvidence::new(entry.id().clone(), vec![role]).unwrap()
+    }
+
+    #[test]
+    fn protected_repetition_roles_are_classified_before_abstraction() {
+        let cases = vec![
+            (
+                CloneMemberRepetitionRole::Generated {
+                    generator: "prost-build/1".into(),
+                },
+                CloneRepetitionKind::Generated,
+            ),
+            (
+                CloneMemberRepetitionRole::Schema {
+                    schema: "openapi-v3".into(),
+                },
+                CloneRepetitionKind::Schema,
+            ),
+            (
+                CloneMemberRepetitionRole::Test {
+                    suite: "conformance-matrix".into(),
+                },
+                CloneRepetitionKind::Test,
+            ),
+            (
+                CloneMemberRepetitionRole::PublicApi {
+                    surface: "stable-client-trait".into(),
+                },
+                CloneRepetitionKind::PublicApi,
+            ),
+            (
+                CloneMemberRepetitionRole::Intentional {
+                    reason: "independent failure domains".into(),
+                },
+                CloneRepetitionKind::Intentional,
+            ),
+        ];
+        for (role, expected) in cases {
+            let (index, left, right) = repetition_index();
+            let classified = classify_clone_repetition(
+                &index,
+                vec![evidence(&left, role.clone()), evidence(&right, role)],
+            )
+            .unwrap();
+            assert_eq!(classified.len(), 1);
+            assert_eq!(classified[0].kinds(), &[expected]);
+            assert_eq!(
+                classified[0].readiness(),
+                AbstractionReadiness::ClassifiedNonCandidate
+            );
+            assert_eq!(classified[0].members().len(), 2);
+        }
+    }
+
+    #[test]
+    fn ordinary_complete_class_is_deterministic_review_evidence_only() {
+        let (index, left, right) = repetition_index();
+        let supplied = vec![
+            evidence(&right, CloneMemberRepetitionRole::OrdinaryProduction),
+            evidence(&left, CloneMemberRepetitionRole::OrdinaryProduction),
+        ];
+        let first = classify_clone_repetition(&index, supplied.clone()).unwrap();
+        let second = classify_clone_repetition(&index, supplied).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 1);
+        assert!(first[0].kinds().is_empty());
+        assert_eq!(
+            first[0].readiness(),
+            AbstractionReadiness::AbstractionReviewCandidate
+        );
+        assert_eq!(first[0].schema(), CLONE_REPETITION_CLASSIFICATION_SCHEMA);
+        assert!(first[0].id().as_str().starts_with("crc1_"));
+    }
+
+    #[test]
+    fn repetition_classification_fails_closed_on_incomplete_or_contradictory_evidence() {
+        let (index, left, right) = repetition_index();
+        assert!(
+            classify_clone_repetition(
+                &index,
+                vec![evidence(
+                    &left,
+                    CloneMemberRepetitionRole::OrdinaryProduction
+                )],
+            )
+            .is_err()
+        );
+        assert!(
+            CloneMemberRepetitionEvidence::new(
+                right.id().clone(),
+                vec![
+                    CloneMemberRepetitionRole::OrdinaryProduction,
+                    CloneMemberRepetitionRole::Test {
+                        suite: "matrix".into(),
+                    },
+                ],
+            )
+            .is_err()
+        );
+        assert!(
+            CloneMemberRepetitionEvidence::new(
+                right.id().clone(),
+                vec![CloneMemberRepetitionRole::Intentional { reason: " ".into() }],
+            )
+            .is_err()
+        );
     }
 }

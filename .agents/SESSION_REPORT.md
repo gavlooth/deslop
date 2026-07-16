@@ -11755,6 +11755,52 @@ approach required durable negative memory.
 
 Signature: Codex `/root` — M5.23 integration and terminal verification owner
 
+## 2026-07-16T10:13:48+02:00 — M5.24 terminal repetition classification
+
+**Objective:** classify generated, schema-derived, test, public-API, and intentional repetition before any abstraction
+proposal, while preserving the M5.21–M5.23 non-authoritative evidence boundary.
+
+**Target:** require complete canonical per-member evidence for every maximal clone class, exclude protected
+repetition from abstraction consideration, and expose ordinary production repetition only as review evidence.
+
+**Changes:** added strict role evidence for ordinary production, generated output, schemas, tests, public API
+surfaces, and intentional duplication; aggregate `CloneRepetitionKind`; explicit `AbstractionReadiness`; a
+content-addressed `crc1_` classification; and `classify_clone_repetition`. Classification recomputes maximal classes
+from the M5.22 index, demands exact evidence coverage of class members, retains exact category details, and emits one
+deterministic record per class. Protected or mixed categories are classified non-candidates. Only all-ordinary,
+fully evidenced classes become abstraction-review candidates. Missing, extra, duplicate, empty-detail,
+ordinary-plus-protected, and noncanonical deserialized role evidence fails closed. Public exports were wired in
+`deslop-parse`; no detector, edit, patch, application path, or M5.25 work was added.
+
+**Commands run/results:** `cargo test -p deslop-parse clone_candidate_index::tests` passed 10/10. `cargo fmt --all`,
+`cargo fmt --all -- --check`, `cargo build --workspace --all-features`, `cargo test --workspace --all-features`, and
+`cargo clippy --workspace --all-features --all-targets -- -D warnings` all passed. Workspace tests include 251 active
+parse tests with 1 explicit ignored probe, 4 parse doctests, and 55 active recipe tests with 1 explicit ignored
+evidence gate.
+
+**Numerical evidence:** all 5 protected roles independently classify one 2-member graph-verified renamed class as a
+non-candidate. One fully ordinary 2-member class produces exactly 1 deterministic review-evidence record with no
+protected kinds and a `crc1_` identity. One missing-member fixture, one contradictory ordinary-plus-test fixture, and
+one blank intentional-reason fixture each reject.
+
+**Invalidated assumptions/authority lessons:** constructor validation alone is insufficient when evidence can be
+deserialized; classification now reconstructs and compares canonical evidence before use. Clone-class membership and
+ordinary classification are proposal filters, not proof that an abstraction preserves behavior.
+
+**Current recommendation/checkpoint:** M5.24 is terminal. M5.25 may later add graph-grounded detector families, but
+must consume this classification and must not treat review eligibility as write authority. M5.25 was not started.
+
+**Blockers/restart/dependencies:** no blockers. No runtime restart, migration, installed CLI replacement, or cache
+clear is required. Advance and push `main` only after the described change has a clean empty successor.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-parse/src/clone_candidate_index.rs`, and `crates/deslop-parse/src/lib.rs`.
+
+**Negative-memory status:** existing normalized-fingerprint/classification-is-not-write-authority constraints remain
+enforced. The deserialization canonicalization lesson is fixed in code and covered by the fail-closed path.
+
+Signature: Codex `/root` — M5.24 integration and terminal verification owner
+
 ## 2026-07-16 — M5.22 clone candidate index (integration)
 
 - **Objective:** scalable fingerprint indexing + graph-context clone pair verification without whole-project pair scan.

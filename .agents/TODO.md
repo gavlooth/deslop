@@ -608,7 +608,12 @@ reports, benchmark records, and work orders.
   coordinated candidates. Singleton and rejected peers are omitted; no whole-index pair scan or rewrite authority was
   added. The focused maximal-class test, 248 active parse tests (1 explicit ignore), 4 doctests, 55 active recipe
   tests (1 explicit ignore), and full workspace fmt/build/test/clippy-with-warnings-denied gates pass.
-- [ ] M5.24 Classify generated/schema/test/public-API/intentional repetition before abstraction proposals.
+- [x] M5.24 Classify generated/schema/test/public-API/intentional repetition before abstraction proposals.
+  Added content-addressed, complete per-member classification for maximal clone classes. Generated, schema-derived,
+  test, public-API, intentional, mixed, missing, extra, and contradictory evidence is handled fail-closed; only
+  explicitly ordinary production repetition becomes abstraction-review evidence, never write authority. Ten focused
+  tests, 251 active parse tests (1 explicit ignore), 4 doctests, 55 active recipe tests (1 explicit ignore), and full
+  workspace fmt/build/test/clippy-with-warnings-denied gates pass.
 - [ ] M5.25 Add graph-grounded forwarding, conversion/allocation, wrapper, repeated-error, and dead-code candidates.
   Partial vertical slice complete: `rust-remove-unreachable-literal-statement` removes only exact
   entry-unreachable inert Rust literal statements, fails closed on recovered/conservative/non-structured or
