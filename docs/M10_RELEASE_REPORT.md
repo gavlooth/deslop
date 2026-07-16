@@ -8,9 +8,9 @@ in [M10_CAPABILITY_MATRIX.md](M10_CAPABILITY_MATRIX.md); every other numerical b
 | Area | Result |
 |---|---|
 | Canonical compatibility | 600 deterministic programs, 100 each Clojure/JavaScript/Julia/Python/Rust/TypeScript; 120 malformed/opaque |
-| Dogfood | 189 files / 139,703 lines; 182 Complete + 7 Partial reports; 1,536 findings; zero production `SafeAuto` |
+| Dogfood | 189 files / 139,701 lines; 182 Complete + 7 Partial reports; 1,536 findings; zero production `SafeAuto` |
 | Dogfood dispositions | 0 accepted, 5 intentional-fixture rejected, 1,538 unsafe/unverified, 0 naturally stale |
-| Dogfood recipes | 138 isolated files; 7 candidates; 9 timeout abstentions; 243.970 s; 1,387,225,088-byte peak RSS |
+| Dogfood recipes | 138 isolated files; 7 candidates; 9 timeout abstentions; 248.811 s; 1,388,396,544-byte peak RSS |
 | Dogfood work orders | 7 transformation orders / 7 unique IDs / 0 duplicates; 4 edges; 2 waves; no blocked group |
 | External projects | 18 exact revisions, three per language/size grid; 1,198 reports / 198,255 lines / 8,322 findings |
 | External commands | Refreshed warm-cache run: 4 passed, 11 failed, 3 tool-unavailable; prior run had 2 Julia timeouts |

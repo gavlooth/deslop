@@ -1,7 +1,7 @@
 {
   "schema": "deslop.m10-dogfood/1",
-  "report_id": "m10df1_b977948931e4bcf7b78ea028c488dce50b224667f86ec0ee5b25f6c87b707c32",
-  "source_revision": "m10src1_e6d719b1a76db6e727c8dffc775b045267504800cea88bec27a402a065041232",
+  "report_id": "m10df1_46e45d960c5c0963dfd8131ad11e68fbe3cea6ae0df339df441f9c6c9208f7a0",
+  "source_revision": "m10src1_a006550ad460a0f3b9bd79910ec0865b31008f7651d00d05a33aad9b8449a0c6",
   "sources": [
     {
       "path": "/home/christos/code/deslop/crates/deslop-analyzer/src/agnostic.rs",
@@ -59,9 +59,9 @@
     },
     {
       "path": "/home/christos/code/deslop/crates/deslop-analyzer/src/tests.rs",
-      "digest": "blake3:5ad75b7b0073051efe19d1a8ebb29ac08e68b4814eff81f4f78eb81b8036bb25",
-      "bytes": 52511,
-      "lines": 1512
+      "digest": "blake3:324937e4daf0ab04822b2a3f2ac833c0e88fbd2af5b38dcb9e534e9c52835225",
+      "bytes": 52385,
+      "lines": 1510
     },
     {
       "path": "/home/christos/code/deslop/crates/deslop-analyzer/src/tokens.rs",
@@ -1139,7 +1139,7 @@
     }
   ],
   "source_files": 189,
-  "source_lines": 139703,
+  "source_lines": 139701,
   "project_analysis_status": "partial",
   "analysis_statuses": {
     "complete": 182,
@@ -1660,7 +1660,25 @@
       "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
     },
     {
-      "fingerprint": "2ce7d0b695fb6b0e",
+      "fingerprint": "0742c190951d6a45",
+      "path": "crates/deslop-analyzer/src/tests.rs",
+      "rule": "long-method",
+      "safety": "llm-only",
+      "classification": "production-unknown",
+      "disposition": "unsafe",
+      "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
+    },
+    {
+      "fingerprint": "0d8aa67978f3d357",
+      "path": "crates/deslop-analyzer/src/tests.rs",
+      "rule": "long-method",
+      "safety": "llm-only",
+      "classification": "production-unknown",
+      "disposition": "unsafe",
+      "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
+    },
+    {
+      "fingerprint": "3a5b2ba88a4a3936",
       "path": "crates/deslop-analyzer/src/tests.rs",
       "rule": "long-method",
       "safety": "llm-only",
@@ -1687,9 +1705,9 @@
       "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
     },
     {
-      "fingerprint": "4fade9311ae0a689",
+      "fingerprint": "4e8c874d4d2d17c3",
       "path": "crates/deslop-analyzer/src/tests.rs",
-      "rule": "long-method",
+      "rule": "near-duplicate",
       "safety": "llm-only",
       "classification": "production-unknown",
       "disposition": "unsafe",
@@ -1714,9 +1732,18 @@
       "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
     },
     {
-      "fingerprint": "606422f30ba43c94",
+      "fingerprint": "538016a0fc734e74",
       "path": "crates/deslop-analyzer/src/tests.rs",
-      "rule": "duplicate-block",
+      "rule": "long-method",
+      "safety": "llm-only",
+      "classification": "production-unknown",
+      "disposition": "unsafe",
+      "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
+    },
+    {
+      "fingerprint": "5df90233a7605b5d",
+      "path": "crates/deslop-analyzer/src/tests.rs",
+      "rule": "near-duplicate",
       "safety": "llm-only",
       "classification": "production-unknown",
       "disposition": "unsafe",
@@ -1741,9 +1768,9 @@
       "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
     },
     {
-      "fingerprint": "6c4cdc11c9619ba5",
+      "fingerprint": "69c1d9ffbee056c4",
       "path": "crates/deslop-analyzer/src/tests.rs",
-      "rule": "long-method",
+      "rule": "duplicate-block",
       "safety": "llm-only",
       "classification": "production-unknown",
       "disposition": "unsafe",
@@ -1753,33 +1780,6 @@
       "fingerprint": "6ff77435c9dff502",
       "path": "crates/deslop-analyzer/src/tests.rs",
       "rule": "near-duplicate",
-      "safety": "llm-only",
-      "classification": "production-unknown",
-      "disposition": "unsafe",
-      "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
-    },
-    {
-      "fingerprint": "b051d53be482447f",
-      "path": "crates/deslop-analyzer/src/tests.rs",
-      "rule": "near-duplicate",
-      "safety": "llm-only",
-      "classification": "production-unknown",
-      "disposition": "unsafe",
-      "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
-    },
-    {
-      "fingerprint": "b2442826224c4641",
-      "path": "crates/deslop-analyzer/src/tests.rs",
-      "rule": "near-duplicate",
-      "safety": "llm-only",
-      "classification": "production-unknown",
-      "disposition": "unsafe",
-      "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
-    },
-    {
-      "fingerprint": "bd6121988c24ea9b",
-      "path": "crates/deslop-analyzer/src/tests.rs",
-      "rule": "duplicate-block",
       "safety": "llm-only",
       "classification": "production-unknown",
       "disposition": "unsafe",
@@ -1804,15 +1804,6 @@
       "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
     },
     {
-      "fingerprint": "d137b7305bbdc459",
-      "path": "crates/deslop-analyzer/src/tests.rs",
-      "rule": "long-method",
-      "safety": "llm-only",
-      "classification": "production-unknown",
-      "disposition": "unsafe",
-      "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
-    },
-    {
       "fingerprint": "ea101e5d043281dc",
       "path": "crates/deslop-analyzer/src/tests.rs",
       "rule": "long-method",
@@ -1825,6 +1816,15 @@
       "fingerprint": "ee972a0e07c7de0a",
       "path": "crates/deslop-analyzer/src/tests.rs",
       "rule": "near-duplicate",
+      "safety": "llm-only",
+      "classification": "production-unknown",
+      "disposition": "unsafe",
+      "reason": "non-SafeAuto finding has no dogfood rewrite authorization"
+    },
+    {
+      "fingerprint": "f8781ad51b3f45ab",
+      "path": "crates/deslop-analyzer/src/tests.rs",
+      "rule": "duplicate-block",
       "safety": "llm-only",
       "classification": "production-unknown",
       "disposition": "unsafe",
@@ -14984,7 +14984,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 760,
+      "elapsed_millis": 1154,
       "abstention_reasons": []
     },
     {
@@ -14993,7 +14993,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3506,
+      "elapsed_millis": 4197,
       "abstention_reasons": []
     },
     {
@@ -15002,7 +15002,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 263,
+      "elapsed_millis": 587,
       "abstention_reasons": []
     },
     {
@@ -15011,7 +15011,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 144,
+      "elapsed_millis": 233,
       "abstention_reasons": []
     },
     {
@@ -15020,7 +15020,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 5833,
+      "elapsed_millis": 6592,
       "abstention_reasons": []
     },
     {
@@ -15029,7 +15029,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 54,
+      "elapsed_millis": 154,
       "abstention_reasons": []
     },
     {
@@ -15038,7 +15038,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 33,
+      "elapsed_millis": 37,
       "abstention_reasons": []
     },
     {
@@ -15047,7 +15047,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 55,
+      "elapsed_millis": 76,
       "abstention_reasons": []
     },
     {
@@ -15056,7 +15056,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 515,
+      "elapsed_millis": 625,
       "abstention_reasons": []
     },
     {
@@ -15065,7 +15065,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 5323,
+      "elapsed_millis": 5269,
       "abstention_reasons": []
     },
     {
@@ -15074,7 +15074,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2009,
+      "elapsed_millis": 2851,
       "abstention_reasons": []
     },
     {
@@ -15083,7 +15083,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 2,
       "abstention_count": 0,
-      "elapsed_millis": 25763,
+      "elapsed_millis": 25504,
       "abstention_reasons": []
     },
     {
@@ -15092,7 +15092,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 183,
+      "elapsed_millis": 314,
       "abstention_reasons": []
     },
     {
@@ -15101,7 +15101,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 184,
+      "elapsed_millis": 200,
       "abstention_reasons": []
     },
     {
@@ -15110,7 +15110,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 441,
+      "elapsed_millis": 792,
       "abstention_reasons": []
     },
     {
@@ -15119,7 +15119,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 143,
+      "elapsed_millis": 271,
       "abstention_reasons": []
     },
     {
@@ -15128,7 +15128,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 305,
+      "elapsed_millis": 904,
       "abstention_reasons": []
     },
     {
@@ -15137,7 +15137,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 267,
+      "elapsed_millis": 861,
       "abstention_reasons": []
     },
     {
@@ -15146,7 +15146,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 673,
+      "elapsed_millis": 1262,
       "abstention_reasons": []
     },
     {
@@ -15155,7 +15155,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 106,
+      "elapsed_millis": 243,
       "abstention_reasons": []
     },
     {
@@ -15164,7 +15164,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 103,
+      "elapsed_millis": 558,
       "abstention_reasons": []
     },
     {
@@ -15173,7 +15173,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 76,
+      "elapsed_millis": 206,
       "abstention_reasons": []
     },
     {
@@ -15182,7 +15182,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1399,
+      "elapsed_millis": 1683,
       "abstention_reasons": []
     },
     {
@@ -15191,7 +15191,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 47,
+      "elapsed_millis": 185,
       "abstention_reasons": []
     },
     {
@@ -15200,7 +15200,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 61,
+      "elapsed_millis": 100,
       "abstention_reasons": []
     },
     {
@@ -15209,7 +15209,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 65,
+      "elapsed_millis": 210,
       "abstention_reasons": []
     },
     {
@@ -15218,7 +15218,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 58,
+      "elapsed_millis": 189,
       "abstention_reasons": []
     },
     {
@@ -15227,7 +15227,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 85,
+      "elapsed_millis": 186,
       "abstention_reasons": []
     },
     {
@@ -15236,7 +15236,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 78,
+      "elapsed_millis": 586,
       "abstention_reasons": []
     },
     {
@@ -15245,7 +15245,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 54,
+      "elapsed_millis": 234,
       "abstention_reasons": []
     },
     {
@@ -15254,7 +15254,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1030,
+      "elapsed_millis": 1061,
       "abstention_reasons": []
     },
     {
@@ -15263,7 +15263,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 641,
+      "elapsed_millis": 666,
       "abstention_reasons": []
     },
     {
@@ -15272,7 +15272,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2627,
+      "elapsed_millis": 2722,
       "abstention_reasons": []
     },
     {
@@ -15281,7 +15281,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1905,
+      "elapsed_millis": 1934,
       "abstention_reasons": []
     },
     {
@@ -15290,7 +15290,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1832,
+      "elapsed_millis": 2503,
       "abstention_reasons": []
     },
     {
@@ -15299,7 +15299,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3679,
+      "elapsed_millis": 3847,
       "abstention_reasons": []
     },
     {
@@ -15308,7 +15308,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 9032,
+      "elapsed_millis": 9516,
       "abstention_reasons": []
     },
     {
@@ -15317,7 +15317,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1159,
+      "elapsed_millis": 1022,
       "abstention_reasons": []
     },
     {
@@ -15326,7 +15326,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 71,
+      "elapsed_millis": 266,
       "abstention_reasons": []
     },
     {
@@ -15335,7 +15335,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 128,
+      "elapsed_millis": 409,
       "abstention_reasons": []
     },
     {
@@ -15344,7 +15344,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 302,
+      "elapsed_millis": 344,
       "abstention_reasons": []
     },
     {
@@ -15353,7 +15353,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2317,
+      "elapsed_millis": 2401,
       "abstention_reasons": []
     },
     {
@@ -15362,7 +15362,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 618,
+      "elapsed_millis": 617,
       "abstention_reasons": []
     },
     {
@@ -15371,7 +15371,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2734,
+      "elapsed_millis": 2191,
       "abstention_reasons": []
     },
     {
@@ -15380,7 +15380,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 1,
       "abstention_count": 0,
-      "elapsed_millis": 5474,
+      "elapsed_millis": 5330,
       "abstention_reasons": []
     },
     {
@@ -15389,7 +15389,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 886,
+      "elapsed_millis": 715,
       "abstention_reasons": []
     },
     {
@@ -15398,7 +15398,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3146,
+      "elapsed_millis": 3612,
       "abstention_reasons": []
     },
     {
@@ -15407,7 +15407,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 497,
+      "elapsed_millis": 97,
       "abstention_reasons": []
     },
     {
@@ -15416,7 +15416,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 194,
+      "elapsed_millis": 147,
       "abstention_reasons": []
     },
     {
@@ -15425,7 +15425,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1769,
+      "elapsed_millis": 1443,
       "abstention_reasons": []
     },
     {
@@ -15434,7 +15434,7 @@
       "analyzed_rust_files": 0,
       "candidate_count": 0,
       "abstention_count": 1,
-      "elapsed_millis": 30030,
+      "elapsed_millis": 30026,
       "abstention_reasons": [
         "partition exceeded the 30-second release budget"
       ]
@@ -15445,7 +15445,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3475,
+      "elapsed_millis": 4142,
       "abstention_reasons": []
     },
     {
@@ -15454,7 +15454,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 6948,
+      "elapsed_millis": 6555,
       "abstention_reasons": []
     },
     {
@@ -15463,7 +15463,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 47,
+      "elapsed_millis": 75,
       "abstention_reasons": []
     },
     {
@@ -15472,7 +15472,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 13775,
+      "elapsed_millis": 13492,
       "abstention_reasons": []
     },
     {
@@ -15481,7 +15481,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 814,
+      "elapsed_millis": 930,
       "abstention_reasons": []
     },
     {
@@ -15490,7 +15490,7 @@
       "analyzed_rust_files": 0,
       "candidate_count": 0,
       "abstention_count": 1,
-      "elapsed_millis": 30016,
+      "elapsed_millis": 30019,
       "abstention_reasons": [
         "partition exceeded the 30-second release budget"
       ]
@@ -15501,7 +15501,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1907,
+      "elapsed_millis": 2159,
       "abstention_reasons": []
     },
     {
@@ -15510,7 +15510,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 24847,
+      "elapsed_millis": 28446,
       "abstention_reasons": []
     },
     {
@@ -15519,7 +15519,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 566,
+      "elapsed_millis": 569,
       "abstention_reasons": []
     },
     {
@@ -15528,7 +15528,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 13835,
+      "elapsed_millis": 13817,
       "abstention_reasons": []
     },
     {
@@ -15537,7 +15537,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1885,
+      "elapsed_millis": 1591,
       "abstention_reasons": []
     },
     {
@@ -15546,7 +15546,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 7748,
+      "elapsed_millis": 7184,
       "abstention_reasons": []
     },
     {
@@ -15555,7 +15555,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 658,
+      "elapsed_millis": 619,
       "abstention_reasons": []
     },
     {
@@ -15564,7 +15564,7 @@
       "analyzed_rust_files": 0,
       "candidate_count": 0,
       "abstention_count": 1,
-      "elapsed_millis": 30018,
+      "elapsed_millis": 30021,
       "abstention_reasons": [
         "partition exceeded the 30-second release budget"
       ]
@@ -15575,7 +15575,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 1,
       "abstention_count": 0,
-      "elapsed_millis": 29665,
+      "elapsed_millis": 26577,
       "abstention_reasons": []
     },
     {
@@ -15584,7 +15584,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 7188,
+      "elapsed_millis": 7046,
       "abstention_reasons": []
     },
     {
@@ -15593,7 +15593,7 @@
       "analyzed_rust_files": 0,
       "candidate_count": 0,
       "abstention_count": 1,
-      "elapsed_millis": 30013,
+      "elapsed_millis": 30016,
       "abstention_reasons": [
         "partition exceeded the 30-second release budget"
       ]
@@ -15604,7 +15604,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 1,
       "abstention_count": 0,
-      "elapsed_millis": 15377,
+      "elapsed_millis": 17182,
       "abstention_reasons": []
     },
     {
@@ -15613,7 +15613,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3998,
+      "elapsed_millis": 4158,
       "abstention_reasons": []
     },
     {
@@ -15622,7 +15622,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1765,
+      "elapsed_millis": 1734,
       "abstention_reasons": []
     },
     {
@@ -15631,7 +15631,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 9973,
+      "elapsed_millis": 9904,
       "abstention_reasons": []
     },
     {
@@ -15640,7 +15640,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 144,
+      "elapsed_millis": 159,
       "abstention_reasons": []
     },
     {
@@ -15649,7 +15649,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2631,
+      "elapsed_millis": 2693,
       "abstention_reasons": []
     },
     {
@@ -15658,7 +15658,7 @@
       "analyzed_rust_files": 0,
       "candidate_count": 0,
       "abstention_count": 1,
-      "elapsed_millis": 30025,
+      "elapsed_millis": 30014,
       "abstention_reasons": [
         "partition exceeded the 30-second release budget"
       ]
@@ -15669,7 +15669,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 5680,
+      "elapsed_millis": 6150,
       "abstention_reasons": []
     },
     {
@@ -15678,7 +15678,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2059,
+      "elapsed_millis": 2812,
       "abstention_reasons": []
     },
     {
@@ -15687,7 +15687,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 17577,
+      "elapsed_millis": 16197,
       "abstention_reasons": []
     },
     {
@@ -15696,7 +15696,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2252,
+      "elapsed_millis": 2206,
       "abstention_reasons": []
     },
     {
@@ -15705,7 +15705,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 581,
+      "elapsed_millis": 484,
       "abstention_reasons": []
     },
     {
@@ -15714,7 +15714,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2202,
+      "elapsed_millis": 1787,
       "abstention_reasons": []
     },
     {
@@ -15723,7 +15723,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2172,
+      "elapsed_millis": 2110,
       "abstention_reasons": []
     },
     {
@@ -15732,7 +15732,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 8070,
+      "elapsed_millis": 8518,
       "abstention_reasons": []
     },
     {
@@ -15741,7 +15741,7 @@
       "analyzed_rust_files": 0,
       "candidate_count": 0,
       "abstention_count": 1,
-      "elapsed_millis": 30038,
+      "elapsed_millis": 30029,
       "abstention_reasons": [
         "partition exceeded the 30-second release budget"
       ]
@@ -15752,7 +15752,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 685,
+      "elapsed_millis": 1129,
       "abstention_reasons": []
     },
     {
@@ -15761,7 +15761,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 4123,
+      "elapsed_millis": 3677,
       "abstention_reasons": []
     },
     {
@@ -15770,7 +15770,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 13655,
+      "elapsed_millis": 13410,
       "abstention_reasons": []
     },
     {
@@ -15779,7 +15779,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2676,
+      "elapsed_millis": 2766,
       "abstention_reasons": []
     },
     {
@@ -15788,7 +15788,7 @@
       "analyzed_rust_files": 0,
       "candidate_count": 0,
       "abstention_count": 1,
-      "elapsed_millis": 30042,
+      "elapsed_millis": 30032,
       "abstention_reasons": [
         "partition exceeded the 30-second release budget"
       ]
@@ -15799,7 +15799,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2453,
+      "elapsed_millis": 2035,
       "abstention_reasons": []
     },
     {
@@ -15808,7 +15808,7 @@
       "analyzed_rust_files": 0,
       "candidate_count": 0,
       "abstention_count": 1,
-      "elapsed_millis": 30018,
+      "elapsed_millis": 30015,
       "abstention_reasons": [
         "partition exceeded the 30-second release budget"
       ]
@@ -15819,7 +15819,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 6513,
+      "elapsed_millis": 6865,
       "abstention_reasons": []
     },
     {
@@ -15828,7 +15828,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 628,
+      "elapsed_millis": 297,
       "abstention_reasons": []
     },
     {
@@ -15837,7 +15837,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2544,
+      "elapsed_millis": 2996,
       "abstention_reasons": []
     },
     {
@@ -15846,7 +15846,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 948,
+      "elapsed_millis": 1332,
       "abstention_reasons": []
     },
     {
@@ -15855,7 +15855,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 1,
       "abstention_count": 0,
-      "elapsed_millis": 9376,
+      "elapsed_millis": 10522,
       "abstention_reasons": []
     },
     {
@@ -15864,7 +15864,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2278,
+      "elapsed_millis": 2232,
       "abstention_reasons": []
     },
     {
@@ -15873,7 +15873,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2530,
+      "elapsed_millis": 2696,
       "abstention_reasons": []
     },
     {
@@ -15882,7 +15882,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2409,
+      "elapsed_millis": 2304,
       "abstention_reasons": []
     },
     {
@@ -15891,7 +15891,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 4343,
+      "elapsed_millis": 5052,
       "abstention_reasons": []
     },
     {
@@ -15900,7 +15900,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 273,
+      "elapsed_millis": 244,
       "abstention_reasons": []
     },
     {
@@ -15909,7 +15909,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2357,
+      "elapsed_millis": 2425,
       "abstention_reasons": []
     },
     {
@@ -15918,7 +15918,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 5774,
+      "elapsed_millis": 5549,
       "abstention_reasons": []
     },
     {
@@ -15927,7 +15927,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 410,
+      "elapsed_millis": 317,
       "abstention_reasons": []
     },
     {
@@ -15936,7 +15936,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1326,
+      "elapsed_millis": 1261,
       "abstention_reasons": []
     },
     {
@@ -15945,7 +15945,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 19609,
+      "elapsed_millis": 21167,
       "abstention_reasons": []
     },
     {
@@ -15954,7 +15954,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3286,
+      "elapsed_millis": 3428,
       "abstention_reasons": []
     },
     {
@@ -15963,7 +15963,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 1,
       "abstention_count": 0,
-      "elapsed_millis": 427,
+      "elapsed_millis": 747,
       "abstention_reasons": []
     },
     {
@@ -15972,7 +15972,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 7681,
+      "elapsed_millis": 7990,
       "abstention_reasons": []
     },
     {
@@ -15981,7 +15981,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 150,
+      "elapsed_millis": 190,
       "abstention_reasons": []
     },
     {
@@ -15990,7 +15990,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 7136,
+      "elapsed_millis": 7685,
       "abstention_reasons": []
     },
     {
@@ -15999,7 +15999,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 5984,
+      "elapsed_millis": 5707,
       "abstention_reasons": []
     },
     {
@@ -16008,7 +16008,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1130,
+      "elapsed_millis": 1412,
       "abstention_reasons": []
     },
     {
@@ -16017,7 +16017,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1176,
+      "elapsed_millis": 988,
       "abstention_reasons": []
     },
     {
@@ -16026,7 +16026,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 2435,
+      "elapsed_millis": 2673,
       "abstention_reasons": []
     },
     {
@@ -16035,7 +16035,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 622,
+      "elapsed_millis": 579,
       "abstention_reasons": []
     },
     {
@@ -16044,7 +16044,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 9762,
+      "elapsed_millis": 8764,
       "abstention_reasons": []
     },
     {
@@ -16053,7 +16053,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1238,
+      "elapsed_millis": 1631,
       "abstention_reasons": []
     },
     {
@@ -16062,7 +16062,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3089,
+      "elapsed_millis": 2721,
       "abstention_reasons": []
     },
     {
@@ -16071,7 +16071,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 575,
+      "elapsed_millis": 572,
       "abstention_reasons": []
     },
     {
@@ -16080,7 +16080,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1071,
+      "elapsed_millis": 1024,
       "abstention_reasons": []
     },
     {
@@ -16089,7 +16089,7 @@
       "analyzed_rust_files": 0,
       "candidate_count": 0,
       "abstention_count": 1,
-      "elapsed_millis": 30020,
+      "elapsed_millis": 30017,
       "abstention_reasons": [
         "partition exceeded the 30-second release budget"
       ]
@@ -16100,7 +16100,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1886,
+      "elapsed_millis": 2172,
       "abstention_reasons": []
     },
     {
@@ -16109,7 +16109,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 1098,
+      "elapsed_millis": 835,
       "abstention_reasons": []
     },
     {
@@ -16118,7 +16118,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 3192,
+      "elapsed_millis": 3236,
       "abstention_reasons": []
     },
     {
@@ -16127,7 +16127,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 369,
+      "elapsed_millis": 763,
       "abstention_reasons": []
     },
     {
@@ -16136,7 +16136,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 206,
+      "elapsed_millis": 197,
       "abstention_reasons": []
     },
     {
@@ -16145,7 +16145,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 148,
+      "elapsed_millis": 53,
       "abstention_reasons": []
     },
     {
@@ -16154,7 +16154,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 468,
+      "elapsed_millis": 122,
       "abstention_reasons": []
     },
     {
@@ -16163,7 +16163,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 203,
+      "elapsed_millis": 150,
       "abstention_reasons": []
     },
     {
@@ -16172,7 +16172,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 346,
+      "elapsed_millis": 331,
       "abstention_reasons": []
     },
     {
@@ -16181,7 +16181,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 216,
+      "elapsed_millis": 340,
       "abstention_reasons": []
     },
     {
@@ -16190,7 +16190,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 407,
+      "elapsed_millis": 208,
       "abstention_reasons": []
     },
     {
@@ -16199,7 +16199,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 176,
+      "elapsed_millis": 237,
       "abstention_reasons": []
     },
     {
@@ -16208,7 +16208,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 193,
+      "elapsed_millis": 296,
       "abstention_reasons": []
     },
     {
@@ -16217,7 +16217,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 63,
+      "elapsed_millis": 217,
       "abstention_reasons": []
     },
     {
@@ -16226,7 +16226,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 173,
+      "elapsed_millis": 203,
       "abstention_reasons": []
     },
     {
@@ -16235,7 +16235,7 @@
       "analyzed_rust_files": 1,
       "candidate_count": 0,
       "abstention_count": 0,
-      "elapsed_millis": 166,
+      "elapsed_millis": 177,
       "abstention_reasons": []
     }
   ],
@@ -16317,8 +16317,8 @@
     "stale": 0,
     "unsafe": 7
   },
-  "recipe_elapsed_millis": 243970,
-  "peak_rss_bytes": 1387225088,
+  "recipe_elapsed_millis": 248811,
+  "peak_rss_bytes": 1388396544,
   "work_orders": {
     "status": "finding-proposal-timed-out-downgraded",
     "exception": "whole-project finding proposal construction exceeded the measured 15-minute release ceiling; stable release exposes bounded protocol index/triage/explain/plan operations and does not claim an interactive exhaustive proposal batch",

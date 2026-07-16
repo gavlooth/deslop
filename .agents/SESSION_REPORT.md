@@ -12585,3 +12585,68 @@ run the full all-feature workspace fmt/build/test/clippy command with the same f
 matches the corrected source manifest.
 
 Signature: Codex (GPT-5), M10 focused-gate correction owner, 2026-07-16.
+
+## 2026-07-16 — M10 Python blank-run regression-gate correction
+
+**Objective:** Correct stale analyzer expectations after the production Python policy was tightened
+to preserve PEP 8's valid two-blank-line top-level separation while reporting only runs of three or
+more blank lines.
+
+**Target:** Analyzer suppression fixtures and owned-scan determinism totals exercised by the full
+workspace all-feature test gate.
+
+**Changes:** Made suppression fixtures contain three actual blank lines so they continue to exercise
+the intended finding, removed two obsolete Python `consecutive-blank-lines` golden entries, and
+updated the exact owned-scan totals from 99 to 97 and from 88 to 86.
+
+**Commands run/results:** The first fail-fast full gate passed fmt and build but failed four analyzer
+tests with stale expectations, so it is rejected as release evidence. After correction,
+`cargo test -p deslop-analyzer --lib` passed 69/69 and
+`cargo test --workspace --all-features` passed the complete workspace and doc-test suite.
+
+**Invalidated assumption:** Updating production analyzer policy and CLI DoD totals was insufficient;
+owned-scan and suppression goldens also encoded the former one-blank-line threshold.
+
+**Current recommendation/checkpoint:** Seal this correction, regenerate the source-bound dogfood
+report once, then run the focused and exact full release gates from the final clean revision.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** No restart. The dogfood artifact must be regenerated because
+its exact source manifest includes this test source.
+
+Signature: Codex (GPT-5), M10 Python blank-run regression-gate correction, 2026-07-16.
+
+## 2026-07-16 — M10 final dogfood-source checkpoint
+
+**Objective:** Regenerate the exact dogfood evidence after the last analyzer test-source correction.
+
+**Target:** `deslop.m10-dogfood/1` source identity, scan/disposition ledger, bounded Rust recipe
+partitions, and published release numbers.
+
+**Changes:** Regenerated the content-addressed report from the sealed analyzer source and synchronized
+the release report's file, line, time, and RSS measurements.
+
+**Commands run/results:** Built `m10-dogfood` in release mode; `assemble` completed; immediate strict
+`verify` passed for report
+`m10df1_46e45d960c5c0963dfd8131ad11e68fbe3cea6ae0df339df441f9c6c9208f7a0`
+and source revision
+`m10src1_a006550ad460a0f3b9bd79910ec0865b31008f7651d00d05a33aad9b8449a0c6`.
+
+**Numerical results:** 189 files / 139,701 lines; 182 Complete + seven Partial; 1,536 findings;
+zero production `safe-auto`; five rejected fixture findings; 1,538 unsafe/unverified; zero stale;
+seven recipe candidates; nine timeout abstentions across 138 isolated files; 248.811 seconds;
+1,388,396,544-byte peak RSS.
+
+**Invalidated assumptions:** None beyond the already-recorded requirement that any analyzed Rust
+source change invalidates the prior content-addressed dogfood report.
+
+**Current recommendation/checkpoint:** Seal this report and documentation slice, create a clean
+working revision, and run the focused and exact full release gates without further source edits.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** No restart. Any later Rust source edit requires another
+dogfood regeneration and invalidates the upcoming gate evidence.
+
+Signature: Codex (GPT-5), M10 final dogfood-source checkpoint, 2026-07-16.

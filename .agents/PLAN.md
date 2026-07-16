@@ -4853,3 +4853,18 @@ Signature: Codex (GPT-5), M10 release-evidence owner, 2026-07-16.
 - Focused fmt/clippy `-D warnings` for evaluator/graph/protocol is green after the cache-state and
   public-version changes. The implementation/evidence/docs slice is ready to describe and validate
   from a clean checkout.
+
+### M10 final dogfood-source checkpoint (2026-07-16)
+
+- Corrected all analyzer goldens affected by Python's valid two-blank-line separator policy; the
+  analyzer passes 69/69 and the complete all-feature workspace test suite passes.
+- Regenerated and strictly verified final dogfood report
+  `m10df1_46e45d960c5c0963dfd8131ad11e68fbe3cea6ae0df339df441f9c6c9208f7a0`
+  against source revision
+  `m10src1_a006550ad460a0f3b9bd79910ec0865b31008f7651d00d05a33aad9b8449a0c6`:
+  189 files / 139,701 lines, 182 Complete + seven Partial, 1,536 findings, zero production
+  `safe-auto`, five fixture rejections, 1,538 unsafe/unverified, and zero stale.
+- The final 138-file isolated recipe run retained seven candidates and nine 30-second timeout
+  abstentions, completed in 248.811 seconds, and peaked at 1,388,396,544 bytes RSS. The next and only
+  active path is clean focused/full gates, gate artifact assembly, strict release join, and terminal
+  ledger closure; no source-bound artifact may be regenerated after the gate revision is sealed.

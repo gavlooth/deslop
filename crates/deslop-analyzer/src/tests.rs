@@ -690,7 +690,7 @@ fn incompleteness_ignores_stub_words_inside_strings_and_comments() {
 }
 
 fn blank_source(path: &str) -> SourceFile {
-    source(path, "a = 1\n\n\nb = 2\n")
+    source(path, "a = 1\n\n\n\nb = 2\n")
 }
 
 fn config_with(suppression: Suppression) -> AnalyzerConfig {
@@ -1226,12 +1226,10 @@ fn owned_scan_analysis_is_parse_once_deterministic_and_partial_safe() {
         .iter()
         .flat_map(|report| report.findings.iter())
         .collect::<Vec<_>>();
-    assert_eq!(findings.len(), 9, "{findings:#?}");
+    assert_eq!(findings.len(), 7, "{findings:#?}");
     let expected = [
-        ("consecutive-blank-lines", 2, 3, "6a501adaa439fdee"),
         ("long-method", 4, 9, "5497c8ef53d9cf57"),
         ("long-method", 5, 7, "2dddbe7c1175c1ea"),
-        ("consecutive-blank-lines", 10, 11, "ddf3aa860042ca2e"),
         ("long-method", 13, 18, "a63349b9dc2deef7"),
         ("near-duplicate", 13, 18, "e78e22cf018ba4cd"),
         ("needless-clone", 3, 3, "22249ca9c4db7d7f"),
@@ -1272,7 +1270,7 @@ fn owned_scan_analysis_is_parse_once_deterministic_and_partial_safe() {
             .iter()
             .map(|report| report.findings.len())
             .sum::<usize>(),
-        8
+        6
     );
     assert_eq!(analysis.parse_counts(), cold_counts);
     assert_eq!(deslop_parse::parse_source_invocations(), 0);
