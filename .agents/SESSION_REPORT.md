@@ -11848,3 +11848,78 @@ repeating invalid path requires a durable negative-memory entry. Existing matchi
 authority constraints remain enforced.
 
 Signature: Codex `/root` — M5.25 integration and terminal verification owner
+
+## 2026-07-16 — M5.26 terminal role/scope and comment evidence
+
+**Objective/target:** add role- and scope-aware identifier evidence plus owned comment intent without permitting
+automatic rationale deletion.
+
+**Changes:** added strict, content-addressed `deslop.role-scope-comment-evidence/1`. Identifier evidence retains exact
+path/span/spelling, semantic and adapter canonical roles, scope fact, binding fact, and unique terminal resolution for
+references. Comment evidence retains exact text, intent, span, and owner scope. Complete scope and comment coverage
+is mandatory. Public API identifiers and documentation/rationale/suppression comments require review; an automatic
+edit overlapping and dropping rationale text yields `automatic-rationale-deletion-blocked`. The projection never
+changes candidate disposition or supplies write authority.
+
+**Commands run/results:** `cargo fmt --all`; focused `cargo test -p deslop-recipes semantic_evidence` passed 4/4;
+`cargo fmt --all -- --check`; workspace all-feature build and test; and workspace all-feature/all-target clippy with
+`-D warnings` all passed. The terminal run has 757 active tests, including 251 active parse tests with 1 explicit
+ignore, 4 parse doctests, and 61 active recipe tests with 1 explicit ignore.
+
+**Numerical/failure evidence:** two equal `value` spellings in distinct exact scope facts remain two records; an
+ambiguous reference rejects; duplicate spans reject; public API evidence downgrades automatic compatibility to
+review; an exact overlapping automatic replacement that omits a rationale comment is blocked, while retaining the
+exact comment is review-only. Partial coverage is not accepted.
+
+**Current recommendation/checkpoint:** M5.26 is terminal. Run the M5.DoD enabled-detector audit next; do not start M6.
+
+**Blockers/restart/dependencies:** none. No restart, migration, CLI replacement, or cache clear is required.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-recipes/src/semantic_evidence.rs`, and `crates/deslop-recipes/src/lib.rs`.
+
+**Negative-memory status:** automatic rationale deletion is now an explicit terminal block. No unresolved failed
+path requires a new durable negative-memory entry.
+
+Signature: Codex `/root` — M5.26 integration and terminal verification owner
+
+## 2026-07-16 — M5 definition-of-done terminal checkpoint
+
+**Objective/target:** close M5 only after every enabled detector is joined to the full graph fact -> unique candidate
+-> guarded patch -> expected delta -> required verification -> exact rollback chain, with an audited SafeAuto frontier.
+
+**Changes:** added the canonical 16-entry `enabled_rust_recipe_catalog` and production `audit_m5_candidate`. Production
+detection rejects duplicate candidate IDs, candidates outside the exact catalog, mismatched recipe identities,
+missing guarded edits or graph deltas, missing required verification, incomplete reverse-exact rollback coverage, and
+automatic candidates outside the three audited literal-only recipes. The catalog tests require unique recipe names
+and IDs, dependency-bound graph layers and conditions, all four fixture roles, required validation, and guarded
+rollback. No M6 implementation was started.
+
+**Commands run/results:** focused DoD tests pass 2/2; production projection tests pass 6/6; CLI recipe integration
+passes 12/12. The first full run passed all tests but clippy rejected one collapsible conditional. That conditional
+was simplified and the complete fmt/build/test/clippy sequence was rerun from the start. The terminal rerun passes:
+759 active workspace tests, 251 active parse tests with 1 explicit ignore, 4 parse doctests, 63 active recipe tests
+with 1 explicit ignore, workspace all-feature build, fmt check, and all-feature/all-target clippy with `-D warnings`.
+
+**Numerical evidence:** exactly 16 enabled recipes have 16 unique names and identities. Exactly 3 recipes permit
+SafeAuto, and all 3 carry both minimal-counterexample and adversarial-near-miss `NoCandidate` fixtures. Every emitted
+production candidate is sorted, duplicate-checked, and audited before return.
+
+**Invalidated assumptions/failure modes:** test success alone did not close the terminal gate because clippy found a
+style warning under `-D warnings`; the entire gate was rerun after the fix. SafeAuto is not inferred from graph
+eligibility alone and cannot expand without an explicit catalog/test change.
+
+**Current recommendation/checkpoint:** M5 is terminal. Advance and push `main` only after describing this slice and
+verifying a clean empty successor. The next milestone is M6, but it was not started here.
+
+**Blockers/restart/dependencies:** none. No restart, migration, CLI replacement, or cache clear is required.
+
+**Files/artifacts:** `.agents/PLAN.md`, `.agents/TODO.md`, `.agents/SESSION_REPORT.md`,
+`crates/deslop-recipes/src/definition_of_done.rs`, `crates/deslop-recipes/src/project.rs`, and
+`crates/deslop-recipes/src/lib.rs`, plus the M5.26 semantic evidence files already recorded above.
+
+**Negative-memory status:** the clippy-only transient failure is fixed and the full gate reran cleanly. No recurring
+failed approach requires durable negative memory; the exact SafeAuto frontier and non-authoritative evidence boundary
+are enforced in code.
+
+Signature: Codex `/root` — M5 terminal integration and verification owner

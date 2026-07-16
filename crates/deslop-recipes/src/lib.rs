@@ -4,6 +4,7 @@ mod branch_terminal;
 mod clarity;
 mod condition_merge;
 mod contract;
+mod definition_of_done;
 mod evaluation;
 mod extract_method;
 mod guard_clause;
@@ -12,6 +13,7 @@ mod inline_helper;
 mod local_cleanup;
 mod ordering;
 mod project;
+mod semantic_evidence;
 mod unreachable;
 
 pub use branch::{
@@ -44,6 +46,7 @@ pub use contract::{
     TransformationFamily, TransformationRecipe, TransformationRecipeDraft, ValidationPlan,
     ValidationStep, ValidationStepKind,
 };
+pub use definition_of_done::{audit_m5_candidate, enabled_rust_recipe_catalog};
 pub use evaluation::{
     B7Thresholds, CorpusLabel, EvaluationInterval, EvaluationObservation, EvaluationResourceBudget,
     FrozenRecipeCase, RECIPE_EVALUATION_CORPUS_SCHEMA, RECIPE_EVALUATION_REPORT_SCHEMA,
@@ -79,6 +82,11 @@ pub use ordering::{
 pub use project::{
     RECIPE_DETECTION_REPORT_SCHEMA, RecipeAbstention, RecipeDetectionReport,
     build_rust_recipe_projection, detect_rust_recipe_report, detect_rust_recipes,
+};
+pub use semantic_evidence::{
+    CommentIntent, CommentSemanticEvidence, IdentifierSemanticEvidence, IdentifierSemanticRole,
+    ROLE_SCOPE_COMMENT_EVIDENCE_SCHEMA, RoleScopeCommentEvidence, RoleScopeCommentEvidenceId,
+    RoleScopeCommentEvidenceInput, SemanticEvidenceDisposition, role_scope_comment_evidence,
 };
 pub use unreachable::{
     UnreachableRecipeError, detect_unreachable_literal_statements,

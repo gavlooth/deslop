@@ -4272,3 +4272,49 @@ constructors or infer automatic authority from a clarity label.
 
 Negative-memory constraint: graph-grounded family labels describe existing candidate evidence. They cannot replace
 recipe preconditions, revision guards, validation, or rollback, and exact effects may conservatively abstain.
+
+## 2026-07-16 — M5.26 role/scope and comment evidence
+
+Terminal result: M5.26 is complete. `deslop.role-scope-comment-evidence/1` binds an existing guarded candidate to
+complete canonical identifier and comment evidence. Identifier records retain exact source span, spelling, semantic
+role, adapter canonical roles, owning scope fact, binding fact, and unique resolution where the token is a reference.
+Equal spellings in different scopes remain distinct. Comment records retain exact text, intent, owner scope, and
+span; documentation, rationale, and suppression intent require review, while an automatic edit that overlaps and
+drops rationale text is explicitly blocked. Public-API surface identifiers likewise require review.
+
+The projection is deterministic and content-addressed, rejects partial coverage, ambiguous/unresolved references,
+missing bindings, invalid fact identities, duplicate spans, noncanonical ordering, and stale serialized identity.
+It never mutates or upgrades the underlying candidate. Four focused tests pass; full fmt/build/workspace all-feature
+tests/all-target clippy with `-D warnings` pass, including 757 active tests, 251 active parse tests plus 1 explicit
+ignore and 4 doctests, and 61 active recipe tests plus 1 explicit ignore.
+
+Next checkpoint: perform only the M5 definition-of-done detector audit. Prove every enabled detector's fixture path
+retains graph facts, a unique candidate, an exact patch and expected delta, required verification, and exact rollback;
+reject unsafe automatic counterexamples before checking M5.DoD.
+
+Negative-memory constraint: semantic evidence is a downgrade/blocking layer, never independent rewrite authority.
+Rationale text may be retained or escalated to review, but never silently removed by an automatic candidate.
+
+## 2026-07-16 — M5 definition of done
+
+Terminal result: M5 is complete. `enabled_rust_recipe_catalog` is the canonical 16-recipe inventory matching the
+production Rust detector projection. `audit_m5_candidate` now runs on every emitted candidate after deterministic ID
+sorting and duplicate rejection. It requires the exact enabled recipe identity, at least one exact revision-guarded
+edit, a nonempty expected graph delta, required validation steps, reverse-exact rollback with revision guards, and
+rollback coverage of every required verification step.
+
+The catalog audit proves unique recipe names/IDs, dependency-bound graph requirements, exactly one positive, no-op,
+minimal-counterexample, and adversarial-near-miss fixture per recipe, required verification, and exact rollback.
+SafeAuto is an exact three-recipe frontier: unreachable inert literal statements, reachable unused pure literal
+expressions, and independent unused literal locals. Each has mandatory no-candidate minimal and adversarial fixtures;
+all other enabled recipes remain review/precondition/risky. M5.26 additionally blocks automatic rationale deletion
+and review-gates public API/protected comments.
+
+Measured terminal validation: 2/2 focused DoD audits, 6/6 production projection tests, and 12/12 CLI recipe tests
+pass. The clean full rerun passes fmt, workspace all-feature build/test, and all-feature/all-target clippy with
+`-D warnings`: 759 active tests, 251 active parse tests plus 1 explicit ignore and 4 doctests, and 63 active recipe
+tests plus 1 explicit ignore. No M6 work was started.
+
+Negative-memory constraint: candidate matching, classification, semantic evidence, and the DoD audit never replace
+exact revision guards or runtime validation. A future detector must enter the canonical catalog and satisfy this
+audit before production emission.

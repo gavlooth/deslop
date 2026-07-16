@@ -620,9 +620,17 @@ reports, benchmark records, and work orders.
   requires exact def/use and allocation/call effects, preserves evaluation order, and remains review-only. Focused
   classification tests pass 2/2; the conversion fixture passes 1/1 with compiling before/after output; all 753
   active workspace tests, 4 parse doctests, fmt/build, and all-feature/all-target clippy with `-D warnings` pass.
-- [ ] M5.26 Add role/scope-aware identifier and comment evidence without automatic rationale deletion.
-- [ ] M5.DoD Every enabled detector completes graph fact -> unique candidate -> patch -> expected delta ->
+- [x] M5.26 Add role/scope-aware identifier and comment evidence without automatic rationale deletion.
+  `deslop.role-scope-comment-evidence/1` retains canonical identifier roles, exact scope/binding facts, unique
+  reference resolution, owned comment intent/text, and complete coverage. Same-spelling shadowed identifiers remain
+  distinct; public API and protected comments require review; automatic rationale deletion is explicitly blocked.
+  Four focused tests and all 757 active workspace tests plus 4 doctests and full fmt/build/clippy gates pass.
+- [x] M5.DoD Every enabled detector completes graph fact -> unique candidate -> patch -> expected delta ->
   verification -> rollback on its fixtures, with no known unsafe `safe-auto` counterexample.
+  Production detection now audits all 16 enabled recipe contracts and every emitted candidate for exact catalog
+  identity, uniqueness, guarded edits, graph delta, required validation, and rollback coverage. SafeAuto is confined
+  to 3 literal-only recipes with mandatory minimal/adversarial no-candidate fixtures. Two focused DoD audits, 6
+  production projection tests, 12 CLI recipe tests, all 759 active workspace tests, 4 doctests, and full gates pass.
 
 ## M6 — Work-order DAG and LLM protocol
 

@@ -18,12 +18,12 @@ use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    TransformationCandidate, detect_adjacent_condition_merges, detect_equivalent_branch_fragments,
-    detect_exhaustive_chain_matches, detect_extract_method_candidates,
-    detect_guard_clause_inversions, detect_independent_branch_splits,
-    detect_inline_single_use_helpers, detect_literal_dead_arms, detect_local_cleanup_candidates,
-    detect_ordering_candidates, detect_responsibility_split_candidates,
-    detect_unreachable_literal_statements,
+    TransformationCandidate, audit_m5_candidate, detect_adjacent_condition_merges,
+    detect_equivalent_branch_fragments, detect_exhaustive_chain_matches,
+    detect_extract_method_candidates, detect_guard_clause_inversions,
+    detect_independent_branch_splits, detect_inline_single_use_helpers, detect_literal_dead_arms,
+    detect_local_cleanup_candidates, detect_ordering_candidates,
+    detect_responsibility_split_candidates, detect_unreachable_literal_statements,
 };
 
 const SCOPE_LIMITATION: &str =
@@ -180,6 +180,15 @@ fn detect_projection_recipes(
     }
     candidates.extend(detect_inline_single_use_helpers(&system.build()?)?);
     candidates.sort_by(|left, right| left.id().cmp(right.id()));
+    if candidates
+        .windows(2)
+        .any(|pair| pair[0].id() == pair[1].id())
+    {
+        bail!("enabled recipe detectors emitted a duplicate candidate identity");
+    }
+    for candidate in &candidates {
+        audit_m5_candidate(candidate).map_err(anyhow::Error::msg)?;
+    }
     Ok(candidates)
 }
 
