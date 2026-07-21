@@ -1,97 +1,431 @@
 {
   "schema": "deslop.refactor-history-manifest/1",
-  "note": "Golden cases for refactor-defect accumulation detectors (docs/REFACTOR_DEFECT_ACCUMULATION.md). Each case is an ordered sequence of complete source snapshots; `01-before`/`02-after` directory order is the revision order. Consumed by crates/deslop-cli/tests/refactor_risk.rs: expectations check `findings` unless `\"summary\": true`, which checks `summaries` (adoption-chain-incomplete must never appear in findings).",
+  "note": "Golden cases for refactor-defect accumulation detectors (docs/REFACTOR_DEFECT_ACCUMULATION.md). Each case is an ordered sequence of complete source snapshots; `01-before`/`02-after` directory order is the revision order. Consumed by crates/deslop-cli/tests/refactor_risk.rs and the deslop-eval refactor evaluation: expectations check `findings` unless `\"summary\": true`, which checks `summaries` (adoption-chain-incomplete must never appear in findings). An optional per-case `coverage` object pins the expected coverage level and a required reason substring.",
   "cases": [
     {
       "name": "py-full-adoption",
       "language": "python",
-      "revisions": ["01-before", "02-after"],
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
       "expectations": [
-        { "rule": "owner-moved-consumer-stale", "should_fire": false, "note": "decision and public score both moved to the posterior" }
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": false,
+          "note": "decision and public score both moved to the posterior"
+        }
       ]
     },
     {
       "name": "py-pure-rename",
       "language": "python",
-      "revisions": ["01-before", "02-after"],
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
       "expectations": [
-        { "rule": "owner-moved-consumer-stale", "should_fire": false, "note": "method renamed with all call sites updated; no ownership change" }
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": false,
+          "note": "method renamed with all call sites updated; no ownership change"
+        }
       ]
     },
     {
       "name": "py-owner-moved-stale",
       "language": "python",
-      "revisions": ["01-before", "02-after"],
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
       "expectations": [
-        { "rule": "owner-moved-consumer-stale", "should_fire": true, "note": "decision moved to posterior; public_score still reads the former owner" }
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": true,
+          "note": "decision moved to posterior; public_score still reads the former owner"
+        }
       ]
     },
     {
       "name": "jl-owner-moved-stale",
       "language": "julia",
-      "revisions": ["01-before", "02-after"],
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
       "expectations": [
-        { "rule": "owner-moved-consumer-stale", "should_fire": true, "note": "same migration as py-owner-moved-stale in Julia syntax" }
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": true,
+          "note": "same migration as py-owner-moved-stale in Julia syntax"
+        }
       ]
     },
     {
       "name": "py-schema-drift",
       "language": "python",
-      "revisions": ["01-before", "02-after"],
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
       "expectations": [
-        { "rule": "producer-verifier-schema-drift", "should_fire": true, "note": "producer nests metric and adds seed; validator unchanged" }
+        {
+          "rule": "producer-verifier-schema-drift",
+          "should_fire": true,
+          "note": "producer nests metric and adds seed; validator unchanged"
+        }
       ]
     },
     {
       "name": "py-compat-adapter",
       "language": "python",
-      "revisions": ["01-before", "02-after"],
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
       "expectations": [
-        { "rule": "owner-moved-consumer-stale", "should_fire": false, "note": "deliberate adapter plus tested conversion invariant is counter-evidence that suppresses the finding" }
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": false,
+          "note": "deliberate adapter plus tested conversion invariant is counter-evidence that suppresses the finding"
+        }
       ]
     },
     {
       "name": "py-config-inert",
       "language": "python",
-      "revisions": ["01-before", "02-after"],
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
       "expectations": [
-        { "rule": "accepted-config-inert", "should_fire": true, "note": "THRESHOLD_V2 replaced THRESHOLD reads while the retired key stays in the DEFAULTS acceptance surface" }
+        {
+          "rule": "accepted-config-inert",
+          "should_fire": true,
+          "note": "THRESHOLD_V2 replaced THRESHOLD reads while the retired key stays in the DEFAULTS acceptance surface"
+        }
       ]
     },
     {
       "name": "py-config-clean-removal",
       "language": "python",
-      "revisions": ["01-before", "02-after"],
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
       "expectations": [
-        { "rule": "accepted-config-inert", "should_fire": false, "note": "key removed from reads and literals alike; nothing stale remains" }
+        {
+          "rule": "accepted-config-inert",
+          "should_fire": false,
+          "note": "key removed from reads and literals alike; nothing stale remains"
+        }
       ]
     },
     {
       "name": "py-test-oracle-lag",
       "language": "python",
-      "revisions": ["01-before", "02-after"],
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
       "expectations": [
-        { "rule": "owner-moved-consumer-stale", "should_fire": true, "note": "decision moved to posterior; public_score still reads the former owner" },
-        { "rule": "test-oracle-lag", "should_fire": true, "note": "unchanged test still exercises the former owner representation" },
-        { "rule": "adoption-chain-incomplete", "should_fire": true, "summary": true, "note": "consumer and test-oracle stages share one owner migration; summarized once, never double-counted" }
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": true,
+          "note": "decision moved to posterior; public_score still reads the former owner"
+        },
+        {
+          "rule": "test-oracle-lag",
+          "should_fire": true,
+          "note": "unchanged test still exercises the former owner representation"
+        },
+        {
+          "rule": "adoption-chain-incomplete",
+          "should_fire": true,
+          "summary": true,
+          "note": "consumer and test-oracle stages share one owner migration; summarized once, never double-counted"
+        }
       ]
     },
     {
       "name": "py-adoption-summary",
       "language": "python",
-      "revisions": ["01-before", "02-after"],
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
       "expectations": [
-        { "rule": "owner-moved-consumer-stale", "should_fire": true, "note": "producer moved from emit to emit_v2; verifier still calls emit" },
-        { "rule": "producer-verifier-schema-drift", "should_fire": true, "note": "producer nests metric; verifier still requires it" },
-        { "rule": "adoption-chain-incomplete", "should_fire": true, "summary": true, "note": "two families share the build_manifest owner migration" }
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": true,
+          "note": "producer moved from emit to emit_v2; verifier still calls emit"
+        },
+        {
+          "rule": "producer-verifier-schema-drift",
+          "should_fire": true,
+          "note": "producer nests metric; verifier still requires it"
+        },
+        {
+          "rule": "adoption-chain-incomplete",
+          "should_fire": true,
+          "summary": true,
+          "note": "two families share the build_manifest owner migration"
+        }
       ]
     },
     {
       "name": "py-persistence-window",
       "language": "python",
-      "revisions": ["01-before", "02-after", "03-later"],
+      "revisions": [
+        "01-before",
+        "02-after",
+        "03-later"
+      ],
       "expectations": [
-        { "rule": "owner-moved-consumer-stale", "should_fire": true, "note": "migration at rev2; stale edge survives to rev3 while the owner is edited independently (exact persistence numbers are asserted in deslop-analyzer unit tests)" }
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": true,
+          "note": "migration at rev2; stale edge survives to rev3 while the owner is edited independently (exact persistence numbers are asserted in deslop-analyzer unit tests)"
+        }
+      ]
+    },
+    {
+      "name": "js-owner-moved-stale",
+      "language": "javascript",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": true,
+          "note": "JavaScript adapter demonstrates the same detector contract (acceptance gate 4)"
+        }
+      ]
+    },
+    {
+      "name": "py-file-move",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": false,
+          "note": "move-only change: identical content under a new path must not report stale consumers"
+        },
+        {
+          "rule": "producer-verifier-schema-drift",
+          "should_fire": false,
+          "note": "move-only negative control"
+        }
+      ]
+    },
+    {
+      "name": "py-dynamic-consumer",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": false,
+          "note": "the surviving reference is a callee argument, not an unchanged consumer edge"
+        }
+      ],
+      "coverage": {
+        "expect": "partial",
+        "reason_contains": "dynamic access"
+      }
+    },
+    {
+      "name": "py-generated-excluded",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": false,
+          "note": "generated code excluded by explicit provenance: no source-owner finding"
+        }
+      ],
+      "coverage": {
+        "expect": "partial",
+        "reason_contains": "generated file excluded"
+      }
+    },
+    {
+      "name": "py-scope-collapse",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "scope-collapse-after-refactor",
+          "should_fire": true,
+          "note": "partition loop flattened; finding requests a metamorphic independence test"
+        },
+        {
+          "rule": "test-oracle-lag",
+          "should_fire": true,
+          "note": "singleton oracle after a partitioning change is a test-oracle-lag candidate"
+        },
+        {
+          "rule": "adoption-chain-incomplete",
+          "should_fire": true,
+          "note": "scope collapse and the singleton oracle share the collapsed owner",
+          "summary": true
+        }
+      ]
+    },
+    {
+      "name": "py-scope-collapse-oracle",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "scope-collapse-after-refactor",
+          "should_fire": true,
+          "note": "the collapse itself still fires"
+        },
+        {
+          "rule": "test-oracle-lag",
+          "should_fire": false,
+          "note": "a complete multi-partition metamorphic oracle is counter-evidence"
+        }
+      ]
+    },
+    {
+      "name": "py-gate-retired",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "mechanism-live-gate-retired",
+          "should_fire": true,
+          "note": "the release gate's dependency path terminates at the retired scalar"
+        },
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": true,
+          "note": "the helper holding the retired value directly is a stale consumer"
+        },
+        {
+          "rule": "adoption-chain-incomplete",
+          "should_fire": true,
+          "note": "gate and consumer families share the owner migration",
+          "summary": true
+        }
+      ]
+    },
+    {
+      "name": "py-telemetry-stale",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "telemetry-not-bound-to-claim",
+          "should_fire": true,
+          "note": "the health metric's dependency path observes the retired owner"
+        },
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": true,
+          "note": "the activity helper holding the retired scalar directly is a stale consumer"
+        },
+        {
+          "rule": "adoption-chain-incomplete",
+          "should_fire": true,
+          "note": "telemetry and consumer families share the owner migration",
+          "summary": true
+        }
+      ]
+    },
+    {
+      "name": "py-identity-stale",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "operational-identity-stale",
+          "should_fire": true,
+          "note": "status still publishes the identity produced by the retired mechanism"
+        },
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": true,
+          "note": "the pid helper holding the retired producer directly is a stale consumer"
+        },
+        {
+          "rule": "adoption-chain-incomplete",
+          "should_fire": true,
+          "note": "identity and consumer families share the owner migration",
+          "summary": true
+        }
+      ]
+    },
+    {
+      "name": "py-provenance-lost",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "confidence-provenance-lost",
+          "should_fire": true,
+          "note": "public score reconstructed through a lossy operation without the new evidence"
+        },
+        {
+          "rule": "owner-moved-consumer-stale",
+          "should_fire": true,
+          "note": "the debug dump still bound to the former evidence is a stale consumer"
+        },
+        {
+          "rule": "adoption-chain-incomplete",
+          "should_fire": true,
+          "note": "provenance and consumer families share the owner migration",
+          "summary": true
+        }
+      ]
+    },
+    {
+      "name": "py-hot-path-dup",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "hot-path-work-duplicated",
+          "should_fire": true,
+          "note": "a second structurally equivalent expensive call introduced on one path"
+        }
       ]
     }
   ]

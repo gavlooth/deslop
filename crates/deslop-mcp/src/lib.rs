@@ -117,6 +117,7 @@ fn tool_definitions() -> Vec<Value> {
         graph_tool_spec(),
         work_orders_tool_spec(),
         rules_tool_spec(),
+        refactor_risk_tool_spec(),
     ]
 }
 
@@ -283,6 +284,33 @@ fn rules_tool_spec() -> Value {
         "rules",
         "Return the built-in rule catalog.",
         object_schema(json!({})),
+    )
+}
+
+fn refactor_risk_tool_spec() -> Value {
+    tool(
+        "refactor_risk",
+        "Read-only. Compare an ordered window of revision snapshot directories and return \
+         deslop.refactor-risk/1 JSON: review-only deslop.refactor-defect/1 findings \
+         (never-auto, no edits) with causal paths, evidence, counter-evidence, coverage \
+         gaps, and adoption-chain summaries kept out of finding counts. Provide either \
+         `from`/`to` (plus optional ordered `then`) snapshot directories, or `bundle`, a \
+         path to a deslop.refactor-history/1 JSON file whose revision-bound \
+         semantic-provider artifacts join as supporting or conflicting evidence. \
+         No writes, no network.",
+        object_schema(json!({
+            "from": { "type": "string", "description": "Base revision snapshot directory." },
+            "to": { "type": "string", "description": "Target revision snapshot directory." },
+            "then": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Later revision snapshot directories, oldest first."
+            },
+            "bundle": {
+                "type": "string",
+                "description": "Path to a deslop.refactor-history/1 bundle (exclusive with from/to/then)."
+            }
+        })),
     )
 }
 
@@ -511,6 +539,7 @@ fn tools_call_result(params: &Value) -> Result<Value> {
         "graph" => graph_tool(args)?,
         "work_orders" => work_orders_tool(args)?,
         "rules" => json!({ "rules": deslop_core::rules::render_table() }),
+        "refactor_risk" => refactor_risk_tool(args)?,
         other => bail!("unknown tool `{other}`"),
     };
     tool_result(payload)
@@ -1058,6 +1087,49 @@ fn graph_tool(args: &Value) -> Result<Value> {
     Ok(serde_json::to_value(graph)?)
 }
 
+fn refactor_risk_tool(args: &Value) -> Result<Value> {
+    if !args.is_object() && !args.is_null() {
+        bail!("tool arguments must be an object");
+    }
+    if let Some(bundle) = args.get("bundle") {
+        let Some(bundle_path) = bundle.as_str() else {
+            bail!("`bundle` must be a string path");
+        };
+        for exclusive in ["from", "to", "then"] {
+            if args.get(exclusive).is_some() {
+                bail!("`bundle` is exclusive with `{exclusive}`");
+            }
+        }
+        let text = fs::read_to_string(bundle_path)
+            .with_context(|| format!("failed to read {bundle_path}"))?;
+        let bundle: deslop_core::refactor_defect::RefactorHistoryBundle =
+            serde_json::from_str(&text)
+                .with_context(|| format!("failed to parse {bundle_path}"))?;
+        let report = deslop_analyzer::refactor::analyze_refactor_bundle(&bundle)?;
+        return Ok(serde_json::to_value(report)?);
+    }
+    let revision = |key: &str| -> Result<PathBuf> {
+        args.get(key)
+            .and_then(Value::as_str)
+            .map(PathBuf::from)
+            .ok_or_else(|| anyhow::anyhow!("`{key}` (snapshot directory) is required"))
+    };
+    let mut roots = vec![revision("from")?, revision("to")?];
+    if let Some(then) = args.get("then") {
+        let Some(entries) = then.as_array() else {
+            bail!("`then` must be an array of snapshot directories");
+        };
+        for entry in entries {
+            let Some(path) = entry.as_str() else {
+                bail!("`then` entries must be string paths");
+            };
+            roots.push(PathBuf::from(path));
+        }
+    }
+    let report = deslop_analyzer::refactor::refactor_risk_window_paths(&roots)?;
+    Ok(serde_json::to_value(report)?)
+}
+
 fn paths_arg(args: &Value) -> Result<Vec<PathBuf>> {
     if !args.is_object() && !args.is_null() {
         bail!("tool arguments must be an object");
@@ -1434,7 +1506,8 @@ mod tests {
                 "metrics",
                 "graph",
                 "work_orders",
-                "rules"
+                "rules",
+                "refactor_risk"
             ]
         );
     }
@@ -2227,6 +2300,54 @@ mod tests {
         let path = repo_relative_temp_path(temp, "sample.clj");
         std::fs::write(&path, "(= (count xs) 0)\n").expect("fixture");
         path
+    }
+
+    #[test]
+    fn refactor_risk_tool_returns_review_only_report() -> Result<()> {
+        let _lock = temp_test_lock();
+        let temp = tempfile::tempdir_in(".")?;
+        let before = temp.path().join("before");
+        let after = temp.path().join("after");
+        std::fs::create_dir_all(&before)?;
+        std::fs::create_dir_all(&after)?;
+        std::fs::write(
+            before.join("scoring.py"),
+            b"def decide(model, candidates):\n    return raw_score(model, candidates)\n\n\ndef public_score(model, c):\n    return raw_score(model, c)\n",
+        )?;
+        std::fs::write(
+            after.join("scoring.py"),
+            b"def decide(model, candidates):\n    return posterior_commit(model, candidates)\n\n\ndef public_score(model, c):\n    return raw_score(model, c)\n",
+        )?;
+        let response = call_tool(
+            "refactor_risk",
+            json!({
+                "from": before.display().to_string(),
+                "to": after.display().to_string(),
+            }),
+        )?;
+        let report = structured_content(&response);
+        assert_eq!(report["schema"], "deslop.refactor-risk/1");
+        let findings = report["findings"].as_array().expect("findings");
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding["rule"] == "owner-moved-consumer-stale"),
+            "{findings:?}"
+        );
+        for finding in findings {
+            assert_eq!(finding["safety"], "never-auto");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn refactor_risk_tool_rejects_bundle_with_revisions() {
+        let error = call_tool(
+            "refactor_risk",
+            json!({ "bundle": "history.json", "from": "a" }),
+        )
+        .expect_err("bundle and from are exclusive");
+        assert!(error.to_string().contains("exclusive"), "{error}");
     }
 
     fn temp_test_lock() -> MutexGuard<'static, ()> {

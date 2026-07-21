@@ -279,6 +279,11 @@ pub struct OwnerMigration {
 pub struct ContractStep {
     pub edge: ContractEdgeKind,
     pub node: ContractNodeRef,
+    /// The contract token evidencing this step (reference, schema field,
+    /// config key, or call text), when one token identifies it. Typed so
+    /// review tooling and provider-fact joins never parse `detail`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
     pub detail: String,
 }
 
@@ -350,6 +355,8 @@ pub struct RefactorDefect {
 
 impl RefactorDefect {
     /// The invariants every emitted refactor-defect finding must satisfy.
+    /// A finding without a reviewable causal path or a suggested
+    /// verification is not honest review output (acceptance gate 7).
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != REFACTOR_DEFECT_SCHEMA {
             return Err(format!(
@@ -370,7 +377,110 @@ impl RefactorDefect {
                 self.rule, self.safety
             ));
         }
+        if self.causal_path.is_empty() {
+            return Err(format!(
+                "rule `{}` finding carries no causal path; findings must be reviewable",
+                self.rule
+            ));
+        }
+        if self.suggested_verification.trim().is_empty() {
+            return Err(format!(
+                "rule `{}` finding carries no suggested verification",
+                self.rule
+            ));
+        }
         Ok(())
+    }
+
+    /// History-aware finding identity (acceptance gate 10): a BLAKE3 digest
+    /// over the rule, the owner identity, and the causal-path structure —
+    /// content-bound fingerprints and paths, never revision labels, spans,
+    /// or window size. The same defect detected through a different history
+    /// window keeps the same identity, so baselines neither churn falsely
+    /// nor silently accept a changed defect. This is deliberately not the
+    /// scan-path `baseline_fingerprint`, which is a reporting-suppression
+    /// fingerprint over path/rule/span/text.
+    pub fn stable_identity(&self) -> String {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"deslop refactor-defect identity v1");
+        let mut part = |bytes: &[u8]| {
+            hasher.update(&(bytes.len() as u64).to_le_bytes());
+            hasher.update(bytes);
+        };
+        part(self.rule.as_bytes());
+        match &self.owner {
+            Some(owner) => {
+                part(owner.before.path.to_string_lossy().as_bytes());
+                part(owner.before.fingerprint.as_bytes());
+                part(owner.after.path.to_string_lossy().as_bytes());
+                part(owner.after.fingerprint.as_bytes());
+            }
+            None => part(b"no-owner"),
+        }
+        for step in self.stale_edges.iter().chain(&self.causal_path) {
+            part(format!("{:?}", step.edge).as_bytes());
+            part(step.node.path.to_string_lossy().as_bytes());
+            part(step.node.fingerprint.as_bytes());
+        }
+        format!("rdf1_{}", hasher.finalize().to_hex())
+    }
+
+    /// Project this finding into the registry-named scan-path [`Finding`]
+    /// form: the causal-path summary travels in `message`, the suggested
+    /// verification in `suggestion`, and the history-aware identity in
+    /// `fingerprint`. `NeverAuto` safety and the absent edit keep the
+    /// existing report, SARIF, and LSP surfaces review-only with no format
+    /// changes.
+    pub fn to_finding(&self) -> crate::Finding {
+        let location = self
+            .stale_edges
+            .first()
+            .map(|step| &step.node)
+            .or_else(|| self.owner.as_ref().map(|owner| &owner.after))
+            .or_else(|| self.causal_path.first().map(|step| &step.node));
+        let (path, span) = match location {
+            Some(node) => (node.path.clone(), node.span),
+            None => (PathBuf::new(), Span::new(1, 1, 0, 0)),
+        };
+        let mut message = format!(
+            "[{} -> {}] {}",
+            self.revisions.before,
+            self.revisions.after,
+            self.causal_path
+                .iter()
+                .map(|step| step.detail.as_str())
+                .collect::<Vec<_>>()
+                .join(" -> ")
+        );
+        // Disagreement and capability gaps stay visible in every output
+        // format, including the compact scan-path form.
+        if let Some(first) = self.counter_evidence.first() {
+            message.push_str(&format!(
+                " | counter-evidence ({} item(s)): {}",
+                self.counter_evidence.len(),
+                first.detail
+            ));
+        }
+        if let Some(first) = self.coverage_gaps.first() {
+            message.push_str(&format!(
+                " | coverage gaps ({}): {}",
+                self.coverage_gaps.len(),
+                first.reason
+            ));
+        }
+        crate::Finding {
+            path,
+            span,
+            rule: self.rule.clone(),
+            severity: crate::Severity::Info,
+            safety: SafetyClass::NeverAuto,
+            detected_by: crate::DetectedBy::RefactorHistory,
+            message,
+            suggestion: self.suggested_verification.clone(),
+            precondition: None,
+            edit: None,
+            fingerprint: self.stable_identity(),
+        }
     }
 }
 
@@ -406,11 +516,13 @@ mod tests {
                 }],
             }),
             stale_edges: vec![ContractStep {
+                token: None,
                 edge: ContractEdgeKind::Consumes,
                 node: node(ContractRole::Consumer),
                 detail: "score reconstructed from committed logits".to_string(),
             }],
             causal_path: vec![ContractStep {
+                token: None,
                 edge: ContractEdgeKind::Produces,
                 node: node(ContractRole::Producer),
                 detail: "commit-time decision reads new owner".to_string(),
@@ -527,6 +639,63 @@ mod tests {
     }
 
     #[test]
+    fn stable_identity_ignores_revision_labels_and_window_facts() {
+        let base = defect();
+        let mut other_window = defect();
+        other_window.revisions = RevisionPair {
+            before: "rev-x".to_string(),
+            after: "rev-y".to_string(),
+        };
+        other_window.persistence = Persistence {
+            revisions: 9,
+            independent_edits: 4,
+        };
+        other_window.coverage_gaps.clear();
+        assert_eq!(base.stable_identity(), other_window.stable_identity());
+        assert!(base.stable_identity().starts_with("rdf1_"));
+    }
+
+    #[test]
+    fn stable_identity_distinguishes_rule_and_owner() {
+        let base = defect();
+        let mut other_rule = defect();
+        other_rule.rule = rule_names::PRODUCER_VERIFIER_SCHEMA_DRIFT.to_string();
+        assert_ne!(base.stable_identity(), other_rule.stable_identity());
+        let mut other_owner = defect();
+        other_owner.owner.as_mut().unwrap().after.fingerprint = "fp:changed".to_string();
+        assert_ne!(base.stable_identity(), other_owner.stable_identity());
+    }
+
+    #[test]
+    fn to_finding_projects_review_only_scan_form() {
+        let defect = defect();
+        let finding = defect.to_finding();
+        assert_eq!(finding.rule, defect.rule);
+        assert_eq!(finding.safety, SafetyClass::NeverAuto);
+        assert!(finding.edit.is_none());
+        assert_eq!(finding.fingerprint, defect.stable_identity());
+        assert!(finding.message.contains("rev-a -> rev-b"));
+        assert!(finding.message.contains("commit-time decision"));
+        assert_eq!(finding.suggestion, defect.suggested_verification);
+        assert_eq!(finding.path, defect.stale_edges[0].node.path);
+    }
+
+    #[test]
+    fn validate_requires_causal_path_and_verification() {
+        let mut no_path = defect();
+        no_path.causal_path.clear();
+        assert!(no_path.validate().unwrap_err().contains("causal path"));
+        let mut no_verification = defect();
+        no_verification.suggested_verification = "  ".to_string();
+        assert!(
+            no_verification
+                .validate()
+                .unwrap_err()
+                .contains("suggested verification")
+        );
+    }
+
+    #[test]
     fn registry_covers_every_refactor_defect_rule() {
         for name in rule_names::ALL {
             assert!(
@@ -540,8 +709,7 @@ mod tests {
     fn rule_family_names_are_kebab_case() {
         for name in rule_names::ALL {
             assert!(
-                name.chars()
-                    .all(|c| c.is_ascii_lowercase() || c == '-'),
+                name.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
                 "rule name `{name}` is not kebab-case"
             );
         }

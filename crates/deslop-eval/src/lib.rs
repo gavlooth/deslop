@@ -15,6 +15,7 @@ pub mod m10_release;
 pub mod m6_benchmark;
 pub mod m8_calibration;
 pub mod m9_scale;
+pub mod refactor_eval;
 
 const DEFAULT_EPSILON: f64 = 0.0001;
 
@@ -307,7 +308,7 @@ fn run_eval_with_manifest(corpus_root: &Path, manifest: &EvalManifest) -> Result
     })
 }
 
-fn read_json_file<T>(path: &Path) -> Result<T>
+pub(crate) fn read_json_file<T>(path: &Path) -> Result<T>
 where
     T: DeserializeOwned,
 {

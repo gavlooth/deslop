@@ -136,7 +136,7 @@ fn m2_adapter_definition_of_done_joins_every_fact_to_exact_authority() {
         assert_eq!(grammar.grammar_version(), row.grammar_version);
         assert!(!grammar.selector().is_empty());
         assert!(!grammar.parser_build().is_empty());
-        assert_eq!(identity.schema(), "deslop-lang-adapter/3");
+        assert_eq!(identity.schema(), "deslop-lang-adapter/4");
         assert_eq!(identity.capabilities().adapter_schema(), identity.schema());
         assert_eq!(identity.queries().adapter_schema(), identity.schema());
         assert_eq!(
@@ -317,7 +317,7 @@ fn m2_adapter_definition_of_done_joins_every_fact_to_exact_authority() {
     assert_eq!(role_assignments, 640);
     assert_eq!(lexical_facts, 536);
     assert_eq!(construct_facts, 28);
-    assert_eq!(query_captures, 88);
+    assert_eq!(query_captures, 111);
 
     let mut analyzer_config = AnalyzerConfig::default();
     analyzer_config.boundary.enabled = false;

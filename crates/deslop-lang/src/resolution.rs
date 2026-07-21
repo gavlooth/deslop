@@ -1479,7 +1479,7 @@ mod tests {
         ];
         let mut serializations = BTreeSet::new();
         for (family, dialects, provided, namespaces) in cases {
-            let pack = builtin_resolution_rule_pack("deslop-lang-adapter/3", family);
+            let pack = builtin_resolution_rule_pack("deslop-lang-adapter/4", family);
             pack.validate().unwrap();
             assert_eq!(pack.schema(), LANGUAGE_RESOLUTION_RULE_SCHEMA);
             assert_eq!(pack.dialects().len(), dialects);

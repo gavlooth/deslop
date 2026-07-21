@@ -28,6 +28,7 @@ mod packs;
 pub mod refactor;
 
 pub use boundary::BoundaryConfig;
+pub use deslop_parse::FactCoverage;
 #[cfg(test)]
 mod tests;
 mod tokens;

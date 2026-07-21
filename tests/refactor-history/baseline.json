@@ -1,0 +1,61 @@
+{
+  "schema": "deslop.eval-baseline/1",
+  "epsilon": 0.0001,
+  "rules": [
+    {
+      "rule": "accepted-config-inert",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "rule": "adoption-chain-incomplete",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "rule": "confidence-provenance-lost",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "rule": "hot-path-work-duplicated",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "rule": "mechanism-live-gate-retired",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "rule": "operational-identity-stale",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "rule": "owner-moved-consumer-stale",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "rule": "producer-verifier-schema-drift",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "rule": "scope-collapse-after-refactor",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "rule": "telemetry-not-bound-to-claim",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "rule": "test-oracle-lag",
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  ]
+}

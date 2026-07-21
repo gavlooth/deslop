@@ -86,6 +86,10 @@ pub use architecture::{
     ArchitectureViolationKind, derive_architecture,
 };
 pub use arena::{SourcePoint, SyntaxSpan};
+pub use contract_history::{
+    CONTRACT_CHANGE_HISTORY_SCHEMA, ContractChangeHistory, ContractFunction,
+    ContractHistoryBuildError, FileContracts, RevisionContracts,
+};
 pub use control_flow::{
     CONTROL_FLOW_POLICY_SCHEMA, CONTROL_FLOW_SCHEMA, ControlAbruptKind, ControlBranchKind,
     ControlEdge, ControlEdgeDraft, ControlEdgeKey, ControlEdgeKind, ControlEdgePrecision,
@@ -144,10 +148,6 @@ pub use instrumentation::{
     ProjectAnalysisInstrumentation, ProjectAnalysisUpdateInstrumentation,
     SyntaxPointContextInstrumentation, SyntaxQueryInstrumentation,
     SyntaxQueryResultsInstrumentation,
-};
-pub use contract_history::{
-    CONTRACT_CHANGE_HISTORY_SCHEMA, ContractChangeHistory, ContractFunction,
-    ContractHistoryBuildError, FileContracts, RevisionContracts,
 };
 pub use module_restructure::{
     MODULE_CHANGE_HISTORY_SCHEMA, MODULE_RESTRUCTURE_POLICY_SCHEMA, MODULE_RESTRUCTURE_SCHEMA,

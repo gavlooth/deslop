@@ -78,6 +78,7 @@ pub enum DetectedBy {
     CljKondo,
     JuliaAnalyzer,
     RustAnalyzer,
+    RefactorHistory,
 }
 }
 

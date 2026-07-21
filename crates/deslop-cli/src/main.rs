@@ -281,23 +281,63 @@ struct GraphArgs {
 
     #[arg(long)]
     no_calls: bool,
+
+    /// Emit the contract graph projection (`deslop.contract-graph/1`)
+    /// instead of the syntactic dependency graph. JSON only.
+    #[arg(long)]
+    contract: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum RefactorRiskFormat {
+    /// The full `deslop.refactor-risk/1` review payload.
+    Json,
+    /// Scan-path findings rendered through the report envelope.
+    Text,
+    /// SARIF with `reportOnly` for the review-only findings.
+    Sarif,
 }
 
 #[derive(Debug, Args)]
 struct RefactorRiskArgs {
-    /// Base revision snapshot directory.
-    #[arg(long)]
-    from: PathBuf,
+    /// Base revision: a snapshot directory, or a Git/Jujutsu revision
+    /// resolved through the repository containing the current directory.
+    #[arg(long, required_unless_present = "bundle")]
+    from: Option<String>,
 
-    /// Target revision snapshot directory.
+    /// Target revision (directory or VCS revision). Defaults to the current
+    /// working tree.
     #[arg(long)]
-    to: PathBuf,
+    to: Option<String>,
 
-    /// Later revision snapshot directory (repeatable). Extends the analysis
-    /// window past `--to` so persistence and co-change triage inputs are
-    /// computed instead of reported as a coverage gap.
+    /// Later revision (repeatable; directory or VCS revision). Extends the
+    /// analysis window past `--to` so persistence and co-change triage
+    /// inputs are computed instead of reported as a coverage gap.
     #[arg(long)]
-    then: Vec<PathBuf>,
+    then: Vec<String>,
+
+    /// Restrict VCS revision extraction to these repository paths.
+    #[arg()]
+    paths: Vec<PathBuf>,
+
+    /// Analyze an ordered `deslop.refactor-history/1` bundle instead of
+    /// resolving revisions; revision-bound semantic-provider artifacts in
+    /// the bundle join as supporting or conflicting evidence.
+    #[arg(long, conflicts_with_all = ["from", "to", "then", "paths"])]
+    bundle: Option<PathBuf>,
+
+    #[arg(long, value_enum, default_value_t = RefactorRiskFormat::Json)]
+    format: RefactorRiskFormat,
+
+    /// Suppress findings whose history-aware identity is recorded in this
+    /// baseline file.
+    #[arg(long)]
+    baseline: Option<PathBuf>,
+
+    /// Write the surviving findings' history-aware identities to this
+    /// baseline file.
+    #[arg(long)]
+    write_baseline: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -448,7 +488,7 @@ enum MetricsFormat {
     Json,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum GraphFormat {
     Json,
     Dot,
@@ -872,16 +912,208 @@ fn metrics(args: MetricsArgs) -> Result<()> {
 }
 
 fn refactor_risk(args: RefactorRiskArgs) -> Result<()> {
-    let roots = std::iter::once(args.from)
-        .chain(std::iter::once(args.to))
-        .chain(args.then)
-        .collect::<Vec<_>>();
-    let report = deslop_analyzer::refactor::refactor_risk_window_paths(&roots)?;
-    print!("{}", serde_json::to_string_pretty(&report)?);
+    let mut report = if let Some(bundle_path) = &args.bundle {
+        let text = read_to_string_ctx(bundle_path)?;
+        let bundle: deslop_core::refactor_defect::RefactorHistoryBundle =
+            serde_json::from_str(&text)
+                .with_context(|| format!("failed to parse {}", bundle_path.display()))?;
+        deslop_analyzer::refactor::analyze_refactor_bundle(&bundle)?
+    } else {
+        let from = args
+            .from
+            .clone()
+            .expect("clap requires --from without --bundle");
+        let to = args.to.clone().unwrap_or_else(|| ".".to_string());
+        let mut specs = vec![from, to];
+        specs.extend(args.then.iter().cloned());
+        // Materialized VCS extractions live until the analyses are built.
+        let mut materialized: Vec<tempfile::TempDir> = Vec::new();
+        let mut roots = Vec::with_capacity(specs.len());
+        for spec in &specs {
+            roots.push((
+                spec.clone(),
+                resolve_revision_spec(spec, &args.paths, &mut materialized)?,
+            ));
+        }
+        deslop_analyzer::refactor::refactor_risk_window_labeled(&roots)?
+    };
+    if let Some(baseline_path) = &args.baseline {
+        let baseline = Baseline::read(baseline_path)?;
+        report
+            .findings
+            .retain(|finding| !baseline.fingerprints.contains(&finding.stable_identity()));
+    }
+    if let Some(output) = &args.write_baseline {
+        let baseline = Baseline {
+            schema: "deslop.baseline/1".to_string(),
+            fingerprints: report
+                .findings
+                .iter()
+                .map(|finding| finding.stable_identity())
+                .collect(),
+        };
+        fs::write(output, serde_json::to_string_pretty(&baseline)?)
+            .with_context(|| format!("failed to write {}", output.display()))?;
+        eprintln!(
+            "wrote {} history-aware identities to {}",
+            baseline.fingerprints.len(),
+            output.display()
+        );
+    }
+    match args.format {
+        RefactorRiskFormat::Json => print!("{}", serde_json::to_string_pretty(&report)?),
+        RefactorRiskFormat::Text => {
+            let reports = deslop_analyzer::refactor::to_file_reports(&report);
+            print!("{}", deslop_report::render_text(&reports));
+            if report.coverage != deslop_analyzer::FactCoverage::Complete {
+                println!("coverage: partial");
+                for reason in &report.coverage_reasons {
+                    println!("  reason: {reason}");
+                }
+            }
+        }
+        RefactorRiskFormat::Sarif => {
+            let reports = deslop_analyzer::refactor::to_file_reports(&report);
+            print!("{}", deslop_report::render_sarif(&reports)?);
+        }
+    }
+    Ok(())
+}
+
+/// Resolve one `--from`/`--to`/`--then` value: an existing directory is a
+/// snapshot root; anything else resolves through the repository's history
+/// provider (Jujutsu or Git) into a materialized temporary snapshot.
+fn resolve_revision_spec(
+    spec: &str,
+    paths: &[PathBuf],
+    materialized: &mut Vec<tempfile::TempDir>,
+) -> Result<PathBuf> {
+    let as_path = Path::new(spec);
+    if as_path.is_dir() {
+        return Ok(as_path.to_path_buf());
+    }
+    let repo_root = nearest_vcs_root()?.with_context(|| {
+        format!(
+            "`{spec}` is not a directory and no .git/.jj repository contains the current \
+             directory to resolve it as a revision"
+        )
+    })?;
+    let commit = resolve_commit(&repo_root, spec)?;
+    let target = tempfile::TempDir::with_prefix("deslop-refactor-rev-")
+        .context("create revision extraction directory")?;
+    archive_commit(&repo_root, &commit, paths, target.path())?;
+    let root = target.path().to_path_buf();
+    materialized.push(target);
+    Ok(root)
+}
+
+/// The nearest ancestor of the current directory containing `.jj` or `.git`.
+fn nearest_vcs_root() -> Result<Option<PathBuf>> {
+    let mut current = std::env::current_dir().context("resolve current directory")?;
+    loop {
+        if current.join(".jj").is_dir() || current.join(".git").exists() {
+            return Ok(Some(current));
+        }
+        if !current.pop() {
+            return Ok(None);
+        }
+    }
+}
+
+/// Resolve a revision spec to a Git commit id: through `jj` when the
+/// repository is a Jujutsu repository (its revset language resolves change
+/// ids and bookmarks), falling back to `git rev-parse` in colocated
+/// repositories where Git revision syntax is equally natural.
+fn resolve_commit(repo_root: &Path, spec: &str) -> Result<String> {
+    let has_jj = repo_root.join(".jj").is_dir();
+    let has_git = repo_root.join(".git").exists();
+    let mut jj_error = String::new();
+    if has_jj {
+        let output = std::process::Command::new("jj")
+            .args(["log", "-r", spec, "--no-graph", "-T", "commit_id"])
+            .arg("--ignore-working-copy")
+            .current_dir(repo_root)
+            .output()
+            .context("run jj to resolve revision")?;
+        if output.status.success() {
+            let commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !commit.is_empty() {
+                return Ok(commit);
+            }
+        }
+        jj_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if !has_git {
+            anyhow::bail!("jj could not resolve revision `{spec}`: {jj_error}");
+        }
+    }
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--verify", &format!("{spec}^{{commit}}")])
+        .current_dir(repo_root)
+        .output()
+        .context("run git to resolve revision")?;
+    if !output.status.success() {
+        let git_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if jj_error.is_empty() {
+            anyhow::bail!("git could not resolve revision `{spec}`: {git_error}");
+        }
+        anyhow::bail!(
+            "neither jj nor git could resolve revision `{spec}`: jj: {jj_error}; git: \
+             {git_error}"
+        );
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Materialize one commit's exact source bytes (optionally restricted to
+/// `paths`) into `target` via `git archive`. Jujutsu repositories serve the
+/// archive from the colocated `.git` or the backing store under
+/// `.jj/repo/store/git`.
+fn archive_commit(repo_root: &Path, commit: &str, paths: &[PathBuf], target: &Path) -> Result<()> {
+    let mut git = std::process::Command::new("git");
+    if repo_root.join(".git").exists() {
+        git.current_dir(repo_root);
+    } else {
+        git.arg("--git-dir")
+            .arg(repo_root.join(".jj/repo/store/git"));
+    }
+    git.args(["archive", "--format=tar", commit]);
+    for path in paths {
+        git.arg(path);
+    }
+    let archive = git
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("spawn git archive")?;
+    let untar = std::process::Command::new("tar")
+        .arg("-x")
+        .arg("-C")
+        .arg(target)
+        .stdin(archive.stdout.expect("piped stdout"))
+        .output()
+        .context("spawn tar to extract archive")?;
+    if !untar.status.success() {
+        anyhow::bail!(
+            "extracting revision `{commit}` failed: {}",
+            String::from_utf8_lossy(&untar.stderr).trim()
+        );
+    }
     Ok(())
 }
 
 fn graph(args: GraphArgs) -> Result<()> {
+    if args.contract {
+        anyhow::ensure!(
+            args.format == GraphFormat::Json,
+            "the contract graph renders as JSON only"
+        );
+        let graph = deslop_graph::contract_graph_paths(&args.paths)?;
+        println!("{}", serde_json::to_string_pretty(&graph)?);
+        if graph.coverage != deslop_analyzer::FactCoverage::Complete {
+            std::process::exit(2);
+        }
+        return Ok(());
+    }
     let report = graph_paths(
         &args.paths,
         GraphConfig {

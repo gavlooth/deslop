@@ -1099,6 +1099,12 @@ mod tests {
                             capture("generated", &[CanonicalRole::Generated]),
                         ],
                     ),
+                    QueryFamilyDeclaration::provided(
+                        QueryFamily::Contract,
+                        CapabilityAuthority::Adapter,
+                        "(call_expression) @call.expr",
+                        vec![capture("call.expr", &[CanonicalRole::Call])],
+                    ),
                 ],
             )
             .unwrap()
@@ -1996,7 +2002,9 @@ mod tests {
         }
         let root_node = analysis.file_node_ids(path).unwrap().next().unwrap();
         let query_counts = QueryFamily::ALL.map(|family| {
-            let compiled = queries.query(family).unwrap();
+            let Some(compiled) = queries.query(family) else {
+                return 0;
+            };
             analysis
                 .syntax_query_matches(compiled.query(), root_node)
                 .unwrap()
@@ -2041,7 +2049,7 @@ mod tests {
                 ("punctuation", 14),
             ])
         );
-        assert_eq!(query_counts, [5, 2, 5, 1, 2, 3]);
+        assert_eq!(query_counts, [5, 2, 5, 1, 2, 3, 0]);
         assert!(lexical.facts().iter().any(|fact| {
             fact.text() == "π"
                 && fact.classification().token_class() == LexicalTokenClass::Identifier
@@ -2199,7 +2207,9 @@ mod tests {
             }
             let root_node = analysis.file_node_ids(path).unwrap().next().unwrap();
             let query_counts = QueryFamily::ALL.map(|family| {
-                let compiled = queries.query(family).unwrap();
+                let Some(compiled) = queries.query(family) else {
+                    return 0;
+                };
                 analysis
                     .syntax_query_matches(compiled.query(), root_node)
                     .unwrap()
@@ -2250,7 +2260,7 @@ mod tests {
                             ("punctuation", 7),
                         ])
                     );
-                    assert_eq!(query_counts, [1, 1, 3, 0, 2, 1]);
+                    assert_eq!(query_counts, [1, 1, 3, 0, 2, 1, 4]);
                     assert_eq!(
                         construct_counts,
                         std::collections::BTreeMap::from([
@@ -2319,7 +2329,7 @@ mod tests {
                             ("punctuation", 16),
                         ])
                     );
-                    assert_eq!(query_counts, [4, 2, 3, 0, 1, 0]);
+                    assert_eq!(query_counts, [4, 2, 3, 0, 1, 0, 0]);
                     assert_eq!(
                         construct_counts,
                         std::collections::BTreeMap::from([("generated-code", 2)])
@@ -2365,7 +2375,7 @@ mod tests {
                             ("punctuation", 9),
                         ])
                     );
-                    assert_eq!(query_counts, [3, 0, 2, 0, 1, 0]);
+                    assert_eq!(query_counts, [3, 0, 2, 0, 1, 0, 0]);
                     assert!(construct_counts.is_empty());
                     assert!(roles.facts().iter().any(|fact| {
                         fact.raw().raw_kind() == "jsx_element"
@@ -2528,7 +2538,7 @@ mod tests {
                 ("punctuation", 12),
             ])
         );
-        assert_eq!(query_counts, [4, 1, 8, 3, 2, 2]);
+        assert_eq!(query_counts, [4, 1, 8, 3, 2, 2, 6]);
         assert_eq!(
             construct_counts,
             std::collections::BTreeMap::from(
@@ -2741,7 +2751,7 @@ mod tests {
                 ("punctuation", 8),
             ])
         );
-        assert_eq!(query_counts, [0, 0, 1, 0, 2, 7]);
+        assert_eq!(query_counts, [0, 0, 1, 0, 2, 7, 0]);
         assert_eq!(
             construct_counts,
             std::collections::BTreeMap::from([
@@ -2963,7 +2973,7 @@ mod tests {
                 ("punctuation", 4),
             ])
         );
-        assert_eq!(query_counts, [2, 4, 2, 2, 3, 3]);
+        assert_eq!(query_counts, [2, 4, 2, 2, 3, 3, 13]);
         assert_eq!(
             construct_counts,
             std::collections::BTreeMap::from([
@@ -3551,7 +3561,7 @@ mod tests {
         assert_eq!(projection.schema(), crate::LANGUAGE_QUERY_PROJECTION_SCHEMA);
         assert_eq!(projection.path(), path);
         assert_eq!(unavailable.compiled().len(), 0);
-        assert_eq!(projection.compiled().len(), 6);
+        assert_eq!(projection.compiled().len(), 7);
         assert_ne!(unavailable.id(), projection.id());
         assert!(
             unavailable
@@ -3587,8 +3597,8 @@ mod tests {
                 .map(|query_match| query_match.captures().len())
                 .sum::<usize>()
         });
-        assert_eq!(capture_counts, [1, 1, 2, 1, 1, 2]);
-        assert_eq!(capture_counts.into_iter().sum::<usize>(), 8);
+        assert_eq!(capture_counts, [1, 1, 2, 1, 1, 2, 1]);
+        assert_eq!(capture_counts.into_iter().sum::<usize>(), 9);
         assert_eq!(provided.parse_counts(), parse_counts);
         assert!(
             parse_counts

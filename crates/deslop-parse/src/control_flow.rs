@@ -3524,7 +3524,7 @@ pub(crate) mod tests {
             .unwrap()
             .language_adapter_identity()
             .unwrap();
-        assert_eq!(identity.schema(), "deslop-lang-adapter/3");
+        assert_eq!(identity.schema(), "deslop-lang-adapter/4");
         assert_eq!(identity.control_flow_rules().rules().len(), 18);
         let lowered = lower_control_flow(
             Arc::clone(&exact),

@@ -12,11 +12,12 @@
 //! revisions. Detector logic lives in `deslop-analyzer`; this module only
 //! extracts revision-pinned facts with explicit coverage.
 //!
-//! Contract query text currently lives beside the extractor and runs through
+//! Contract query text lives in each adapter's `LanguageQueryPack` as the
+//! `contract` query family and is read here from the snapshot's stored
+//! adapter identity, then compiled through
 //! [`ProjectAnalysis::compile_syntax_query`] against the exact grammar of
-//! each file. Languages without a contract query are coverage gaps, never
-//! silent absences. Later phases may migrate the text into `deslop-lang`
-//! query packs once a detector needs captures these queries cannot express.
+//! each file. Adapters that declare the family unknown are per-language
+//! capability gaps, never silent absences.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -30,47 +31,7 @@ use deslop_core::Span;
 use crate::{FactCoverage, NodeId, ProjectAnalysis};
 
 /// Wire schema identifier for a contract change history.
-pub const CONTRACT_CHANGE_HISTORY_SCHEMA: &str = "deslop.contract-change-history/1";
-
-/// Python contract query: function definitions (owner/consumer candidates),
-/// call targets (owner tokens), string literals (schema tokens), and
-/// config-key reads (environment accessors carrying a string key).
-/// `@config.object`/`@config.accessor` are post-filtered in Rust
-/// (see [`is_config_object`]/[`is_config_accessor`]); the query cannot express
-/// the name match. Only environment reads count as behavioral config reads:
-/// a `config["K"]` subscript cannot be told apart from a write without
-/// semantic facts, so config-object literals stay acceptance-surface tokens.
-const PYTHON_CONTRACT_QUERY: &str = concat!(
-    "(function_definition\n",
-    "  name: (identifier) @function.name) @function\n\n",
-    "(call\n",
-    "  function: [(identifier) (attribute)] @ref)\n\n",
-    "(string) @string\n\n",
-    "(subscript\n",
-    "  value: [(identifier) (attribute)] @config.object\n",
-    "  subscript: (string) @config.key)\n\n",
-    "(call\n",
-    "  function: (attribute) @config.accessor\n",
-    "  arguments: (argument_list . (string) @config.key))\n",
-);
-
-/// Julia contract query: long- and short-form function definitions, call
-/// targets, and `ENV["KEY"]` config reads. Julia schema-token extraction is
-/// not yet supported (coverage gap), so no plain string captures here.
-const JULIA_CONTRACT_QUERY: &str = concat!(
-    "(assignment\n",
-    "  (call_expression\n",
-    "    (identifier) @function.name)) @function\n\n",
-    "(function_definition\n",
-    "  (call_expression\n",
-    "    (identifier) @function.name)) @function\n\n",
-    "(call_expression\n",
-    "  (identifier) @ref)\n\n",
-    "(index_expression\n",
-    "  (identifier) @config.object\n",
-    "  (vector_expression\n",
-    "    (string_literal) @config.key))\n",
-);
+pub const CONTRACT_CHANGE_HISTORY_SCHEMA: &str = "deslop.contract-change-history/2";
 
 /// Errors building a [`ContractChangeHistory`].
 #[derive(Debug)]
@@ -101,14 +62,27 @@ pub struct ContractFunction {
     pub span: Span,
     /// blake3 hex digest of the function's exact source text.
     pub fingerprint: String,
-    /// Callee/attribute reference tokens, normalized (leading `self.` dropped).
+    /// Callee/attribute reference tokens, normalized (leading `self.`/`this.`
+    /// dropped).
     pub references: BTreeSet<String>,
     /// String-literal contents (schema tokens).
     pub literals: BTreeSet<String>,
     /// Config keys read by this function from the process-parameter surface
     /// (`os.environ[...]`, `os.getenv(...)`, `os.environ.get(...)`, Julia
-    /// `ENV[...]`), normalized like literals.
+    /// `ENV[...]`, JavaScript `process.env`), normalized like literals.
     pub config_keys: BTreeSet<String>,
+    /// Loop constructs contained in this function (for/while statements and
+    /// comprehension clauses). Partition evidence for scope-collapse
+    /// detection; syntax counts only, never a claim about the semantic axis.
+    pub loops: u64,
+    /// Assertion-bearing statements contained in this function (Python
+    /// `assert`/`raise`, Julia `@assert`, JavaScript `throw`). Verifier
+    /// classification evidence.
+    pub assertions: u64,
+    /// Normalized whole-call-expression texts with occurrence counts.
+    /// Duplication evidence for hot-path detection; texts longer than
+    /// [`CALL_TEXT_LIMIT`] bytes are stored as `blake3:` digests.
+    pub call_texts: BTreeMap<String, u64>,
 }
 
 /// Contract facts for one file at one revision.
@@ -159,12 +133,30 @@ impl ContractChangeHistory {
         let mut reasons = Vec::new();
         let mut extracted = Vec::with_capacity(revisions.len());
         for (revision, analysis) in revisions {
+            let contract_sources: BTreeMap<PathBuf, String> = analysis
+                .snapshot()
+                .entries()
+                .filter_map(|entry| {
+                    let identity = entry.language_adapter_identity()?;
+                    let declaration = identity.queries().queries().iter().find(|declaration| {
+                        declaration.family() == deslop_lang::QueryFamily::Contract
+                    })?;
+                    if declaration.support() != deslop_lang::CapabilitySupport::Provided {
+                        return None;
+                    }
+                    Some((
+                        entry.path().to_path_buf(),
+                        declaration.source()?.to_string(),
+                    ))
+                })
+                .collect();
             let mut files = Vec::new();
             for parsed in analysis.files() {
                 let path = parsed.key().path.clone();
-                let Some(query_source) = contract_query_for(&path) else {
+                let Some(query_source) = contract_sources.get(&path) else {
                     reasons.push(format!(
-                        "{}: no contract query for this language (revision {revision})",
+                        "{}: the language adapter declares no contract query family \
+                         (revision {revision})",
                         path.display()
                     ));
                     continue;
@@ -176,14 +168,22 @@ impl ContractChangeHistory {
                     ));
                     continue;
                 }
-                files.push(extract_file(analysis, &path, query_source).map_err(
-                    |error| {
+                if parsed.text().is_some_and(is_generated_source) {
+                    reasons.push(format!(
+                        "{}: generated file excluded by explicit provenance marker \
+                         (revision {revision})",
+                        path.display()
+                    ));
+                    continue;
+                }
+                files.push(
+                    extract_file(analysis, &path, query_source).map_err(|error| {
                         ContractHistoryBuildError::Query(format!(
                             "{} (revision {revision}): {error}",
                             path.display()
                         ))
-                    },
-                )?);
+                    })?,
+                );
             }
             files.sort_by(|left, right| left.path.cmp(&right.path));
             extracted.push(RevisionContracts {
@@ -224,20 +224,56 @@ impl ContractChangeHistory {
     }
 }
 
-/// The contract query for a path, keyed on its extension. Unsupported
-/// extensions are coverage gaps reported by the caller.
-fn contract_query_for(path: &Path) -> Option<&'static str> {
-    match path.extension().and_then(|extension| extension.to_str()) {
-        Some("py") => Some(PYTHON_CONTRACT_QUERY),
-        Some("jl") => Some(JULIA_CONTRACT_QUERY),
-        _ => None,
+/// Maximum stored length for a normalized call-expression text; longer texts
+/// are stored as `blake3:` digests so the wire stays bounded while equal
+/// calls still compare equal.
+pub const CALL_TEXT_LIMIT: usize = 200;
+
+/// Normalize a reference token: drop a leading `self.`/`this.` so
+/// `self.model.score` and `model.score` identify the same contract
+/// dependency.
+fn normalize_reference(text: &str) -> String {
+    text.strip_prefix("self.")
+        .or_else(|| text.strip_prefix("this."))
+        .unwrap_or(text)
+        .to_string()
+}
+
+/// Normalize a whole call-expression text: collapse whitespace runs so
+/// formatting-only differences compare equal, and digest texts longer than
+/// [`CALL_TEXT_LIMIT`].
+fn normalize_call_text(text: &str) -> String {
+    let mut normalized = String::with_capacity(text.len().min(CALL_TEXT_LIMIT));
+    let mut in_gap = false;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            in_gap = true;
+            continue;
+        }
+        if in_gap && !normalized.is_empty() {
+            normalized.push(' ');
+        }
+        in_gap = false;
+        normalized.push(ch);
+    }
+    if normalized.len() > CALL_TEXT_LIMIT {
+        format!("blake3:{}", blake3::hash(normalized.as_bytes()).to_hex())
+    } else {
+        normalized
     }
 }
 
-/// Normalize a reference token: drop a leading `self.` so `self.model.score`
-/// and `model.score` identify the same contract dependency.
-fn normalize_reference(text: &str) -> String {
-    text.strip_prefix("self.").unwrap_or(text).to_string()
+/// Whether file bytes carry an explicit generated-code provenance marker.
+/// Only the leading bytes are examined: the marker convention places it in a
+/// file header. Generated files are excluded from source-owner findings by
+/// provenance, never by content guessing.
+fn is_generated_source(text: &str) -> bool {
+    let head_end = text
+        .char_indices()
+        .nth(4096)
+        .map(|(index, _)| index)
+        .unwrap_or(text.len());
+    text[..head_end].contains("@generated")
 }
 
 /// Normalize a string-literal token: strip one layer of quotes.
@@ -291,6 +327,9 @@ fn extract_file(
     let mut references: Vec<(Span, String)> = Vec::new();
     let mut literals: Vec<(Span, String)> = Vec::new();
     let mut config_keys: Vec<(Span, String)> = Vec::new();
+    let mut loops: Vec<Span> = Vec::new();
+    let mut assertions: Vec<Span> = Vec::new();
+    let mut call_texts: Vec<(Span, String)> = Vec::new();
 
     for one_match in &matches {
         let mut function_name: Option<NodeId> = None;
@@ -300,9 +339,9 @@ fn extract_file(
         let mut config_surface = false;
         let mut pending_keys: Vec<(Span, String)> = Vec::new();
         for capture in one_match.captures().iter() {
-            let node = analysis.node(capture.node()).map_err(|error| {
-                ContractHistoryBuildError::Query(error.to_string())
-            })?;
+            let node = analysis
+                .node(capture.node())
+                .map_err(|error| ContractHistoryBuildError::Query(error.to_string()))?;
             let node_span = node.span();
             let span = Span::new(
                 node_span.start_point().row() + 1,
@@ -312,7 +351,12 @@ fn extract_file(
             );
             match capture.capture_name() {
                 "function.name" => function_name = Some(capture.node()),
-                "function" => function_node = Some(capture.node()),
+                // `function.assign` is Julia's short-form definition (an
+                // assignment node); `function.value` is a JavaScript
+                // function-valued binding (the arrow/function expression).
+                "function" | "function.assign" | "function.value" => {
+                    function_node = Some(capture.node());
+                }
                 "ref" => references.push((span, normalize_reference(node.text()))),
                 "string" => literals.push((span, normalize_literal(node.text()))),
                 "config.object" | "config.accessor" => {
@@ -321,7 +365,19 @@ fn extract_file(
                         config_surface = true;
                     }
                 }
-                "config.key" => pending_keys.push((span, normalize_literal(node.text()))),
+                // `config.prop` is a JavaScript dotted `process.env.KEY`
+                // property; `config.key` is a string subscript key.
+                "config.key" | "config.prop" => {
+                    pending_keys.push((span, normalize_literal(node.text())));
+                }
+                "loop" => loops.push(span),
+                "assertion" => assertions.push(span),
+                "assert.macro" => {
+                    if node.text().trim_start_matches('@') == "assert" {
+                        assertions.push(span);
+                    }
+                }
+                "call.expr" => call_texts.push((span, normalize_call_text(node.text()))),
                 _ => {}
             }
         }
@@ -329,12 +385,12 @@ fn extract_file(
             config_keys.append(&mut pending_keys);
         }
         if let (Some(name_id), Some(function_id)) = (function_name, function_node) {
-            let name_node = analysis.node(name_id).map_err(|error| {
-                ContractHistoryBuildError::Query(error.to_string())
-            })?;
-            let function_node = analysis.node(function_id).map_err(|error| {
-                ContractHistoryBuildError::Query(error.to_string())
-            })?;
+            let name_node = analysis
+                .node(name_id)
+                .map_err(|error| ContractHistoryBuildError::Query(error.to_string()))?;
+            let function_node = analysis
+                .node(function_id)
+                .map_err(|error| ContractHistoryBuildError::Query(error.to_string()))?;
             let span = function_node.span();
             functions.push(ContractFunction {
                 name: name_node.text().to_string(),
@@ -350,6 +406,9 @@ fn extract_file(
                 references: BTreeSet::new(),
                 literals: BTreeSet::new(),
                 config_keys: BTreeSet::new(),
+                loops: 0,
+                assertions: 0,
+                call_texts: BTreeMap::new(),
             });
         }
     }
@@ -377,15 +436,31 @@ fn extract_file(
             module_config_keys.entry(token).or_insert(span);
         }
     }
+    // Loop, assertion, and call-text facts matter only inside candidate
+    // owner/consumer functions; module-level occurrences are outside every
+    // detector's evidence contract and are deliberately not extracted.
+    for span in loops {
+        if let Some(function) = innermost(&mut functions, &span) {
+            function.loops += 1;
+        }
+    }
+    for span in assertions {
+        if let Some(function) = innermost(&mut functions, &span) {
+            function.assertions += 1;
+        }
+    }
+    for (span, text) in call_texts {
+        if let Some(function) = innermost(&mut functions, &span) {
+            *function.call_texts.entry(text).or_insert(0) += 1;
+        }
+    }
 
     functions.sort_by(|left, right| {
         left.name
             .cmp(&right.name)
             .then(left.span.start_byte.cmp(&right.span.start_byte))
     });
-    functions.dedup_by(|left, right| {
-        left.name == right.name && left.span == right.span
-    });
+    functions.dedup_by(|left, right| left.name == right.name && left.span == right.span);
     Ok(FileContracts {
         path: path.to_path_buf(),
         functions,
@@ -566,6 +641,145 @@ def fetch(url):
             .find(|function| function.name == "load_config")
             .expect("missing load_config");
         assert!(load.config_keys.contains("THRESHOLD"));
+    }
+
+    #[test]
+    fn python_loop_assertion_and_call_text_extraction() {
+        let source = br#"def rank_documents(docs):
+    results = []
+    for doc in docs:
+        scores = [score(c) for c in doc.candidates]
+        results.append(scores)
+    assert len(results) == len(docs)
+    return results
+
+
+def flatten_rank(docs):
+    merged = expensive_transform(docs)
+    other = expensive_transform(docs)
+    if not merged:
+        raise ValueError("empty")
+    return merged + other
+"#;
+        let history = history(&[("rank.py", source)]);
+        assert_eq!(history.coverage, FactCoverage::Complete);
+        let file = &history.revisions[0].files[0];
+        let by_name = |name: &str| {
+            file.functions
+                .iter()
+                .find(|function| function.name == name)
+                .unwrap_or_else(|| panic!("missing function {name}"))
+        };
+        let rank = by_name("rank_documents");
+        // One for-statement plus one comprehension clause.
+        assert_eq!(rank.loops, 2);
+        assert_eq!(rank.assertions, 1);
+        let flatten = by_name("flatten_rank");
+        assert_eq!(flatten.loops, 0);
+        // The raise statement counts as assertion evidence.
+        assert_eq!(flatten.assertions, 1);
+        assert_eq!(
+            flatten.call_texts.get("expensive_transform(docs)"),
+            Some(&2),
+            "duplicate call text should count twice: {:?}",
+            flatten.call_texts
+        );
+    }
+
+    #[test]
+    fn julia_loop_and_assert_macro_extraction() {
+        let source = b"function rank(docs)\n    for doc in docs\n        score(doc)\n    end\n    @assert length(docs) > 0\n    docs\nend\n";
+        let history = history(&[("rank.jl", source)]);
+        assert_eq!(history.coverage, FactCoverage::Complete);
+        let file = &history.revisions[0].files[0];
+        let rank = file
+            .functions
+            .iter()
+            .find(|function| function.name == "rank")
+            .expect("missing rank");
+        assert_eq!(rank.loops, 1);
+        assert_eq!(rank.assertions, 1);
+    }
+
+    #[test]
+    fn javascript_extraction_captures_contract_facts() {
+        let source = br#"const LIMIT = process.env.LIMIT;
+
+function decide(candidates) {
+  return candidates.map((c) => this.model.rawScore(c));
+}
+
+class Scorer {
+  publicScore(candidate) {
+    if (candidate == null) {
+      throw new Error("missing candidate");
+    }
+    return this.model.rawScore(candidate);
+  }
+}
+
+const loadConfig = () => {
+  return { threshold: process.env["THRESHOLD"], seed: process.env.SEED };
+};
+
+function sweep(batch) {
+  for (const item of batch) {
+    expensiveTransform(item);
+  }
+  while (batch.pending) {
+    drain(batch);
+  }
+}
+"#;
+        let history = history(&[("scoring.js", source)]);
+        assert_eq!(history.coverage, FactCoverage::Complete);
+        let file = &history.revisions[0].files[0];
+        let by_name = |name: &str| {
+            file.functions
+                .iter()
+                .find(|function| function.name == name)
+                .unwrap_or_else(|| panic!("missing function {name}"))
+        };
+        let decide = by_name("decide");
+        assert!(decide.references.contains("candidates.map"));
+        assert!(decide.references.contains("model.rawScore"));
+        let public = by_name("publicScore");
+        assert!(public.references.contains("model.rawScore"));
+        assert_eq!(public.assertions, 1);
+        assert!(public.literals.contains("missing candidate"));
+        let config = by_name("loadConfig");
+        assert!(config.config_keys.contains("THRESHOLD"));
+        assert!(config.config_keys.contains("SEED"));
+        let sweep = by_name("sweep");
+        assert_eq!(sweep.loops, 2);
+        assert_eq!(sweep.call_texts.get("expensiveTransform(item)"), Some(&1));
+        // Module-level config read is a file fact.
+        assert!(file.module_config_keys.contains_key("LIMIT"));
+    }
+
+    #[test]
+    fn generated_file_is_excluded_by_provenance() {
+        let source = b"# @generated by scripts/make_scoring.py\n\ndef decide(candidates):\n    return max(candidates)\n";
+        let history = history(&[("generated_scoring.py", &source[..])]);
+        assert_eq!(history.coverage, FactCoverage::Partial);
+        assert_eq!(history.reasons.len(), 1);
+        assert!(history.reasons[0].contains("generated file excluded"));
+        assert!(history.revisions[0].files.is_empty());
+    }
+
+    #[test]
+    fn long_call_texts_are_digested_not_truncated() {
+        let long_arg = "x".repeat(300);
+        let source = format!("def f():\n    return g({long_arg})\n");
+        let history = history(&[("long.py", source.as_bytes())]);
+        let file = &history.revisions[0].files[0];
+        let function = &file.functions[0];
+        let digested = function
+            .call_texts
+            .keys()
+            .find(|key| key.starts_with("blake3:"))
+            .expect("long call text should be digested");
+        assert!(digested.len() < 80);
     }
 
     #[test]

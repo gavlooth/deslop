@@ -1,31 +1,40 @@
 //! Refactor-defect accumulation detection over a revision window.
 //!
-//! Design: `docs/REFACTOR_DEFECT_ACCUMULATION.md`. Phase 1 shipped review-only
-//! `owner-moved-consumer-stale` and `producer-verifier-schema-drift` over a
-//! two-revision window, built on [`ContractChangeHistory`] facts extracted
-//! from exact `ProjectAnalysis` snapshots. Phase 2 adds the adoption
-//! surfaces:
+//! Design: `docs/REFACTOR_DEFECT_ACCUMULATION.md`. All eleven detector
+//! families run here over [`ContractChangeHistory`] facts extracted from
+//! exact `ProjectAnalysis` snapshots:
 //!
+//! - migration families over direct dependents
+//!   (`owner-moved-consumer-stale`, `producer-verifier-schema-drift`) and
+//!   over the syntactic reference closure (`mechanism-live-gate-retired`,
+//!   `telemetry-not-bound-to-claim`, `operational-identity-stale`), where
+//!   the dependency-path split — reaching the retired representation while
+//!   never reaching the new one — is the firing condition and surface
+//!   classification is lexical supporting evidence only;
+//! - `confidence-provenance-lost`: a formerly bound dependent re-derives
+//!   its output through a lossy operation without following the owner to
+//!   the new evidence source;
+//! - `scope-collapse-after-refactor`: loop structure lost plus a
+//!   flatten/concatenate-family gain; the finding requests a metamorphic
+//!   independence test because syntax cannot prove the partition axis;
 //! - `accepted-config-inert`: a formerly live config key loses its final
-//!   behavioral read while the acceptance surface (a defaults literal) still
-//!   carries it — the doc's two historical cases, including a live
-//!   replacement key;
-//! - `test-oracle-lag`: a migration fired while an unchanged test still
-//!   exercises the former representation. The finding states what remains
-//!   unproved; it never claims the implementation is wrong;
+//!   behavioral read while an acceptance surface still carries it;
+//! - `test-oracle-lag`: a migration or scope collapse fired while an
+//!   unchanged test still exercises the former representation; the finding
+//!   states what remains unproved, never that the implementation is wrong;
+//! - `hot-path-work-duplicated`: an introduced structurally equivalent
+//!   composite call on one reachable path; cost stays an explicit gap;
 //! - `adoption-chain-incomplete` summaries: when several families share one
 //!   owner migration, one summary is emitted in
 //!   [`RefactorRiskReport::summaries`] — never in `findings` — so baselines
-//!   and severity counts do not double-count;
-//! - multi-revision windows: persistence (revisions survived, independent
-//!   edits) and co-change triage inputs computed from contract fingerprints
-//!   across the window.
+//!   and severity counts do not double-count.
 //!
 //! All findings are `NeverAuto`: the analysis diagnoses an incomplete
 //! contract migration and suggests a verification; it never proposes a
-//! rewrite.
+//! rewrite. Optional revision-bound semantic-provider artifacts join as
+//! supporting or conflicting evidence without changing syntax authority.
 //!
-//! Detection discipline (Phase 1, unchanged):
+//! Detection discipline:
 //! - an owner change requires a function whose contract-token set both lost
 //!   and gained tokens between the revisions (a pure removal is a deletion,
 //!   not a migration);
@@ -35,7 +44,11 @@
 //!   cases);
 //! - a stale consumer must be matched by name and have an *unchanged* token
 //!   set still containing the removed token. A consumer that moved anywhere
-//!   else — including to a compatibility adapter — does not fire.
+//!   else — including to a compatibility adapter — does not fire;
+//! - narrowing filters only ever suppress candidates: type-constructor
+//!   references, revision-wide shared utilities, and self-recursion are
+//!   not ownership evidence, and hot-path candidates must be composite
+//!   non-constructor calls.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -57,6 +70,29 @@ use serde::Serialize;
 
 /// Wire schema identifier for a refactor-risk report over one revision window.
 pub const REFACTOR_RISK_SCHEMA: &str = "deslop.refactor-risk/1";
+
+/// Project a refactor-risk report's findings into scan-path file reports so
+/// the existing text and SARIF renderers apply with no format changes.
+/// Summaries stay out: they must never enter finding counts or baselines.
+pub fn to_file_reports(report: &RefactorRiskReport) -> Vec<deslop_core::FileReport> {
+    let mut by_path: BTreeMap<PathBuf, Vec<deslop_core::Finding>> = BTreeMap::new();
+    for defect in &report.findings {
+        let finding = defect.to_finding();
+        by_path
+            .entry(finding.path.clone())
+            .or_default()
+            .push(finding);
+    }
+    by_path
+        .into_iter()
+        .map(|(path, findings)| deslop_core::FileReport {
+            lang: deslop_lang::detect_lang(&path),
+            path,
+            analysis: deslop_core::AnalysisProvenance::complete(),
+            findings,
+        })
+        .collect()
+}
 
 /// The output of one refactor-risk comparison over an ordered window.
 #[derive(Debug, Clone, Serialize)]
@@ -88,11 +124,173 @@ pub fn refactor_risk_paths(from: &Path, to: &Path) -> Result<RefactorRiskReport>
 /// Compare an ordered window of directory snapshots (`--from`, `--to`,
 /// `--then ...`) and report refactor-defect findings.
 pub fn refactor_risk_window_paths(roots: &[PathBuf]) -> Result<RefactorRiskReport> {
+    let labeled: Vec<(String, PathBuf)> = roots
+        .iter()
+        .map(|root| (root.display().to_string(), root.clone()))
+        .collect();
+    refactor_risk_window_labeled(&labeled)
+}
+
+/// Compare an ordered window of directory snapshots under caller-supplied
+/// revision labels (a VCS provider labels materialized revisions by their
+/// revision spec, not by the extraction directory).
+pub fn refactor_risk_window_labeled(roots: &[(String, PathBuf)]) -> Result<RefactorRiskReport> {
     let mut revisions = Vec::with_capacity(roots.len());
-    for root in roots {
-        revisions.push((root.display().to_string(), analysis_for(root)?));
+    for (label, root) in roots {
+        revisions.push((label.clone(), analysis_for(root)?));
     }
     analyze_refactor_window(revisions)
+}
+
+/// Wire schema identifier for the semantic-provider facts payload accepted
+/// inside a `deslop.refactor-history/1` provider artifact: per-function
+/// reference tokens a provider attests for the revision carrying the
+/// artifact.
+pub const SEMANTIC_PROVIDER_FACTS_SCHEMA: &str = "deslop.semantic-provider-facts/1";
+
+/// Rules whose stale-edge tokens are reference tokens a semantic provider
+/// can attest or dispute. Literal and config tokens are outside the
+/// provider-facts contract.
+const PROVIDER_JOIN_RULES: &[&str] = &[
+    rule_names::OWNER_MOVED_CONSUMER_STALE,
+    rule_names::MECHANISM_LIVE_GATE_RETIRED,
+    rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM,
+    rule_names::OPERATIONAL_IDENTITY_STALE,
+    rule_names::CONFIDENCE_PROVENANCE_LOST,
+];
+
+/// Deserialized `deslop.semantic-provider-facts/1` payload.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProviderFacts {
+    schema: String,
+    functions: Vec<ProviderFunctionFacts>,
+}
+
+/// One function's provider-attested reference tokens, located by path and
+/// starting line so the join never parses detail strings.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProviderFunctionFacts {
+    path: PathBuf,
+    start_line: usize,
+    references: BTreeSet<String>,
+}
+
+/// Analyze an ordered `deslop.refactor-history/1` bundle: build exact-byte
+/// analyses for every revision, run the window detection, then join
+/// revision-bound semantic-provider artifacts as supporting or conflicting
+/// evidence. Provider facts never change the authority of syntax facts and
+/// never promote or suppress a finding; disagreement stays visible in
+/// `counter_evidence`, and payloads the analysis cannot understand become
+/// explicit coverage reasons.
+pub fn analyze_refactor_bundle(
+    bundle: &deslop_core::refactor_defect::RefactorHistoryBundle,
+) -> Result<RefactorRiskReport> {
+    bundle
+        .validate()
+        .map_err(|error| anyhow::anyhow!("invalid refactor-history bundle: {error}"))?;
+    // An empty anchor directory: overlay bytes are pinned in memory, the
+    // root only anchors path resolution and repository identity.
+    let anchor =
+        std::env::temp_dir().join(format!("deslop-refactor-bundle-{}", std::process::id()));
+    std::fs::create_dir_all(&anchor).context("create bundle anchor directory")?;
+    let mut revisions = Vec::with_capacity(bundle.revisions.len());
+    for snapshot in &bundle.revisions {
+        let mut builder = deslop_parse::ProjectSnapshotBuilder::new(
+            &anchor,
+            deslop_parse::RepositoryId::explicit("refactor-history-bundle")
+                .map_err(|error| anyhow::anyhow!("{error}"))?,
+        )?;
+        for file in &snapshot.files {
+            builder = builder.with_overlay(&file.path, file.contents.clone().into_bytes())?;
+        }
+        let analysis = ProjectAnalysis::build(builder.build()?)?;
+        revisions.push((snapshot.revision.clone(), analysis));
+    }
+    let mut report = analyze_refactor_window(revisions)?;
+    join_provider_artifacts(&mut report, bundle);
+    Ok(report)
+}
+
+/// Join revision-bound provider artifacts into an existing report.
+fn join_provider_artifacts(
+    report: &mut RefactorRiskReport,
+    bundle: &deslop_core::refactor_defect::RefactorHistoryBundle,
+) {
+    for snapshot in &bundle.revisions {
+        for artifact in &snapshot.provider_artifacts {
+            let facts: ProviderFacts = match serde_json::from_str(&artifact.payload) {
+                Ok(facts) => facts,
+                Err(_) => {
+                    report.coverage = FactCoverage::Partial;
+                    report.coverage_reasons.push(format!(
+                        "provider artifact ({:?}, revision {}) payload not understood; \
+                         expected {SEMANTIC_PROVIDER_FACTS_SCHEMA}",
+                        artifact.provider, snapshot.revision
+                    ));
+                    continue;
+                }
+            };
+            if facts.schema != SEMANTIC_PROVIDER_FACTS_SCHEMA {
+                report.coverage = FactCoverage::Partial;
+                report.coverage_reasons.push(format!(
+                    "provider artifact ({:?}, revision {}) carries schema `{}`; expected \
+                     {SEMANTIC_PROVIDER_FACTS_SCHEMA}",
+                    artifact.provider, snapshot.revision, facts.schema
+                ));
+                continue;
+            }
+            for finding in report.findings.iter_mut() {
+                if finding.revisions.after != snapshot.revision
+                    || !PROVIDER_JOIN_RULES.contains(&finding.rule.as_str())
+                {
+                    continue;
+                }
+                let mut supporting = Vec::new();
+                let mut conflicting = Vec::new();
+                for step in &finding.stale_edges {
+                    let Some(token) = &step.token else {
+                        continue;
+                    };
+                    let Some(fact) = facts.functions.iter().find(|fact| {
+                        fact.path == step.node.path && fact.start_line == step.node.span.start_line
+                    }) else {
+                        // Missing provider facts stay unknown; they are not
+                        // negative facts.
+                        continue;
+                    };
+                    if fact.references.contains(token) {
+                        supporting.push(EvidenceItem {
+                            provider: artifact.provider,
+                            detail: format!(
+                                "provider attests `{token}` is referenced at {}:{} in \
+                                 revision {}",
+                                step.node.path.display(),
+                                step.node.span.start_line,
+                                snapshot.revision
+                            ),
+                            node: Some(step.node.clone()),
+                        });
+                    } else {
+                        conflicting.push(EvidenceItem {
+                            provider: artifact.provider,
+                            detail: format!(
+                                "provider does not list `{token}` at {}:{} in revision {}; \
+                                 disagreement retained, syntax authority unchanged",
+                                step.node.path.display(),
+                                step.node.span.start_line,
+                                snapshot.revision
+                            ),
+                            node: Some(step.node.clone()),
+                        });
+                    }
+                }
+                finding.evidence.extend(supporting);
+                finding.counter_evidence.extend(conflicting);
+            }
+        }
+    }
 }
 
 /// Compare two exact analyses under caller-supplied revision labels.
@@ -118,10 +316,7 @@ pub fn analyze_refactor_window(
             revisions.len()
         );
     }
-    let labels: Vec<String> = revisions
-        .iter()
-        .map(|(label, _)| label.clone())
-        .collect();
+    let labels: Vec<String> = revisions.iter().map(|(label, _)| label.clone()).collect();
     let history = ContractChangeHistory::from_analyses(&revisions)
         .context("build contract change history")?;
     let mut drafts = Vec::new();
@@ -143,13 +338,22 @@ pub fn analyze_refactor_window(
         .map(|draft| build_finding(draft, window))
         .collect();
     let summaries = build_summaries(&drafts, window);
+    // Dynamic/reflective access leaves consumer resolution incomplete: an
+    // explicit capability gap, never a clean result.
+    let mut coverage = history.coverage;
+    let dynamic_reasons = dynamic_access_reasons(&history);
+    let mut coverage_reasons = history.reasons;
+    if !dynamic_reasons.is_empty() {
+        coverage = FactCoverage::Partial;
+        coverage_reasons.extend(dynamic_reasons);
+    }
     Ok(RefactorRiskReport {
         schema: REFACTOR_RISK_SCHEMA.to_string(),
         before: labels.first().cloned().unwrap_or_default(),
         after: labels.last().cloned().unwrap_or_default(),
         revisions: labels,
-        coverage: history.coverage,
-        coverage_reasons: history.reasons,
+        coverage,
+        coverage_reasons,
         findings,
         summaries,
     })
@@ -159,7 +363,12 @@ pub fn analyze_refactor_window(
 /// the planner flow used by `scan_paths_with_context` and `deslop-graph`.
 /// The root is pinned to the directory itself so file paths are comparable
 /// across the two revisions (`before/dir/x.py` and `after/dir/x.py` must
-/// identify the same contract file).
+/// identify the same contract file). Public so the LSP can build its
+/// configured base revision through the same entry point.
+pub fn snapshot_analysis(root: &Path) -> Result<Arc<ProjectAnalysis>> {
+    analysis_for(root)
+}
+
 fn analysis_for(root: &Path) -> Result<Arc<ProjectAnalysis>> {
     let invocation_base = std::env::current_dir().context("resolve invocation base")?;
     let planner = ProjectSnapshotPlanner::resolve(ProjectSnapshotRequest {
@@ -186,7 +395,7 @@ enum TokenDomain {
 }
 
 impl TokenDomain {
-    fn tokens<'f>(self, function: &'f ContractFunction) -> &'f BTreeSet<String> {
+    fn tokens(self, function: &ContractFunction) -> &BTreeSet<String> {
         match self {
             Self::References => &function.references,
             Self::Literals => &function.literals,
@@ -195,15 +404,11 @@ impl TokenDomain {
     }
 
     /// Module-level tokens of this domain (tokens outside any function).
-    fn module_tokens<'f>(self, file: &'f FileContracts) -> Vec<&'f str> {
+    fn module_tokens(self, file: &FileContracts) -> Vec<&str> {
         match self {
             Self::References => Vec::new(),
             Self::Literals => file.module_literals.keys().map(String::as_str).collect(),
-            Self::ConfigKeys => file
-                .module_config_keys
-                .keys()
-                .map(String::as_str)
-                .collect(),
+            Self::ConfigKeys => file.module_config_keys.keys().map(String::as_str).collect(),
         }
     }
 
@@ -264,7 +469,11 @@ impl Family {
         consumer: &str,
         added: &BTreeSet<String>,
     ) -> String {
-        let added = added.iter().map(String::as_str).collect::<Vec<_>>().join(", ");
+        let added = added
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(", ");
         match self {
             Self::OwnerMovedConsumerStale => format!(
                 "decide whether `{consumer}` should follow `{owner}` to the new owner ({added}), \
@@ -283,8 +492,15 @@ impl Family {
 /// outside functions).
 #[derive(Debug, Clone)]
 enum Holder {
-    Function { path: PathBuf, function: ContractFunction },
-    Module { path: PathBuf, span: deslop_core::Span, token: String },
+    Function {
+        path: PathBuf,
+        function: ContractFunction,
+    },
+    Module {
+        path: PathBuf,
+        span: deslop_core::Span,
+        token: String,
+    },
 }
 
 impl Holder {
@@ -364,6 +580,239 @@ fn functions_by_name(file: &FileContracts) -> BTreeMap<&str, &ContractFunction> 
         .collect()
 }
 
+/// Reference-token leaves that indicate a partition axis was flattened or
+/// merged. Classification evidence for scope-collapse nomination; the
+/// semantic axis itself remains unproved and the finding requests a
+/// metamorphic independence test.
+const FLATTEN_LEAVES: &[&str] = &[
+    "flatten",
+    "ravel",
+    "flat",
+    "concat",
+    "concatenate",
+    "chain",
+    "vcat",
+    "hcat",
+    "vstack",
+    "hstack",
+    "stack",
+];
+
+/// Reference-token leaves that indicate a lossy commit (argmax, threshold,
+/// rounding). Classification evidence for provenance-loss nomination.
+const LOSSY_LEAVES: &[&str] = &[
+    "argmax",
+    "argmin",
+    "round",
+    "floor",
+    "ceil",
+    "clip",
+    "clamp",
+    "quantize",
+    "sign",
+    "threshold",
+    "onehot",
+];
+
+/// Observation-surface object names whose method calls classify a function
+/// as a telemetry producer. Lexical classification is supporting evidence
+/// only; the sufficient condition is the dependency-path split shown by the
+/// contract facts.
+const TELEMETRY_SURFACES: &[&str] = &[
+    "metrics",
+    "metric",
+    "statsd",
+    "prometheus",
+    "telemetry",
+    "logger",
+    "log",
+    "gauge",
+    "counter",
+    "histogram",
+];
+
+/// Publication-surface object names whose method calls classify a function
+/// as an operational status/identity publisher.
+const STATUS_SURFACES: &[&str] = &["status", "health", "heartbeat", "watchdog", "registry"];
+
+/// Reflection/dynamic-dispatch callees that leave consumer resolution
+/// incomplete. Their presence is a capability gap, never a clean result.
+const DYNAMIC_LEAVES: &[&str] = &[
+    "getattr",
+    "setattr",
+    "eval",
+    "exec",
+    "globals",
+    "locals",
+    "vars",
+    "__import__",
+    "getfield",
+    "invokelatest",
+];
+
+/// The last dotted segment of a reference token.
+fn token_leaf(token: &str) -> &str {
+    token.rsplit('.').next().unwrap_or(token)
+}
+
+/// Whether a reference token names a type constructor or exception class by
+/// the uppercase-initial convention (`Int`, `Float32`, `ValueError`,
+/// `Dense`). Conversion and construction churn is not ownership migration;
+/// this filter only narrows candidates, it never promotes one.
+fn is_type_like(token: &str) -> bool {
+    token_leaf(token)
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_ascii_uppercase())
+}
+
+/// Minimum normalized length for a hot-path duplication candidate. Shorter
+/// calls (`one(T)`, `size(x, 1)`) are ubiquitous cheap accessors whose
+/// nomination would drown review.
+const HOT_PATH_MIN_CALL_LEN: usize = 24;
+
+/// A reference token held by more than this many distinct functions in its
+/// revision is a shared utility (`throw`, `zeros`, `log`), not an owned
+/// representation a consumer could be left attached to. Narrowing only.
+const SHARED_UTILITY_FUNCTIONS: usize = 3;
+
+/// Distinct-function reference counts per token for one revision.
+fn reference_popularity(rev: &RevisionContracts) -> BTreeMap<&str, usize> {
+    let mut popularity: BTreeMap<&str, usize> = BTreeMap::new();
+    for file in &rev.files {
+        for function in &file.functions {
+            for token in &function.references {
+                *popularity.entry(token.as_str()).or_insert(0) += 1;
+            }
+        }
+    }
+    popularity
+}
+
+/// Whether a reference token is a method call on one of the named
+/// observation surfaces (`metrics.gauge`, `app.status.publish`, ...).
+fn observation_surface(token: &str, surfaces: &[&str]) -> bool {
+    let Some((object, _leaf)) = token.rsplit_once('.') else {
+        return false;
+    };
+    let object_leaf = token_leaf(object).to_ascii_lowercase();
+    surfaces.contains(&object_leaf.as_str())
+}
+
+/// How a dependent function participates in the adoption chain. Families
+/// are mutually exclusive per dependent so one stale edge is reported by
+/// exactly one detector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DependentClass {
+    Test,
+    Gate,
+    StatusPublisher,
+    TelemetryProducer,
+    Consumer,
+}
+
+fn classify_dependent(path: &Path, function: &ContractFunction) -> DependentClass {
+    if is_test_function(path, &function.name) {
+        DependentClass::Test
+    } else if function.assertions > 0 {
+        DependentClass::Gate
+    } else if function
+        .references
+        .iter()
+        .any(|token| observation_surface(token, STATUS_SURFACES))
+    {
+        DependentClass::StatusPublisher
+    } else if function
+        .references
+        .iter()
+        .any(|token| observation_surface(token, TELEMETRY_SURFACES))
+    {
+        DependentClass::TelemetryProducer
+    } else {
+        DependentClass::Consumer
+    }
+}
+
+/// One owner change extracted from a matched file pair: the owner both lost
+/// and gained tokens, and at least one removed token survives elsewhere in
+/// the after revision (a pure removal is a deletion and a vanished token is
+/// a rename/rewrite; neither is a migration).
+struct Migration<'f> {
+    path: &'f Path,
+    owner_before: &'f ContractFunction,
+    owner_after: &'f ContractFunction,
+    surviving: BTreeSet<String>,
+    added: BTreeSet<String>,
+}
+
+/// Extract every owner migration in one token domain from a matched file
+/// pair. `popularity_before`/`popularity_after` are revision-wide reference
+/// counts used to exclude shared utilities from the reference domain.
+fn find_migrations<'f>(
+    domain: TokenDomain,
+    file_before: &'f FileContracts,
+    file_after: &'f FileContracts,
+    popularity_before: &BTreeMap<&str, usize>,
+    popularity_after: &BTreeMap<&str, usize>,
+) -> Vec<Migration<'f>> {
+    let before_by_name = functions_by_name(file_before);
+    let after_by_name = functions_by_name(file_after);
+    let global_after: BTreeSet<&str> = file_after
+        .functions
+        .iter()
+        .flat_map(|function| domain.tokens(function).iter().map(String::as_str))
+        .chain(domain.module_tokens(file_after))
+        .collect();
+    let mut migrations = Vec::new();
+    for (name, owner_before) in &before_by_name {
+        let Some(owner_after) = after_by_name.get(name) else {
+            continue;
+        };
+        let tokens_before = domain.tokens(owner_before);
+        let tokens_after = domain.tokens(owner_after);
+        // In the reference domain, type-constructor/exception references
+        // are conversion churn and revision-wide shared utilities are not
+        // an owned representation; both narrow candidates only.
+        let counts = |popularity: &BTreeMap<&str, usize>, token: &String| {
+            domain != TokenDomain::References
+                || (!is_type_like(token.as_str())
+                    && popularity.get(token.as_str()).copied().unwrap_or(0)
+                        <= SHARED_UTILITY_FUNCTIONS)
+        };
+        let removed: BTreeSet<String> = tokens_before
+            .iter()
+            .filter(|token| !tokens_after.contains(*token))
+            .filter(|token| counts(popularity_before, token))
+            .cloned()
+            .collect();
+        let added: BTreeSet<String> = tokens_after
+            .iter()
+            .filter(|token| !tokens_before.contains(*token))
+            .filter(|token| counts(popularity_after, token))
+            .cloned()
+            .collect();
+        if removed.is_empty() || added.is_empty() {
+            continue;
+        }
+        let surviving: BTreeSet<String> = removed
+            .iter()
+            .filter(|token| global_after.contains(token.as_str()))
+            .cloned()
+            .collect();
+        if surviving.is_empty() {
+            continue;
+        }
+        migrations.push(Migration {
+            path: &file_before.path,
+            owner_before,
+            owner_after,
+            surviving,
+            added,
+        });
+    }
+    migrations
+}
+
 /// Run all detectors over one adjacent revision pair.
 fn detect_pair(
     pair_index: usize,
@@ -373,6 +822,8 @@ fn detect_pair(
     drafts: &mut Vec<FindingDraft>,
 ) {
     let pair_start = drafts.len();
+    let popularity_before = reference_popularity(rev_before);
+    let popularity_after = reference_popularity(rev_after);
     for file_before in &rev_before.files {
         let Some(file_after) = rev_after
             .files
@@ -381,8 +832,23 @@ fn detect_pair(
         else {
             continue;
         };
+        let reference_migrations = find_migrations(
+            TokenDomain::References,
+            file_before,
+            file_after,
+            &popularity_before,
+            &popularity_after,
+        );
+        let literal_migrations = find_migrations(
+            TokenDomain::Literals,
+            file_before,
+            file_after,
+            &popularity_before,
+            &popularity_after,
+        );
         detect_family(
             Family::OwnerMovedConsumerStale,
+            &reference_migrations,
             pair_index,
             labels,
             file_before,
@@ -391,20 +857,43 @@ fn detect_pair(
         );
         detect_family(
             Family::ProducerVerifierSchemaDrift,
+            &literal_migrations,
             pair_index,
             labels,
             file_before,
             file_after,
             drafts,
         );
+        detect_provenance_lost(
+            &reference_migrations,
+            pair_index,
+            labels,
+            file_before,
+            file_after,
+            drafts,
+        );
+        detect_reach_families(
+            &reference_migrations,
+            pair_index,
+            labels,
+            rev_before,
+            rev_after,
+            drafts,
+        );
+        detect_scope_collapse(pair_index, labels, file_before, file_after, drafts);
+        detect_hot_path(pair_index, labels, file_before, file_after, drafts);
     }
     detect_config_inert(pair_index, labels, rev_before, rev_after, drafts);
-    detect_test_oracle_lag(pair_index, labels, rev_before, rev_after, pair_start, drafts);
+    detect_test_oracle_lag(
+        pair_index, labels, rev_before, rev_after, pair_start, drafts,
+    );
 }
 
-/// Run one migration detector family over one matched file pair.
+/// Run one direct-dependent migration detector family over the migrations
+/// extracted from one matched file pair.
 fn detect_family(
     family: Family,
+    migrations: &[Migration<'_>],
     pair_index: usize,
     labels: &[String],
     file_before: &FileContracts,
@@ -414,49 +903,11 @@ fn detect_family(
     let domain = family.domain();
     let before_by_name = functions_by_name(file_before);
     let after_by_name = functions_by_name(file_after);
-    let global_after: BTreeSet<&str> = file_after
-        .functions
-        .iter()
-        .flat_map(|function| domain.tokens(function).iter().map(String::as_str))
-        .chain(domain.module_tokens(file_after))
-        .collect();
-
-    for (name, owner_before) in &before_by_name {
-        let Some(owner_after) = after_by_name.get(name) else {
-            continue;
-        };
-        let tokens_before = domain.tokens(owner_before);
-        let tokens_after = domain.tokens(owner_after);
-        let removed: BTreeSet<String> = tokens_before
-            .iter()
-            .filter(|token| !tokens_after.contains(*token))
-            .cloned()
-            .collect();
-        let added: BTreeSet<String> = tokens_after
-            .iter()
-            .filter(|token| !tokens_before.contains(*token))
-            .cloned()
-            .collect();
-        // A migration both loses and gains tokens; pure removals or additions
-        // are deletions/rewrites, not owner moves.
-        if removed.is_empty() || added.is_empty() {
-            continue;
-        }
-        // The former representation must survive somewhere in the after
-        // revision; otherwise this is a rename or rewrite, not a stale
-        // consumer (rename/move negative cases).
-        let surviving: BTreeSet<String> = removed
-            .iter()
-            .filter(|token| global_after.contains(token.as_str()))
-            .cloned()
-            .collect();
-        if surviving.is_empty() {
-            continue;
-        }
+    for migration in migrations {
         // Stale dependents: matched by name, token set unchanged, still
         // holding at least one surviving removed token.
         for (dependent_name, dependent_before) in &before_by_name {
-            if dependent_name == name {
+            if **dependent_name == migration.owner_before.name {
                 continue;
             }
             let Some(dependent_after) = after_by_name.get(dependent_name) else {
@@ -465,9 +916,24 @@ fn detect_family(
             if domain.tokens(dependent_before) != domain.tokens(dependent_after) {
                 continue;
             }
-            let stale: BTreeSet<String> = surviving
+            // Dependents claimed by a more specific family are skipped here:
+            // tests belong to `test-oracle-lag`; in the reference domain,
+            // gates belong to `mechanism-live-gate-retired` and observation
+            // surfaces to the telemetry/identity families.
+            let class = classify_dependent(&file_after.path, dependent_after);
+            if class == DependentClass::Test {
+                continue;
+            }
+            if domain == TokenDomain::References && class != DependentClass::Consumer {
+                continue;
+            }
+            // A dependent's reference to its own name is recursion, not an
+            // attachment to the former owner's representation.
+            let stale: BTreeSet<String> = migration
+                .surviving
                 .iter()
                 .filter(|token| domain.tokens(dependent_before).contains(*token))
+                .filter(|token| token_leaf(token) != *dependent_name)
                 .cloned()
                 .collect();
             if stale.is_empty() {
@@ -478,17 +944,17 @@ fn detect_family(
                 pair_index,
                 before_label: labels[pair_index].clone(),
                 after_label: labels[pair_index + 1].clone(),
-                path: file_before.path.clone(),
-                owner_before: Some((*owner_before).clone()),
-                owner_after: Some((*owner_after).clone()),
+                path: migration.path.to_path_buf(),
+                owner_before: Some(migration.owner_before.clone()),
+                owner_after: Some(migration.owner_after.clone()),
                 dependent: Holder::Function {
                     path: file_after.path.clone(),
                     function: (*dependent_after).clone(),
                 },
                 domain,
                 stale,
-                surviving: surviving.clone(),
-                added: added.clone(),
+                surviving: migration.surviving.clone(),
+                added: migration.added.clone(),
                 note: None,
                 persistence: Persistence {
                     revisions: 1,
@@ -526,10 +992,7 @@ fn detect_config_inert(
     };
     let before_reads = reads(rev_before);
     let after_reads = reads(rev_after);
-    let replacements: BTreeSet<String> = after_reads
-        .difference(&before_reads)
-        .cloned()
-        .collect();
+    let replacements: BTreeSet<String> = after_reads.difference(&before_reads).cloned().collect();
 
     for key in before_reads.difference(&after_reads) {
         // The acceptance surface in the after revision: any function literal
@@ -567,10 +1030,7 @@ fn detect_config_inert(
                     .join(", ")
             ))
         };
-        let dependent = holders
-            .into_iter()
-            .next()
-            .expect("holders is non-empty");
+        let dependent = holders.into_iter().next().expect("holders is non-empty");
         drafts.push(FindingDraft {
             rule: rule_names::ACCEPTED_CONFIG_INERT,
             pair_index,
@@ -591,6 +1051,403 @@ fn detect_config_inert(
             },
         });
     }
+}
+
+/// `confidence-provenance-lost`: after an owner migration, a dependent that
+/// was bound to the former evidence source now re-derives its output through
+/// a lossy operation (argmax/round/threshold family) without following the
+/// owner to the new evidence source. The dependent *changed* — the unchanged
+/// case is `owner-moved-consumer-stale` — but changed to a reconstruction
+/// instead of an adoption. Review candidate: the lossy-op set is
+/// classification evidence, and whether the information loss matters needs a
+/// behavioral oracle.
+fn detect_provenance_lost(
+    migrations: &[Migration<'_>],
+    pair_index: usize,
+    labels: &[String],
+    file_before: &FileContracts,
+    file_after: &FileContracts,
+    drafts: &mut Vec<FindingDraft>,
+) {
+    let before_by_name = functions_by_name(file_before);
+    let after_by_name = functions_by_name(file_after);
+    for migration in migrations {
+        for (name, dependent_before) in &before_by_name {
+            if **name == migration.owner_before.name {
+                continue;
+            }
+            let Some(dependent_after) = after_by_name.get(name) else {
+                continue;
+            };
+            // The dependent was bound to the former evidence source...
+            let formerly_bound: BTreeSet<String> = migration
+                .surviving
+                .iter()
+                .filter(|token| dependent_before.references.contains(*token))
+                .cloned()
+                .collect();
+            if formerly_bound.is_empty() {
+                continue;
+            }
+            // ...changed in this pair...
+            if dependent_before.fingerprint == dependent_after.fingerprint {
+                continue;
+            }
+            // ...now applies a lossy operation...
+            let lossy: BTreeSet<String> = dependent_after
+                .references
+                .iter()
+                .filter(|token| LOSSY_LEAVES.contains(&token_leaf(token)))
+                .cloned()
+                .collect();
+            if lossy.is_empty() {
+                continue;
+            }
+            // ...and did not follow the owner to the new evidence source.
+            // A dependent referencing any added token retained provenance:
+            // counter-evidence, do not fire.
+            if migration
+                .added
+                .iter()
+                .any(|token| dependent_after.references.contains(token))
+            {
+                continue;
+            }
+            drafts.push(FindingDraft {
+                rule: rule_names::CONFIDENCE_PROVENANCE_LOST,
+                pair_index,
+                before_label: labels[pair_index].clone(),
+                after_label: labels[pair_index + 1].clone(),
+                path: migration.path.to_path_buf(),
+                owner_before: Some(migration.owner_before.clone()),
+                owner_after: Some(migration.owner_after.clone()),
+                dependent: Holder::Function {
+                    path: file_after.path.clone(),
+                    function: (*dependent_after).clone(),
+                },
+                domain: TokenDomain::References,
+                stale: lossy,
+                surviving: migration.surviving.clone(),
+                added: migration.added.clone(),
+                note: Some(format!(
+                    "`{name}` was bound to {} before the migration",
+                    formerly_bound
+                        .iter()
+                        .map(|token| format!("`{token}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )),
+                persistence: Persistence {
+                    revisions: 1,
+                    independent_edits: 0,
+                },
+            });
+        }
+    }
+}
+
+/// The syntactic reference closure of one function within a revision:
+/// direct reference tokens plus the tokens of every function transitively
+/// reachable by leaf-name expansion across files. Same-named functions are
+/// merged by union, which is deliberately conservative: reaching the new
+/// owner through *any* candidate suppresses a finding. Syntactic evidence,
+/// never resolution proof.
+fn reference_closure(rev: &RevisionContracts, start: &ContractFunction) -> BTreeSet<String> {
+    let mut by_name: BTreeMap<&str, Vec<&ContractFunction>> = BTreeMap::new();
+    for file in &rev.files {
+        for function in &file.functions {
+            by_name
+                .entry(function.name.as_str())
+                .or_default()
+                .push(function);
+        }
+    }
+    let mut closure: BTreeSet<String> = BTreeSet::new();
+    let mut visited: BTreeSet<&str> = BTreeSet::from([start.name.as_str()]);
+    let mut queue: Vec<&ContractFunction> = vec![start];
+    while let Some(function) = queue.pop() {
+        for token in &function.references {
+            closure.insert(token.clone());
+            let leaf = token_leaf(token);
+            if visited.contains(leaf) {
+                continue;
+            }
+            if let Some(callees) = by_name.get(leaf) {
+                visited.insert(leaf);
+                queue.extend(callees.iter().copied());
+            }
+        }
+    }
+    closure
+}
+
+/// The three dependency-path families over one migration: a gate
+/// (`mechanism-live-gate-retired`), telemetry producer
+/// (`telemetry-not-bound-to-claim`), or status/identity publisher
+/// (`operational-identity-stale`) that is unchanged through the migration
+/// and whose reference closure still reaches the former owner's surviving
+/// tokens without reaching any token the owner gained. The dependency-path
+/// split is the structural condition; the surface classification is
+/// supporting evidence and is recorded as such.
+fn detect_reach_families(
+    migrations: &[Migration<'_>],
+    pair_index: usize,
+    labels: &[String],
+    rev_before: &RevisionContracts,
+    rev_after: &RevisionContracts,
+    drafts: &mut Vec<FindingDraft>,
+) {
+    for migration in migrations {
+        for file_after in &rev_after.files {
+            for dependent_after in &file_after.functions {
+                if dependent_after.name == migration.owner_before.name {
+                    continue;
+                }
+                let rule = match classify_dependent(&file_after.path, dependent_after) {
+                    DependentClass::Gate => rule_names::MECHANISM_LIVE_GATE_RETIRED,
+                    DependentClass::TelemetryProducer => rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM,
+                    DependentClass::StatusPublisher => rule_names::OPERATIONAL_IDENTITY_STALE,
+                    DependentClass::Test | DependentClass::Consumer => continue,
+                };
+                // Unchanged through the migration (exact bytes); a dependent
+                // updated in the same revision is counter-evidence.
+                let unchanged = rev_before
+                    .files
+                    .iter()
+                    .find(|file| file.path == file_after.path)
+                    .and_then(|file| {
+                        file.functions
+                            .iter()
+                            .find(|before_fn| before_fn.name == dependent_after.name)
+                    })
+                    .is_some_and(|before_fn| before_fn.fingerprint == dependent_after.fingerprint);
+                if !unchanged {
+                    continue;
+                }
+                let closure = reference_closure(rev_after, dependent_after);
+                // The graph must show the split: the dependency path reaches
+                // the retired representation and does not reach the new one.
+                // Self-references are recursion, not attachment.
+                let stale: BTreeSet<String> = migration
+                    .surviving
+                    .iter()
+                    .filter(|token| closure.contains(*token))
+                    .filter(|token| token_leaf(token) != dependent_after.name)
+                    .cloned()
+                    .collect();
+                if stale.is_empty() {
+                    continue;
+                }
+                if migration.added.iter().any(|token| closure.contains(token)) {
+                    continue;
+                }
+                drafts.push(FindingDraft {
+                    rule,
+                    pair_index,
+                    before_label: labels[pair_index].clone(),
+                    after_label: labels[pair_index + 1].clone(),
+                    path: migration.path.to_path_buf(),
+                    owner_before: Some(migration.owner_before.clone()),
+                    owner_after: Some(migration.owner_after.clone()),
+                    dependent: Holder::Function {
+                        path: file_after.path.clone(),
+                        function: dependent_after.clone(),
+                    },
+                    domain: TokenDomain::References,
+                    stale,
+                    surviving: migration.surviving.clone(),
+                    added: migration.added.clone(),
+                    note: None,
+                    persistence: Persistence {
+                        revisions: 1,
+                        independent_edits: 0,
+                    },
+                });
+            }
+        }
+    }
+}
+
+/// `scope-collapse-after-refactor`: a function that iterated a partition
+/// axis lost loop structure while gaining a flatten/concatenate-family
+/// reference. Tree-sitter cannot prove the semantic axis, so the finding
+/// requests a metamorphic independence test instead of asserting a defect.
+fn detect_scope_collapse(
+    pair_index: usize,
+    labels: &[String],
+    file_before: &FileContracts,
+    file_after: &FileContracts,
+    drafts: &mut Vec<FindingDraft>,
+) {
+    let after_by_name = functions_by_name(file_after);
+    for function_before in &file_before.functions {
+        let Some(function_after) = after_by_name.get(function_before.name.as_str()) else {
+            continue;
+        };
+        if function_after.loops >= function_before.loops {
+            continue;
+        }
+        let gained_flatten: BTreeSet<String> = function_after
+            .references
+            .iter()
+            .filter(|token| {
+                !function_before.references.contains(*token)
+                    && FLATTEN_LEAVES.contains(&token_leaf(token))
+            })
+            .cloned()
+            .collect();
+        if gained_flatten.is_empty() {
+            continue;
+        }
+        drafts.push(FindingDraft {
+            rule: rule_names::SCOPE_COLLAPSE_AFTER_REFACTOR,
+            pair_index,
+            before_label: labels[pair_index].clone(),
+            after_label: labels[pair_index + 1].clone(),
+            path: file_before.path.clone(),
+            owner_before: Some(function_before.clone()),
+            owner_after: Some((*function_after).clone()),
+            dependent: Holder::Function {
+                path: file_after.path.clone(),
+                function: (*function_after).clone(),
+            },
+            domain: TokenDomain::References,
+            stale: gained_flatten.clone(),
+            // The oracle-lag join uses `surviving`: a test still exercising
+            // the collapsed function has no multi-partition oracle.
+            surviving: BTreeSet::from([function_before.name.clone()]),
+            added: gained_flatten,
+            note: Some(format!(
+                "loop structure fell from {} to {}",
+                function_before.loops, function_after.loops
+            )),
+            persistence: Persistence {
+                revisions: 1,
+                independent_edits: 0,
+            },
+        });
+    }
+}
+
+/// Whether a normalized call text is a nominable duplication candidate: it
+/// carries at least one argument (a shared reachable input), composes at
+/// least one nested call (composite work rather than a bare accessor), and
+/// is at least [`HOT_PATH_MIN_CALL_LEN`] bytes long.
+fn call_is_nominable(text: &str) -> bool {
+    if text.starts_with("blake3:") {
+        // Digested texts exceed the storage limit and necessarily satisfy
+        // every size-based bound.
+        return true;
+    }
+    if text.len() < HOT_PATH_MIN_CALL_LEN {
+        return false;
+    }
+    let Some(open) = text.find('(') else {
+        return false;
+    };
+    let Some(close) = text.rfind(')') else {
+        return false;
+    };
+    // A repeated constructor builds two distinct objects; reusing one is
+    // not a safe suggestion, so type-like callees are not nominable.
+    if is_type_like(text[..open].trim()) {
+        return false;
+    }
+    close > open + 1 && !text[open + 1..close].trim().is_empty() && text[open + 1..].contains('(')
+}
+
+/// `hot-path-work-duplicated`: a refactor introduced two structurally
+/// equivalent calls with arguments inside one function where the before
+/// revision had at most one. Cost and safe reuse remain unproved without
+/// profiling or effect facts, so the family is review-only with an explicit
+/// gap.
+fn detect_hot_path(
+    pair_index: usize,
+    labels: &[String],
+    file_before: &FileContracts,
+    file_after: &FileContracts,
+    drafts: &mut Vec<FindingDraft>,
+) {
+    let before_by_name = functions_by_name(file_before);
+    for function_after in &file_after.functions {
+        let Some(function_before) = before_by_name.get(function_after.name.as_str()) else {
+            continue;
+        };
+        let duplicated: Vec<&String> = function_after
+            .call_texts
+            .iter()
+            .filter(|(text, count)| {
+                **count >= 2
+                    && function_before.call_texts.get(*text).copied().unwrap_or(0) <= 1
+                    && call_is_nominable(text)
+            })
+            .map(|(text, _)| text)
+            .collect();
+        // Report only maximal duplicated texts: a duplicated subexpression
+        // of a duplicated call is the same duplication, not a second one.
+        for text in &duplicated {
+            if duplicated
+                .iter()
+                .any(|other| *other != *text && other.contains(*text))
+            {
+                continue;
+            }
+            drafts.push(FindingDraft {
+                rule: rule_names::HOT_PATH_WORK_DUPLICATED,
+                pair_index,
+                before_label: labels[pair_index].clone(),
+                after_label: labels[pair_index + 1].clone(),
+                path: file_after.path.clone(),
+                owner_before: None,
+                owner_after: None,
+                dependent: Holder::Function {
+                    path: file_after.path.clone(),
+                    function: function_after.clone(),
+                },
+                domain: TokenDomain::References,
+                stale: BTreeSet::from([(*text).clone()]),
+                surviving: BTreeSet::from([(*text).clone()]),
+                added: BTreeSet::new(),
+                note: None,
+                persistence: Persistence {
+                    revisions: 1,
+                    independent_edits: 0,
+                },
+            });
+        }
+    }
+}
+
+/// Coverage reasons for dynamic/reflective access anywhere in the window:
+/// consumer resolution is incomplete, so the analysis must not present a
+/// clean result.
+fn dynamic_access_reasons(history: &ContractChangeHistory) -> Vec<String> {
+    let mut reasons = Vec::new();
+    for rev in &history.revisions {
+        for file in &rev.files {
+            for function in &file.functions {
+                let dynamic: Vec<&str> = function
+                    .references
+                    .iter()
+                    .filter(|token| DYNAMIC_LEAVES.contains(&token_leaf(token)))
+                    .map(String::as_str)
+                    .collect();
+                if !dynamic.is_empty() {
+                    reasons.push(format!(
+                        "{}: `{}` uses dynamic access ({}) in revision {}; consumer \
+                         resolution incomplete",
+                        file.path.display(),
+                        function.name,
+                        dynamic.join(", "),
+                        rev.revision
+                    ));
+                }
+            }
+        }
+    }
+    reasons.sort();
+    reasons.dedup();
+    reasons
 }
 
 /// Whether a function looks like a test: its name starts with `test_`, or
@@ -631,10 +1488,16 @@ fn detect_test_oracle_lag(
         .filter(|draft| {
             draft.rule == rule_names::OWNER_MOVED_CONSUMER_STALE
                 || draft.rule == rule_names::PRODUCER_VERIFIER_SCHEMA_DRIFT
+                || draft.rule == rule_names::SCOPE_COLLAPSE_AFTER_REFACTOR
         })
         .cloned()
         .collect();
     for migration in migrations {
+        // For a scope collapse, the unproved contract is partition
+        // independence: any unchanged test still exercising the collapsed
+        // function (its name is `surviving`) is a singleton oracle. For
+        // owner/schema migrations the join is on the surviving tokens.
+        let scope_collapse = migration.rule == rule_names::SCOPE_COLLAPSE_AFTER_REFACTOR;
         for file in &rev_after.files {
             for function in &file.functions {
                 if !is_test_function(&file.path, &function.name) {
@@ -655,15 +1518,33 @@ fn detect_test_oracle_lag(
                 if !unchanged {
                     continue;
                 }
+                let held: &BTreeSet<String> = if scope_collapse {
+                    &function.references
+                } else {
+                    migration.domain.tokens(function)
+                };
                 let stale: BTreeSet<String> = migration
                     .surviving
                     .iter()
-                    .filter(|token| migration.domain.tokens(function).contains(*token))
+                    .filter(|token| {
+                        held.contains(*token)
+                            || (scope_collapse
+                                && held
+                                    .iter()
+                                    .any(|reference| token_leaf(reference) == token.as_str()))
+                    })
                     .cloned()
                     .collect();
                 if stale.is_empty() {
                     continue;
                 }
+                let note = scope_collapse.then(|| {
+                    format!(
+                        "partition independence has no multi-partition oracle: \
+                         `{}` exercises the collapsed function unchanged",
+                        function.name
+                    )
+                });
                 drafts.push(FindingDraft {
                     rule: rule_names::TEST_ORACLE_LAG,
                     pair_index,
@@ -680,7 +1561,7 @@ fn detect_test_oracle_lag(
                     stale,
                     surviving: migration.surviving.clone(),
                     added: migration.added.clone(),
-                    note: None,
+                    note,
                     persistence: Persistence {
                         revisions: 1,
                         independent_edits: 0,
@@ -752,12 +1633,63 @@ fn stale_holds(draft: &FindingDraft, rev: &RevisionContracts) -> bool {
     let Some(holder) = locate(rev, &draft.dependent) else {
         return false;
     };
-    match &holder {
-        Holder::Function { function, .. } => draft
-            .stale
-            .iter()
-            .any(|token| draft.domain.tokens(function).contains(token)),
-        Holder::Module { token, .. } => draft.stale.contains(token),
+    match draft.rule {
+        rule_names::MECHANISM_LIVE_GATE_RETIRED
+        | rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM
+        | rule_names::OPERATIONAL_IDENTITY_STALE => {
+            // The dependency-path split must persist: the closure still
+            // reaches a stale token and none of the owner's gained tokens.
+            let Holder::Function { function, .. } = &holder else {
+                return false;
+            };
+            let closure = reference_closure(rev, function);
+            draft.stale.iter().any(|token| closure.contains(token))
+                && !draft.added.iter().any(|token| closure.contains(token))
+        }
+        rule_names::SCOPE_COLLAPSE_AFTER_REFACTOR => {
+            let Holder::Function { function, .. } = &holder else {
+                return false;
+            };
+            let before_loops = draft
+                .owner_before
+                .as_ref()
+                .map(|owner| owner.loops)
+                .unwrap_or(0);
+            function.loops < before_loops
+                && draft
+                    .stale
+                    .iter()
+                    .any(|token| function.references.contains(token))
+        }
+        rule_names::HOT_PATH_WORK_DUPLICATED => {
+            let Holder::Function { function, .. } = &holder else {
+                return false;
+            };
+            draft
+                .stale
+                .iter()
+                .any(|text| function.call_texts.get(text).copied().unwrap_or(0) >= 2)
+        }
+        rule_names::CONFIDENCE_PROVENANCE_LOST => {
+            let Holder::Function { function, .. } = &holder else {
+                return false;
+            };
+            draft
+                .stale
+                .iter()
+                .any(|token| function.references.contains(token))
+                && !draft
+                    .added
+                    .iter()
+                    .any(|token| function.references.contains(token))
+        }
+        _ => match &holder {
+            Holder::Function { function, .. } => draft
+                .stale
+                .iter()
+                .any(|token| draft.domain.tokens(function).contains(token)),
+            Holder::Module { token, .. } => draft.stale.contains(token),
+        },
     }
 }
 
@@ -810,6 +1742,18 @@ fn chain_stage(rule: &str) -> Option<(ContractEdgeKind, ContractRole)> {
         rule_names::TEST_ORACLE_LAG => {
             Some((ContractEdgeKind::Exercises, ContractRole::TestEntryPoint))
         }
+        rule_names::MECHANISM_LIVE_GATE_RETIRED => {
+            Some((ContractEdgeKind::Verifies, ContractRole::Verifier))
+        }
+        rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM => {
+            Some((ContractEdgeKind::Observes, ContractRole::TelemetrySurface))
+        }
+        rule_names::OPERATIONAL_IDENTITY_STALE => {
+            Some((ContractEdgeKind::Publishes, ContractRole::RuntimeIdentity))
+        }
+        rule_names::CONFIDENCE_PROVENANCE_LOST => {
+            Some((ContractEdgeKind::Consumes, ContractRole::Consumer))
+        }
         _ => None,
     }
 }
@@ -834,8 +1778,18 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
     if window == 2 {
         coverage_gaps.push(window_gap());
     }
-    let stale_list = draft.stale.iter().map(String::as_str).collect::<Vec<_>>().join(", ");
-    let added_list = draft.added.iter().map(String::as_str).collect::<Vec<_>>().join(", ");
+    let stale_list = draft
+        .stale
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let added_list = draft
+        .added
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
     let domain = draft.domain.noun();
     let dependent_name = draft.dependent.display_name();
 
@@ -872,8 +1826,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
 
     let (stale_edges, causal_path, evidence, suggested_verification, mut priority_inputs) =
         match draft.rule {
-            rule_names::OWNER_MOVED_CONSUMER_STALE
-            | rule_names::PRODUCER_VERIFIER_SCHEMA_DRIFT => {
+            rule_names::OWNER_MOVED_CONSUMER_STALE | rule_names::PRODUCER_VERIFIER_SCHEMA_DRIFT => {
                 let family = if draft.rule == rule_names::OWNER_MOVED_CONSUMER_STALE {
                     Family::OwnerMovedConsumerStale
                 } else {
@@ -881,7 +1834,10 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                 };
                 let (owner_role, dependent_role) = family.roles();
                 let (owner_edge, dependent_edge) = family.edges();
-                let owner_after = draft.owner_after.as_ref().expect("migration draft has owner");
+                let owner_after = draft
+                    .owner_after
+                    .as_ref()
+                    .expect("migration draft has owner");
                 let owner_node = ContractNodeRef {
                     role: owner_role,
                     path: draft.path.clone(),
@@ -896,6 +1852,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                         .stale
                         .iter()
                         .map(|token| ContractStep {
+                            token: Some(token.clone()),
                             edge: dependent_edge,
                             node: dependent_node.clone(),
                             detail: format!(
@@ -905,6 +1862,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                         .collect::<Vec<_>>(),
                     vec![
                         ContractStep {
+                            token: None,
                             edge: owner_edge,
                             node: owner_node.clone(),
                             detail: format!(
@@ -913,6 +1871,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                             ),
                         },
                         ContractStep {
+                            token: None,
                             edge: dependent_edge,
                             node: dependent_node.clone(),
                             detail: format!(
@@ -937,11 +1896,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                             node: Some(dependent_node),
                         },
                     ],
-                    family.suggested_verification(
-                        &owner_after.name,
-                        &dependent_name,
-                        &draft.added,
-                    ),
+                    family.suggested_verification(&owner_after.name, &dependent_name, &draft.added),
                     BTreeMap::from([
                         ("owner-change".to_string(), 1),
                         ("stale-edges".to_string(), draft.stale.len() as i64),
@@ -956,6 +1911,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                         .stale
                         .iter()
                         .map(|token| ContractStep {
+                            token: Some(token.clone()),
                             edge: ContractEdgeKind::Exercises,
                             node: test_node.clone(),
                             detail: format!(
@@ -966,6 +1922,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                         .collect::<Vec<_>>(),
                     vec![
                         ContractStep {
+                            token: None,
                             edge: ContractEdgeKind::Produces,
                             node: draft.dependent.node_ref(ContractRole::Owner),
                             detail: format!(
@@ -974,6 +1931,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                             ),
                         },
                         ContractStep {
+                            token: None,
                             edge: ContractEdgeKind::Exercises,
                             node: test_node.clone(),
                             detail: format!(
@@ -992,17 +1950,342 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                             node: Some(test_node),
                         },
                     ],
-                    format!(
-                        "no oracle covers `{}`'s new representation ({added_list}): update \
-                         `{dependent_name}` to exercise it, or pin the former representation as \
-                         an explicit compatibility test",
-                        owner_after.name
-                    ),
+                    match &draft.note {
+                        Some(note) => format!(
+                            "{note}: add a multi-partition metamorphic oracle (hold one \
+                             partition fixed, vary its companions, compare the fixed \
+                             partition's result)"
+                        ),
+                        None => format!(
+                            "no oracle covers `{}`'s new representation ({added_list}): update \
+                             `{dependent_name}` to exercise it, or pin the former representation \
+                             as an explicit compatibility test",
+                            owner_after.name
+                        ),
+                    },
                     BTreeMap::from([
                         ("owner-change".to_string(), 1),
                         ("stale-edges".to_string(), draft.stale.len() as i64),
                         ("missing-oracle".to_string(), 1),
                     ]),
+                )
+            }
+            rule_names::MECHANISM_LIVE_GATE_RETIRED
+            | rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM
+            | rule_names::OPERATIONAL_IDENTITY_STALE => {
+                let (dependent_role, dependent_edge, surface_noun) = match draft.rule {
+                    rule_names::MECHANISM_LIVE_GATE_RETIRED => {
+                        (ContractRole::Verifier, ContractEdgeKind::Verifies, "gate")
+                    }
+                    rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM => (
+                        ContractRole::TelemetrySurface,
+                        ContractEdgeKind::Observes,
+                        "telemetry producer",
+                    ),
+                    _ => (
+                        ContractRole::RuntimeIdentity,
+                        ContractEdgeKind::Publishes,
+                        "status publisher",
+                    ),
+                };
+                let owner_after = draft.owner_after.as_ref().expect("reach draft has owner");
+                let owner_node = ContractNodeRef {
+                    role: ContractRole::Owner,
+                    path: draft.path.clone(),
+                    span: owner_after.span,
+                    fingerprint: owner_after.fingerprint.clone(),
+                    provider: FactProvider::TreeSitter,
+                    capability: CapabilityLevel::Complete,
+                };
+                let dependent_node = draft.dependent.node_ref(dependent_role);
+                let mut evidence = vec![
+                    EvidenceItem {
+                        provider: FactProvider::TreeSitter,
+                        detail: format!(
+                            "`{}` moved from {stale_list} to {added_list}",
+                            owner_after.name
+                        ),
+                        node: Some(owner_node.clone()),
+                    },
+                    EvidenceItem {
+                        provider: FactProvider::TreeSitter,
+                        detail: format!(
+                            "`{dependent_name}` is unchanged and its reference closure \
+                             reaches {stale_list} without reaching {added_list} (syntactic \
+                             leaf-name expansion; not resolution proof)"
+                        ),
+                        node: Some(dependent_node.clone()),
+                    },
+                ];
+                if draft.rule != rule_names::MECHANISM_LIVE_GATE_RETIRED {
+                    evidence.push(EvidenceItem {
+                        provider: FactProvider::TreeSitter,
+                        detail: format!(
+                            "`{dependent_name}` is classified as a {surface_noun} by its \
+                             observation-surface calls; the classification is lexical \
+                             supporting evidence, not the firing condition"
+                        ),
+                        node: Some(dependent_node.clone()),
+                    });
+                    coverage_gaps.push(CoverageGap {
+                        provider: FactProvider::TreeSitter,
+                        capability: CapabilityLevel::Partial,
+                        reason: format!(
+                            "the {surface_noun} surface classification is lexical; the \
+                             semantic binding between the surface and the claimed mechanism \
+                             is unproved"
+                        ),
+                    });
+                }
+                (
+                    draft
+                        .stale
+                        .iter()
+                        .map(|token| ContractStep {
+                            token: Some(token.clone()),
+                            edge: dependent_edge,
+                            node: dependent_node.clone(),
+                            detail: format!(
+                                "`{dependent_name}`'s dependency path still terminates at \
+                                 `{token}` from the former owner"
+                            ),
+                        })
+                        .collect::<Vec<_>>(),
+                    vec![
+                        ContractStep {
+                            token: None,
+                            edge: ContractEdgeKind::Produces,
+                            node: owner_node.clone(),
+                            detail: format!(
+                                "`{}` moved from {stale_list} to {added_list}",
+                                owner_after.name
+                            ),
+                        },
+                        ContractStep {
+                            token: None,
+                            edge: dependent_edge,
+                            node: dependent_node.clone(),
+                            detail: format!(
+                                "the {surface_noun} `{dependent_name}` is unchanged and its \
+                                 dependency path terminates at {stale_list}, not {added_list}"
+                            ),
+                        },
+                    ],
+                    evidence,
+                    match draft.rule {
+                        rule_names::MECHANISM_LIVE_GATE_RETIRED => format!(
+                            "`{dependent_name}` can certify a mechanism it no longer governs: \
+                             point the gate's dependency path at {added_list}, or record why \
+                             the retired value {stale_list} still gates the release"
+                        ),
+                        rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM => format!(
+                            "`{dependent_name}` observes {stale_list}, which no longer \
+                             carries the claimed mechanism ({added_list}): rebind the metric \
+                             to the live mechanism or rename the claim it reports"
+                        ),
+                        _ => format!(
+                            "`{dependent_name}` still publishes the retired identity \
+                             {stale_list}: publish the live identity ({added_list}) or \
+                             record the compatibility window explicitly"
+                        ),
+                    },
+                    BTreeMap::from([
+                        ("owner-change".to_string(), 1),
+                        ("stale-edges".to_string(), draft.stale.len() as i64),
+                    ]),
+                )
+            }
+            rule_names::SCOPE_COLLAPSE_AFTER_REFACTOR => {
+                let owner_after = draft.owner_after.as_ref().expect("scope draft has owner");
+                let owner_node = ContractNodeRef {
+                    role: ContractRole::Owner,
+                    path: draft.path.clone(),
+                    span: owner_after.span,
+                    fingerprint: owner_after.fingerprint.clone(),
+                    provider: FactProvider::TreeSitter,
+                    capability: CapabilityLevel::Complete,
+                };
+                coverage_gaps.push(CoverageGap {
+                    provider: FactProvider::TreeSitter,
+                    capability: CapabilityLevel::Partial,
+                    reason: "the semantic axis of the removed loop (request, document, \
+                             tenant, batch member, ...) cannot be proved from syntax"
+                        .to_string(),
+                });
+                let note = draft.note.clone().unwrap_or_default();
+                (
+                    vec![ContractStep {
+                        token: None,
+                        edge: ContractEdgeKind::Transforms,
+                        node: owner_node.clone(),
+                        detail: format!(
+                            "`{}` now merges across the former partition boundary via \
+                             {stale_list}",
+                            owner_after.name
+                        ),
+                    }],
+                    vec![
+                        ContractStep {
+                            token: None,
+                            edge: ContractEdgeKind::Transforms,
+                            node: owner_node.clone(),
+                            detail: format!("`{}`: {note}", owner_after.name),
+                        },
+                        ContractStep {
+                            token: None,
+                            edge: ContractEdgeKind::Consumes,
+                            node: owner_node.clone(),
+                            detail: format!(
+                                "flatten/concatenate-family reference(s) gained: {stale_list}"
+                            ),
+                        },
+                    ],
+                    vec![EvidenceItem {
+                        provider: FactProvider::TreeSitter,
+                        detail: format!(
+                            "`{}` lost loop structure ({note}) while gaining {stale_list}",
+                            owner_after.name
+                        ),
+                        node: Some(owner_node),
+                    }],
+                    format!(
+                        "run a metamorphic independence test on `{}`: hold one partition \
+                         fixed, vary its companions, and compare the fixed partition's \
+                         result before and after",
+                        owner_after.name
+                    ),
+                    BTreeMap::from([
+                        ("owner-change".to_string(), 1),
+                        ("stale-edges".to_string(), draft.stale.len() as i64),
+                    ]),
+                )
+            }
+            rule_names::CONFIDENCE_PROVENANCE_LOST => {
+                let owner_after = draft
+                    .owner_after
+                    .as_ref()
+                    .expect("provenance draft has owner");
+                let owner_node = ContractNodeRef {
+                    role: ContractRole::Owner,
+                    path: draft.path.clone(),
+                    span: owner_after.span,
+                    fingerprint: owner_after.fingerprint.clone(),
+                    provider: FactProvider::TreeSitter,
+                    capability: CapabilityLevel::Complete,
+                };
+                let dependent_node = draft.dependent.node_ref(ContractRole::Consumer);
+                let bound_note = draft.note.clone().unwrap_or_default();
+                coverage_gaps.push(CoverageGap {
+                    provider: FactProvider::TreeSitter,
+                    capability: CapabilityLevel::Partial,
+                    reason: "whether the information loss matters needs a behavioral \
+                             oracle; the lossy-operation set is classification evidence"
+                        .to_string(),
+                });
+                (
+                    vec![ContractStep {
+                        token: None,
+                        edge: ContractEdgeKind::Transforms,
+                        node: dependent_node.clone(),
+                        detail: format!(
+                            "`{dependent_name}` re-derives its output through {stale_list} \
+                             instead of the evidence that governed the decision"
+                        ),
+                    }],
+                    vec![
+                        ContractStep {
+                            token: None,
+                            edge: ContractEdgeKind::Produces,
+                            node: owner_node.clone(),
+                            detail: format!("`{}` now decides from {added_list}", owner_after.name),
+                        },
+                        ContractStep {
+                            token: None,
+                            edge: ContractEdgeKind::Transforms,
+                            node: dependent_node.clone(),
+                            detail: format!(
+                                "`{dependent_name}` ({bound_note}) now reconstructs through \
+                                 {stale_list} and does not reach {added_list}"
+                            ),
+                        },
+                    ],
+                    vec![
+                        EvidenceItem {
+                            provider: FactProvider::TreeSitter,
+                            detail: format!(
+                                "`{}` decision evidence moved to {added_list}",
+                                owner_after.name
+                            ),
+                            node: Some(owner_node),
+                        },
+                        EvidenceItem {
+                            provider: FactProvider::TreeSitter,
+                            detail: format!(
+                                "`{dependent_name}` changed in the same pair and now applies \
+                                 lossy operation(s) {stale_list}; {bound_note}"
+                            ),
+                            node: Some(dependent_node),
+                        },
+                    ],
+                    format!(
+                        "compare `{dependent_name}`'s public output against the evidence \
+                         that governed the decision ({added_list}); retain that evidence or \
+                         document the lossy reconstruction as intentional"
+                    ),
+                    BTreeMap::from([
+                        ("owner-change".to_string(), 1),
+                        ("stale-edges".to_string(), draft.stale.len() as i64),
+                    ]),
+                )
+            }
+            rule_names::HOT_PATH_WORK_DUPLICATED => {
+                let call = draft
+                    .stale
+                    .iter()
+                    .next()
+                    .expect("hot-path draft has a call");
+                let dependent_node = draft.dependent.node_ref(ContractRole::Consumer);
+                coverage_gaps.push(CoverageGap {
+                    provider: FactProvider::Runtime,
+                    capability: CapabilityLevel::Unknown,
+                    reason: "cost and safe reuse are unproved without profiling or effect \
+                             facts"
+                        .to_string(),
+                });
+                (
+                    vec![ContractStep {
+                        token: Some(call.clone()),
+                        edge: ContractEdgeKind::Consumes,
+                        node: dependent_node.clone(),
+                        detail: format!(
+                            "`{dependent_name}` now evaluates `{call}` more than once on one \
+                             reachable path"
+                        ),
+                    }],
+                    vec![ContractStep {
+                        token: None,
+                        edge: ContractEdgeKind::Transforms,
+                        node: dependent_node.clone(),
+                        detail: format!(
+                            "this pair introduced a second structurally equivalent \
+                                 evaluation of `{call}`"
+                        ),
+                    }],
+                    vec![EvidenceItem {
+                        provider: FactProvider::TreeSitter,
+                        detail: format!(
+                            "`{call}` occurs at least twice in `{dependent_name}` in \
+                             revision {}, at most once in revision {}",
+                            draft.after_label, draft.before_label
+                        ),
+                        node: Some(dependent_node),
+                    }],
+                    format!(
+                        "if profiling confirms `{call}` is expensive, evaluate it once and \
+                         reuse the result; otherwise record why the recomputation is \
+                         intentional"
+                    ),
+                    BTreeMap::from([("stale-edges".to_string(), 1)]),
                 )
             }
             rule_names::ACCEPTED_CONFIG_INERT => {
@@ -1013,9 +2296,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                      behavioral consumer"
                 );
                 if !draft.added.is_empty() {
-                    verification.push_str(&format!(
-                        "; replacement key(s) {added_list} are live"
-                    ));
+                    verification.push_str(&format!("; replacement key(s) {added_list} are live"));
                 }
                 let mut evidence = vec![
                     EvidenceItem {
@@ -1044,6 +2325,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                 }
                 (
                     vec![ContractStep {
+                        token: Some(key.clone()),
                         edge: ContractEdgeKind::Configures,
                         node: holder_node.clone(),
                         detail: format!(
@@ -1054,6 +2336,7 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                     }],
                     vec![
                         ContractStep {
+                            token: None,
                             edge: ContractEdgeKind::Reads,
                             node: holder_node.clone(),
                             detail: format!(
@@ -1062,11 +2345,10 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                             ),
                         },
                         ContractStep {
+                            token: None,
                             edge: ContractEdgeKind::Configures,
                             node: holder_node,
-                            detail: format!(
-                                "the acceptance surface still carries `{key}`"
-                            ),
+                            detail: format!("the acceptance surface still carries `{key}`"),
                         },
                     ],
                     evidence,
@@ -1077,10 +2359,17 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
             _ => unreachable!("unknown draft rule {}", draft.rule),
         };
 
-    priority_inputs.insert("persistence".to_string(), draft.persistence.revisions as i64);
+    priority_inputs.insert(
+        "persistence".to_string(),
+        draft.persistence.revisions as i64,
+    );
     priority_inputs.insert(
         "independent-churn".to_string(),
         draft.persistence.independent_edits as i64,
+    );
+    priority_inputs.insert(
+        "boundary-distance".to_string(),
+        i64::from(draft.dependent.path() != draft.path),
     );
 
     let finding = RefactorDefect {
@@ -1108,7 +2397,9 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
 /// The owner role for a rule's owner migration node.
 fn owner_role(rule: &str) -> ContractRole {
     match rule {
-        rule_names::PRODUCER_VERIFIER_SCHEMA_DRIFT => ContractRole::Producer,
+        rule_names::PRODUCER_VERIFIER_SCHEMA_DRIFT | rule_names::OPERATIONAL_IDENTITY_STALE => {
+            ContractRole::Producer
+        }
         _ => ContractRole::Owner,
     }
 }
@@ -1156,6 +2447,7 @@ fn build_summaries(drafts: &[FindingDraft], window: usize) -> Vec<RefactorDefect
                 .find(|member| member.rule == *rule)
                 .expect("rule came from a member");
             stale_edges.push(ContractStep {
+                token: None,
                 edge,
                 node: member.dependent.node_ref(stage_role),
                 detail: format!(
@@ -1196,6 +2488,7 @@ fn build_summaries(drafts: &[FindingDraft], window: usize) -> Vec<RefactorDefect
             }),
             stale_edges,
             causal_path: vec![ContractStep {
+                token: None,
                 edge: ContractEdgeKind::Produces,
                 node: owner_node(owner_after),
                 detail: format!(
@@ -1421,7 +2714,10 @@ def validate_manifest(manifest):
         let after = b"decide(posterior, candidates) = commit(posterior, candidates)\n\npublic_score(model, c) = raw_score(model, c)\n";
         let report = compare(&[("scoring.jl", before)], &[("scoring.jl", after)]);
         assert_eq!(report.findings.len(), 1);
-        assert_eq!(report.findings[0].rule, rule_names::OWNER_MOVED_CONSUMER_STALE);
+        assert_eq!(
+            report.findings[0].rule,
+            rule_names::OWNER_MOVED_CONSUMER_STALE
+        );
     }
 
     const CONFIG_BEFORE: &[u8] = br#"import os
@@ -1564,7 +2860,10 @@ def test_public_score(scorer, candidate):
         return self.model.raw_score(candidate)
 "#;
         let report = compare(
-            &[("scoring.py", SCORER_BEFORE), ("test_scoring.py", test_before)],
+            &[
+                ("scoring.py", SCORER_BEFORE),
+                ("test_scoring.py", test_before),
+            ],
             &[("scoring.py", after), ("test_scoring.py", test_after)],
         );
         assert!(
@@ -1605,7 +2904,10 @@ def test_public_score(scorer, candidate):
         return self.model.raw_score(candidate)
 "#;
         let report = analyze_refactor_window(vec![
-            ("rev1".to_string(), analysis(&[("scoring.py", SCORER_BEFORE)])),
+            (
+                "rev1".to_string(),
+                analysis(&[("scoring.py", SCORER_BEFORE)]),
+            ),
             ("rev2".to_string(), analysis(&[("scoring.py", rev2)])),
             ("rev3".to_string(), analysis(&[("scoring.py", rev3)])),
         ])
@@ -1650,7 +2952,10 @@ def test_public_score(scorer, candidate):
         return self.posterior.committed_score(candidate)
 "#;
         let report = analyze_refactor_window(vec![
-            ("rev1".to_string(), analysis(&[("scoring.py", SCORER_BEFORE)])),
+            (
+                "rev1".to_string(),
+                analysis(&[("scoring.py", SCORER_BEFORE)]),
+            ),
             ("rev2".to_string(), analysis(&[("scoring.py", rev2)])),
             ("rev3".to_string(), analysis(&[("scoring.py", rev3)])),
         ])
@@ -1662,6 +2967,613 @@ def test_public_score(scorer, candidate):
             .expect("migration should fire on rev1->rev2");
         assert_eq!(finding.persistence.revisions, 1);
         assert_eq!(finding.persistence.independent_edits, 0);
+    }
+
+    const RANK_BEFORE: &[u8] = br#"def rank_documents(docs):
+    results = []
+    for doc in docs:
+        results.append(score_document(doc))
+    return results
+"#;
+
+    const RANK_COLLAPSED: &[u8] = br#"def rank_documents(docs):
+    merged = flatten(docs)
+    return score_batch(merged)
+"#;
+
+    #[test]
+    fn scope_collapse_fires_when_partition_loop_is_flattened() {
+        let report = compare(&[("rank.py", RANK_BEFORE)], &[("rank.py", RANK_COLLAPSED)]);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::SCOPE_COLLAPSE_AFTER_REFACTOR)
+            .expect("scope collapse should fire");
+        finding.validate().unwrap();
+        assert_eq!(finding.safety, SafetyClass::NeverAuto);
+        assert!(finding.suggested_verification.contains("metamorphic"));
+        assert!(
+            finding
+                .coverage_gaps
+                .iter()
+                .any(|gap| gap.reason.contains("semantic axis")),
+            "the semantic axis must stay an explicit gap: {:?}",
+            finding.coverage_gaps
+        );
+    }
+
+    #[test]
+    fn flatten_without_loop_removal_does_not_fire_scope_collapse() {
+        let after = br#"def rank_documents(docs):
+    results = []
+    for doc in docs:
+        results.append(score_document(doc))
+    return flatten(results)
+"#;
+        let report = compare(&[("rank.py", RANK_BEFORE)], &[("rank.py", after)]);
+        assert!(
+            report
+                .findings
+                .iter()
+                .all(|finding| finding.rule != rule_names::SCOPE_COLLAPSE_AFTER_REFACTOR),
+            "loop structure is unchanged: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn singleton_oracle_after_scope_collapse_is_test_oracle_lag() {
+        let test = br#"def test_rank_documents():
+    assert rank_documents([fixture_doc()]) == [expected_result()]
+"#;
+        let report = compare(
+            &[("rank.py", RANK_BEFORE), ("test_rank.py", test)],
+            &[("rank.py", RANK_COLLAPSED), ("test_rank.py", test)],
+        );
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::TEST_ORACLE_LAG)
+            .expect("singleton oracle should be a test-oracle-lag candidate");
+        finding.validate().unwrap();
+        assert!(
+            finding.suggested_verification.contains("multi-partition"),
+            "verification should request a multi-partition oracle: {}",
+            finding.suggested_verification
+        );
+    }
+
+    #[test]
+    fn updated_metamorphic_oracle_does_not_fire_oracle_lag() {
+        let test_before = br#"def test_rank_documents():
+    assert rank_documents([fixture_doc()]) == [expected_result()]
+"#;
+        let test_after = br#"def test_rank_documents():
+    fixed = fixture_doc()
+    alone = rank_documents([fixed])
+    packed = rank_documents([fixed, companion_doc()])
+    assert alone[0] == packed[0]
+"#;
+        let report = compare(
+            &[("rank.py", RANK_BEFORE), ("test_rank.py", test_before)],
+            &[("rank.py", RANK_COLLAPSED), ("test_rank.py", test_after)],
+        );
+        assert!(
+            report
+                .findings
+                .iter()
+                .all(|finding| finding.rule != rule_names::TEST_ORACLE_LAG),
+            "an updated metamorphic oracle is counter-evidence: {:?}",
+            report.findings
+        );
+    }
+
+    const GATE_BEFORE: &[u8] = br#"def step(trainer):
+    return gate_scalar_update(trainer)
+
+
+def release_check(model):
+    value = read_gate(model)
+    assert value > 0
+
+
+def read_gate(model):
+    return gate_scalar_update(model)
+"#;
+
+    #[test]
+    fn mechanism_live_gate_retired_fires_through_dependency_path() {
+        let after = br#"def step(trainer):
+    return controller_apply(trainer)
+
+
+def release_check(model):
+    value = read_gate(model)
+    assert value > 0
+
+
+def read_gate(model):
+    return gate_scalar_update(model)
+"#;
+        let report = compare(&[("train.py", GATE_BEFORE)], &[("train.py", after)]);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::MECHANISM_LIVE_GATE_RETIRED)
+            .expect("retired gate should fire");
+        finding.validate().unwrap();
+        assert!(finding.suggested_verification.contains("no longer governs"));
+        // The direct stale helper is still a plain consumer finding; the two
+        // families never claim the same dependent.
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.rule == rule_names::OWNER_MOVED_CONSUMER_STALE)
+        );
+    }
+
+    #[test]
+    fn gate_reaching_the_new_mechanism_does_not_fire() {
+        let before = br#"def step(trainer):
+    return gate_scalar_update(trainer)
+
+
+def release_check(model):
+    value = read_gate(model)
+    assert value > 0
+
+
+def read_gate(model):
+    return gate_scalar_update(model)
+
+
+def legacy_dump(model):
+    return gate_scalar_update(model)
+"#;
+        let after = br#"def step(trainer):
+    return controller_apply(trainer)
+
+
+def release_check(model):
+    value = read_gate(model)
+    assert value > 0
+
+
+def read_gate(model):
+    return controller_apply(model)
+
+
+def legacy_dump(model):
+    return gate_scalar_update(model)
+"#;
+        let report = compare(&[("train.py", before)], &[("train.py", after)]);
+        assert!(
+            report
+                .findings
+                .iter()
+                .all(|finding| finding.rule != rule_names::MECHANISM_LIVE_GATE_RETIRED),
+            "a gate whose path reaches the new mechanism must not fire: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn telemetry_not_bound_to_claim_fires_for_stale_observation() {
+        let before = br#"def train_step(model):
+    return legacy_scalar(model)
+
+
+def report_health(model):
+    metrics.gauge("controller_activity", read_activity(model))
+
+
+def read_activity(model):
+    return legacy_scalar(model)
+"#;
+        let after = br#"def train_step(model):
+    return controller_activity(model)
+
+
+def report_health(model):
+    metrics.gauge("controller_activity", read_activity(model))
+
+
+def read_activity(model):
+    return legacy_scalar(model)
+"#;
+        let report = compare(&[("train.py", before)], &[("train.py", after)]);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM)
+            .expect("stale telemetry should fire");
+        finding.validate().unwrap();
+        assert!(
+            finding
+                .coverage_gaps
+                .iter()
+                .any(|gap| gap.reason.contains("lexical")),
+            "the lexical classification must stay an explicit gap: {:?}",
+            finding.coverage_gaps
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|item| item.detail.contains("supporting evidence")),
+        );
+    }
+
+    #[test]
+    fn rebound_telemetry_does_not_fire() {
+        let before = br#"def train_step(model):
+    return legacy_scalar(model)
+
+
+def report_health(model):
+    metrics.gauge("controller_activity", read_activity(model))
+
+
+def read_activity(model):
+    return legacy_scalar(model)
+
+
+def legacy_probe(model):
+    return legacy_scalar(model)
+"#;
+        let after = br#"def train_step(model):
+    return controller_activity(model)
+
+
+def report_health(model):
+    metrics.gauge("controller_activity", read_activity(model))
+
+
+def read_activity(model):
+    return controller_activity(model)
+
+
+def legacy_probe(model):
+    return legacy_scalar(model)
+"#;
+        let report = compare(&[("train.py", before)], &[("train.py", after)]);
+        assert!(
+            report
+                .findings
+                .iter()
+                .all(|finding| finding.rule != rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM),
+            "telemetry reaching the live mechanism must not fire: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn operational_identity_stale_fires_for_status_publisher() {
+        let before = br#"def resume_run(state):
+    return spawn_process(state)
+
+
+def publish_status(state):
+    status.publish(current_pid(state))
+
+
+def current_pid(state):
+    return spawn_process(state)
+"#;
+        let after = br#"def resume_run(state):
+    return relaunch_supervisor(state)
+
+
+def publish_status(state):
+    status.publish(current_pid(state))
+
+
+def current_pid(state):
+    return spawn_process(state)
+"#;
+        let report = compare(&[("runner.py", before)], &[("runner.py", after)]);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::OPERATIONAL_IDENTITY_STALE)
+            .expect("stale status publisher should fire");
+        finding.validate().unwrap();
+        assert!(finding.suggested_verification.contains("retired identity"));
+    }
+
+    #[test]
+    fn confidence_provenance_lost_fires_for_lossy_reconstruction() {
+        let before = br#"def decide(model, candidates):
+    return best_by_raw_score(model, candidates)
+
+
+def public_score(model, candidate):
+    return best_by_raw_score(model, candidate)
+
+
+def debug_dump(model, candidate):
+    return best_by_raw_score(model, candidate)
+"#;
+        let after = br#"def decide(model, candidates):
+    return posterior_commit(model, candidates)
+
+
+def public_score(model, candidate):
+    committed = posterior_commit_index(model, candidate)
+    return round(reconstruct_score(committed), 3)
+
+
+def debug_dump(model, candidate):
+    return best_by_raw_score(model, candidate)
+"#;
+        let report = compare(&[("scoring.py", before)], &[("scoring.py", after)]);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::CONFIDENCE_PROVENANCE_LOST)
+            .expect("lossy reconstruction should fire");
+        finding.validate().unwrap();
+        assert!(
+            finding
+                .suggested_verification
+                .contains("evidence that governed")
+        );
+    }
+
+    #[test]
+    fn provenance_retained_does_not_fire() {
+        let before = br#"def decide(model, candidates):
+    return best_by_raw_score(model, candidates)
+
+
+def public_score(model, candidate):
+    return best_by_raw_score(model, candidate)
+
+
+def debug_dump(model, candidate):
+    return best_by_raw_score(model, candidate)
+"#;
+        let after = br#"def decide(model, candidates):
+    return posterior_commit(model, candidates)
+
+
+def public_score(model, candidate):
+    return round(posterior_commit(model, candidate), 3)
+
+
+def debug_dump(model, candidate):
+    return best_by_raw_score(model, candidate)
+"#;
+        let report = compare(&[("scoring.py", before)], &[("scoring.py", after)]);
+        assert!(
+            report
+                .findings
+                .iter()
+                .all(|finding| finding.rule != rule_names::CONFIDENCE_PROVENANCE_LOST),
+            "a consumer following the owner to the new evidence retains provenance: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn hot_path_work_duplicated_fires_for_introduced_duplicate() {
+        let before = br#"def render(batch):
+    return combine(expensive_transform(preprocess(batch)))
+"#;
+        let after = br#"def render(batch):
+    left = expensive_transform(preprocess(batch))
+    right = expensive_transform(preprocess(batch))
+    return combine(left, right)
+"#;
+        let report = compare(&[("render.py", before)], &[("render.py", after)]);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::HOT_PATH_WORK_DUPLICATED)
+            .expect("introduced duplicate should fire");
+        finding.validate().unwrap();
+        assert!(
+            finding
+                .coverage_gaps
+                .iter()
+                .any(|gap| gap.reason.contains("unproved")),
+            "cost must stay unproved: {:?}",
+            finding.coverage_gaps
+        );
+    }
+
+    #[test]
+    fn preexisting_duplicate_does_not_fire_hot_path() {
+        let source = br#"def render(batch):
+    left = expensive_transform(preprocess(batch))
+    right = expensive_transform(preprocess(batch))
+    return combine(left, right)
+"#;
+        let report = compare(&[("render.py", source)], &[("render.py", source)]);
+        assert!(
+            report
+                .findings
+                .iter()
+                .all(|finding| finding.rule != rule_names::HOT_PATH_WORK_DUPLICATED),
+            "a duplicate present in both revisions was not introduced: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn dynamic_access_is_a_capability_gap_not_a_clean_result() {
+        let source = br#"def dispatch(handler, name):
+    return getattr(handler, name)()
+"#;
+        let report = compare(&[("dispatch.py", source)], &[("dispatch.py", source)]);
+        assert_eq!(report.coverage, deslop_parse::FactCoverage::Partial);
+        assert!(
+            report
+                .coverage_reasons
+                .iter()
+                .any(|reason| reason.contains("dynamic access")),
+            "dynamic access must surface as a coverage reason: {:?}",
+            report.coverage_reasons
+        );
+    }
+
+    use deslop_core::refactor_defect::{
+        ProviderArtifact, RefactorHistoryBundle, RevisionFile, RevisionSnapshot,
+    };
+
+    const SCORER_AFTER_STALE: &[u8] = br#"class Scorer:
+    def __init__(self, model, posterior):
+        self.model = model
+        self.posterior = posterior
+
+    def decide(self, candidates):
+        return self.posterior.commit(candidates)
+
+    def public_score(self, candidate):
+        return self.model.raw_score(candidate)
+"#;
+
+    fn scorer_bundle(artifacts: Vec<ProviderArtifact>) -> RefactorHistoryBundle {
+        RefactorHistoryBundle::new(vec![
+            RevisionSnapshot {
+                revision: "rev-a".to_string(),
+                parents: vec![],
+                timestamp: None,
+                files: vec![RevisionFile::new(
+                    "scoring.py",
+                    String::from_utf8(SCORER_BEFORE.to_vec()).unwrap(),
+                )],
+                provider_artifacts: vec![],
+            },
+            RevisionSnapshot {
+                revision: "rev-b".to_string(),
+                parents: vec!["rev-a".to_string()],
+                timestamp: None,
+                files: vec![RevisionFile::new(
+                    "scoring.py",
+                    String::from_utf8(SCORER_AFTER_STALE.to_vec()).unwrap(),
+                )],
+                provider_artifacts: artifacts,
+            },
+        ])
+    }
+
+    fn stale_edge_location(report: &RefactorRiskReport) -> (PathBuf, usize) {
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::OWNER_MOVED_CONSUMER_STALE)
+            .expect("bundle should reproduce the stale consumer");
+        let node = &finding.stale_edges[0].node;
+        (node.path.clone(), node.span.start_line)
+    }
+
+    #[test]
+    fn bundle_analysis_matches_directory_analysis_and_is_byte_stable() {
+        let bundle = scorer_bundle(vec![]);
+        let first = analyze_refactor_bundle(&bundle).unwrap();
+        let second = analyze_refactor_bundle(&bundle).unwrap();
+        assert_eq!(
+            serde_json::to_string(&first).unwrap(),
+            serde_json::to_string(&second).unwrap(),
+            "identical history bundles must produce byte-stable reports"
+        );
+        assert_eq!(first.findings.len(), 1);
+        assert_eq!(
+            first.findings[0].rule,
+            rule_names::OWNER_MOVED_CONSUMER_STALE
+        );
+        assert_eq!(first.revisions, vec!["rev-a", "rev-b"]);
+    }
+
+    #[test]
+    fn agreeing_provider_artifact_becomes_supporting_evidence() {
+        let probe = analyze_refactor_bundle(&scorer_bundle(vec![])).unwrap();
+        let (path, start_line) = stale_edge_location(&probe);
+        let payload = serde_json::json!({
+            "schema": SEMANTIC_PROVIDER_FACTS_SCHEMA,
+            "functions": [{
+                "path": path,
+                "start_line": start_line,
+                "references": ["model.raw_score"],
+            }],
+        });
+        let bundle = scorer_bundle(vec![ProviderArtifact {
+            provider: deslop_core::refactor_defect::FactProvider::Lsp,
+            revision: "rev-b".to_string(),
+            capability: deslop_core::refactor_defect::CapabilityLevel::Partial,
+            payload: payload.to_string(),
+        }]);
+        let report = analyze_refactor_bundle(&bundle).unwrap();
+        let finding = &report.findings[0];
+        assert!(
+            finding.evidence.iter().any(|item| {
+                item.provider == deslop_core::refactor_defect::FactProvider::Lsp
+                    && item.detail.contains("provider attests")
+            }),
+            "agreeing provider facts join as supporting evidence: {:?}",
+            finding.evidence
+        );
+        assert!(finding.counter_evidence.is_empty());
+    }
+
+    #[test]
+    fn disagreeing_provider_artifact_is_visible_conflict_without_promotion() {
+        let probe = analyze_refactor_bundle(&scorer_bundle(vec![])).unwrap();
+        let (path, start_line) = stale_edge_location(&probe);
+        let payload = serde_json::json!({
+            "schema": SEMANTIC_PROVIDER_FACTS_SCHEMA,
+            "functions": [{
+                "path": path,
+                "start_line": start_line,
+                "references": ["posterior.committed_score"],
+            }],
+        });
+        let bundle = scorer_bundle(vec![ProviderArtifact {
+            provider: deslop_core::refactor_defect::FactProvider::Lsp,
+            revision: "rev-b".to_string(),
+            capability: deslop_core::refactor_defect::CapabilityLevel::Complete,
+            payload: payload.to_string(),
+        }]);
+        let report = analyze_refactor_bundle(&bundle).unwrap();
+        // The syntax finding survives (no suppression, no promotion) and the
+        // disagreement is visible.
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::OWNER_MOVED_CONSUMER_STALE)
+            .expect("syntax authority is unchanged by provider disagreement");
+        assert!(
+            finding
+                .counter_evidence
+                .iter()
+                .any(|item| item.detail.contains("disagreement retained")),
+            "{:?}",
+            finding.counter_evidence
+        );
+        // The scan-path projection keeps the disagreement visible too.
+        assert!(finding.to_finding().message.contains("counter-evidence"));
+    }
+
+    #[test]
+    fn unintelligible_provider_artifact_is_a_coverage_reason() {
+        let bundle = scorer_bundle(vec![ProviderArtifact {
+            provider: deslop_core::refactor_defect::FactProvider::Lsp,
+            revision: "rev-b".to_string(),
+            capability: deslop_core::refactor_defect::CapabilityLevel::Unknown,
+            payload: "not json".to_string(),
+        }]);
+        let report = analyze_refactor_bundle(&bundle).unwrap();
+        assert_eq!(report.coverage, FactCoverage::Partial);
+        assert!(
+            report
+                .coverage_reasons
+                .iter()
+                .any(|reason| reason.contains("payload not understood")),
+            "{:?}",
+            report.coverage_reasons
+        );
     }
 
     #[test]

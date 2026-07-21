@@ -638,16 +638,24 @@ pub enum QueryFamily {
     Control,
     Comments,
     OpaqueGenerated,
+    /// Contract facts for refactor-defect detection
+    /// (`docs/REFACTOR_DEFECT_ACCUMULATION.md`): candidate owner/consumer
+    /// functions, call/attribute references, schema literals, config reads,
+    /// loop constructs, assertion statements, and whole call expressions.
+    /// Adapters that cannot support the family declare it unknown, which
+    /// surfaces as a per-language capability gap, never a silent absence.
+    Contract,
 }
 
 impl QueryFamily {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Declarations,
         Self::References,
         Self::Scopes,
         Self::Control,
         Self::Comments,
         Self::OpaqueGenerated,
+        Self::Contract,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -658,6 +666,7 @@ impl QueryFamily {
             Self::Control => "control",
             Self::Comments => "comments",
             Self::OpaqueGenerated => "opaque-generated",
+            Self::Contract => "contract",
         }
     }
 }
@@ -1931,7 +1940,7 @@ pub trait LangPack: Send + Sync {
     /// Versioned identity for the semantic hooks implemented by this adapter.
     /// Implementations must bump this value whenever hook behavior changes.
     fn adapter_schema(&self) -> &'static str {
-        "deslop-lang-adapter/3"
+        "deslop-lang-adapter/4"
     }
     fn capability_manifest(&self) -> LanguageAdapterCapabilityManifest;
     fn query_pack(&self) -> LanguageQueryPack {
@@ -2306,6 +2315,10 @@ fn clojure_query_pack(adapter_schema: &str) -> LanguageQueryPack {
                 "[(anon_fn_lit) (derefing_lit) (dis_expr) (evaling_lit) (quoting_lit) (read_cond_lit) (splicing_read_cond_lit) (syn_quoting_lit) (tagged_or_ctor_lit) (unquote_splicing_lit) (unquoting_lit) (var_quoting_lit)] @opaque",
                 vec![capture("opaque", &[CanonicalRole::OpaqueRegion])],
             ),
+            // Stored Tree-sitter queries cannot exclude arbitrary quoted
+            // ancestors, so contract facts stay unknown like the
+            // declaration/reference/control families.
+            QueryFamilyDeclaration::unknown(QueryFamily::Contract),
         ],
     )
     .expect("the Clojure query pack is valid")
@@ -2806,6 +2819,22 @@ fn julia_query_pack(adapter_schema: &str) -> LanguageQueryPack {
                 "[(macro_definition) (macrocall_expression) (quote_expression) (quote_statement)] @opaque",
                 vec![capture("opaque", &[CanonicalRole::OpaqueRegion])],
             ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Contract,
+                CapabilityAuthority::Adapter,
+                "(assignment . (call_expression (identifier) @function.name)) @function.assign\n(function_definition (call_expression (identifier) @function.name)) @function\n(function_definition (signature (call_expression (identifier) @function.name))) @function\n(call_expression (identifier) @ref)\n(index_expression (identifier) @config.object (vector_expression (string_literal) @config.key))\n(for_statement) @loop\n(while_statement) @loop\n(macrocall_expression (macro_identifier) @assert.macro)\n(call_expression) @call.expr",
+                vec![
+                    capture("function.name", &[CanonicalRole::Read]),
+                    capture("function.assign", &[CanonicalRole::Write]),
+                    capture("function", &[CanonicalRole::Callable]),
+                    capture("ref", &[CanonicalRole::Read]),
+                    capture("config.object", &[CanonicalRole::Read]),
+                    capture("config.key", &[CanonicalRole::Literal]),
+                    capture("loop", &[CanonicalRole::Loop]),
+                    capture("assert.macro", &[CanonicalRole::Read]),
+                    capture("call.expr", &[CanonicalRole::Call]),
+                ],
+            ),
         ],
     )
     .expect("the Julia query pack is valid")
@@ -3198,7 +3227,7 @@ fn python_canonical_roles(node: Node<'_>, text: &str) -> CanonicalRoleSet {
         "if_statement" | "elif_clause" => vec![CanonicalRole::Branch],
         "match_statement" => vec![CanonicalRole::Branch, CanonicalRole::Match],
         "case_clause" => vec![CanonicalRole::Case],
-        "for_statement" | "while_statement" => vec![CanonicalRole::Loop],
+        "for_statement" | "while_statement" | "for_in_clause" => vec![CanonicalRole::Loop],
         "call" => vec![CanonicalRole::Expression, CanonicalRole::Call],
         "assignment" | "augmented_assignment" | "named_expression" => {
             vec![CanonicalRole::Expression, CanonicalRole::Write]
@@ -3278,6 +3307,23 @@ fn python_query_pack(adapter_schema: &str) -> LanguageQueryPack {
                 CapabilityAuthority::Adapter,
                 "[(exec_statement) (print_statement)] @opaque",
                 vec![capture("opaque", &[CanonicalRole::OpaqueRegion])],
+            ),
+            QueryFamilyDeclaration::provided(
+                QueryFamily::Contract,
+                CapabilityAuthority::Adapter,
+                "(function_definition name: (identifier) @function.name) @function\n(call function: [(identifier) (attribute)] @ref)\n(string) @string\n(subscript value: [(identifier) (attribute)] @config.object subscript: (string) @config.key)\n(call function: (attribute) @config.accessor arguments: (argument_list . (string) @config.key))\n(for_statement) @loop\n(while_statement) @loop\n(for_in_clause) @loop\n(assert_statement) @assertion\n(raise_statement) @assertion\n(call) @call.expr",
+                vec![
+                    capture("function.name", &[CanonicalRole::Read]),
+                    capture("function", &[CanonicalRole::Callable]),
+                    capture("ref", &[CanonicalRole::Read]),
+                    capture("string", &[CanonicalRole::Literal]),
+                    capture("config.object", &[CanonicalRole::Read]),
+                    capture("config.key", &[CanonicalRole::Literal]),
+                    capture("config.accessor", &[CanonicalRole::Read]),
+                    capture("loop", &[CanonicalRole::Loop]),
+                    capture("assertion", &[CanonicalRole::Statement]),
+                    capture("call.expr", &[CanonicalRole::Call]),
+                ],
             ),
         ],
     )
@@ -3627,7 +3673,10 @@ fn ecma_canonical_roles(node: Node<'_>, text: &str) -> CanonicalRoleSet {
             vec![CanonicalRole::Parameter]
         }
         "statement_block" => vec![CanonicalRole::Block],
-        "lexical_declaration" | "variable_declaration" | "expression_statement" => {
+        "lexical_declaration"
+        | "variable_declaration"
+        | "expression_statement"
+        | "throw_statement" => {
             vec![CanonicalRole::Statement]
         }
         "if_statement" | "switch_statement" => vec![CanonicalRole::Branch],
@@ -3728,6 +3777,31 @@ fn ecma_query_pack(adapter_schema: &str, typed: bool) -> LanguageQueryPack {
                 "(with_statement) @opaque",
                 vec![capture("opaque", &[CanonicalRole::OpaqueRegion])],
             ),
+            // Contract facts are provided for plain JavaScript; the typed
+            // grammars stay an honest unknown gap until their queries are
+            // validated against the TypeScript/TSX grammars.
+            if typed {
+                QueryFamilyDeclaration::unknown(QueryFamily::Contract)
+            } else {
+                QueryFamilyDeclaration::provided(
+                    QueryFamily::Contract,
+                    CapabilityAuthority::Adapter,
+                    "(function_declaration name: (identifier) @function.name) @function\n(method_definition name: (property_identifier) @function.name) @function\n(variable_declarator name: (identifier) @function.name value: [(arrow_function) (function_expression)] @function.value)\n(call_expression function: [(identifier) (member_expression)] @ref)\n(string) @string\n(member_expression object: (member_expression property: (property_identifier) @config.object) property: (property_identifier) @config.prop)\n(subscript_expression object: (member_expression property: (property_identifier) @config.object) index: (string) @config.key)\n(for_statement) @loop\n(for_in_statement) @loop\n(while_statement) @loop\n(throw_statement) @assertion\n(call_expression) @call.expr",
+                    vec![
+                        capture("function.name", &[CanonicalRole::Read]),
+                        capture("function", &[CanonicalRole::Callable]),
+                        capture("function.value", &[CanonicalRole::Callable]),
+                        capture("ref", &[CanonicalRole::Read]),
+                        capture("string", &[CanonicalRole::Literal]),
+                        capture("config.object", &[CanonicalRole::Read]),
+                        capture("config.prop", &[CanonicalRole::Read]),
+                        capture("config.key", &[CanonicalRole::Literal]),
+                        capture("loop", &[CanonicalRole::Loop]),
+                        capture("assertion", &[CanonicalRole::Statement]),
+                        capture("call.expr", &[CanonicalRole::Call]),
+                    ],
+                )
+            },
         ],
     )
     .expect("the ECMAScript query pack is valid")
@@ -4422,6 +4496,8 @@ fn rust_query_pack(adapter_schema: &str) -> LanguageQueryPack {
                 "[(macro_invocation) (macro_definition)] @opaque",
                 vec![capture("opaque", &[CanonicalRole::OpaqueRegion])],
             ),
+            // No Rust contract query yet: an honest per-language gap.
+            QueryFamilyDeclaration::unknown(QueryFamily::Contract),
         ],
     )
     .expect("the Rust query pack is valid")
@@ -5127,7 +5203,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(pack.schema(), LANGUAGE_QUERY_PACK_SCHEMA);
-        assert_eq!(pack.queries().len(), 6);
+        assert_eq!(pack.queries().len(), 7);
         assert_eq!(
             serde_json::to_value(&pack).unwrap(),
             serde_json::json!({
@@ -5151,7 +5227,8 @@ mod tests {
                     {"family":"scopes","support":"unknown","authority":null,"source":null,"captures":[]},
                     {"family":"control","support":"unknown","authority":null,"source":null,"captures":[]},
                     {"family":"comments","support":"unknown","authority":null,"source":null,"captures":[]},
-                    {"family":"opaque-generated","support":"unknown","authority":null,"source":null,"captures":[]}
+                    {"family":"opaque-generated","support":"unknown","authority":null,"source":null,"captures":[]},
+                    {"family":"contract","support":"unknown","authority":null,"source":null,"captures":[]}
                 ]
             })
         );
@@ -5667,7 +5744,7 @@ mod tests {
             let queries = pack.query_pack();
             queries.validate().unwrap();
             assert_eq!(queries.adapter_schema(), pack.adapter_schema());
-            assert_eq!(queries.queries().len(), 6);
+            assert_eq!(queries.queries().len(), 7);
             let expected = if production_policy {
                 CapabilitySupport::Provided
             } else {
@@ -5680,6 +5757,17 @@ mod tests {
                         QueryFamily::Declarations | QueryFamily::References | QueryFamily::Control
                     ) {
                     CapabilitySupport::Unknown
+                } else if query.family() == QueryFamily::Contract {
+                    // Contract facts are provided by the Python, Julia, and
+                    // plain-JavaScript adapters; everywhere else the family
+                    // is an honest per-language capability gap.
+                    if matches!(pack.lang(), Lang::Python | Lang::Julia | Lang::JavaScript)
+                        && production_policy
+                    {
+                        CapabilitySupport::Provided
+                    } else {
+                        CapabilitySupport::Unknown
+                    }
                 } else {
                     expected
                 };

@@ -1,6 +1,10 @@
 # Detecting refactor-defect accumulation
 
-Status: design guide. The detectors proposed here are not shipped capabilities.
+Status: shipped. All eleven detector families, the contract graph
+projection, the history providers, the LSP/MCP integration, and the
+evaluation/promotion gates described here are implemented behind
+`deslop refactor-risk` (2026-07-21). The per-phase notes below record what
+shipped and the boundaries that remain explicit capability gaps.
 
 ## The situation
 
@@ -563,6 +567,8 @@ accepted set.
 
 ### Phase 0: contracts and fixtures (`deslop-core`, `deslop-eval`)
 
+Shipped:
+
 - Define `deslop.refactor-history/1` and `deslop.refactor-defect/1`.
 - Register the detector-family names in the `deslop_core::rules` registry.
 - Add two-revision and multi-revision fixtures in multiple languages.
@@ -570,66 +576,149 @@ accepted set.
 
 ### Phase 1: owner migration (`deslop-parse`, `deslop-lang`, `deslop-graph`, `deslop-analyzer`, `deslop-cli`)
 
-- Build `ContractChangeHistory` from exact `ProjectAnalysis` snapshots.
-- Add contract query families to the first adapters' `LanguageQueryPack`s.
+Shipped:
+
+- Build `ContractChangeHistory` from exact `ProjectAnalysis` snapshots
+  (`deslop.contract-change-history/2`: references, literals, config keys,
+  loops, assertions, and normalized call texts per function).
+- Add contract query families to the first adapters' `LanguageQueryPack`s
+  (the seventh `contract` family; extraction reads the query text from the
+  snapshot's stored adapter identity, never by pack reselection).
 - Implement entity matching with rename/move negative cases.
 - Ship review-only `owner-moved-consumer-stale` and
-  `producer-verifier-schema-drift` behind `deslop refactor-risk`.
+  `producer-verifier-schema-drift` behind `deslop refactor-risk`. The CLI's
+  history provider is pluggable: snapshot directories, Git revisions,
+  Jujutsu revsets (with a Git fallback in colocated repositories), a
+  working-tree default for `--to`, and `--bundle` for caller-produced
+  `deslop.refactor-history/1` files.
 
 ### Phase 2: adoption surfaces (`deslop-analyzer`, `deslop-graph`)
 
 Shipped (2026-07, `deslop refactor-risk`): config-key extraction
-(`os.environ`/`os.getenv`/`ENV` reads plus module-level acceptance surfaces)
-with `accepted-config-inert`, cross-file `test-oracle-lag`,
-`adoption-chain-incomplete` summaries in a separate `summaries` report field
-(no double counting), and multi-revision windows (`--then`) computing
-persistence and co-change triage inputs from contract fingerprints.
+(`os.environ`/`os.getenv`/`ENV`/`process.env` reads plus module-level
+acceptance surfaces) with `accepted-config-inert`, cross-file
+`test-oracle-lag`, `adoption-chain-incomplete` summaries in a separate
+`summaries` report field (no double counting), and multi-revision windows
+(`--then`) computing persistence and co-change triage inputs from contract
+fingerprints.
 
 - Add config, test-oracle, telemetry, and operational-identity roles.
-  (Config and test-oracle shipped. Telemetry deferred: it requires the
-  claimed mechanism and telemetry producer as graph nodes. Operational
-  identity deferred: distinguishing identity literals from schema literals is
-  text matching, which the evidence rules reject as sole evidence.)
+  (All shipped. The formerly deferred telemetry and operational-identity
+  families ship on the dependency-path split: the dependent's syntactic
+  reference closure must reach the retired owner without reaching the new
+  mechanism. The telemetry/status surface classification is lexical
+  supporting evidence recorded as a partial-capability gap on every
+  finding, never the firing condition.)
 - Add incomplete-adoption summaries without double-counting findings. (Shipped.)
-- Expose persistence and co-change evidence as triage inputs. (Shipped for
-  contract fingerprints; the `deslop-graph` contract projection remains
-  future work and ships with the graph-dependent families.)
+- Expose persistence and co-change evidence as triage inputs. (Shipped.)
+- The `deslop-graph` contract projection shipped as
+  `deslop.contract-graph/1` with projection identity
+  `deslop.contract-graph.projection/1` via `derive_projection_id`, exposed
+  through `deslop graph --contract`: role-classified nodes, semantic edges
+  with syntactic/ambiguous confidence, and `dependents_of` traversal from
+  any owner to its consumers, tests, verifiers, telemetry, and publication
+  surfaces.
+
+The remaining pairwise families also shipped: `scope-collapse-after-refactor`
+(loop structure lost plus a flatten/concatenate-family gain; every finding
+requests a metamorphic independence test and carries the semantic-axis gap),
+`mechanism-live-gate-retired` (assertion-bearing gates whose dependency path
+terminates at the retired owner), `confidence-provenance-lost` (a formerly
+bound consumer re-deriving through a lossy operation without the new
+evidence), and `hot-path-work-duplicated` (an introduced structurally
+equivalent composite call; cost stays an explicit runtime gap).
+
+Contract query text lives in each adapter's `LanguageQueryPack` as the
+seventh `contract` query family (adapter schema `deslop-lang-adapter/4`),
+provided by the Python, Julia, and JavaScript adapters and declared
+`unknown` everywhere else. The per-language gap surfaces through the query
+pack framed inside the stored adapter identity; the frozen 23-entry
+`AdapterCapability` catalog is deliberately unchanged.
 
 ### Phase 3: editor and review integration (`deslop-lsp`, `deslop-mcp`, `deslop-report`)
 
-- Add base-revision comparison to LSP and MCP.
-- Accept revision-bound semantic-provider artifacts.
-- Show invalidation, disagreement, and coverage gaps in every output format.
+Shipped:
+
+- LSP base-revision comparison: a `[lsp] refactor_base` snapshot directory
+  in `deslop.toml` is compared against the live buffer overlay on every
+  rebuild; findings publish as review diagnostics with the rule name as
+  code and no code action, and each buffer edit invalidates the previous
+  comparison by recomputation against the immutable base.
+- MCP `refactor_risk` tool (read-only): snapshot directories or a
+  `deslop.refactor-history/1` bundle in, `deslop.refactor-risk/1` out.
+- Revision-bound semantic-provider artifacts: bundles carry
+  `deslop.semantic-provider-facts/1` payloads pinned to their revision.
+  Agreeing facts join as supporting evidence, disagreeing facts stay
+  visible in `counter_evidence` without promoting or suppressing the
+  syntax finding, and unintelligible payloads become coverage reasons.
+- Every output format shows disagreement and gaps: the full JSON payload
+  carries them typed; the text and SARIF projections append
+  counter-evidence and coverage-gap summaries to each finding's message,
+  and SARIF marks every finding `reportOnly`.
 
 ### Phase 4: promotion gates (`deslop-eval`, `deslop-core`)
 
-- Freeze the multi-language corpus and precision thresholds.
-- Add history-aware finding identity to baselines (acceptance gate 10).
-- Dogfood against real refactor histories, including the transcribed case study.
-- Promote detector families independently; unsupported facts continue to block
-  stronger claims.
+Shipped:
+
+- The multi-language corpus (22 cases: Python, Julia, JavaScript) is frozen
+  with per-family precision/recall rows in
+  `tests/refactor-history/baseline.json` (`deslop.eval-baseline/1`) and
+  ratcheted by `deslop-eval`'s refactor evaluation
+  (`deslop.refactor-eval/1`: precision, recall, abstention rate,
+  entity-match evidence rate, causal-path completeness, and a separate
+  always-explicit semantic-provider recall column).
+- History-aware finding identity (`RefactorDefect::stable_identity`,
+  `rdf1_` BLAKE3 over rule, owner identity, and causal-path structure —
+  never revision labels, spans, or window size) feeds
+  `--baseline`/`--write-baseline` on `refactor-risk`; a baseline written
+  from a two-revision window suppresses the same defect through a
+  three-revision window (acceptance gate 10).
+- Dogfooded against the transcribed case study fixtures and the real
+  RelationExtractor history (`src/heads/pointer_canvas`, revisions
+  `5910eded^..46832247`): precision tuning driven by that run cut raw
+  nominations from 161 to 2 plausible review candidates while the frozen
+  corpus stayed at 1.0 precision/recall, and the repair commit itself
+  yields zero findings.
+- Families are promoted independently in
+  `tests/refactor-history/promotion.json`
+  (`deslop.refactor-promotion/1`): per-family frozen precision thresholds
+  with standing caveats recorded for the lexically classified surfaces and
+  the unproved-cost family.
 
 ## Acceptance gates
 
-The feature is not complete until all of these hold:
+All ten gates hold, each backed by an executable test:
 
 1. Identical history bundles produce byte-stable reports.
+   (`bundle_analysis_matches_directory_analysis_and_is_byte_stable`.)
 2. Every fact and provider artifact is revision-pinned.
-3. Rename, move, full-adoption, and compatibility-adapter negative fixtures pass.
-4. At least three language adapters demonstrate the same detector contract using
-   Tree-sitter alone.
+   (`RefactorHistoryBundle::validate` rejects mispinned artifacts and
+   digest mismatches.)
+3. Rename, move, full-adoption, and compatibility-adapter negative fixtures
+   pass. (`py-pure-rename`, `py-file-move`, `py-full-adoption`,
+   `py-compat-adapter`.)
+4. At least three language adapters demonstrate the same detector contract
+   using Tree-sitter alone. (Python, Julia, and JavaScript corpus cases.)
 5. Optional LSP evidence improves coverage without changing the authority of
-   syntax facts or hiding disagreement.
+   syntax facts or hiding disagreement. (Agreeing artifacts join as
+   supporting evidence; disagreement lands in `counter_evidence` with the
+   syntax finding intact.)
 6. Incomplete coverage yields an explicit gap rather than a clean result.
+   (Unsupported adapters, unparsed files, generated files, dynamic access,
+   and unintelligible provider payloads all become coverage reasons.)
 7. Findings contain a reviewable causal path and suggested verification.
+   (`RefactorDefect::validate` rejects findings without either.)
 8. No detector in this family creates or applies an automatic edit.
+   (`SafetyClass::NeverAuto` is enforced by `validate`; the scan-path
+   projection carries no edit; the LSP offers no code action.)
 9. The evaluation report separates confidence, priority, and fix safety.
-10. Baselines gain history-aware finding identity. Today's baselines are
-    reporting-suppression fingerprints over path/rule/span/text; refactor-defect
-    findings need an identity stable across history-window changes (rule, owner
-    identity, causal-path digest) so ratchets neither churn falsely nor silently
-    accept a changed defect. This is new work in `deslop-core`, not a reuse of
-    the current fingerprint.
+   (`deslop.refactor-eval/1` carries the three statements as distinct
+   fields.)
+10. Baselines gain history-aware finding identity:
+    `RefactorDefect::stable_identity` digests rule, owner identity, and
+    causal-path structure — never revision labels, spans, or window size —
+    so ratchets neither churn falsely nor silently accept a changed defect.
+    (`baseline_identity_is_stable_across_window_changes`.)
 
 ## Known hard cases
 
@@ -647,3 +736,19 @@ The first implementation should remain precision-first and avoid a new
 dependency: exact snapshots, existing Tree-sitter adapters, structural
 fingerprints, graph projections, and optional standard LSP artifacts are enough
 to prove the initial architecture and evaluation contract.
+
+Dogfooding against the real case-study history added four narrowing filters,
+all of which suppress candidates and never promote one:
+
+- type-constructor and exception references (uppercase-initial leaf) are
+  conversion churn, not ownership evidence, in the reference domain;
+- a token referenced by more than three distinct functions in its revision is
+  a shared utility (`throw`, `zeros`, `log`), not an owned representation;
+- a dependent's reference to its own name is recursion, not attachment; and
+- hot-path candidates must be composite calls (nested call, minimum length,
+  non-constructor callee) — a repeated constructor builds two distinct
+  objects and reuse would be a wrong suggestion.
+
+On the case-study window these filters took raw nominations from 161 to 2
+plausible review candidates while the frozen corpus stayed at full precision
+and recall, and the actual repair commit produces zero findings.

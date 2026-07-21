@@ -1,0 +1,71 @@
+{
+  "schema": "deslop.refactor-promotion/1",
+  "families": [
+    {
+      "rule": "owner-moved-consumer-stale",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted: unchanged direct consumers of a surviving former representation; rename/move/full-adoption/compat-adapter negatives hold"
+    },
+    {
+      "rule": "scope-collapse-after-refactor",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted: loop structure lost plus flatten-family gain; the semantic axis stays an explicit per-finding gap and every finding requests a metamorphic independence test"
+    },
+    {
+      "rule": "mechanism-live-gate-retired",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted: assertion-bearing gates whose syntactic reference closure terminates at the retired owner; closure is leaf-name expansion, never resolution proof"
+    },
+    {
+      "rule": "producer-verifier-schema-drift",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted: unchanged verifiers still requiring removed schema tokens; coherent migrations hold as negatives"
+    },
+    {
+      "rule": "accepted-config-inert",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted: retired config keys still carried by an acceptance surface; unknown dynamic uses suppress promotion"
+    },
+    {
+      "rule": "confidence-provenance-lost",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted: formerly bound consumers re-deriving through a lossy operation without the new evidence; whether the loss matters stays an explicit behavioral-oracle gap"
+    },
+    {
+      "rule": "telemetry-not-bound-to-claim",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted with standing caveat: the telemetry-surface classification is lexical supporting evidence recorded as a partial-capability gap on every finding; the firing condition is the dependency-path split"
+    },
+    {
+      "rule": "test-oracle-lag",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted: unchanged tests exercising the former representation, including singleton oracles after a scope collapse; reports what remains unproved, never that the implementation is wrong"
+    },
+    {
+      "rule": "hot-path-work-duplicated",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted with standing caveat: cost and safe reuse are unproved without profiling or effect facts and stay an explicit per-finding gap"
+    },
+    {
+      "rule": "operational-identity-stale",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted with standing caveat: the status-surface classification is lexical supporting evidence recorded as a partial-capability gap on every finding; the firing condition is the dependency-path split"
+    },
+    {
+      "rule": "adoption-chain-incomplete",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted: summary emitted only when several families share one owner migration, kept out of findings so baselines and severity counts never double-count"
+    }
+  ]
+}

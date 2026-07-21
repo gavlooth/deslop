@@ -12780,3 +12780,83 @@ hard cases.
 **Next actions:** Review the evidence contracts and frozen fixtures before authorizing implementation.
 
 Signature: Codex (GPT-5), refactor-defect accumulation guide, 2026-07-21.
+
+## 2026-07-21 — Refactor-defect accumulation: all phases and deferred items shipped
+
+**Objective:** Complete every item in `docs/REFACTOR_DEFECT_ACCUMULATION.md`, including the
+deferred ones: the six remaining detector families, the deslop-graph contract projection, the
+deslop-lang contract query family, pluggable history providers, Phase 3 LSP/MCP/report
+integration, and Phase 4 evaluation/promotion gates.
+
+**Workspace:** `/home/christos/code/deslop`, based on `1f0f37e6` (Phase 2 ship).
+
+**Changes:**
+
+- `deslop-parse`: `deslop.contract-change-history/2` — per-function loops, assertions, and
+  normalized call texts; JavaScript extraction; generated-file exclusion by `@generated`
+  provenance; contract query text now read from the snapshot's stored adapter identity (no
+  pack reselection). Fixed the Julia long-form (`signature`-nested) and short-form
+  (LHS-anchored assignment) definition queries.
+- `deslop-lang`: seventh `contract` query family (adapter schema bumped to
+  `deslop-lang-adapter/4`), provided by Python/Julia/JavaScript with role-honest captures,
+  `unknown` elsewhere (per-language capability gap). Added `for_in_clause`→Loop (Python) and
+  `throw_statement`→Statement (ECMAScript) role arms.
+- `deslop-analyzer`: all eleven families now detect — added `scope-collapse-after-refactor`,
+  `mechanism-live-gate-retired`, `confidence-provenance-lost`, `telemetry-not-bound-to-claim`,
+  `hot-path-work-duplicated`, `operational-identity-stale`. Reach families fire on the
+  dependency-path split over a syntactic reference closure; surface classification is lexical
+  supporting evidence with a partial-capability gap. Oracle-lag extended to scope collapses
+  (singleton-oracle candidates). Dynamic access downgrades coverage. Bundle analysis
+  (`analyze_refactor_bundle`) joins revision-bound `deslop.semantic-provider-facts/1`
+  artifacts as supporting/conflicting evidence without promotion or suppression.
+- `deslop-core`: `ContractStep.token` typed field; `RefactorDefect::validate` requires causal
+  path + verification (gate 7); `stable_identity()` (`rdf1_`, gate 10);
+  `to_finding()` scan-path projection with counter-evidence/gap summaries in the message;
+  `DetectedBy::RefactorHistory`.
+- `deslop-graph`: `deslop.contract-graph/1` projection
+  (`deslop.contract-graph.projection/1` identity) with role nodes, syntactic/ambiguous edges,
+  and `dependents_of` traversal; `deslop graph --contract`.
+- `deslop-cli`: `refactor-risk` gains pluggable history providers (directories, Git revisions,
+  jj revsets with Git fallback in colocated repos, working-tree default, `--bundle`),
+  `--format json|text|sarif` through the existing report envelope, and
+  `--baseline`/`--write-baseline` over the history-aware identity.
+- `deslop-lsp`: `[lsp] refactor_base` base-revision comparison publishing review-only
+  diagnostics invalidated by recomputation on every buffer edit.
+- `deslop-mcp`: read-only `refactor_risk` tool.
+- `deslop-eval`: `deslop.refactor-eval/1` (per-family precision/recall/abstention/entity-match/
+  causal-path-completeness, semantic-provider recall kept an explicit null) ratcheted against
+  `tests/refactor-history/baseline.json`; frozen `deslop.refactor-promotion/1` gates.
+- Corpus: 22 golden cases (was 11) across Python, Julia, JavaScript, covering every golden
+  case in the design doc including move-only, dynamic-consumer, generated-excluded,
+  singleton-vs-metamorphic oracle, and all new families.
+- Docs: `docs/REFACTOR_DEFECT_ACCUMULATION.md` status updated to shipped with per-phase
+  records and executable-test citations for all ten acceptance gates.
+
+**Commands run/results:** `cargo fmt --all`, `cargo build --workspace`,
+`cargo build -p deslop-slim --no-default-features`, `cargo test --workspace` (58 green
+suites), `cargo clippy --workspace -- -D warnings`, `cargo test -p deslop-mcp --features
+slim-llm` (26 pass), `cargo tree -p deslop-mcp -i ureq` (absent), `git diff --check` clean.
+Dogfood (read-only) against `/srv/biotz/RelationExtractor` `src/heads/pointer_canvas`
+window `5910eded^ → 5910eded → 2ddabf46 → 46832247`: precision tuning driven by measured
+output cut nominations 161 → 5 → 2 plausible candidates (persist=3 triage inputs), and the
+repair pair `46832247^ → 46832247` yields zero findings. Frozen corpus stayed 1.0/1.0
+throughout tuning.
+
+**Invalidated assumptions:** The shipped Phase 1 Julia contract query missed long-form
+definitions (`signature` nesting) and matched any assignment containing a call as a
+"function definition" — both exposed by the real-history dogfood, both fixed. Raw hot-path
+nomination over any repeated argument-bearing call is unusable on real code (127 nominations
+from one window); composite-call bounds are required.
+
+**Current recommendation/checkpoint:** Feature complete per the design doc; all ten
+acceptance gates hold with executable tests. Next candidates: TypeScript/TSX contract
+queries (declared `unknown` today), semantic-provider corpus rows so the
+`semantic_provider_recall` column can carry a measured value, and a Rust contract query.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** Rebuild consumers; reinstall the CLI
+(`cargo install --path crates/deslop-cli`) if the installed binary should serve
+`refactor-risk`. No service restart.
+
+**Signature:** Claude (Fable 5), refactor-defect accumulation all phases + deferred items shipped, 2026-07-21.

@@ -57,11 +57,30 @@ struct LspState {
     analyzer_config: AnalyzerConfig,
     workspace_analysis: Option<Arc<ProjectAnalysis>>,
     workspace_presentation: SnapshotPresentationMap,
+    /// Configured refactor base-revision snapshot directory ([lsp] section).
+    refactor_base: Option<PathBuf>,
+    /// The base revision's immutable analysis, built once per configured
+    /// base. Buffer edits never mutate it; every rebuild re-compares the
+    /// current overlay against it, so stale refactor diagnostics are
+    /// invalidated by recomputation.
+    refactor_base_analysis: Option<Arc<ProjectAnalysis>>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 struct LspConfig {
     analyzer: Option<LspAnalyzerConfig>,
+    lsp: Option<LspSectionConfig>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LspSectionConfig {
+    /// Base-revision snapshot directory for refactor-defect comparison.
+    /// Relative paths resolve against the config file's directory. The
+    /// comparison publishes review-only diagnostics (rule name as code, no
+    /// code action).
+    #[serde(default)]
+    refactor_base: Option<PathBuf>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -213,9 +232,48 @@ impl LspState {
                     )
                 })?;
         }
+        self.attach_refactor_findings(&mut documents, &analyzed.analysis)?;
         self.documents = documents;
         self.workspace_analysis = Some(analyzed.analysis);
         self.workspace_presentation = analyzed.presentation;
+        Ok(())
+    }
+
+    /// Compare the current buffer overlay against the configured base
+    /// revision and attach the review-only refactor-defect findings to
+    /// their documents. Runs on every rebuild: a buffer edit invalidates
+    /// the previous comparison by recomputation against the immutable base.
+    fn attach_refactor_findings(
+        &mut self,
+        documents: &mut BTreeMap<String, DocumentState>,
+        current: &Arc<ProjectAnalysis>,
+    ) -> Result<()> {
+        let Some(base_path) = self.refactor_base.clone() else {
+            return Ok(());
+        };
+        if self.refactor_base_analysis.is_none() {
+            self.refactor_base_analysis =
+                Some(deslop_analyzer::refactor::snapshot_analysis(&base_path)?);
+        }
+        let base = self
+            .refactor_base_analysis
+            .as_ref()
+            .expect("base analysis was just built")
+            .clone();
+        let report = deslop_analyzer::refactor::analyze_refactor_risk(
+            ("base".to_string(), base),
+            ("editor-buffer".to_string(), Arc::clone(current)),
+        )?;
+        for defect in &report.findings {
+            let mut finding = defect.to_finding();
+            if let Some(document) = documents
+                .values_mut()
+                .find(|document| document.logical_path == finding.path)
+            {
+                finding.path = document.path.clone();
+                document.findings.push(finding);
+            }
+        }
         Ok(())
     }
 
@@ -229,7 +287,12 @@ impl LspState {
         };
         let next = resolve_config_path(&root);
         if next.as_deref() != self.config_path.as_deref() {
-            self.analyzer_config = load_analyzer_config(next.as_deref())?;
+            let settings = load_lsp_settings(next.as_deref())?;
+            self.analyzer_config = settings.analyzer;
+            if self.refactor_base != settings.refactor_base {
+                self.refactor_base = settings.refactor_base;
+                self.refactor_base_analysis = None;
+            }
             self.config_path = next;
         }
         Ok(())
@@ -261,13 +324,14 @@ pub fn run_connection(connection: Connection) -> Result<()> {
         .or_else(|| root_from_root_uri(&init_params))
         .and_then(|path| path.canonicalize().ok());
     let config_path = workspace_root.as_deref().and_then(resolve_config_path);
-    let analyzer_config = load_analyzer_config(config_path.as_deref())?;
+    let settings = load_lsp_settings(config_path.as_deref())?;
     connection.initialize_finish(id, serde_json::to_value(server_capabilities())?)?;
 
     let mut state = LspState {
         workspace_root,
         config_path,
-        analyzer_config,
+        analyzer_config: settings.analyzer,
+        refactor_base: settings.refactor_base,
         ..LspState::default()
     };
     for message in &connection.receiver {
@@ -641,6 +705,37 @@ fn is_config_uri(uri: &Uri, workspace_root: &Option<PathBuf>) -> bool {
         && workspace_root
             .as_ref()
             .is_none_or(|root| uri_to_path(uri).starts_with(root))
+}
+
+/// Settings the LSP reads from `deslop.toml`: the analyzer configuration
+/// plus the `[lsp]` section's refactor base revision (resolved against the
+/// config file's directory when relative).
+struct LspSettings {
+    analyzer: AnalyzerConfig,
+    refactor_base: Option<PathBuf>,
+}
+
+fn load_lsp_settings(path: Option<&Path>) -> Result<LspSettings> {
+    let refactor_base = match path {
+        Some(path) if path.exists() => {
+            let text = fs::read_to_string(path)
+                .with_context(|| format!("failed to read analyzer config {}", path.display()))?;
+            let config: LspConfig = toml::from_str(&text)
+                .with_context(|| format!("failed to parse analyzer config {}", path.display()))?;
+            config.lsp.and_then(|lsp| lsp.refactor_base).map(|base| {
+                if base.is_absolute() {
+                    base
+                } else {
+                    path.parent().unwrap_or(Path::new(".")).join(base)
+                }
+            })
+        }
+        _ => None,
+    };
+    Ok(LspSettings {
+        analyzer: load_analyzer_config(path)?,
+        refactor_base,
+    })
 }
 
 fn load_analyzer_config(path: Option<&Path>) -> Result<AnalyzerConfig> {
@@ -1263,6 +1358,71 @@ mod tests {
         )?;
 
         assert_eq!(changed, "é𝄞Zbc\n");
+        Ok(())
+    }
+
+    #[test]
+    fn refactor_base_comparison_publishes_review_only_diagnostics() -> Result<()> {
+        let base_dir = tempfile::tempdir()?;
+        std::fs::write(
+            base_dir.path().join("scoring.py"),
+            b"class Scorer:\n    def __init__(self, model):\n        self.model = model\n\n    def decide(self, candidates):\n        return max(candidates, key=lambda c: self.model.raw_score(c))\n\n    def public_score(self, candidate):\n        return self.model.raw_score(candidate)\n",
+        )?;
+        let workspace = tempfile::tempdir()?;
+        let path = workspace.path().join("scoring.py");
+        let uri = Uri::from_str(&format!("file://{}", path.display()))?;
+        let mut state = LspState {
+            workspace_root: Some(workspace.path().to_path_buf()),
+            refactor_base: Some(base_dir.path().to_path_buf()),
+            ..LspState::default()
+        };
+
+        let stale = "class Scorer:\n    def __init__(self, model, posterior):\n        self.model = model\n        self.posterior = posterior\n\n    def decide(self, candidates):\n        return self.posterior.commit(candidates)\n\n    def public_score(self, candidate):\n        return self.model.raw_score(candidate)\n";
+        state.open(uri.clone(), path.clone(), stale.to_string(), Some(1))?;
+        let document = state.documents.values().next().expect("open document");
+        let finding = document
+            .findings
+            .iter()
+            .find(|finding| finding.rule == "owner-moved-consumer-stale")
+            .expect("base comparison should publish the stale-consumer finding");
+        assert_eq!(finding.safety, SafetyClass::NeverAuto);
+        assert!(
+            !is_code_action_fixable(finding),
+            "review-only findings must offer no quick fix"
+        );
+        let diagnostics =
+            diagnostics_for_analysis(&document.text, &document.analysis, &document.findings);
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code
+                    == Some(NumberOrString::String(
+                        "owner-moved-consumer-stale".to_string(),
+                    ))
+            }),
+            "the finding must publish as a diagnostic with the rule name as code"
+        );
+
+        // A buffer edit that adopts the new owner invalidates the previous
+        // comparison: the diagnostic disappears on recomputation.
+        let adopted = "class Scorer:\n    def __init__(self, model, posterior):\n        self.model = model\n        self.posterior = posterior\n\n    def decide(self, candidates):\n        return self.posterior.commit(candidates)\n\n    def public_score(self, candidate):\n        return self.posterior.committed_score(candidate)\n";
+        state.change(
+            uri,
+            vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: adopted.to_string(),
+            }],
+            Some(2),
+        )?;
+        let document = state.documents.values().next().expect("open document");
+        assert!(
+            document
+                .findings
+                .iter()
+                .all(|finding| finding.rule != "owner-moved-consumer-stale"),
+            "the stale diagnostic must be invalidated by the buffer edit: {:?}",
+            document.findings
+        );
         Ok(())
     }
 

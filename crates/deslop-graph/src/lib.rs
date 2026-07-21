@@ -8,11 +8,16 @@ use deslop_parse::{
 };
 
 mod builder;
+mod contract;
 mod extract;
 mod ids;
 mod render;
 mod types;
 
+pub use contract::{
+    CONTRACT_GRAPH_SCHEMA, ContractEdgeConfidence, ContractGraph, ContractGraphEdge,
+    ContractGraphNode, ContractGraphProjection, contract_graph_analysis, contract_graph_paths,
+};
 pub use render::{render_dot, render_json};
 pub use types::{
     DependencyGraph, GraphConfidence, GraphConfig, GraphEdge, GraphEdgeKind, GraphNode,
