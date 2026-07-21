@@ -200,3 +200,8 @@ and equivalent-mutant detection (the path to using mutation as an actual slop *d
 exceptions and their exact recheck conditions are maintained in
 [`docs/M10_FAILURE_RISK_REGISTER.md`](docs/M10_FAILURE_RISK_REGISTER.md), not hidden behind a broader
 "complete" claim.
+
+[`docs/REFACTOR_DEFECT_ACCUMULATION.md`](docs/REFACTOR_DEFECT_ACCUMULATION.md) describes a proposed
+history-aware analysis for refactors that move behavioral ownership while leaving consumers, tests,
+verifiers, telemetry, or operational identity attached to the former owner. It uses Tree-sitter and
+optional revision-bound LSP evidence without requiring language-specific compiler tooling.

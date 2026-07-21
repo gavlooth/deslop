@@ -12742,3 +12742,41 @@ boundaries until new frozen evidence satisfies their recorded recheck conditions
 set. No service restart or migration is otherwise required.
 
 Signature: Codex (GPT-5), M10 push confirmation, 2026-07-16.
+
+## 2026-07-21 — Refactor-defect accumulation design guide
+
+**Objective:** Document how deslop can detect defects that accumulate when a refactor moves
+behavioral ownership but leaves consumers, verifiers, tests, telemetry, or operational identity on
+the former owner.
+
+**Workspace:** `/home/christos/code/deslop`, based on `f867d7a8`; documentation-only change.
+
+**Changes:** Added `docs/REFACTOR_DEFECT_ACCUMULATION.md` and linked it from `README.md`. The guide
+records the repaired RelationExtractor parallel-diffusion case as historical evidence, defines a
+language-neutral revision-pinned contract graph, proposes ten review-only detector families, maps
+the design onto existing deslop crates, and specifies history input, Tree-sitter/LSP authority,
+evaluation fixtures, phases, and acceptance gates.
+
+**Commands run/results:** Confirmed the three cited RelationExtractor reports exist; checked the
+current `ProjectAnalysis`, `ModuleChangeHistory`, `FactCoverage`, semantic-provider, and `NeverAuto`
+terminology against source; `git diff --check` passed; no trailing whitespace was found; `jj status`
+showed only the intended README and new guide changes. No Rust tests were run because runtime code
+and schemas were not changed.
+
+**Invalidated assumptions:** The requested `~/code/rust-deslop` path does not exist; the registered
+Rust repository is `/home/christos/code/deslop`. Tree-sitter and syntax-highlighting evidence alone
+cannot prove the domain semantics of a refactor, so the design preserves `Unknown`, provider
+disagreement, and review-only safety instead of treating structural candidates as confirmed defects.
+
+**Current recommendation:** Implement Phase 0 schemas and multi-revision fixtures first, followed by
+`owner-moved-consumer-stale` and `producer-verifier-schema-drift` as the smallest convergent detector
+slice. Reuse existing projections and add a sibling `ContractChangeHistory`; do not overload
+`ModuleChangeHistory` or require a language-specific compiler.
+
+**Unresolved issues:** The guide is a proposal, not a shipped detector. Entity matching across
+many-to-one migrations, dynamic dispatch, generated code, and incomplete history remain explicit
+hard cases.
+
+**Next actions:** Review the evidence contracts and frozen fixtures before authorizing implementation.
+
+Signature: Codex (GPT-5), refactor-defect accumulation guide, 2026-07-21.
