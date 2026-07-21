@@ -35,6 +35,7 @@ mod architecture;
 mod arena;
 mod clone_candidate_index;
 mod containment;
+mod contract_history;
 mod control_flow;
 mod control_regions;
 mod cycle_seam;
@@ -143,6 +144,10 @@ pub use instrumentation::{
     ProjectAnalysisInstrumentation, ProjectAnalysisUpdateInstrumentation,
     SyntaxPointContextInstrumentation, SyntaxQueryInstrumentation,
     SyntaxQueryResultsInstrumentation,
+};
+pub use contract_history::{
+    CONTRACT_CHANGE_HISTORY_SCHEMA, ContractChangeHistory, ContractFunction,
+    ContractHistoryBuildError, FileContracts, RevisionContracts,
 };
 pub use module_restructure::{
     MODULE_CHANGE_HISTORY_SCHEMA, MODULE_RESTRUCTURE_POLICY_SCHEMA, MODULE_RESTRUCTURE_SCHEMA,

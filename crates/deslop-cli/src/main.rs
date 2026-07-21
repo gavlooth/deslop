@@ -66,6 +66,7 @@ enum Command {
     Scan(ScanArgs),
     Metrics(MetricsArgs),
     Graph(GraphArgs),
+    RefactorRisk(RefactorRiskArgs),
     #[cfg(feature = "mcp")]
     Mcp,
     Fix(FixArgs),
@@ -280,6 +281,17 @@ struct GraphArgs {
 
     #[arg(long)]
     no_calls: bool,
+}
+
+#[derive(Debug, Args)]
+struct RefactorRiskArgs {
+    /// Base revision snapshot directory.
+    #[arg(long)]
+    from: PathBuf,
+
+    /// Target revision snapshot directory.
+    #[arg(long)]
+    to: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -664,6 +676,7 @@ fn main() -> Result<()> {
         Command::Scan(args) => scan(args, &config),
         Command::Metrics(args) => metrics(args),
         Command::Graph(args) => graph(args),
+        Command::RefactorRisk(args) => refactor_risk(args),
         #[cfg(feature = "mcp")]
         Command::Mcp => deslop_mcp::run_stdio(),
         Command::Fix(args) => fix(args, &config),
@@ -849,6 +862,12 @@ fn metrics(args: MetricsArgs) -> Result<()> {
     if report.status != AnalysisStatus::Complete {
         std::process::exit(2);
     }
+    Ok(())
+}
+
+fn refactor_risk(args: RefactorRiskArgs) -> Result<()> {
+    let report = deslop_analyzer::refactor::refactor_risk_paths(&args.from, &args.to)?;
+    print!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
 }
 
