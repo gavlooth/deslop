@@ -18,7 +18,7 @@
 //! silent absences. Later phases may migrate the text into `deslop-lang`
 //! query packs once a detector needs captures these queries cannot express.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -33,18 +33,30 @@ use crate::{FactCoverage, NodeId, ProjectAnalysis};
 pub const CONTRACT_CHANGE_HISTORY_SCHEMA: &str = "deslop.contract-change-history/1";
 
 /// Python contract query: function definitions (owner/consumer candidates),
-/// call targets (owner tokens), and string literals (schema tokens).
+/// call targets (owner tokens), string literals (schema tokens), and
+/// config-key reads (environment accessors carrying a string key).
+/// `@config.object`/`@config.accessor` are post-filtered in Rust
+/// (see [`is_config_object`]/[`is_config_accessor`]); the query cannot express
+/// the name match. Only environment reads count as behavioral config reads:
+/// a `config["K"]` subscript cannot be told apart from a write without
+/// semantic facts, so config-object literals stay acceptance-surface tokens.
 const PYTHON_CONTRACT_QUERY: &str = concat!(
     "(function_definition\n",
     "  name: (identifier) @function.name) @function\n\n",
     "(call\n",
     "  function: [(identifier) (attribute)] @ref)\n\n",
-    "(string) @string\n",
+    "(string) @string\n\n",
+    "(subscript\n",
+    "  value: [(identifier) (attribute)] @config.object\n",
+    "  subscript: (string) @config.key)\n\n",
+    "(call\n",
+    "  function: (attribute) @config.accessor\n",
+    "  arguments: (argument_list . (string) @config.key))\n",
 );
 
-/// Julia contract query: long- and short-form function definitions and call
-/// targets. Julia schema-token extraction is not yet supported (coverage
-/// gap), so no string captures here.
+/// Julia contract query: long- and short-form function definitions, call
+/// targets, and `ENV["KEY"]` config reads. Julia schema-token extraction is
+/// not yet supported (coverage gap), so no plain string captures here.
 const JULIA_CONTRACT_QUERY: &str = concat!(
     "(assignment\n",
     "  (call_expression\n",
@@ -53,7 +65,11 @@ const JULIA_CONTRACT_QUERY: &str = concat!(
     "  (call_expression\n",
     "    (identifier) @function.name)) @function\n\n",
     "(call_expression\n",
-    "  (identifier) @ref)\n",
+    "  (identifier) @ref)\n\n",
+    "(index_expression\n",
+    "  (identifier) @config.object\n",
+    "  (vector_expression\n",
+    "    (string_literal) @config.key))\n",
 );
 
 /// Errors building a [`ContractChangeHistory`].
@@ -89,6 +105,10 @@ pub struct ContractFunction {
     pub references: BTreeSet<String>,
     /// String-literal contents (schema tokens).
     pub literals: BTreeSet<String>,
+    /// Config keys read by this function from the process-parameter surface
+    /// (`os.environ[...]`, `os.getenv(...)`, `os.environ.get(...)`, Julia
+    /// `ENV[...]`), normalized like literals.
+    pub config_keys: BTreeSet<String>,
 }
 
 /// Contract facts for one file at one revision.
@@ -98,6 +118,11 @@ pub struct FileContracts {
     pub path: PathBuf,
     /// Sorted by name, then span.
     pub functions: Vec<ContractFunction>,
+    /// String literals outside any function (module-level acceptance
+    /// surfaces such as defaults dicts), token -> first span.
+    pub module_literals: BTreeMap<String, Span>,
+    /// Config-key reads outside any function, token -> first span.
+    pub module_config_keys: BTreeMap<String, Span>,
 }
 
 /// Contract facts for one revision in the analysis window.
@@ -221,6 +246,25 @@ fn normalize_literal(text: &str) -> String {
         .to_string()
 }
 
+/// Whether a subscript object names a process-parameter surface: a bare or
+/// dotted name whose leaf is `env` or `environ` (case-insensitive, so Python
+/// `os.environ` and Julia `ENV` both qualify). Deliberately narrow: a
+/// `config["K"]` subscript cannot be told apart from a write without
+/// semantic facts, so only environment reads count as config reads.
+fn is_config_object(text: &str) -> bool {
+    let text = text.strip_prefix("self.").unwrap_or(text);
+    let leaf = text.rsplit('.').next().unwrap_or(text);
+    let leaf = leaf.to_ascii_lowercase();
+    matches!(leaf.as_str(), "env" | "environ")
+}
+
+/// Whether a call target is a known config accessor: `os.getenv` or
+/// `os.environ.get` (leading `self.` already dropped).
+fn is_config_accessor(text: &str) -> bool {
+    let text = text.strip_prefix("self.").unwrap_or(text);
+    text == "os.getenv" || text == "os.environ.get"
+}
+
 /// Run the contract query for one file and join captures into functions.
 fn extract_file(
     analysis: &Arc<ProjectAnalysis>,
@@ -242,33 +286,47 @@ fn extract_file(
 
     // First pass: collect function definitions (name + span).
     let mut functions: Vec<ContractFunction> = Vec::new();
-    // Second pass inputs: token captures with their spans.
-    let mut references: Vec<(usize, usize, String)> = Vec::new();
-    let mut literals: Vec<(usize, usize, String)> = Vec::new();
+    // Second pass inputs: token captures with their spans. Tokens that no
+    // function contains become module-level facts, never silent drops.
+    let mut references: Vec<(Span, String)> = Vec::new();
+    let mut literals: Vec<(Span, String)> = Vec::new();
+    let mut config_keys: Vec<(Span, String)> = Vec::new();
 
     for one_match in &matches {
         let mut function_name: Option<NodeId> = None;
         let mut function_node: Option<NodeId> = None;
+        // Config surfaces named within this one match, with the key captures
+        // pending until a surface qualifies.
+        let mut config_surface = false;
+        let mut pending_keys: Vec<(Span, String)> = Vec::new();
         for capture in one_match.captures().iter() {
             let node = analysis.node(capture.node()).map_err(|error| {
                 ContractHistoryBuildError::Query(error.to_string())
             })?;
-            let byte_range = node.span().byte_range();
+            let node_span = node.span();
+            let span = Span::new(
+                node_span.start_point().row() + 1,
+                node_span.end_point().row() + 1,
+                node_span.start_byte(),
+                node_span.end_byte(),
+            );
             match capture.capture_name() {
                 "function.name" => function_name = Some(capture.node()),
                 "function" => function_node = Some(capture.node()),
-                "ref" => references.push((
-                    byte_range.start,
-                    byte_range.end,
-                    normalize_reference(node.text()),
-                )),
-                "string" => literals.push((
-                    byte_range.start,
-                    byte_range.end,
-                    normalize_literal(node.text()),
-                )),
+                "ref" => references.push((span, normalize_reference(node.text()))),
+                "string" => literals.push((span, normalize_literal(node.text()))),
+                "config.object" | "config.accessor" => {
+                    let text = node.text();
+                    if is_config_object(text) || is_config_accessor(text) {
+                        config_surface = true;
+                    }
+                }
+                "config.key" => pending_keys.push((span, normalize_literal(node.text()))),
                 _ => {}
             }
+        }
+        if config_surface {
+            config_keys.append(&mut pending_keys);
         }
         if let (Some(name_id), Some(function_id)) = (function_name, function_node) {
             let name_node = analysis.node(name_id).map_err(|error| {
@@ -291,19 +349,32 @@ fn extract_file(
                     .to_string(),
                 references: BTreeSet::new(),
                 literals: BTreeSet::new(),
+                config_keys: BTreeSet::new(),
             });
         }
     }
 
-    // Assign each token to the innermost function whose span contains it.
-    for (start, end, token) in references {
-        if let Some(function) = innermost(&mut functions, start, end) {
+    // Assign each token to the innermost function whose span contains it;
+    // tokens outside every function are module-level facts.
+    let mut module_literals = BTreeMap::new();
+    let mut module_config_keys = BTreeMap::new();
+    for (span, token) in references {
+        if let Some(function) = innermost(&mut functions, &span) {
             function.references.insert(token);
         }
     }
-    for (start, end, token) in literals {
-        if let Some(function) = innermost(&mut functions, start, end) {
+    for (span, token) in literals {
+        if let Some(function) = innermost(&mut functions, &span) {
             function.literals.insert(token);
+        } else {
+            module_literals.entry(token).or_insert(span);
+        }
+    }
+    for (span, token) in config_keys {
+        if let Some(function) = innermost(&mut functions, &span) {
+            function.config_keys.insert(token);
+        } else {
+            module_config_keys.entry(token).or_insert(span);
         }
     }
 
@@ -318,18 +389,21 @@ fn extract_file(
     Ok(FileContracts {
         path: path.to_path_buf(),
         functions,
+        module_literals,
+        module_config_keys,
     })
 }
 
-/// The function with the smallest span containing `[start, end)`, if any.
-fn innermost(
-    functions: &mut [ContractFunction],
-    start: usize,
-    end: usize,
-) -> Option<&mut ContractFunction> {
+/// The function with the smallest span containing `span`, if any.
+fn innermost<'f>(
+    functions: &'f mut [ContractFunction],
+    span: &Span,
+) -> Option<&'f mut ContractFunction> {
     functions
         .iter_mut()
-        .filter(|function| function.span.start_byte <= start && end <= function.span.end_byte)
+        .filter(|function| {
+            function.span.start_byte <= span.start_byte && span.end_byte <= function.span.end_byte
+        })
         .min_by_key(|function| function.span.end_byte - function.span.start_byte)
 }
 
@@ -415,6 +489,21 @@ def build_manifest(run):
     }
 
     #[test]
+    fn module_level_tokens_are_file_facts_not_silent_drops() {
+        let source = br#"import os
+
+DEFAULTS = {"threshold": 0.5}
+LIMIT = os.environ["LIMIT"]
+"#;
+        let history = history(&[("settings.py", source)]);
+        let file = &history.revisions[0].files[0];
+        assert!(file.module_literals.contains_key("threshold"));
+        assert!(file.module_literals.contains_key("LIMIT"));
+        assert_eq!(file.module_config_keys.len(), 1);
+        assert!(file.module_config_keys.contains_key("LIMIT"));
+    }
+
+    #[test]
     fn unsupported_language_is_a_coverage_reason_not_a_silent_skip() {
         // Rust is a supported source (the builder accepts it) but has no
         // contract query yet: it must surface as a coverage reason.
@@ -422,6 +511,61 @@ def build_manifest(run):
         assert_eq!(history.coverage, FactCoverage::Partial);
         assert_eq!(history.reasons.len(), 1);
         assert!(history.reasons[0].contains("no contract query"));
+    }
+
+    #[test]
+    fn python_config_key_extraction() {
+        let source = br#"import os
+
+DEFAULTS = {"threshold": 0.5}
+
+
+def load_config():
+    config = {}
+    config["threshold"] = os.environ["THRESHOLD"]
+    config["seed"] = os.getenv("SEED")
+    config["lr"] = os.environ.get("LEARNING_RATE")
+    return config
+
+
+def fetch(url):
+    return requests.get("https://example.com")
+"#;
+        let history = history(&[("config.py", source)]);
+        assert_eq!(history.coverage, FactCoverage::Complete);
+        let file = &history.revisions[0].files[0];
+        let load = file
+            .functions
+            .iter()
+            .find(|function| function.name == "load_config")
+            .expect("missing load_config");
+        assert!(load.config_keys.contains("THRESHOLD"));
+        assert!(load.config_keys.contains("SEED"));
+        assert!(load.config_keys.contains("LEARNING_RATE"));
+        // A `config["K"]` subscript is not a config read (reads and writes
+        // are indistinguishable without semantic facts).
+        assert!(!load.config_keys.contains("threshold"));
+        // A generic attribute call with a string argument is not a config read.
+        let fetch = file
+            .functions
+            .iter()
+            .find(|function| function.name == "fetch")
+            .expect("missing fetch");
+        assert!(fetch.config_keys.is_empty());
+    }
+
+    #[test]
+    fn julia_config_key_extraction() {
+        let source = b"load_config() = ENV[\"THRESHOLD\"]\n";
+        let history = history(&[("config.jl", source)]);
+        assert_eq!(history.coverage, FactCoverage::Complete);
+        let file = &history.revisions[0].files[0];
+        let load = file
+            .functions
+            .iter()
+            .find(|function| function.name == "load_config")
+            .expect("missing load_config");
+        assert!(load.config_keys.contains("THRESHOLD"));
     }
 
     #[test]

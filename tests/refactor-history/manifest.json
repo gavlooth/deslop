@@ -1,6 +1,6 @@
 {
   "schema": "deslop.refactor-history-manifest/1",
-  "note": "Golden cases for refactor-defect accumulation detectors (docs/REFACTOR_DEFECT_ACCUMULATION.md). Each case is an ordered sequence of complete source snapshots; `01-before`/`02-after` directory order is the revision order. No runner consumes this manifest yet; it is the Phase 0 contract that Phase 1 detectors are coded against.",
+  "note": "Golden cases for refactor-defect accumulation detectors (docs/REFACTOR_DEFECT_ACCUMULATION.md). Each case is an ordered sequence of complete source snapshots; `01-before`/`02-after` directory order is the revision order. Consumed by crates/deslop-cli/tests/refactor_risk.rs: expectations check `findings` unless `\"summary\": true`, which checks `summaries` (adoption-chain-incomplete must never appear in findings).",
   "cases": [
     {
       "name": "py-full-adoption",
@@ -48,6 +48,50 @@
       "revisions": ["01-before", "02-after"],
       "expectations": [
         { "rule": "owner-moved-consumer-stale", "should_fire": false, "note": "deliberate adapter plus tested conversion invariant is counter-evidence that suppresses the finding" }
+      ]
+    },
+    {
+      "name": "py-config-inert",
+      "language": "python",
+      "revisions": ["01-before", "02-after"],
+      "expectations": [
+        { "rule": "accepted-config-inert", "should_fire": true, "note": "THRESHOLD_V2 replaced THRESHOLD reads while the retired key stays in the DEFAULTS acceptance surface" }
+      ]
+    },
+    {
+      "name": "py-config-clean-removal",
+      "language": "python",
+      "revisions": ["01-before", "02-after"],
+      "expectations": [
+        { "rule": "accepted-config-inert", "should_fire": false, "note": "key removed from reads and literals alike; nothing stale remains" }
+      ]
+    },
+    {
+      "name": "py-test-oracle-lag",
+      "language": "python",
+      "revisions": ["01-before", "02-after"],
+      "expectations": [
+        { "rule": "owner-moved-consumer-stale", "should_fire": true, "note": "decision moved to posterior; public_score still reads the former owner" },
+        { "rule": "test-oracle-lag", "should_fire": true, "note": "unchanged test still exercises the former owner representation" },
+        { "rule": "adoption-chain-incomplete", "should_fire": true, "summary": true, "note": "consumer and test-oracle stages share one owner migration; summarized once, never double-counted" }
+      ]
+    },
+    {
+      "name": "py-adoption-summary",
+      "language": "python",
+      "revisions": ["01-before", "02-after"],
+      "expectations": [
+        { "rule": "owner-moved-consumer-stale", "should_fire": true, "note": "producer moved from emit to emit_v2; verifier still calls emit" },
+        { "rule": "producer-verifier-schema-drift", "should_fire": true, "note": "producer nests metric; verifier still requires it" },
+        { "rule": "adoption-chain-incomplete", "should_fire": true, "summary": true, "note": "two families share the build_manifest owner migration" }
+      ]
+    },
+    {
+      "name": "py-persistence-window",
+      "language": "python",
+      "revisions": ["01-before", "02-after", "03-later"],
+      "expectations": [
+        { "rule": "owner-moved-consumer-stale", "should_fire": true, "note": "migration at rev2; stale edge survives to rev3 while the owner is edited independently (exact persistence numbers are asserted in deslop-analyzer unit tests)" }
       ]
     }
   ]

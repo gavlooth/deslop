@@ -2,8 +2,11 @@
 //! refactor-history corpus (`tests/refactor-history/manifest.json`).
 //!
 //! Every manifest case runs the CLI over its ordered snapshot directories
-//! and checks each expectation: a rule with `should_fire: true` must appear
-//! in the report's findings; `should_fire: false` must not.
+//! (`--from`/`--to`, extra revisions via `--then`) and checks each
+//! expectation: a rule with `should_fire: true` must appear in the report's
+//! findings; `should_fire: false` must not. An expectation with
+//! `"summary": true` is checked against `summaries` instead — summary
+//! findings must never leak into `findings` (no double counting).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -36,22 +39,35 @@ fn refactor_history_manifest_expectations_hold() {
     for case in cases {
         let name = case["name"].as_str().expect("case name");
         let revisions = case["revisions"].as_array().expect("case revisions");
-        assert_eq!(
-            revisions.len(),
-            2,
-            "case {name}: the Phase 1 detector compares exactly two revisions"
+        assert!(
+            revisions.len() >= 2,
+            "case {name}: refactor-risk compares at least two revisions"
         );
-        let from = root.join(name).join(revisions[0].as_str().unwrap());
-        let to = root.join(name).join(revisions[1].as_str().unwrap());
+        let mut args = vec![
+            "refactor-risk".to_string(),
+            "--from".to_string(),
+            root.join(name)
+                .join(revisions[0].as_str().unwrap())
+                .display()
+                .to_string(),
+            "--to".to_string(),
+            root.join(name)
+                .join(revisions[1].as_str().unwrap())
+                .display()
+                .to_string(),
+        ];
+        for revision in &revisions[2..] {
+            args.push("--then".to_string());
+            args.push(
+                root.join(name)
+                    .join(revision.as_str().unwrap())
+                    .display()
+                    .to_string(),
+            );
+        }
 
         let output = deslop()
-            .args([
-                "refactor-risk",
-                "--from",
-                from.to_str().unwrap(),
-                "--to",
-                to.to_str().unwrap(),
-            ])
+            .args(&args)
             .output()
             .expect("run deslop refactor-risk");
         assert!(
@@ -68,10 +84,26 @@ fn refactor_history_manifest_expectations_hold() {
             .iter()
             .map(|finding| finding["rule"].as_str().expect("finding rule"))
             .collect();
+        let summaries: Vec<&str> = report["summaries"]
+            .as_array()
+            .expect("report summaries")
+            .iter()
+            .map(|summary| summary["rule"].as_str().expect("summary rule"))
+            .collect();
+        assert!(
+            !fired.contains(&"adoption-chain-incomplete"),
+            "case {name}: summaries must not appear in findings (double counting)"
+        );
         for finding in report["findings"].as_array().unwrap() {
             assert_eq!(
                 finding["safety"], "never-auto",
                 "case {name}: refactor-defect findings are always review-only"
+            );
+        }
+        for summary in report["summaries"].as_array().unwrap() {
+            assert_eq!(
+                summary["safety"], "never-auto",
+                "case {name}: refactor-defect summaries are always review-only"
             );
         }
 
@@ -80,11 +112,14 @@ fn refactor_history_manifest_expectations_hold() {
             let should_fire = expectation["should_fire"]
                 .as_bool()
                 .expect("expectation should_fire");
+            let is_summary = expectation["summary"].as_bool().unwrap_or(false);
             let note = expectation["note"].as_str().unwrap_or("");
+            let surface = if is_summary { &summaries } else { &fired };
             assert_eq!(
-                fired.contains(&rule),
+                surface.contains(&rule),
                 should_fire,
-                "case {name}: rule {rule} should_fire={should_fire} ({note}); fired: {fired:?}"
+                "case {name}: rule {rule} should_fire={should_fire} summary={is_summary} \
+                 ({note}); findings: {fired:?}; summaries: {summaries:?}"
             );
         }
     }

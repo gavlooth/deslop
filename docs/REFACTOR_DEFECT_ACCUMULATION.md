@@ -578,9 +578,22 @@ accepted set.
 
 ### Phase 2: adoption surfaces (`deslop-analyzer`, `deslop-graph`)
 
+Shipped (2026-07, `deslop refactor-risk`): config-key extraction
+(`os.environ`/`os.getenv`/`ENV` reads plus module-level acceptance surfaces)
+with `accepted-config-inert`, cross-file `test-oracle-lag`,
+`adoption-chain-incomplete` summaries in a separate `summaries` report field
+(no double counting), and multi-revision windows (`--then`) computing
+persistence and co-change triage inputs from contract fingerprints.
+
 - Add config, test-oracle, telemetry, and operational-identity roles.
-- Add incomplete-adoption summaries without double-counting findings.
-- Expose persistence and co-change evidence as triage inputs.
+  (Config and test-oracle shipped. Telemetry deferred: it requires the
+  claimed mechanism and telemetry producer as graph nodes. Operational
+  identity deferred: distinguishing identity literals from schema literals is
+  text matching, which the evidence rules reject as sole evidence.)
+- Add incomplete-adoption summaries without double-counting findings. (Shipped.)
+- Expose persistence and co-change evidence as triage inputs. (Shipped for
+  contract fingerprints; the `deslop-graph` contract projection remains
+  future work and ships with the graph-dependent families.)
 
 ### Phase 3: editor and review integration (`deslop-lsp`, `deslop-mcp`, `deslop-report`)
 

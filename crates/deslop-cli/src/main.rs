@@ -292,6 +292,12 @@ struct RefactorRiskArgs {
     /// Target revision snapshot directory.
     #[arg(long)]
     to: PathBuf,
+
+    /// Later revision snapshot directory (repeatable). Extends the analysis
+    /// window past `--to` so persistence and co-change triage inputs are
+    /// computed instead of reported as a coverage gap.
+    #[arg(long)]
+    then: Vec<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -866,7 +872,11 @@ fn metrics(args: MetricsArgs) -> Result<()> {
 }
 
 fn refactor_risk(args: RefactorRiskArgs) -> Result<()> {
-    let report = deslop_analyzer::refactor::refactor_risk_paths(&args.from, &args.to)?;
+    let roots = std::iter::once(args.from)
+        .chain(std::iter::once(args.to))
+        .chain(args.then)
+        .collect::<Vec<_>>();
+    let report = deslop_analyzer::refactor::refactor_risk_window_paths(&roots)?;
     print!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
 }
