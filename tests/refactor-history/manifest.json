@@ -1,0 +1,54 @@
+{
+  "schema": "deslop.refactor-history-manifest/1",
+  "note": "Golden cases for refactor-defect accumulation detectors (docs/REFACTOR_DEFECT_ACCUMULATION.md). Each case is an ordered sequence of complete source snapshots; `01-before`/`02-after` directory order is the revision order. No runner consumes this manifest yet; it is the Phase 0 contract that Phase 1 detectors are coded against.",
+  "cases": [
+    {
+      "name": "py-full-adoption",
+      "language": "python",
+      "revisions": ["01-before", "02-after"],
+      "expectations": [
+        { "rule": "owner-moved-consumer-stale", "should_fire": false, "note": "decision and public score both moved to the posterior" }
+      ]
+    },
+    {
+      "name": "py-pure-rename",
+      "language": "python",
+      "revisions": ["01-before", "02-after"],
+      "expectations": [
+        { "rule": "owner-moved-consumer-stale", "should_fire": false, "note": "method renamed with all call sites updated; no ownership change" }
+      ]
+    },
+    {
+      "name": "py-owner-moved-stale",
+      "language": "python",
+      "revisions": ["01-before", "02-after"],
+      "expectations": [
+        { "rule": "owner-moved-consumer-stale", "should_fire": true, "note": "decision moved to posterior; public_score still reads the former owner" }
+      ]
+    },
+    {
+      "name": "jl-owner-moved-stale",
+      "language": "julia",
+      "revisions": ["01-before", "02-after"],
+      "expectations": [
+        { "rule": "owner-moved-consumer-stale", "should_fire": true, "note": "same migration as py-owner-moved-stale in Julia syntax" }
+      ]
+    },
+    {
+      "name": "py-schema-drift",
+      "language": "python",
+      "revisions": ["01-before", "02-after"],
+      "expectations": [
+        { "rule": "producer-verifier-schema-drift", "should_fire": true, "note": "producer nests metric and adds seed; validator unchanged" }
+      ]
+    },
+    {
+      "name": "py-compat-adapter",
+      "language": "python",
+      "revisions": ["01-before", "02-after"],
+      "expectations": [
+        { "rule": "owner-moved-consumer-stale", "should_fire": false, "note": "deliberate adapter plus tested conversion invariant is counter-evidence that suppresses the finding" }
+      ]
+    }
+  ]
+}

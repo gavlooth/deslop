@@ -513,6 +513,8 @@ mod identity_tests {
     }
 }
 
+pub mod refactor_defect;
+
 /// The single canonical registry of every rule deslop can emit.
 ///
 /// This is the one source of truth shared by:
@@ -736,6 +738,61 @@ pub mod rules {
             name: "config-key-shadowed",
             safety: "never-auto",
             default: "review (parsed value overwritten by a literal)",
+        },
+        RuleInfo {
+            name: "owner-moved-consumer-stale",
+            safety: "never-auto",
+            default: "review (owner moved; consumer still derives from former owner)",
+        },
+        RuleInfo {
+            name: "scope-collapse-after-refactor",
+            safety: "never-auto",
+            default: "review (partitioned operation became global after reshape)",
+        },
+        RuleInfo {
+            name: "mechanism-live-gate-retired",
+            safety: "never-auto",
+            default: "review (live mechanism; gate still reads retired value)",
+        },
+        RuleInfo {
+            name: "producer-verifier-schema-drift",
+            safety: "never-auto",
+            default: "review (producer changed; verifier or reader did not)",
+        },
+        RuleInfo {
+            name: "accepted-config-inert",
+            safety: "never-auto",
+            default: "review (accepted parameter no longer reaches behavior)",
+        },
+        RuleInfo {
+            name: "confidence-provenance-lost",
+            safety: "never-auto",
+            default: "review (public score reconstructed from lossy representation)",
+        },
+        RuleInfo {
+            name: "telemetry-not-bound-to-claim",
+            safety: "never-auto",
+            default: "review (metric not bound to the claimed mechanism)",
+        },
+        RuleInfo {
+            name: "test-oracle-lag",
+            safety: "never-auto",
+            default: "review (tests do not exercise the changed contract)",
+        },
+        RuleInfo {
+            name: "hot-path-work-duplicated",
+            safety: "never-auto",
+            default: "review (equivalent expensive computation duplicated)",
+        },
+        RuleInfo {
+            name: "operational-identity-stale",
+            safety: "never-auto",
+            default: "review (status surfaces a replaced identity)",
+        },
+        RuleInfo {
+            name: "adoption-chain-incomplete",
+            safety: "never-auto",
+            default: "review (summary of an incomplete owner-migration chain)",
         },
     ];
 
