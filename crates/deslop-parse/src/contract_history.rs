@@ -33,6 +33,11 @@ use crate::{FactCoverage, NodeId, ProjectAnalysis};
 /// Wire schema identifier for a contract change history.
 pub const CONTRACT_CHANGE_HISTORY_SCHEMA: &str = "deslop.contract-change-history/2";
 
+/// Wire schema identifier for contract facts extracted from one exact
+/// project snapshot. Snapshot-native refactor analysis consumes this type
+/// directly; ordered history is a composition of these facts.
+pub const CONTRACT_SNAPSHOT_SCHEMA: &str = "deslop.contract-snapshot/1";
+
 /// Errors building a [`ContractChangeHistory`].
 #[derive(Debug)]
 pub enum ContractHistoryBuildError {
@@ -107,6 +112,119 @@ pub struct RevisionContracts {
     pub files: Vec<FileContracts>,
 }
 
+/// Contract facts and coverage for one exact revision-pinned analysis.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContractSnapshot {
+    pub schema: String,
+    pub revision: String,
+    pub coverage: FactCoverage,
+    /// Empty exactly when coverage is complete.
+    pub reasons: Vec<String>,
+    pub files: Vec<FileContracts>,
+}
+
+impl ContractSnapshot {
+    /// Extract one snapshot without constructing a synthetic history window.
+    pub fn from_analysis(
+        revision: impl Into<String>,
+        analysis: &Arc<ProjectAnalysis>,
+    ) -> Result<Self, ContractHistoryBuildError> {
+        let revision = revision.into();
+        let mut reasons = Vec::new();
+        let contract_sources: BTreeMap<PathBuf, String> = analysis
+            .snapshot()
+            .entries()
+            .filter_map(|entry| {
+                let identity = entry.language_adapter_identity()?;
+                let declaration = identity.queries().queries().iter().find(|declaration| {
+                    declaration.family() == deslop_lang::QueryFamily::Contract
+                })?;
+                if declaration.support() != deslop_lang::CapabilitySupport::Provided {
+                    return None;
+                }
+                Some((
+                    entry.path().to_path_buf(),
+                    declaration.source()?.to_string(),
+                ))
+            })
+            .collect();
+        let mut files = Vec::new();
+        for parsed in analysis.files() {
+            let path = parsed.key().path.clone();
+            let Some(query_source) = contract_sources.get(&path) else {
+                reasons.push(format!(
+                    "{}: the language adapter declares no contract query family \
+                     (revision {revision})",
+                    path.display()
+                ));
+                continue;
+            };
+            if !parsed.has_tree() {
+                reasons.push(format!(
+                    "{}: parse unavailable (revision {revision})",
+                    path.display()
+                ));
+                continue;
+            }
+            if parsed.text().is_some_and(is_generated_source) {
+                reasons.push(format!(
+                    "{}: generated file excluded by explicit provenance marker \
+                     (revision {revision})",
+                    path.display()
+                ));
+                continue;
+            }
+            files.push(
+                extract_file(analysis, &path, query_source).map_err(|error| {
+                    ContractHistoryBuildError::Query(format!(
+                        "{} (revision {revision}): {error}",
+                        path.display()
+                    ))
+                })?,
+            );
+        }
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        let coverage = if reasons.is_empty() {
+            FactCoverage::Complete
+        } else {
+            FactCoverage::Partial
+        };
+        let snapshot = Self {
+            schema: CONTRACT_SNAPSHOT_SCHEMA.to_string(),
+            revision,
+            coverage,
+            reasons,
+            files,
+        };
+        snapshot.validate()?;
+        Ok(snapshot)
+    }
+
+    pub fn validate(&self) -> Result<(), ContractHistoryBuildError> {
+        if self.schema != CONTRACT_SNAPSHOT_SCHEMA {
+            return Err(ContractHistoryBuildError::Identity(format!(
+                "expected schema `{CONTRACT_SNAPSHOT_SCHEMA}`, got `{}`",
+                self.schema
+            )));
+        }
+        if (self.coverage == FactCoverage::Complete) != self.reasons.is_empty() {
+            return Err(ContractHistoryBuildError::Identity(
+                "complete snapshot coverage must carry no reasons; incomplete coverage must carry at least one"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn revision_contracts(&self) -> RevisionContracts {
+        RevisionContracts {
+            revision: self.revision.clone(),
+            files: self.files.clone(),
+        }
+    }
+}
+
 /// Contract facts over an ordered revision window
 /// (`deslop.contract-change-history/1`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,63 +251,9 @@ impl ContractChangeHistory {
         let mut reasons = Vec::new();
         let mut extracted = Vec::with_capacity(revisions.len());
         for (revision, analysis) in revisions {
-            let contract_sources: BTreeMap<PathBuf, String> = analysis
-                .snapshot()
-                .entries()
-                .filter_map(|entry| {
-                    let identity = entry.language_adapter_identity()?;
-                    let declaration = identity.queries().queries().iter().find(|declaration| {
-                        declaration.family() == deslop_lang::QueryFamily::Contract
-                    })?;
-                    if declaration.support() != deslop_lang::CapabilitySupport::Provided {
-                        return None;
-                    }
-                    Some((
-                        entry.path().to_path_buf(),
-                        declaration.source()?.to_string(),
-                    ))
-                })
-                .collect();
-            let mut files = Vec::new();
-            for parsed in analysis.files() {
-                let path = parsed.key().path.clone();
-                let Some(query_source) = contract_sources.get(&path) else {
-                    reasons.push(format!(
-                        "{}: the language adapter declares no contract query family \
-                         (revision {revision})",
-                        path.display()
-                    ));
-                    continue;
-                };
-                if !parsed.has_tree() {
-                    reasons.push(format!(
-                        "{}: parse unavailable (revision {revision})",
-                        path.display()
-                    ));
-                    continue;
-                }
-                if parsed.text().is_some_and(is_generated_source) {
-                    reasons.push(format!(
-                        "{}: generated file excluded by explicit provenance marker \
-                         (revision {revision})",
-                        path.display()
-                    ));
-                    continue;
-                }
-                files.push(
-                    extract_file(analysis, &path, query_source).map_err(|error| {
-                        ContractHistoryBuildError::Query(format!(
-                            "{} (revision {revision}): {error}",
-                            path.display()
-                        ))
-                    })?,
-                );
-            }
-            files.sort_by(|left, right| left.path.cmp(&right.path));
-            extracted.push(RevisionContracts {
-                revision: revision.clone(),
-                files,
-            });
+            let snapshot = ContractSnapshot::from_analysis(revision.clone(), analysis)?;
+            reasons.extend(snapshot.reasons.iter().cloned());
+            extracted.push(snapshot.revision_contracts());
         }
         let coverage = if reasons.is_empty() {
             FactCoverage::Complete

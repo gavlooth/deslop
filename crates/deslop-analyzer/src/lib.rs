@@ -26,6 +26,7 @@ mod clojure;
 mod julia;
 mod packs;
 pub mod refactor;
+pub mod snapshot_refactor;
 
 pub use boundary::BoundaryConfig;
 pub use deslop_parse::FactCoverage;

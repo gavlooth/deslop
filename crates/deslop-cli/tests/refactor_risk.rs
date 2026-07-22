@@ -21,12 +21,110 @@ fn corpus_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/refactor-history")
 }
 
+fn snapshot_manifest_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/refactor-snapshot/manifest.json")
+}
+
 fn case_revision(case: &str, revision: &str) -> String {
     corpus_root()
         .join(case)
         .join(revision)
         .display()
         .to_string()
+}
+
+#[test]
+fn current_snapshot_mode_needs_no_repository_or_revision_arguments() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    std::fs::write(
+        temp.path().join("scoring.py"),
+        "def decide(x):\n    return posterior.commit(x)\n\ndef public_score(x):\n    return model.raw_score(x)\n",
+    )
+    .expect("write current snapshot");
+    let output = deslop()
+        .args(["refactor-risk", "."])
+        .current_dir(temp.path())
+        .output()
+        .expect("run snapshot refactor-risk outside VCS");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).expect("snapshot report JSON");
+    assert_eq!(report["schema"], "deslop.snapshot-refactor-risk/1");
+    assert_eq!(
+        report["findings"][0]["rule"],
+        "owner-consumer-contract-split"
+    );
+    let wire = String::from_utf8(output.stdout).unwrap();
+    for forbidden in ["owner_before", "owner_after", "persistence", "retired"] {
+        assert!(
+            !wire.contains(forbidden),
+            "snapshot wire contains {forbidden}: {wire}"
+        );
+    }
+}
+
+#[test]
+fn snapshot_manifest_exact_expectations_hold_without_history() {
+    let manifest: Value = serde_json::from_slice(
+        &std::fs::read(snapshot_manifest_path()).expect("read snapshot manifest"),
+    )
+    .expect("parse snapshot manifest");
+    assert_eq!(manifest["schema"], "deslop.refactor-snapshot-manifest/1");
+    for case in manifest["cases"].as_array().expect("snapshot cases") {
+        let name = case["name"].as_str().unwrap();
+        let snapshot = case["snapshot"].as_str().unwrap();
+        let path = corpus_root().join(name).join(snapshot);
+        let output = deslop()
+            .args(["refactor-risk", &path.display().to_string()])
+            .output()
+            .expect("run snapshot refactor-risk");
+        assert!(
+            output.status.success(),
+            "case {name}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: Value = serde_json::from_slice(&output.stdout).expect("snapshot report");
+        assert_eq!(report["coverage"], case["coverage"], "case {name}");
+        if let Some(reason) = case.get("reason").and_then(Value::as_str) {
+            assert!(
+                report["coverage_reasons"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|actual| actual
+                        .as_str()
+                        .is_some_and(|actual| actual.contains(reason))),
+                "case {name}: missing reason {reason}: {}",
+                report["coverage_reasons"]
+            );
+        }
+        let collect = |field: &str| -> Vec<String> {
+            let mut rules: Vec<String> = report[field]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|finding| finding["rule"].as_str().unwrap().to_string())
+                .collect();
+            rules.sort();
+            rules.dedup();
+            rules
+        };
+        let expected = |field: &str| -> Vec<String> {
+            let mut rules: Vec<String> = case[field]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|rule| rule.as_str().unwrap().to_string())
+                .collect();
+            rules.sort();
+            rules
+        };
+        assert_eq!(collect("findings"), expected("findings"), "case {name}");
+        assert_eq!(collect("summaries"), expected("summaries"), "case {name}");
+    }
 }
 
 #[test]

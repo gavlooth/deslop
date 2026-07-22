@@ -79,6 +79,7 @@ pub enum DetectedBy {
     JuliaAnalyzer,
     RustAnalyzer,
     RefactorHistory,
+    RefactorSnapshot,
 }
 }
 
@@ -515,6 +516,7 @@ mod identity_tests {
 }
 
 pub mod refactor_defect;
+pub mod snapshot_pathology;
 
 /// The single canonical registry of every rule deslop can emit.
 ///
@@ -794,6 +796,61 @@ pub mod rules {
             name: "adoption-chain-incomplete",
             safety: "never-auto",
             default: "review (summary of an incomplete owner-migration chain)",
+        },
+        RuleInfo {
+            name: "owner-consumer-contract-split",
+            safety: "never-auto",
+            default: "review (current owner and consumer paths disagree)",
+        },
+        RuleInfo {
+            name: "partition-boundary-not-preserved",
+            safety: "never-auto",
+            default: "review (current partition boundary may be crossed)",
+        },
+        RuleInfo {
+            name: "mechanism-gate-contract-split",
+            safety: "never-auto",
+            default: "review (current mechanism and gate paths disagree)",
+        },
+        RuleInfo {
+            name: "producer-verifier-schema-mismatch",
+            safety: "never-auto",
+            default: "review (current producer and verifier schemas disagree)",
+        },
+        RuleInfo {
+            name: "accepted-config-no-behavioral-reach",
+            safety: "never-auto",
+            default: "review (accepted config has no observed behavioral reach)",
+        },
+        RuleInfo {
+            name: "confidence-derived-after-lossy-commit",
+            safety: "never-auto",
+            default: "review (public confidence follows a lossy operation)",
+        },
+        RuleInfo {
+            name: "telemetry-claim-unbound",
+            safety: "never-auto",
+            default: "review (telemetry and claimed mechanism paths disagree)",
+        },
+        RuleInfo {
+            name: "test-contract-dimension-uncovered",
+            safety: "never-auto",
+            default: "review (current contract dimension lacks an observed oracle)",
+        },
+        RuleInfo {
+            name: "same-path-expensive-work-repeated",
+            safety: "never-auto",
+            default: "review (composite work repeats on one current path)",
+        },
+        RuleInfo {
+            name: "published-identity-not-live",
+            safety: "never-auto",
+            default: "review (published and governing identity paths disagree)",
+        },
+        RuleInfo {
+            name: "contract-chain-incomplete",
+            safety: "never-auto",
+            default: "review (summary of current contract-path splits)",
         },
     ];
 

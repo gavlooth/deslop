@@ -1,0 +1,41 @@
+{
+  "schema": "deslop.refactor-snapshot-manifest/1",
+  "note": "Frozen P0 feasibility contract. Each case analyzes only the named current snapshot; history is used solely as gold provenance and is never supplied to the snapshot analyzer. Findings are exact unique rule sets. Promotion is per-family and does not pool candidate/history-only families.",
+  "families": [
+    {"rule": "owner-consumer-contract-split", "history_rule": "owner-moved-consumer-stale", "status": "promoted"},
+    {"rule": "partition-boundary-not-preserved", "history_rule": "scope-collapse-after-refactor", "status": "history-only"},
+    {"rule": "mechanism-gate-contract-split", "history_rule": "mechanism-live-gate-retired", "status": "candidate"},
+    {"rule": "producer-verifier-schema-mismatch", "history_rule": "producer-verifier-schema-drift", "status": "candidate"},
+    {"rule": "accepted-config-no-behavioral-reach", "history_rule": "accepted-config-inert", "status": "candidate"},
+    {"rule": "confidence-derived-after-lossy-commit", "history_rule": "confidence-provenance-lost", "status": "candidate"},
+    {"rule": "telemetry-claim-unbound", "history_rule": "telemetry-not-bound-to-claim", "status": "candidate"},
+    {"rule": "test-contract-dimension-uncovered", "history_rule": "test-oracle-lag", "status": "candidate"},
+    {"rule": "same-path-expensive-work-repeated", "history_rule": "hot-path-work-duplicated", "status": "candidate"},
+    {"rule": "published-identity-not-live", "history_rule": "operational-identity-stale", "status": "candidate"},
+    {"rule": "contract-chain-incomplete", "history_rule": "adoption-chain-incomplete", "status": "candidate"}
+  ],
+  "cases": [
+    {"name": "jl-owner-moved-stale", "snapshot": "02-after", "coverage": "complete", "findings": ["owner-consumer-contract-split"], "summaries": []},
+    {"name": "js-owner-moved-stale", "snapshot": "02-after", "coverage": "complete", "findings": ["owner-consumer-contract-split"], "summaries": []},
+    {"name": "py-adoption-summary", "snapshot": "02-after", "coverage": "complete", "findings": ["producer-verifier-schema-mismatch"], "summaries": []},
+    {"name": "py-compat-adapter", "snapshot": "02-after", "coverage": "complete", "findings": [], "summaries": []},
+    {"name": "py-config-clean-removal", "snapshot": "02-after", "coverage": "complete", "findings": [], "summaries": []},
+    {"name": "py-config-inert", "snapshot": "02-after", "coverage": "complete", "findings": ["accepted-config-no-behavioral-reach"], "summaries": []},
+    {"name": "py-dynamic-consumer", "snapshot": "02-after", "coverage": "partial", "reason": "dynamic/string-addressed access", "findings": [], "summaries": []},
+    {"name": "py-file-move", "snapshot": "02-after", "coverage": "complete", "findings": [], "summaries": []},
+    {"name": "py-full-adoption", "snapshot": "02-after", "coverage": "complete", "findings": [], "summaries": []},
+    {"name": "py-gate-retired", "snapshot": "02-after", "coverage": "complete", "findings": ["mechanism-gate-contract-split"], "summaries": []},
+    {"name": "py-generated-excluded", "snapshot": "02-after", "coverage": "partial", "reason": "generated file excluded", "findings": [], "summaries": []},
+    {"name": "py-hot-path-dup", "snapshot": "02-after", "coverage": "complete", "findings": ["same-path-expensive-work-repeated"], "summaries": []},
+    {"name": "py-identity-stale", "snapshot": "02-after", "coverage": "complete", "findings": ["published-identity-not-live"], "summaries": []},
+    {"name": "py-owner-moved-stale", "snapshot": "02-after", "coverage": "complete", "findings": ["owner-consumer-contract-split"], "summaries": []},
+    {"name": "py-persistence-window", "snapshot": "02-after", "coverage": "complete", "findings": ["owner-consumer-contract-split"], "summaries": []},
+    {"name": "py-provenance-lost", "snapshot": "02-after", "coverage": "complete", "findings": ["confidence-derived-after-lossy-commit", "owner-consumer-contract-split"], "summaries": ["contract-chain-incomplete"]},
+    {"name": "py-pure-rename", "snapshot": "02-after", "coverage": "complete", "findings": [], "summaries": []},
+    {"name": "py-schema-drift", "snapshot": "02-after", "coverage": "complete", "findings": ["producer-verifier-schema-mismatch"], "summaries": []},
+    {"name": "py-scope-collapse-oracle", "snapshot": "02-after", "coverage": "complete", "findings": [], "summaries": []},
+    {"name": "py-scope-collapse", "snapshot": "02-after", "coverage": "complete", "findings": ["test-contract-dimension-uncovered"], "summaries": []},
+    {"name": "py-telemetry-stale", "snapshot": "02-after", "coverage": "complete", "findings": ["telemetry-claim-unbound"], "summaries": []},
+    {"name": "py-test-oracle-lag", "snapshot": "02-after", "coverage": "complete", "findings": ["owner-consumer-contract-split"], "summaries": []}
+  ]
+}

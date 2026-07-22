@@ -824,6 +824,7 @@ fn detect_pair(
     let pair_start = drafts.len();
     let popularity_before = reference_popularity(rev_before);
     let popularity_after = reference_popularity(rev_after);
+    let mut reference_migrations_all = Vec::new();
     for file_before in &rev_before.files {
         let Some(file_after) = rev_after
             .files
@@ -872,17 +873,33 @@ fn detect_pair(
             file_after,
             drafts,
         );
-        detect_reach_families(
-            &reference_migrations,
-            pair_index,
-            labels,
-            rev_before,
-            rev_after,
-            drafts,
-        );
         detect_scope_collapse(pair_index, labels, file_before, file_after, drafts);
         detect_hot_path(pair_index, labels, file_before, file_after, drafts);
+        reference_migrations_all.extend(reference_migrations);
     }
+    // The reach families scan the whole revision per migration, so they run
+    // once per pair over a shared reverse-reachability index.
+    let reach_after = ReachIndex::build(rev_after);
+    let before_fingerprints: BTreeMap<(&Path, &str), &str> = rev_before
+        .files
+        .iter()
+        .flat_map(|file| {
+            file.functions.iter().map(move |function| {
+                (
+                    (file.path.as_path(), function.name.as_str()),
+                    function.fingerprint.as_str(),
+                )
+            })
+        })
+        .collect();
+    detect_reach_families(
+        &reference_migrations_all,
+        pair_index,
+        labels,
+        &before_fingerprints,
+        &reach_after,
+        drafts,
+    );
     detect_config_inert(pair_index, labels, rev_before, rev_after, drafts);
     detect_test_oracle_lag(
         pair_index, labels, rev_before, rev_after, pair_start, drafts,
@@ -1146,12 +1163,78 @@ fn detect_provenance_lost(
     }
 }
 
+/// Revision-wide reverse-reachability index over leaf-name call edges,
+/// built once per revision pair. A reverse BFS from a token's direct
+/// holders answers "which functions' reference closures contain this
+/// token" for every function at once, replacing the per-dependent closure
+/// recomputation that made whole-repository windows quadratic. Same-named
+/// callees are merged by union, which stays deliberately conservative:
+/// reaching the new owner through *any* candidate suppresses a finding.
+/// Syntactic evidence, never resolution proof.
+struct ReachIndex<'r> {
+    /// Every function in the revision with its owning file.
+    functions: Vec<(&'r FileContracts, &'r ContractFunction)>,
+    /// Reverse leaf-name call edges: callee index -> caller indices.
+    callers: Vec<Vec<usize>>,
+}
+
+impl<'r> ReachIndex<'r> {
+    fn build(rev: &'r RevisionContracts) -> Self {
+        let mut functions = Vec::new();
+        let mut by_name: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+        for file in &rev.files {
+            for function in &file.functions {
+                by_name
+                    .entry(function.name.as_str())
+                    .or_default()
+                    .push(functions.len());
+                functions.push((file, function));
+            }
+        }
+        let mut callers = vec![Vec::new(); functions.len()];
+        for (caller, (_, function)) in functions.iter().enumerate() {
+            let mut seen: BTreeSet<usize> = BTreeSet::new();
+            for token in &function.references {
+                let Some(callees) = by_name.get(token_leaf(token)) else {
+                    continue;
+                };
+                for callee in callees {
+                    if *callee != caller && seen.insert(*callee) {
+                        callers[*callee].push(caller);
+                    }
+                }
+            }
+        }
+        Self { functions, callers }
+    }
+
+    /// Whether each function's reference closure contains `token`.
+    fn reaching(&self, token: &str) -> Vec<bool> {
+        let mut marked = vec![false; self.functions.len()];
+        let mut queue: Vec<usize> = Vec::new();
+        for (index, (_, function)) in self.functions.iter().enumerate() {
+            if function.references.contains(token) {
+                marked[index] = true;
+                queue.push(index);
+            }
+        }
+        while let Some(index) = queue.pop() {
+            for caller in &self.callers[index] {
+                if !marked[*caller] {
+                    marked[*caller] = true;
+                    queue.push(*caller);
+                }
+            }
+        }
+        marked
+    }
+}
+
 /// The syntactic reference closure of one function within a revision:
 /// direct reference tokens plus the tokens of every function transitively
-/// reachable by leaf-name expansion across files. Same-named functions are
-/// merged by union, which is deliberately conservative: reaching the new
-/// owner through *any* candidate suppresses a finding. Syntactic evidence,
-/// never resolution proof.
+/// reachable by leaf-name expansion across files. Used by persistence
+/// tracking, where only a handful of findings are re-checked per revision;
+/// pair-wide detection uses [`ReachIndex`] instead.
 fn reference_closure(rev: &RevisionContracts, start: &ContractFunction) -> BTreeSet<String> {
     let mut by_name: BTreeMap<&str, Vec<&ContractFunction>> = BTreeMap::new();
     for file in &rev.files {
@@ -1193,77 +1276,82 @@ fn detect_reach_families(
     migrations: &[Migration<'_>],
     pair_index: usize,
     labels: &[String],
-    rev_before: &RevisionContracts,
-    rev_after: &RevisionContracts,
+    before_fingerprints: &BTreeMap<(&Path, &str), &str>,
+    reach_after: &ReachIndex<'_>,
     drafts: &mut Vec<FindingDraft>,
 ) {
     for migration in migrations {
-        for file_after in &rev_after.files {
-            for dependent_after in &file_after.functions {
-                if dependent_after.name == migration.owner_before.name {
-                    continue;
+        // One reverse BFS per token answers reachability for every
+        // candidate dependent at once.
+        let surviving_marks: Vec<(&String, Vec<bool>)> = migration
+            .surviving
+            .iter()
+            .map(|token| (token, reach_after.reaching(token)))
+            .collect();
+        let mut reaches_added = vec![false; reach_after.functions.len()];
+        for token in &migration.added {
+            for (index, marked) in reach_after.reaching(token).iter().enumerate() {
+                if *marked {
+                    reaches_added[index] = true;
                 }
-                let rule = match classify_dependent(&file_after.path, dependent_after) {
-                    DependentClass::Gate => rule_names::MECHANISM_LIVE_GATE_RETIRED,
-                    DependentClass::TelemetryProducer => rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM,
-                    DependentClass::StatusPublisher => rule_names::OPERATIONAL_IDENTITY_STALE,
-                    DependentClass::Test | DependentClass::Consumer => continue,
-                };
-                // Unchanged through the migration (exact bytes); a dependent
-                // updated in the same revision is counter-evidence.
-                let unchanged = rev_before
-                    .files
-                    .iter()
-                    .find(|file| file.path == file_after.path)
-                    .and_then(|file| {
-                        file.functions
-                            .iter()
-                            .find(|before_fn| before_fn.name == dependent_after.name)
-                    })
-                    .is_some_and(|before_fn| before_fn.fingerprint == dependent_after.fingerprint);
-                if !unchanged {
-                    continue;
-                }
-                let closure = reference_closure(rev_after, dependent_after);
-                // The graph must show the split: the dependency path reaches
-                // the retired representation and does not reach the new one.
-                // Self-references are recursion, not attachment.
-                let stale: BTreeSet<String> = migration
-                    .surviving
-                    .iter()
-                    .filter(|token| closure.contains(*token))
-                    .filter(|token| token_leaf(token) != dependent_after.name)
-                    .cloned()
-                    .collect();
-                if stale.is_empty() {
-                    continue;
-                }
-                if migration.added.iter().any(|token| closure.contains(token)) {
-                    continue;
-                }
-                drafts.push(FindingDraft {
-                    rule,
-                    pair_index,
-                    before_label: labels[pair_index].clone(),
-                    after_label: labels[pair_index + 1].clone(),
-                    path: migration.path.to_path_buf(),
-                    owner_before: Some(migration.owner_before.clone()),
-                    owner_after: Some(migration.owner_after.clone()),
-                    dependent: Holder::Function {
-                        path: file_after.path.clone(),
-                        function: dependent_after.clone(),
-                    },
-                    domain: TokenDomain::References,
-                    stale,
-                    surviving: migration.surviving.clone(),
-                    added: migration.added.clone(),
-                    note: None,
-                    persistence: Persistence {
-                        revisions: 1,
-                        independent_edits: 0,
-                    },
-                });
             }
+        }
+        for (index, (file_after, dependent_after)) in reach_after.functions.iter().enumerate() {
+            if dependent_after.name == migration.owner_before.name {
+                continue;
+            }
+            // The graph must show the split: the dependency path reaches
+            // the retired representation and does not reach the new one.
+            // Self-references are recursion, not attachment.
+            if reaches_added[index] {
+                continue;
+            }
+            let stale: BTreeSet<String> = surviving_marks
+                .iter()
+                .filter(|(token, marked)| {
+                    marked[index] && token_leaf(token) != dependent_after.name
+                })
+                .map(|(token, _)| (*token).clone())
+                .collect();
+            if stale.is_empty() {
+                continue;
+            }
+            let rule = match classify_dependent(&file_after.path, dependent_after) {
+                DependentClass::Gate => rule_names::MECHANISM_LIVE_GATE_RETIRED,
+                DependentClass::TelemetryProducer => rule_names::TELEMETRY_NOT_BOUND_TO_CLAIM,
+                DependentClass::StatusPublisher => rule_names::OPERATIONAL_IDENTITY_STALE,
+                DependentClass::Test | DependentClass::Consumer => continue,
+            };
+            // Unchanged through the migration (exact bytes); a dependent
+            // updated in the same revision is counter-evidence.
+            let unchanged = before_fingerprints
+                .get(&(file_after.path.as_path(), dependent_after.name.as_str()))
+                .is_some_and(|fingerprint| *fingerprint == dependent_after.fingerprint);
+            if !unchanged {
+                continue;
+            }
+            drafts.push(FindingDraft {
+                rule,
+                pair_index,
+                before_label: labels[pair_index].clone(),
+                after_label: labels[pair_index + 1].clone(),
+                path: migration.path.to_path_buf(),
+                owner_before: Some(migration.owner_before.clone()),
+                owner_after: Some(migration.owner_after.clone()),
+                dependent: Holder::Function {
+                    path: file_after.path.clone(),
+                    function: (*dependent_after).clone(),
+                },
+                domain: TokenDomain::References,
+                stale,
+                surviving: migration.surviving.clone(),
+                added: migration.added.clone(),
+                note: None,
+                persistence: Persistence {
+                    revisions: 1,
+                    independent_edits: 0,
+                },
+            });
         }
     }
 }

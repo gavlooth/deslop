@@ -46,8 +46,8 @@ cargo install --path crates/deslop-lsp                  # LSP is a separate bina
 | `deslop scan <paths>` | Report findings as text, JSON, agent output, or SARIF; `--fail-on <sev>` gates CI |
 | `deslop slop <paths>` | Slop score with per-rule counts |
 | `deslop metrics` | Structural and lexical measurements plus triage outliers; never a rewrite gate |
-| `deslop graph <paths>` | Dependency graph (`deslop.graph/2`) for refactor planning; `--contract` emits the contract graph instead |
-| `deslop refactor-risk --from <rev> --to <rev>` | Compare revisions for refactor-defect accumulation (see below) |
+| `deslop graph <paths>` | Dependency graph (`deslop.graph/2`) for refactor planning; `--contract` emits the multi-role contract graph (`deslop.contract-graph/2`) |
+| `deslop refactor-risk [paths]` | Find current contract pathologies without history; `--from/--to` adds historical causation and persistence |
 | `deslop propose <paths>` | Work orders for agent-rewrite findings |
 | `deslop fix` | The bundled LLM consumer: propose, rewrite, verify, apply |
 | `deslop fix --diff` | Preview deterministic safe-auto edits as a diff without writing |
@@ -102,15 +102,21 @@ Sending source to a real provider requires explicit consent: `--yes`, the
 interactive prompt. Without consent in a non-interactive run, it refuses and
 says so. Progress goes to stderr; stdout stays machine-readable.
 
-## Refactor history analysis
+## Refactor pathology and history analysis
 
-`deslop refactor-risk` compares an ordered window of revisions and reports the
-defects that accumulate when a refactor moves behavioral ownership but leaves
-consumers, verifiers, tests, telemetry, or operational identity attached to
-the former owner. Eleven detector families cover stale consumers, schema
-drift, retired gates, scope collapse, lost score provenance, inert config
-keys, lagging test oracles, duplicated hot-path work, stale telemetry and
-status surfaces, and incomplete adoption chains.
+`deslop refactor-risk [paths]` analyzes one exact current source snapshot. It
+does not call Git or Jujutsu and works outside a repository. Snapshot findings
+use present-state names such as `owner-consumer-contract-split` and
+`producer-verifier-schema-mismatch`; they do not claim that an owner moved, a
+mechanism is retired, or a condition persisted. Findings are emitted as
+`deslop.snapshot-pathology/1` inside `deslop.snapshot-refactor-risk/1`.
+
+Supplying `--from` (plus optional `--to` and repeated `--then`) selects the
+historical analysis. It reports defects that accumulate when a refactor moves
+behavioral ownership but leaves consumers, verifiers, tests, telemetry, or
+operational identity attached to the former owner. History adds direction,
+causation, persistence, and co-change evidence that a current snapshot cannot
+establish.
 
 Revisions can be snapshot directories, Git revisions, or Jujutsu revsets;
 `--to` defaults to the working tree, and `--bundle` accepts a caller-produced
@@ -133,10 +139,10 @@ Tool calls accept a `config` path and inline analyzer overrides, which win
 over the config file for that call.
 
 The LSP gives live diagnostics and code actions wired to the fix-safety
-lattice: only safe-auto findings get quickfixes, plus a `source.fixAll`. With
-`refactor_base` set in the `[lsp]` section of `deslop.toml`, it also compares
-the live buffer against a base revision and publishes refactor-risk findings
-as review diagnostics.
+lattice: only safe-auto findings get quickfixes, plus a `source.fixAll`. It
+publishes current-snapshot refactor pathology diagnostics without a configured
+base. With `refactor_base` set in the `[lsp]` section of `deslop.toml`, it uses
+the stronger base-versus-buffer historical comparison instead.
 
 ## CI
 

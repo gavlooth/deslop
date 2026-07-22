@@ -239,16 +239,30 @@ impl LspState {
         Ok(())
     }
 
-    /// Compare the current buffer overlay against the configured base
-    /// revision and attach the review-only refactor-defect findings to
-    /// their documents. Runs on every rebuild: a buffer edit invalidates
-    /// the previous comparison by recomputation against the immutable base.
+    /// Attach review-only refactor diagnostics on every rebuild. Without a
+    /// configured base this runs snapshot-native current-state analysis. A
+    /// configured base selects the stronger historical comparison. Buffer
+    /// edits invalidate either result through recomputation.
     fn attach_refactor_findings(
         &mut self,
         documents: &mut BTreeMap<String, DocumentState>,
         current: &Arc<ProjectAnalysis>,
     ) -> Result<()> {
         let Some(base_path) = self.refactor_base.clone() else {
+            let report = deslop_analyzer::snapshot_refactor::analyze_snapshot_refactor(
+                "editor-buffer",
+                Arc::clone(current),
+            )?;
+            for pathology in &report.findings {
+                let mut finding = pathology.to_finding();
+                if let Some(document) = documents
+                    .values_mut()
+                    .find(|document| document.logical_path == finding.path)
+                {
+                    finding.path = document.path.clone();
+                    document.findings.push(finding);
+                }
+            }
             return Ok(());
         };
         if self.refactor_base_analysis.is_none() {
@@ -1423,6 +1437,33 @@ mod tests {
             "the stale diagnostic must be invalidated by the buffer edit: {:?}",
             document.findings
         );
+        Ok(())
+    }
+
+    #[test]
+    fn current_snapshot_publishes_refactor_diagnostic_without_base() -> Result<()> {
+        let workspace = tempfile::tempdir()?;
+        let path = workspace.path().join("scoring.py");
+        let uri = Uri::from_str(&format!("file://{}", path.display()))?;
+        let mut state = LspState {
+            workspace_root: Some(workspace.path().to_path_buf()),
+            ..LspState::default()
+        };
+        state.open(
+            uri,
+            path,
+            "def decide(x):\n    return posterior.commit(x)\n\ndef public_score(x):\n    return model.raw_score(x)\n"
+                .to_string(),
+            Some(1),
+        )?;
+        let document = state.documents.values().next().expect("open document");
+        let finding = document
+            .findings
+            .iter()
+            .find(|finding| finding.rule == "owner-consumer-contract-split")
+            .expect("snapshot analysis should publish the current contract split");
+        assert_eq!(finding.safety, SafetyClass::NeverAuto);
+        assert!(!is_code_action_fixable(finding));
         Ok(())
     }
 

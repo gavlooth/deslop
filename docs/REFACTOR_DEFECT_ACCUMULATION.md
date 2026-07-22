@@ -1,10 +1,34 @@
 # Detecting refactor-defect accumulation
 
-Status: shipped. All eleven detector families, the contract graph
-projection, the history providers, the LSP/MCP integration, and the
-evaluation/promotion gates described here are implemented behind
-`deslop refactor-risk` (2026-07-21). The per-phase notes below record what
-shipped and the boundaries that remain explicit capability gaps.
+Status: shipped. All eleven history detector families, snapshot-native
+present-state pathology detection, the contract graph projection, history
+providers, LSP/MCP integration, and separate history/snapshot evaluation gates
+are implemented behind `deslop refactor-risk` (history 2026-07-21; snapshot
+mode 2026-07-22). The per-phase notes below record what shipped and the
+boundaries that remain explicit capability gaps.
+
+## Current-snapshot mode
+
+`deslop refactor-risk [paths...]` requires no commit history and never invokes
+a VCS provider. It extracts one `deslop.contract-snapshot/1` from the exact
+current `ProjectAnalysis` and reports present-state invariant violations as
+`deslop.snapshot-pathology/1` findings in
+`deslop.snapshot-refactor-risk/1`.
+
+The names are deliberately neutral: for example,
+`owner-consumer-contract-split` describes two current paths without asserting
+which is old, while `mechanism-gate-contract-split` does not call either
+mechanism live or retired. Snapshot findings contain no fabricated revision
+pair, persistence, co-change, or migration. Supplying `--from` selects the
+existing history mode and its stronger causal vocabulary.
+
+The frozen P0 contract is `tests/refactor-snapshot/manifest.json`. It evaluates
+the current `02-after` states independently of their before snapshots and
+publishes `deslop.refactor-snapshot-eval/1` separately from history precision
+and recall. Only `owner-consumer-contract-split` is promoted by the initial
+cross-language evidence. The remaining neutral families are candidate-level
+or history-only until their per-family corpus reaches the frozen promotion
+bar; they remain review-only and carry explicit resolution/runtime/test gaps.
 
 ## The situation
 
@@ -409,10 +433,13 @@ highest-value case-study failures.
 Add a clap subcommand beside `scan`, `baseline`, and `graph`:
 
 ```text
+deslop refactor-risk [paths...]
 deslop refactor-risk --from <revision> --to <revision> [paths...]
 ```
 
-The CLI resolves revisions through a pluggable history provider and hands the
+With no revision arguments the CLI performs current-snapshot analysis and does
+not resolve repository history. With `--from`, the CLI resolves revisions
+through a pluggable history provider and hands the
 analyzer an ordered `deslop.refactor-history/1` bundle (exact source bytes,
 digests, parent relationships, timestamps only when known, optional provider
 artifacts). Git, Jujutsu, editor-local history, or an external review system
@@ -611,11 +638,12 @@ fingerprints.
   finding, never the firing condition.)
 - Add incomplete-adoption summaries without double-counting findings. (Shipped.)
 - Expose persistence and co-change evidence as triage inputs. (Shipped.)
-- The `deslop-graph` contract projection shipped as
-  `deslop.contract-graph/1` with projection identity
-  `deslop.contract-graph.projection/1` via `derive_projection_id`, exposed
-  through `deslop graph --contract`: role-classified nodes, semantic edges
-  with syntactic/ambiguous confidence, and `dependents_of` traversal from
+- The `deslop-graph` contract projection is now
+  `deslop.contract-graph/2` with projection identity
+  `deslop.contract-graph.projection/2` via `derive_projection_id`, exposed
+  through `deslop graph --contract`: multi-role nodes, real config endpoints,
+  retained unresolved endpoints with Unknown capability, semantic edges with
+  syntactic/ambiguous/unresolved confidence, and `dependents_of` traversal from
   any owner to its consumers, tests, verifiers, telemetry, and publication
   surfaces.
 
@@ -639,13 +667,13 @@ pack framed inside the stored adapter identity; the frozen 23-entry
 
 Shipped:
 
-- LSP base-revision comparison: a `[lsp] refactor_base` snapshot directory
-  in `deslop.toml` is compared against the live buffer overlay on every
-  rebuild; findings publish as review diagnostics with the rule name as
-  code and no code action, and each buffer edit invalidates the previous
-  comparison by recomputation against the immutable base.
-- MCP `refactor_risk` tool (read-only): snapshot directories or a
-  `deslop.refactor-history/1` bundle in, `deslop.refactor-risk/1` out.
+- LSP current-snapshot analysis runs against the live buffer overlay on every
+  rebuild even without a base. When `[lsp] refactor_base` is configured, the
+  stronger history comparison is used. Findings publish as review diagnostics
+  with no code action, and each edit invalidates the prior result.
+- MCP `refactor_risk` tool (read-only): `paths` alone return
+  `deslop.snapshot-refactor-risk/1`; snapshot-directory revisions or a
+  `deslop.refactor-history/1` bundle return `deslop.refactor-risk/1`.
 - Revision-bound semantic-provider artifacts: bundles carry
   `deslop.semantic-provider-facts/1` payloads pinned to their revision.
   Agreeing facts join as supporting evidence, disagreeing facts stay

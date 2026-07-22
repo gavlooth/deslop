@@ -4887,3 +4887,223 @@ Signature: Codex (GPT-5), M10 release-evidence owner, 2026-07-16.
 - Push checkpoint: the clean described chain was advanced and `main@origin` matched
   `f44a96cbefeb490a2bd25b087c3862349e8cc0c3`. This report-only follow-up records that terminal
   external state and is the final M10 history change.
+
+## 2026-07-22 — Snapshot-native refactor pathology detection without commit history
+
+Status: IMPLEMENTED AND VERIFIED. Integration owner: Codex. The existing uncommitted `ReachIndex`
+scalability work in `crates/deslop-analyzer/src/refactor.rs` was preserved and validated together
+with this implementation.
+
+### Objective and semantic boundary
+
+Make `deslop refactor-risk [PATHS...]` useful on one exact current source snapshot, including a
+directory that is not a VCS checkout and has no Git/Jujutsu executable available. The current
+snapshot must be sufficient to find end-state contract pathologies left behind by a refactor.
+Commit history becomes optional enrichment for migration causation, persistence, and co-change;
+it is no longer an entry requirement.
+
+A snapshot cannot establish that an owner *moved*, a mechanism is *retired*, or a defect *persisted*.
+The implementation must therefore detect present-tense invariant violations and contract splits,
+not synthesize a fake `before == after` revision pair or reuse causal words unsupported by evidence.
+History mode keeps the shipped causal claims and enriches the same end-state pathology when the
+transition is observable.
+
+### Active hypothesis and convergence
+
+The eleven shipped history families are mostly end-state graph contradictions plus historical
+qualification. If contract extraction is factored around one `ContractSnapshot`, and the contract
+graph represents multiple roles, exact/ambiguous resolution, unresolved targets, and typed
+obligations, one current-tree analysis can recover the contradiction while explicitly omitting
+causation and persistence.
+
+One frozen paired experiment will settle the design before broad integration: run every annotated
+`02-after`/repair snapshot from the existing history corpus through snapshot mode, plus new clean
+and adversarial current-tree fixtures, and compare it with the existing history result for the same
+end state. Terminal outcomes are per family: (a) promote the snapshot rule at the frozen precision
+and recall gate, (b) retain it as an explicit candidate/Unknown capability, or (c) keep that family
+history-only. Do not serially tune one fixture and rerun another; capture all nominations, path
+evidence, gaps, and suppressors in one report so the whole decision grid can be analyzed post hoc.
+
+### Family disposition
+
+| Historical rule | Snapshot-native rule / disposition | Minimum current-state evidence |
+| --- | --- | --- |
+| `owner-moved-consumer-stale` | `owner-consumer-contract-split` | Two incompatible owner paths in one contract component, with a consumer reaching one side and the governing production path reaching the other; report the split symmetrically, never call either side old/new. |
+| `scope-collapse-after-refactor` | `partition-boundary-not-preserved` candidate | A declared/structural partition boundary plus cross-partition data/control reach, shared accumulation, or flattening that bypasses it. Without an adapter- or provider-attested partition axis, emit a gap and no promoted finding. |
+| `mechanism-live-gate-retired` | `mechanism-gate-contract-split` | A gate and production decision in the same contract component reach disjoint mechanism anchors; neither anchor is labelled live/retired without history. |
+| `producer-verifier-schema-drift` | `producer-verifier-schema-mismatch` | A resolved producer/persistence/verifier chain with typed produced and validated fields whose sets or units disagree. Arbitrary string-literal differences are not schema evidence. |
+| `accepted-config-inert` | `accepted-config-no-behavioral-reach` | An accepted/parsed config node has complete negative reachability to any governing or consuming node. Dynamic or unresolved access makes the result Unknown. Reuse the existing boundary analyzer evidence instead of duplicating its heuristics. |
+| `confidence-provenance-lost` | `confidence-derived-after-lossy-commit` | A public score/explanation path derives after argmax/threshold/rounding or another typed lossy step and no retained evidence path reaches it. Cost/domain meaning remains a gap. |
+| `telemetry-not-bound-to-claim` | `telemetry-claim-unbound` | A telemetry node and its claimed behavior are both present, but exact/retained graph evidence shows the observation path reaches a disjoint mechanism. Lexical role classification alone cannot fire. |
+| `test-oracle-lag` | `test-contract-dimension-uncovered` | A production contract dimension/obligation exists and the governing test projection has no oracle for it under complete discovery. Textual test discovery or missing execution manifests cannot prove absence. |
+| `hot-path-work-duplicated` | `same-path-expensive-work-repeated` | The existing composite-call bounds plus two occurrences on one reachable path. Profiling/effect evidence controls cost/reuse authority; without it the result remains review-only with a gap. |
+| `operational-identity-stale` | `published-identity-not-live` | A publication/status node reaches an identity different from the identity governing the operational path, with both paths resolved in the same component. Snapshot mode says “not governing,” never “old.” |
+| `adoption-chain-incomplete` | `contract-chain-incomplete` summary | At least two concrete snapshot findings share the same contract component and missing obligation; summaries remain outside finding counts and baselines. |
+
+Historical rule names remain valid only for history-backed findings. Every snapshot rule maps to one
+stable neutral pathology family so snapshot and history evidence can be joined without duplicate
+reporting.
+
+### Contract and architecture changes
+
+1. In `deslop-parse`, introduce a revision-pinned `ContractSnapshot` extracted directly from one
+   `ProjectAnalysis`. Refactor `ContractChangeHistory::from_analyses` to compose ordered
+   `ContractSnapshot`s. Remove the contract graph's current workaround of constructing a one-entry
+   history. Keep exact adapter identity, source digest, query capability, and coverage reasons.
+2. Version the contract query/extraction contract to retain typed captures for producer fields,
+   verifier fields, accepted parameters, lossy operations, partition boundaries, test dimensions,
+   observation claims, and identity publication. Do not reinterpret every literal or call name as
+   one of those roles. Unsupported adapters return explicit per-fact gaps.
+3. Evolve `deslop.contract-graph/1` to a new strict schema. Nodes must carry a set of independently
+   evidenced roles rather than one lossy primary role. Edges must target real typed nodes, retain
+   unresolved/external endpoints, and carry resolution provenance. Join the existing resolution,
+   data-flow, program-dependence, or system-dependence projections only when their exact
+   `ProjectAnalysis`/projection identities match; otherwise keep the syntax candidate and a gap.
+4. Add a deterministic `ContractObligationProjection` over one graph. Obligations express current
+   invariants such as accepted-config-to-behavioral-consumer, producer-field-to-verifier-field,
+   mechanism-to-gate/telemetry/status, retained-evidence-to-public-confidence, partition-to-oracle,
+   and unique-expensive-result-to-consumers. Each obligation records positive evidence,
+   counter-evidence, completeness requirements, and the exact graph cut that violates it.
+5. Version the refactor finding/report wire contract instead of forcing snapshot facts into
+   `RevisionPair` and `OwnerMigration`. Add an evidence basis enum (`snapshot-invariant` or
+   `history-transition`), a required current-state anchor/component, optional transition evidence,
+   and optional persistence/co-change. Absence of history is `None`/not-provided, never numeric zero.
+   Keep all findings `NeverAuto`.
+6. Define one `pathology_identity` from the neutral family plus stable current-state anchors and
+   causal-path structure, excluding revision labels, window size, and evidence basis. A history run
+   that enriches an already reported snapshot pathology must keep that identity. Retain a separate
+   evidence identity when exact evidence payload changes; migrate baselines explicitly with the
+   schema bump.
+7. Implement snapshot detectors in a separate analyzer module over obligations and graph cuts.
+   Share only pure classification/path-building helpers with the existing history detector. Do not
+   turn current `FindingDraft` fields such as `owner_before`, `surviving`, or `persistence` into
+   misleading optional bags. History analysis should join/enrich snapshot findings by
+   `pathology_identity`, while retaining history-only findings that have no honest snapshot rule.
+
+### Product surfaces
+
+- CLI: `deslop refactor-risk [PATHS...]` defaults to current-snapshot mode. `--from`, `--to`, and
+  `--then` select history enrichment exactly as today; `--bundle` remains the exact history input.
+  A no-VCS temp-directory test must prove snapshot mode invokes no history provider. JSON, text, and
+  SARIF must identify the evidence basis; snapshot messages must contain no unsupported
+  “moved/stale/retired/persisted” language.
+- Graph CLI: `deslop graph --contract` exposes the versioned multi-role graph and obligation/gap
+  evidence needed to audit snapshot findings.
+- LSP: run bounded snapshot analysis against the live project even when `[lsp] refactor_base` is
+  absent. If a base is configured, add transition evidence to the same pathology identity. No code
+  action is offered.
+- MCP: allow `refactor_risk` with current paths only; history arguments and bundles remain optional
+  enrichment. The tool stays read-only and returns the same versioned report as the CLI.
+- Eval: publish history and snapshot precision/recall/abstention as separate columns. Never pool
+  history-only positives into snapshot recall or count an Unknown gap as a true negative.
+
+### Implementation phases and ownership
+
+1. **P0 — Gold contract and measured feasibility.** Freeze
+   `tests/refactor-snapshot/manifest.json`, positive/negative/Unknown labels, neutral family mapping,
+   exact expected paths, and the one-shot feasibility report. Integration owner reviews labels;
+   no detector code is promoted before this checkpoint.
+2. **P1 — Snapshot facts and graph authority.** Implement `ContractSnapshot`, typed query captures,
+   multi-role contract graph, exact projection joins, unresolved endpoints, and obligation
+   projection. Parser/graph changes own their schema fixtures and identity tests.
+3. **P2 — Snapshot analyzers.** Implement each neutral rule independently over obligations. Reuse
+   existing narrowing filters (constructor/shared-utility/self-recursion/composite-call) only as
+   suppressors. Join equivalent history findings by `pathology_identity` and preserve history-only
+   families where P0 did not justify snapshot promotion.
+4. **P3 — CLI/report/LSP/MCP integration.** Make current snapshot the zero-history default, preserve
+   explicit history mode, migrate report/baseline contracts, and expose basis/gaps on every output
+   surface.
+5. **P4 — Frozen promotion and dogfood.** Run the full snapshot/history paired corpus and current-tree
+   dogfood on deslop plus RelationExtractor. Review every nomination, freeze the eval baseline and
+   per-family promotion decisions, then run terminal workspace gates.
+
+One integration owner makes final schema and authority decisions. If implementation is delegated,
+write scopes are disjoint: parse/query extraction, graph/obligations, analyzer/eval, and
+surface integration. The integration owner alone changes shared public schemas and performs the
+final cross-crate join.
+
+### Numerical and executable acceptance gates
+
+1. Snapshot mode succeeds and is byte-stable in a source directory with no `.git`/`.jj`; an injected
+   provider spy records zero VCS/history calls.
+2. Snapshot findings validate with a current-state causal path and suggested verification, and carry
+   neither a fabricated revision pair nor fabricated persistence/co-change values.
+3. The same end-state pathology found in snapshot and history modes has one `pathology_identity`,
+   one counted finding, and distinct typed evidence bases/enrichment.
+4. Missing resolution, dynamic access, generated source, unsupported query captures, incomplete test
+   discovery, and absent runtime cost facts yield explicit gaps; none become clean negative evidence.
+5. Pure rename/move/full-adoption/compatibility fixtures remain negative in history mode, while their
+   clean final snapshots remain negative in snapshot mode.
+6. Each promoted snapshot family has at least three positive and three confounder/negative examples
+   across the supported Python/Julia/JavaScript adapters, frozen per-family precision >= 0.95 and
+   recall >= 0.80, and zero safety-authority violations. Families below the bar remain unpromoted and
+   visible as capability decisions rather than being pooled into a macro score.
+7. Every finding's graph cut is replayable against the serialized contract graph/obligation
+   projection; causal-path completeness is 1.0 for promoted findings.
+8. Snapshot analysis is bounded by one contract extraction and indexed graph traversals. The frozen
+   release benchmark must show no per-candidate whole-project rebuild and snapshot `refactor-risk`
+   p95 <= 2x `graph --contract` p95 on the same pinned corpus, with measured node/edge/traversal counts.
+9. JSON/text/SARIF, LSP, and MCP agree on rule, identity, basis, gaps, and `NeverAuto`; no snapshot
+   surface uses historical causal wording.
+10. Focused schema/extraction/graph/analyzer/eval/CLI/LSP/MCP tests pass, followed by
+    `cargo fmt --all --check`, workspace/all-feature build and tests, rustdoc, and clippy with
+    `-D warnings`.
+
+### Negative-memory constraints
+
+- Do not infer a refactor event from a current inconsistency. Snapshot analysis establishes state,
+  not causation, direction, age, or intent.
+- Canonical roles are derived composable facts, never replacements for raw grammar data and never
+  evidence of support when the exact adapter capability is absent.
+- Leaf-name matching, lexical telemetry/status names, and arbitrary literals are nomination or
+  classification evidence only. They cannot prove owner identity, schema membership, data flow, or
+  an absent consumer.
+- Preserve the four dogfood suppressors: constructors/exceptions, shared utilities, self-recursion,
+  and non-composite repeated calls cannot promote candidates.
+- Partial retained CFG/PDG/SDG facts may support an Unknown review candidate but never become proof
+  through an existential path that ignores conservative sibling edges.
+- History absence is not zero persistence; provider absence is not negative evidence; a clean result
+  requires the completeness contract of the specific obligation.
+- Do not duplicate existing `config-key-unconsumed` or clone logic. Snapshot refactor findings must
+  consume their evidence and add cross-contract causal context.
+
+### Next checkpoint
+
+P0 closes when the neutral family/schema sketch and frozen snapshot manifest exist, the one-shot
+paired feasibility evaluator produces per-family confusion matrices and gap counts, and the owner
+has a terminal promote/candidate/history-only decision for every family. Only then should public
+schema or detector implementation begin.
+
+Signature: Codex (GPT-5), snapshot-native refactor pathology planning owner, 2026-07-22.
+
+### Execution checkpoint — 2026-07-22
+
+P0–P4 are complete. `deslop refactor-risk [PATHS...]` now analyzes one current snapshot without a
+history provider; `--from`/`--to`/`--then` and `--bundle` retain the historical report. The shipped
+current contracts are `deslop.contract-snapshot/1`, `deslop.snapshot-pathology/1`,
+`deslop.snapshot-refactor-risk/1`, and the multi-role `deslop.contract-graph/2`. CLI, graph, LSP,
+MCP, docs, and the separate snapshot evaluator are integrated.
+
+The frozen 22-case `tests/refactor-snapshot/manifest.json` produced the terminal per-family
+decision: `owner-consumer-contract-split` is promoted with cross-language positive and confounder
+evidence; the other structurally supported families remain explicit review candidates; and
+`partition-boundary-not-preserved` remains history-only until an adapter/provider can attest the
+partition axis. This is an authority decision, not deferred detector work. Dynamic access and
+generated input abstain with partial coverage. Historical and snapshot evidence for the same
+owner/consumer split share one `rsp1_` pathology identity while keeping separate report schemas.
+
+Measured release dogfood on `/srv/biotz/RelationExtractor/src/heads/pointer_canvas` produced six
+current findings (five repeated-work candidates and one test-dimension candidate), complete
+coverage, and a `deslop.contract-graph/2` with 372 nodes, 1,677 edges, and 126 explicit unresolved
+endpoint nodes. Five warm runs measured graph times 973/1404/1174/1158/1496 ms and snapshot times
+1035/1057/866/1135/1031 ms; nearest-rank p95 is 1.496 s versus 1.135 s, so snapshot analysis is
+0.76x graph p95 and passes the <=2x gate.
+
+All focused tests passed. Terminal gates passed: `cargo fmt --all --check`,
+`cargo build --workspace --all-features`, `cargo test --workspace --all-features` (including
+doc-tests), and `cargo clippy --workspace --all-targets --all-features -- -D warnings`. Clippy first
+found `items_after_test_module` in `deslop-eval`; moving the test module after the public API fixed
+the structural error, and the affected eval tests plus clippy then passed.
+
+Next checkpoint: describe this implementation in jj and hand it off. Further promotion of candidate
+families requires new typed adapter/provider evidence and corpus rows, not heuristic widening.

@@ -282,7 +282,7 @@ struct GraphArgs {
     #[arg(long)]
     no_calls: bool,
 
-    /// Emit the contract graph projection (`deslop.contract-graph/1`)
+    /// Emit the contract graph projection (`deslop.contract-graph/2`)
     /// instead of the syntactic dependency graph. JSON only.
     #[arg(long)]
     contract: bool,
@@ -302,7 +302,7 @@ enum RefactorRiskFormat {
 struct RefactorRiskArgs {
     /// Base revision: a snapshot directory, or a Git/Jujutsu revision
     /// resolved through the repository containing the current directory.
-    #[arg(long, required_unless_present = "bundle")]
+    #[arg(long)]
     from: Option<String>,
 
     /// Target revision (directory or VCS revision). Defaults to the current
@@ -316,7 +316,8 @@ struct RefactorRiskArgs {
     #[arg(long)]
     then: Vec<String>,
 
-    /// Restrict VCS revision extraction to these repository paths.
+    /// Current source paths in snapshot mode; restrict VCS revision
+    /// extraction to these repository paths when `--from` is supplied.
     #[arg()]
     paths: Vec<PathBuf>,
 
@@ -912,6 +913,58 @@ fn metrics(args: MetricsArgs) -> Result<()> {
 }
 
 fn refactor_risk(args: RefactorRiskArgs) -> Result<()> {
+    if args.bundle.is_none() && args.from.is_none() {
+        if args.to.is_some() || !args.then.is_empty() {
+            bail!(
+                "--to/--then require --from; omit all revision arguments for current-snapshot mode"
+            );
+        }
+        let mut report =
+            deslop_analyzer::snapshot_refactor::snapshot_refactor_risk_paths(&args.paths)?;
+        if let Some(baseline_path) = &args.baseline {
+            let baseline = Baseline::read(baseline_path)?;
+            report.findings.retain(|finding| {
+                !baseline
+                    .fingerprints
+                    .contains(&finding.pathology_identity())
+            });
+        }
+        if let Some(output) = &args.write_baseline {
+            let baseline = Baseline {
+                schema: "deslop.baseline/1".to_string(),
+                fingerprints: report
+                    .findings
+                    .iter()
+                    .map(|finding| finding.pathology_identity())
+                    .collect(),
+            };
+            fs::write(output, serde_json::to_string_pretty(&baseline)?)
+                .with_context(|| format!("failed to write {}", output.display()))?;
+            eprintln!(
+                "wrote {} snapshot pathology identities to {}",
+                baseline.fingerprints.len(),
+                output.display()
+            );
+        }
+        match args.format {
+            RefactorRiskFormat::Json => print!("{}", serde_json::to_string_pretty(&report)?),
+            RefactorRiskFormat::Text => {
+                let reports = deslop_analyzer::snapshot_refactor::to_file_reports(&report);
+                print!("{}", deslop_report::render_text(&reports));
+                if report.coverage != deslop_analyzer::FactCoverage::Complete {
+                    println!("coverage: partial");
+                    for reason in &report.coverage_reasons {
+                        println!("  reason: {reason}");
+                    }
+                }
+            }
+            RefactorRiskFormat::Sarif => {
+                let reports = deslop_analyzer::snapshot_refactor::to_file_reports(&report);
+                print!("{}", deslop_report::render_sarif(&reports)?);
+            }
+        }
+        return Ok(());
+    }
     let mut report = if let Some(bundle_path) = &args.bundle {
         let text = read_to_string_ctx(bundle_path)?;
         let bundle: deslop_core::refactor_defect::RefactorHistoryBundle =
@@ -919,10 +972,7 @@ fn refactor_risk(args: RefactorRiskArgs) -> Result<()> {
                 .with_context(|| format!("failed to parse {}", bundle_path.display()))?;
         deslop_analyzer::refactor::analyze_refactor_bundle(&bundle)?
     } else {
-        let from = args
-            .from
-            .clone()
-            .expect("clap requires --from without --bundle");
+        let from = args.from.clone().expect("history branch requires --from");
         let to = args.to.clone().unwrap_or_else(|| ".".to_string());
         let mut specs = vec![from, to];
         specs.extend(args.then.iter().cloned());

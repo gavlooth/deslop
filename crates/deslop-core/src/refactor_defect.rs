@@ -72,6 +72,7 @@ pub enum ContractRole {
     Assertion,
     TelemetrySurface,
     RuntimeIdentity,
+    UnresolvedEndpoint,
 }
 }
 
@@ -423,6 +424,43 @@ impl RefactorDefect {
             part(step.node.fingerprint.as_bytes());
         }
         format!("rdf1_{}", hasher.finalize().to_hex())
+    }
+
+    /// Neutral end-state identity shared with snapshot-native analysis when
+    /// the current owner/surface anchors are the same. Historical direction,
+    /// labels, spans, persistence, and the former owner do not participate.
+    pub fn pathology_identity(&self) -> Option<String> {
+        let family = crate::snapshot_pathology::neutral_family_for_history_rule(&self.rule)?;
+        let mut anchors: Vec<(String, &str)> = Vec::new();
+        if let Some(owner) = &self.owner {
+            anchors.push((
+                owner.after.path.to_string_lossy().to_string(),
+                owner.after.fingerprint.as_str(),
+            ));
+        }
+        anchors.extend(self.stale_edges.iter().map(|step| {
+            (
+                step.node.path.to_string_lossy().to_string(),
+                step.node.fingerprint.as_str(),
+            )
+        }));
+        anchors.sort_unstable();
+        anchors.dedup();
+        if anchors.is_empty() {
+            return None;
+        }
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"deslop snapshot pathology identity v1");
+        let mut part = |bytes: &[u8]| {
+            hasher.update(&(bytes.len() as u64).to_le_bytes());
+            hasher.update(bytes);
+        };
+        part(family.as_bytes());
+        for (path, fingerprint) in anchors {
+            part(path.as_bytes());
+            part(fingerprint.as_bytes());
+        }
+        Some(format!("rsp1_{}", hasher.finalize().to_hex()))
     }
 
     /// Project this finding into the registry-named scan-path [`Finding`]

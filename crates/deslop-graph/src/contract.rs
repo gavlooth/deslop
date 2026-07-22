@@ -1,4 +1,4 @@
-//! The contract graph projection (`deslop.contract-graph/1`).
+//! The contract graph projection (`deslop.contract-graph/2`).
 //!
 //! Design: `docs/REFACTOR_DEFECT_ACCUMULATION.md`. This is a projection
 //! beside the syntactic dependency projection (`deslop.graph/2`), with its
@@ -26,15 +26,16 @@ use anyhow::{Context, Result};
 use deslop_core::Span;
 use deslop_core::refactor_defect::{CapabilityLevel, ContractEdgeKind, ContractRole, FactProvider};
 use deslop_parse::{
-    ContractChangeHistory, ContractFunction, FactCoverage, ProjectAnalysis, ProjectionId,
+    ContractFunction, ContractSnapshot, FactCoverage, ProjectAnalysis, ProjectionId,
 };
 use serde::{Deserialize, Serialize};
 
 /// Wire schema identifier for the contract graph.
-pub const CONTRACT_GRAPH_SCHEMA: &str = "deslop.contract-graph/1";
+pub const CONTRACT_GRAPH_SCHEMA: &str = "deslop.contract-graph/2";
 
-const CONTRACT_PROJECTION_SCHEMA: &str = "deslop.contract-graph.projection/1";
-const CONTRACT_CAPABILITIES: &[u8] = b"contract=deslop.contract-change-history/2";
+const CONTRACT_PROJECTION_SCHEMA: &str = "deslop.contract-graph.projection/2";
+const CONTRACT_CAPABILITIES: &[u8] =
+    b"contract=deslop.contract-snapshot/1;multi-role=true;unresolved-endpoints=true";
 
 /// Observation-surface object names classifying telemetry producers.
 /// Mirrors the analyzer's classification sets; lexical supporting evidence.
@@ -62,6 +63,10 @@ pub struct ContractGraphNode {
     /// Deterministic node id: `<path>::<name>@<start-byte>`.
     pub id: String,
     pub role: ContractRole,
+    /// Every independently evidenced role. `role` remains the deterministic
+    /// primary rendering role; consumers must use this set when a function
+    /// participates in more than one contract surface.
+    pub roles: Vec<ContractRole>,
     pub name: String,
     pub path: PathBuf,
     pub span: Span,
@@ -79,6 +84,7 @@ pub struct ContractGraphNode {
 pub enum ContractEdgeConfidence {
     Syntactic,
     Ambiguous,
+    Unresolved,
 }
 
 /// One semantic edge between contract nodes.
@@ -91,9 +97,11 @@ pub struct ContractGraphEdge {
     /// The reference or config token evidencing this edge.
     pub token: String,
     pub confidence: ContractEdgeConfidence,
+    pub provider: FactProvider,
+    pub capability: CapabilityLevel,
 }
 
-/// The contract graph for one revision (`deslop.contract-graph/1`).
+/// The contract graph for one revision (`deslop.contract-graph/2`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContractGraph {
@@ -142,7 +150,10 @@ impl ContractGraph {
 
     /// Nodes by role, for review tooling.
     pub fn nodes_with_role(&self, role: ContractRole) -> Vec<&ContractGraphNode> {
-        self.nodes.iter().filter(|node| node.role == role).collect()
+        self.nodes
+            .iter()
+            .filter(|node| node.roles.contains(&role))
+            .collect()
     }
 }
 
@@ -180,26 +191,70 @@ fn is_test_function(path: &std::path::Path, name: &str) -> bool {
 fn classify(
     path: &std::path::Path,
     function: &ContractFunction,
-) -> (ContractRole, CapabilityLevel) {
+) -> (ContractRole, Vec<ContractRole>, CapabilityLevel) {
+    let mut roles = vec![ContractRole::Consumer];
     if is_test_function(path, &function.name) {
-        (ContractRole::TestEntryPoint, CapabilityLevel::Complete)
-    } else if function.assertions > 0 {
-        (ContractRole::Verifier, CapabilityLevel::Complete)
-    } else if function
+        roles.push(ContractRole::TestEntryPoint);
+    }
+    if function.assertions > 0 {
+        roles.push(ContractRole::Verifier);
+    }
+    if function
         .references
         .iter()
         .any(|token| observation_surface(token, STATUS_SURFACES))
     {
-        (ContractRole::RuntimeIdentity, CapabilityLevel::Partial)
-    } else if function
+        roles.push(ContractRole::RuntimeIdentity);
+    }
+    if function
         .references
         .iter()
         .any(|token| observation_surface(token, TELEMETRY_SURFACES))
     {
-        (ContractRole::TelemetrySurface, CapabilityLevel::Partial)
-    } else {
-        (ContractRole::Consumer, CapabilityLevel::Complete)
+        roles.push(ContractRole::TelemetrySurface);
     }
+    let lower = function.name.to_ascii_lowercase();
+    if ["build_", "create_", "write_", "serialize_", "emit_"]
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+    {
+        roles.push(ContractRole::Producer);
+    }
+    if [
+        "decide", "step", "train", "run", "resume", "execute", "apply",
+    ]
+    .iter()
+    .any(|part| lower == *part || lower.starts_with(&format!("{part}_")))
+    {
+        roles.push(ContractRole::Owner);
+    }
+    roles.sort_by_key(|role| format!("{role:?}"));
+    roles.dedup();
+    let primary = if roles.contains(&ContractRole::TestEntryPoint) {
+        ContractRole::TestEntryPoint
+    } else if roles.contains(&ContractRole::Verifier) {
+        ContractRole::Verifier
+    } else if roles.contains(&ContractRole::RuntimeIdentity) {
+        ContractRole::RuntimeIdentity
+    } else if roles.contains(&ContractRole::TelemetrySurface) {
+        ContractRole::TelemetrySurface
+    } else if roles.contains(&ContractRole::Producer) {
+        ContractRole::Producer
+    } else if roles.contains(&ContractRole::Owner) {
+        ContractRole::Owner
+    } else {
+        ContractRole::Consumer
+    };
+    let capability = if roles.contains(&ContractRole::RuntimeIdentity)
+        || roles.contains(&ContractRole::TelemetrySurface)
+        || roles.contains(&ContractRole::Producer)
+        || roles.contains(&ContractRole::Owner)
+    {
+        CapabilityLevel::Partial
+    } else {
+        CapabilityLevel::Complete
+    };
+    (primary, roles, capability)
 }
 
 /// The edge kind a dependency from a node with `role` represents.
@@ -239,23 +294,19 @@ pub fn contract_graph_paths(paths: &[PathBuf]) -> Result<ContractGraph> {
 
 /// Build the contract graph projection for one exact analysis.
 pub fn contract_graph_analysis(analysis: Arc<ProjectAnalysis>) -> Result<ContractGraphProjection> {
-    let history =
-        ContractChangeHistory::from_analyses(&[("current".to_string(), Arc::clone(&analysis))])
-            .map_err(|error| anyhow::anyhow!("contract extraction failed: {error}"))?;
+    let snapshot = ContractSnapshot::from_analysis("current", &analysis)
+        .map_err(|error| anyhow::anyhow!("contract extraction failed: {error}"))?;
     let id = analysis
         .derive_projection_id(CONTRACT_PROJECTION_SCHEMA, b"{}", CONTRACT_CAPABILITIES)
         .context("derive contract projection identity")?;
-    let revision = history
-        .revisions
-        .first()
-        .context("contract history carries the analyzed revision")?;
+    let revision = snapshot.revision_contracts();
 
     let mut nodes: Vec<ContractGraphNode> = Vec::new();
     // Function name -> node ids (all same-named candidates stay visible).
     let mut by_name: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
     for file in &revision.files {
         for function in &file.functions {
-            let (role, capability) = classify(&file.path, function);
+            let (role, roles, capability) = classify(&file.path, function);
             let id = format!(
                 "{}::{}@{}",
                 file.path.display(),
@@ -269,6 +320,7 @@ pub fn contract_graph_analysis(analysis: Arc<ProjectAnalysis>) -> Result<Contrac
             nodes.push(ContractGraphNode {
                 id,
                 role,
+                roles,
                 name: function.name.clone(),
                 path: file.path.clone(),
                 span: function.span,
@@ -278,20 +330,64 @@ pub fn contract_graph_analysis(analysis: Arc<ProjectAnalysis>) -> Result<Contrac
             });
         }
     }
-    // Module-level acceptance surfaces are config-parameter nodes.
+    // Every observed configuration key has one real graph endpoint. Module
+    // acceptance surfaces and function reads converge on the same node id.
+    let mut config_nodes: BTreeMap<String, (PathBuf, deslop_core::Span)> = BTreeMap::new();
     for file in &revision.files {
         for (token, span) in &file.module_config_keys {
-            nodes.push(ContractGraphNode {
-                id: format!("{}::module-config:{token}", file.path.display()),
-                role: ContractRole::ConfigParameter,
-                name: token.clone(),
-                path: file.path.clone(),
-                span: *span,
-                fingerprint: format!("module-token:{token}"),
-                provider: FactProvider::TreeSitter,
-                capability: CapabilityLevel::Complete,
-            });
+            config_nodes
+                .entry(token.clone())
+                .or_insert_with(|| (file.path.clone(), *span));
         }
+        for function in &file.functions {
+            for token in &function.config_keys {
+                config_nodes
+                    .entry(token.clone())
+                    .or_insert_with(|| (file.path.clone(), function.span));
+            }
+        }
+    }
+    for (token, (path, span)) in config_nodes {
+        nodes.push(ContractGraphNode {
+            id: format!("config:{token}"),
+            role: ContractRole::ConfigParameter,
+            roles: vec![ContractRole::ConfigParameter],
+            name: token.clone(),
+            path,
+            span,
+            fingerprint: format!("module-token:{token}"),
+            provider: FactProvider::TreeSitter,
+            capability: CapabilityLevel::Complete,
+        });
+    }
+
+    // Preserve unresolved terminal references as typed endpoints rather than
+    // silently dropping them. They carry Unknown authority and cannot prove
+    // an external binding or negative reachability.
+    let mut unresolved: BTreeMap<String, (PathBuf, deslop_core::Span)> = BTreeMap::new();
+    for file in &revision.files {
+        for function in &file.functions {
+            for token in &function.references {
+                if !by_name.contains_key(token_leaf(token)) {
+                    unresolved
+                        .entry(token.clone())
+                        .or_insert_with(|| (file.path.clone(), function.span));
+                }
+            }
+        }
+    }
+    for (token, (path, span)) in unresolved {
+        nodes.push(ContractGraphNode {
+            id: format!("unresolved:{token}"),
+            role: ContractRole::UnresolvedEndpoint,
+            roles: vec![ContractRole::UnresolvedEndpoint],
+            name: token.clone(),
+            path,
+            span,
+            fingerprint: format!("unresolved-token:{token}"),
+            provider: FactProvider::TreeSitter,
+            capability: CapabilityLevel::Unknown,
+        });
     }
 
     let mut edges: Vec<ContractGraphEdge> = Vec::new();
@@ -303,11 +399,20 @@ pub fn contract_graph_analysis(analysis: Arc<ProjectAnalysis>) -> Result<Contrac
                 function.name,
                 function.span.start_byte
             );
-            let (role, _) = classify(&file.path, function);
+            let (role, _, _) = classify(&file.path, function);
             let kind = edge_kind_for(role);
             for token in &function.references {
                 let leaf = token_leaf(token);
                 let Some(candidates) = by_name.get(leaf) else {
+                    edges.push(ContractGraphEdge {
+                        from: from.clone(),
+                        to: format!("unresolved:{token}"),
+                        kind,
+                        token: token.clone(),
+                        confidence: ContractEdgeConfidence::Unresolved,
+                        provider: FactProvider::TreeSitter,
+                        capability: CapabilityLevel::Unknown,
+                    });
                     continue;
                 };
                 let confidence = if candidates.len() == 1 {
@@ -325,6 +430,8 @@ pub fn contract_graph_analysis(analysis: Arc<ProjectAnalysis>) -> Result<Contrac
                         kind,
                         token: token.clone(),
                         confidence,
+                        provider: FactProvider::TreeSitter,
+                        capability: CapabilityLevel::Partial,
                     });
                 }
             }
@@ -335,6 +442,8 @@ pub fn contract_graph_analysis(analysis: Arc<ProjectAnalysis>) -> Result<Contrac
                     kind: ContractEdgeKind::Reads,
                     token: key.clone(),
                     confidence: ContractEdgeConfidence::Syntactic,
+                    provider: FactProvider::TreeSitter,
+                    capability: CapabilityLevel::Partial,
                 });
             }
         }
@@ -345,14 +454,16 @@ pub fn contract_graph_analysis(analysis: Arc<ProjectAnalysis>) -> Result<Contrac
 
     let graph = ContractGraph {
         schema: CONTRACT_GRAPH_SCHEMA.to_string(),
-        coverage: history.coverage,
-        coverage_reasons: history.reasons,
+        coverage: snapshot.coverage,
+        coverage_reasons: snapshot.reasons,
         notes: vec![
             "reference edges are leaf-name syntactic candidates, not resolution proof; \
              same-named targets are retained as ambiguous"
                 .to_string(),
             "telemetry and runtime-identity roles rest on lexical surface classification \
              and carry partial capability"
+                .to_string(),
+            "unresolved reference endpoints are retained with unknown capability; they are not proven external"
                 .to_string(),
         ],
         nodes,
@@ -433,7 +544,9 @@ def load_config():
                 .find(|node| node.name == name)
                 .unwrap_or_else(|| panic!("missing node {name}"))
         };
-        assert_eq!(role_of("decide").role, ContractRole::Consumer);
+        assert_eq!(role_of("decide").role, ContractRole::Owner);
+        assert!(role_of("decide").roles.contains(&ContractRole::Consumer));
+        assert!(role_of("decide").roles.contains(&ContractRole::Owner));
         assert_eq!(role_of("release_check").role, ContractRole::Verifier);
         assert_eq!(
             role_of("release_check").capability,
@@ -441,6 +554,8 @@ def load_config():
         );
         let health = role_of("report_health");
         assert_eq!(health.role, ContractRole::TelemetrySurface);
+        assert!(health.roles.contains(&ContractRole::Consumer));
+        assert!(health.roles.contains(&ContractRole::TelemetrySurface));
         assert_eq!(health.capability, CapabilityLevel::Partial);
         let status = role_of("publish_status");
         assert_eq!(status.role, ContractRole::RuntimeIdentity);
@@ -487,6 +602,20 @@ def load_config():
                 .edges
                 .iter()
                 .any(|edge| edge.kind == ContractEdgeKind::Reads && edge.token == "THRESHOLD")
+        );
+        assert!(
+            projection
+                .graph
+                .nodes
+                .iter()
+                .any(|node| node.id == "config:THRESHOLD")
+        );
+        assert!(
+            projection
+                .graph
+                .edges
+                .iter()
+                .all(|edge| { projection.graph.nodes.iter().any(|node| node.id == edge.to) })
         );
     }
 

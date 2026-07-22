@@ -290,15 +290,16 @@ fn rules_tool_spec() -> Value {
 fn refactor_risk_tool_spec() -> Value {
     tool(
         "refactor_risk",
-        "Read-only. Compare an ordered window of revision snapshot directories and return \
-         deslop.refactor-risk/1 JSON: review-only deslop.refactor-defect/1 findings \
-         (never-auto, no edits) with causal paths, evidence, counter-evidence, coverage \
-         gaps, and adoption-chain summaries kept out of finding counts. Provide either \
-         `from`/`to` (plus optional ordered `then`) snapshot directories, or `bundle`, a \
+        "Read-only. With `paths` only, analyze one current source snapshot and return \
+         deslop.snapshot-refactor-risk/1 present-state findings without consulting VCS. \
+         With `from`/`to`, compare an ordered window and return deslop.refactor-risk/1. \
+         All findings are never-auto, carry causal paths and explicit gaps, and produce no edits. \
+         Alternatively provide `bundle`, a \
          path to a deslop.refactor-history/1 JSON file whose revision-bound \
          semantic-provider artifacts join as supporting or conflicting evidence. \
          No writes, no network.",
         object_schema(json!({
+            "paths": paths_schema(),
             "from": { "type": "string", "description": "Base revision snapshot directory." },
             "to": { "type": "string", "description": "Target revision snapshot directory." },
             "then": {
@@ -1095,7 +1096,7 @@ fn refactor_risk_tool(args: &Value) -> Result<Value> {
         let Some(bundle_path) = bundle.as_str() else {
             bail!("`bundle` must be a string path");
         };
-        for exclusive in ["from", "to", "then"] {
+        for exclusive in ["paths", "from", "to", "then"] {
             if args.get(exclusive).is_some() {
                 bail!("`bundle` is exclusive with `{exclusive}`");
             }
@@ -1107,6 +1108,16 @@ fn refactor_risk_tool(args: &Value) -> Result<Value> {
                 .with_context(|| format!("failed to parse {bundle_path}"))?;
         let report = deslop_analyzer::refactor::analyze_refactor_bundle(&bundle)?;
         return Ok(serde_json::to_value(report)?);
+    }
+    let has_history =
+        args.get("from").is_some() || args.get("to").is_some() || args.get("then").is_some();
+    if !has_history {
+        let paths = paths_arg(args)?;
+        let report = deslop_analyzer::snapshot_refactor::snapshot_refactor_risk_paths(&paths)?;
+        return Ok(serde_json::to_value(report)?);
+    }
+    if args.get("paths").is_some() {
+        bail!("`paths` is snapshot-only and exclusive with `from`/`to`/`then`");
     }
     let revision = |key: &str| -> Result<PathBuf> {
         args.get(key)
@@ -2337,6 +2348,33 @@ mod tests {
         for finding in findings {
             assert_eq!(finding["safety"], "never-auto");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn refactor_risk_tool_accepts_current_paths_without_history() -> Result<()> {
+        let _lock = temp_test_lock();
+        let temp = tempfile::tempdir_in(".")?;
+        std::fs::write(
+            temp.path().join("scoring.py"),
+            b"def decide(x):\n    return posterior.commit(x)\n\ndef public_score(x):\n    return model.raw_score(x)\n",
+        )?;
+        let response = call_tool(
+            "refactor_risk",
+            json!({"paths": [temp.path().display().to_string()]}),
+        )?;
+        let report = structured_content(&response);
+        assert_eq!(report["schema"], "deslop.snapshot-refactor-risk/1");
+        assert!(
+            report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|finding| {
+                    finding["rule"] == "owner-consumer-contract-split"
+                        && finding["safety"] == "never-auto"
+                })
+        );
         Ok(())
     }
 

@@ -12880,3 +12880,147 @@ so no build/test gates were run.
 **Blockers:** None.
 
 **Signature:** Claude (Fable 5), README prose rework, 2026-07-22.
+
+## 2026-07-22 — RelationExtractor defect hunt + reach-family scalability fix
+
+**Objective:** Apply deslop to `/srv/biotz/RelationExtractor` (read-only) to find defects; fix the
+scalability defect this exposed in the shipped reach-family detection.
+
+**Changes (deslop):** `detect_reach_families` no longer rebuilds the revision name map and recomputes
+a full reference closure per (migration × dependent). A `ReachIndex` (reverse leaf-name call edges)
+is built once per revision pair; one reverse BFS per migration token answers reachability for every
+candidate dependent at once, and the reach families run once per pair instead of once per file.
+`reference_closure` remains only for per-finding persistence tracking. Semantics note: the old
+per-start blocking of expansion through same-named functions is replaced by plain cycle-safe
+reachability; the self-recursion finding exclusion is unchanged. Measured effect: the whole-repo
+4-revision RelationExtractor window went from a 5-minute timeout (debug) to 72 s wall (release);
+all 33 analyzer refactor tests, the 22-case corpus, and the eval ratchet stay green.
+
+**Commands run/results (RelationExtractor, read-only):**
+- `deslop scan src lib scripts bin test configs`: 839 findings (619 major / 135 minor / 85 info);
+  top rules near-duplicate 274, long-method 254, magic-number 132, duplicate-block 91. Status
+  partial: 7 files hit tree-sitter-julia `ERROR` recovery and get only partial syntax analysis.
+- Boundary: `deslop scan configs src scripts lib` reports zero `config-key-*` findings (probe of
+  `configs` alone fires `config-key-unread` for every key, so the analysis is live; with code in
+  scope every declared key matches a read).
+- `deslop refactor-risk --from 46832247 --to bc76052c --then 8854f2d0 --then .`: coverage partial
+  (36 reasons), 2 findings, both `hot-path-work-duplicated`; details in the final chat report.
+  Artifacts: scratchpad `re-scan.json`, `re-boundary.json`, `re-history.json`.
+
+**Invalidated assumptions:** The shipped reach-family detection was assumed bounded after the
+pointer_canvas dogfood; a whole-repository window showed it quadratic. Fixed at the root rather
+than by scoping the run.
+
+**Blockers:** None.
+
+**Signature:** Claude (Fable 5), RelationExtractor defect hunt + ReachIndex scalability fix, 2026-07-22.
+
+## 2026-07-22 — Snapshot-native refactor pathology plan
+
+**Objective:** Plan a complete extension of `refactor-risk` that finds current end-state contract
+pathologies without requiring commit history.
+
+**Target:** `.agents/PLAN.md`, headed “Snapshot-native refactor pathology detection without commit
+history.”
+
+**Conclusion:** A current snapshot cannot honestly establish owner migration, retirement,
+persistence, or causation. The plan therefore introduces snapshot-native, present-tense invariant
+rules over one exact `ContractSnapshot` and contract-obligation graph. Existing history analysis
+becomes optional enrichment and joins the same end-state finding by a basis-independent
+`pathology_identity`; it is not emulated with `before == after`.
+
+**Planned changes:** Factor single-snapshot contract extraction out of
+`ContractChangeHistory`; version the contract graph for multi-role nodes, typed obligations,
+unresolved endpoints, and exact resolution/data-flow joins; add neutral snapshot rules and a typed
+snapshot/history evidence basis; make `deslop refactor-risk [PATHS...]` work without VCS; extend
+CLI/graph/LSP/MCP/eval and baseline identity; freeze a paired snapshot/history corpus before rule
+promotion.
+
+**Commands run/results:** Serena activated and project memories loaded; Hindsight global/repo startup,
+active-plan, and refactor negative memories loaded; `jj status`/`jj diff` inspected; shipped design,
+analyzer, CLI, contract extraction, contract graph, core finding schema, tests, and current plan/report
+artifacts inspected. Serena's active language set is Python-only and could not extract Rust symbols,
+so Rust inspection used local `rg`/`sed`. No source or test command was run because this was a
+planning-only task.
+
+**Invalidated assumption:** The existing eleven history rule names can be reused unchanged in
+snapshot mode. Names such as “moved,” “retired,” “stale,” “after-refactor,” and “lag” make historical
+claims the snapshot cannot support; neutral current-state rules are required, with a mapping to the
+history families.
+
+**Negative-memory status:** Existing Julia contract-query, broad hot-path nomination,
+shared-utility/constructor/self-recursion, canonical-role authority, and partial-PDG constraints were
+loaded into the plan. No new failed implementation attempt occurred.
+
+**Changes made:** `.agents/PLAN.md` and this append-only session checkpoint only. Existing
+uncommitted `crates/deslop-analyzer/src/refactor.rs` and prior report content were preserved.
+
+**Verification:** Plan content was grounded in current code and schemas; implementation remains
+`UNVERIFIED` because none was requested or performed.
+
+**Blockers:** None for P0 planning. Public schema changes must wait for the paired feasibility
+checkpoint specified in the plan.
+
+**Next action:** Execute P0: freeze the snapshot manifest and one-shot paired evaluator, then decide
+promote/candidate/history-only status per family before implementation.
+
+**Signature:** Codex (GPT-5), snapshot-native refactor pathology planning owner, 2026-07-22.
+
+## 2026-07-22 — Snapshot-native refactor pathology implementation
+
+**Objective:** Execute the snapshot-native plan so `deslop refactor-risk` can find current end-state
+contract pathologies without commit history, while preserving honest evidence boundaries and the
+existing historical mode.
+
+**Target:** `/home/christos/code/deslop`; current-snapshot extraction, core schemas, analyzer,
+contract graph, CLI/reporting, LSP, MCP, evaluator, frozen fixtures, and documentation. Existing
+uncommitted `ReachIndex` changes in `crates/deslop-analyzer/src/refactor.rs` were preserved.
+
+**Changes:** Added revision-pinned `ContractSnapshot` extraction and made history compose snapshots;
+added strict `deslop.snapshot-pathology/1` and `deslop.snapshot-refactor-risk/1` review-only schemas
+with neutral present-tense rules and `rsp1_` pathology identity; added a separate current-state
+analyzer; made no-argument/path-only CLI and MCP calls snapshot-native; enabled no-base LSP
+diagnostics; evolved the contract graph to `deslop.contract-graph/2` with multi-role nodes, real
+config nodes, and explicit unresolved endpoints; added a separate `deslop.refactor-snapshot-eval/1`
+evaluator and exact 22-case manifest; updated README and the refactor design document.
+
+**Promotion decision:** `owner-consumer-contract-split` alone meets the frozen promoted authority
+bar. Other supported rules are explicit candidates and `partition-boundary-not-preserved` is
+history-only until typed partition evidence exists. Snapshot messages do not claim movement,
+staleness, retirement, persistence, or causation. Dynamic/generated cases abstain as partial.
+
+**Commands run/results:** Baselines: analyzer history 33/33 and CLI history 5/5. Focused final runs:
+snapshot analyzer 5/5, CLI refactor-risk 7/7, contract graph 6/6, eval 2 passed/1 ignored, MCP 3/3,
+LSP 2/2. `cargo build --release -p deslop-cli` passed. RelationExtractor release dogfood found six
+current review candidates with complete coverage; its contract graph has 372 nodes, 1,677 edges,
+and 126 explicit unresolved nodes. Five-run warm benchmark measured graph p95 1.496 s and snapshot
+p95 1.135 s (ratio 0.76). `cargo fmt --all --check`, `cargo build --workspace --all-features`, and
+`cargo test --workspace --all-features` including rustdoc passed. Initial all-target clippy found one
+`items_after_test_module` layout error in `deslop-eval`; the test module was moved after public
+functions, affected eval tests passed, and `cargo clippy --workspace --all-targets --all-features --
+-D warnings` passed.
+
+**Invalidated assumptions:** A current snapshot cannot honestly reuse causal historical rule names,
+and most history families do not yet have enough typed current-state authority for promotion even
+when a useful review candidate can be nominated. The implementation therefore did not widen
+lexical heuristics to force parity. A one-entry fake history is unnecessary for the contract graph.
+
+**Current recommendation/checkpoint:** Ship the snapshot interface and the one promoted family with
+the candidate/history-only dispositions frozen in the manifest. Promote another family only after
+adding its typed adapter/provider facts plus at least three positives and three confounders across
+the declared languages at >=0.95 precision and >=0.80 recall.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** Rebuild downstream consumers. Reinstall the CLI if the
+installed `deslop` binary should expose path-only snapshot mode. LSP users must restart/reload the
+server binary; no data migration or service restart is otherwise required.
+
+**Negative-memory status:** The clippy layout failure was resolved locally and is not a recurring
+technical-path invalidation. The durable authority constraint is recorded: do not promote candidate
+families by lexical widening when their typed obligation evidence is absent.
+
+**Next actions:** Run `jj describe`, audit final status/diff, and hand off. Further rule promotion is
+new evidence work, not required to complete this implementation.
+
+**Signature:** Codex (GPT-5), snapshot-native refactor pathology implementation owner, 2026-07-22.

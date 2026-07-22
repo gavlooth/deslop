@@ -19,6 +19,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use deslop_core::refactor_defect::rule_names;
+use deslop_core::snapshot_pathology::rule_names as snapshot_rule_names;
 use serde::{Deserialize, Serialize};
 
 use crate::{EvalBaseline, read_json_file};
@@ -28,6 +29,190 @@ pub const REFACTOR_EVAL_SCHEMA: &str = "deslop.refactor-eval/1";
 
 /// Wire schema identifier for the frozen per-family promotion gates.
 pub const REFACTOR_PROMOTION_SCHEMA: &str = "deslop.refactor-promotion/1";
+
+/// Snapshot evaluation stays separate from history evaluation: history-only
+/// positives are never charged as snapshot false negatives.
+pub const SNAPSHOT_REFACTOR_EVAL_SCHEMA: &str = "deslop.refactor-snapshot-eval/1";
+
+#[derive(Debug, Deserialize)]
+struct SnapshotManifest {
+    schema: String,
+    #[allow(dead_code)]
+    note: Option<String>,
+    families: Vec<SnapshotFamilyContract>,
+    cases: Vec<SnapshotCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SnapshotFamilyContract {
+    rule: String,
+    history_rule: String,
+    status: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SnapshotCase {
+    name: String,
+    snapshot: String,
+    #[allow(dead_code)]
+    coverage: String,
+    #[allow(dead_code)]
+    reason: Option<String>,
+    findings: Vec<String>,
+    summaries: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotFamilyScore {
+    pub rule: String,
+    pub history_rule: String,
+    pub status: String,
+    pub true_positives: usize,
+    pub false_positives: usize,
+    pub false_negatives: usize,
+    pub precision: f64,
+    pub recall: f64,
+    pub abstention_rate: f64,
+    pub causal_path_complete_rate: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotRefactorEvalReport {
+    pub schema: String,
+    pub cases: usize,
+    pub confidence: String,
+    pub fix_safety: String,
+    pub families: Vec<SnapshotFamilyScore>,
+}
+
+/// Evaluate present-state rules only against the frozen snapshot manifest.
+/// The source snapshots live beside the history corpus, but no before/after
+/// revision is passed to the analyzer.
+pub fn run_snapshot_refactor_eval(
+    snapshot_corpus_root: &Path,
+) -> Result<SnapshotRefactorEvalReport> {
+    let manifest: SnapshotManifest = read_json_file(&snapshot_corpus_root.join("manifest.json"))?;
+    if manifest.schema != "deslop.refactor-snapshot-manifest/1" {
+        bail!(
+            "unsupported refactor-snapshot manifest schema `{}`",
+            manifest.schema
+        );
+    }
+    let listed: BTreeSet<&str> = manifest
+        .families
+        .iter()
+        .map(|family| family.rule.as_str())
+        .collect();
+    for rule in snapshot_rule_names::ALL {
+        if !listed.contains(rule) {
+            bail!("snapshot manifest omits family `{rule}`");
+        }
+    }
+    let history_root = snapshot_corpus_root
+        .parent()
+        .context("snapshot corpus has no parent")?
+        .join("refactor-history");
+    #[derive(Default)]
+    struct Tally {
+        tp: usize,
+        fp: usize,
+        fn_: usize,
+        correct_abstentions: usize,
+        abstention_opportunities: usize,
+        findings: usize,
+        complete_paths: usize,
+    }
+    let mut tallies: BTreeMap<&str, Tally> = manifest
+        .families
+        .iter()
+        .map(|family| (family.rule.as_str(), Tally::default()))
+        .collect();
+    for case in &manifest.cases {
+        let report =
+            deslop_analyzer::snapshot_refactor::snapshot_refactor_risk_paths(&[history_root
+                .join(&case.name)
+                .join(&case.snapshot)])
+            .with_context(|| format!("snapshot refactor eval case {}", case.name))?;
+        let fired: BTreeSet<&str> = report
+            .findings
+            .iter()
+            .map(|finding| finding.rule.as_str())
+            .collect();
+        let summaries: BTreeSet<&str> = report
+            .summaries
+            .iter()
+            .map(|finding| finding.rule.as_str())
+            .collect();
+        let wanted: BTreeSet<&str> = case.findings.iter().map(String::as_str).collect();
+        let wanted_summaries: BTreeSet<&str> = case.summaries.iter().map(String::as_str).collect();
+        for family in &manifest.families {
+            let is_summary = family.rule == snapshot_rule_names::CONTRACT_CHAIN_INCOMPLETE;
+            let actual = if is_summary {
+                summaries.contains(family.rule.as_str())
+            } else {
+                fired.contains(family.rule.as_str())
+            };
+            let expected = if is_summary {
+                wanted_summaries.contains(family.rule.as_str())
+            } else {
+                wanted.contains(family.rule.as_str())
+            };
+            let tally = tallies.get_mut(family.rule.as_str()).unwrap();
+            match (actual, expected) {
+                (true, true) => tally.tp += 1,
+                (true, false) => tally.fp += 1,
+                (false, true) => tally.fn_ += 1,
+                (false, false) => tally.correct_abstentions += 1,
+            }
+            if !expected {
+                tally.abstention_opportunities += 1;
+            }
+        }
+        for finding in report.findings.iter().chain(&report.summaries) {
+            let tally = tallies.get_mut(finding.rule.as_str()).unwrap();
+            tally.findings += 1;
+            if !finding.causal_path.is_empty() && !finding.suggested_verification.trim().is_empty()
+            {
+                tally.complete_paths += 1;
+            }
+        }
+    }
+    let ratio = |numerator: usize, denominator: usize| {
+        if denominator == 0 {
+            1.0
+        } else {
+            numerator as f64 / denominator as f64
+        }
+    };
+    let families = manifest
+        .families
+        .iter()
+        .map(|contract| {
+            let tally = tallies.get(contract.rule.as_str()).unwrap();
+            SnapshotFamilyScore {
+                rule: contract.rule.clone(),
+                history_rule: contract.history_rule.clone(),
+                status: contract.status.clone(),
+                true_positives: tally.tp,
+                false_positives: tally.fp,
+                false_negatives: tally.fn_,
+                precision: ratio(tally.tp, tally.tp + tally.fp),
+                recall: ratio(tally.tp, tally.tp + tally.fn_),
+                abstention_rate: ratio(tally.correct_abstentions, tally.abstention_opportunities),
+                causal_path_complete_rate: ratio(tally.complete_paths, tally.findings),
+            }
+        })
+        .collect();
+    Ok(SnapshotRefactorEvalReport {
+        schema: SNAPSHOT_REFACTOR_EVAL_SCHEMA.to_string(),
+        cases: manifest.cases.len(),
+        confidence: "snapshot rows measure present-state contract pathology detection only; they do not establish refactor causation, direction, age, or persistence"
+            .to_string(),
+        fix_safety: "never-auto: snapshot findings diagnose and request verification; they do not authorize edits"
+            .to_string(),
+        families,
+    })
+}
 
 #[derive(Debug, Deserialize)]
 struct HistoryManifest {
@@ -316,6 +501,47 @@ pub fn read_promotion(corpus_root: &Path) -> Result<RefactorPromotion> {
     Ok(promotion)
 }
 
+/// Enforce the frozen promotion gates: every family is listed exactly once,
+/// promoted families hold their frozen precision threshold, and blocked
+/// families carry the reason blocking them.
+pub fn assert_promotion(report: &RefactorEvalReport, promotion: &RefactorPromotion) -> Result<()> {
+    let listed: BTreeSet<&str> = promotion
+        .families
+        .iter()
+        .map(|family| family.rule.as_str())
+        .collect();
+    for rule in rule_names::ALL {
+        if !listed.contains(rule) {
+            bail!("promotion gates omit family `{rule}`");
+        }
+    }
+    let scores: BTreeMap<&str, &FamilyScore> = report
+        .families
+        .iter()
+        .map(|family| (family.rule.as_str(), family))
+        .collect();
+    for family in &promotion.families {
+        if family.note.trim().is_empty() {
+            bail!("promotion entry `{}` carries no note", family.rule);
+        }
+        if !family.promoted {
+            continue;
+        }
+        let Some(score) = scores.get(family.rule.as_str()) else {
+            bail!("promoted family `{}` missing from report", family.rule);
+        };
+        if score.precision < family.min_precision {
+            bail!(
+                "promoted family `{}` fell below its frozen precision gate: {:.4} < {:.4}",
+                family.rule,
+                score.precision,
+                family.min_precision
+            );
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,6 +549,43 @@ mod tests {
 
     fn corpus_root() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/refactor-history")
+    }
+
+    fn snapshot_corpus_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/refactor-snapshot")
+    }
+
+    #[test]
+    fn snapshot_eval_is_separate_and_matches_frozen_manifest() {
+        let report = run_snapshot_refactor_eval(&snapshot_corpus_root()).unwrap();
+        assert_eq!(report.schema, SNAPSHOT_REFACTOR_EVAL_SCHEMA);
+        assert_eq!(report.cases, 22);
+        assert_eq!(report.families.len(), snapshot_rule_names::ALL.len());
+        let promoted: Vec<&SnapshotFamilyScore> = report
+            .families
+            .iter()
+            .filter(|family| family.status == "promoted")
+            .collect();
+        assert_eq!(promoted.len(), 1);
+        assert_eq!(
+            promoted[0].rule,
+            snapshot_rule_names::OWNER_CONSUMER_CONTRACT_SPLIT
+        );
+        assert!(promoted[0].true_positives >= 3);
+        assert!(promoted[0].precision >= 0.95);
+        assert!(promoted[0].recall >= 0.80);
+        assert!(
+            report
+                .families
+                .iter()
+                .all(|family| family.causal_path_complete_rate == 1.0)
+        );
+        assert!(
+            report
+                .confidence
+                .contains("do not establish refactor causation")
+        );
+        assert!(report.fix_safety.contains("never-auto"));
     }
 
     /// Deliberate-regeneration helper: prints the measured report so the
@@ -370,45 +633,4 @@ mod tests {
                 .all(|family| family.semantic_provider_recall.is_none())
         );
     }
-}
-
-/// Enforce the frozen promotion gates: every family is listed exactly once,
-/// promoted families hold their frozen precision threshold, and blocked
-/// families carry the reason blocking them.
-pub fn assert_promotion(report: &RefactorEvalReport, promotion: &RefactorPromotion) -> Result<()> {
-    let listed: BTreeSet<&str> = promotion
-        .families
-        .iter()
-        .map(|family| family.rule.as_str())
-        .collect();
-    for rule in rule_names::ALL {
-        if !listed.contains(rule) {
-            bail!("promotion gates omit family `{rule}`");
-        }
-    }
-    let scores: BTreeMap<&str, &FamilyScore> = report
-        .families
-        .iter()
-        .map(|family| (family.rule.as_str(), family))
-        .collect();
-    for family in &promotion.families {
-        if family.note.trim().is_empty() {
-            bail!("promotion entry `{}` carries no note", family.rule);
-        }
-        if !family.promoted {
-            continue;
-        }
-        let Some(score) = scores.get(family.rule.as_str()) else {
-            bail!("promoted family `{}` missing from report", family.rule);
-        };
-        if score.precision < family.min_precision {
-            bail!(
-                "promoted family `{}` fell below its frozen precision gate: {:.4} < {:.4}",
-                family.rule,
-                score.precision,
-                family.min_precision
-            );
-        }
-    }
-    Ok(())
 }
