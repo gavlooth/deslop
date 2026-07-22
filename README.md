@@ -1,116 +1,160 @@
 # deslop
 
-**A deterministic, multi-language detector for AI/LLM code bloat — and a behavior-preserving way to remove it.**
+deslop finds the kind of bloat that LLM-assisted coding tends to leave behind:
+duplicated blocks, dead scaffolding, needless wrappers, over-long functions,
+narration comments, magic numbers. It scans deterministically across several
+languages, proposes cleanups as machine-readable work orders, and verifies and
+applies the patches that come back through a safety gate that never takes a
+model's word for anything.
 
-deslop scans code for "slop" (behavior-preservingly removable bloat: duplication, dead scaffolding,
-needless wrappers, over-long functions, narration comments, magic numbers, …), and emits rich,
-**agent-ready** output. It *proposes* cleanups as work orders and *verifies/applies* the patches that
-come back through a deterministic safety gate. **Any LLM is a swappable, external consumer — never a
-dependency.** The tool is fully useful with the LLM feature compiled out.
+Two things are worth knowing up front.
 
-> Slop is defined by *removability*, not authorship — deslop is not an "AI-authorship detector." A
-> finding means "this looks behavior-preservingly removable," and removal is only ever applied when
-> the safety gate proves it.
+First, "slop" here means removable without changing behavior. It does not mean
+"written by an AI", and deslop is not an authorship detector. A finding says
+"this looks like it can go"; nothing actually goes until the gate proves it.
 
-## Why it's structured this way
+Second, no LLM is bundled or required. Whatever rewrites code, whether that is
+Claude Code, Cursor, a CI bot, or the optional built-in client, is an external
+consumer that can be swapped out. The tool works fine with the LLM feature
+compiled out entirely.
 
-The product is the **deterministic analyzer + its output contract**, not a bundled model:
+## How the pieces fit
 
-- **`propose`** emits work orders (`deslop.workorder/3`) with canonical analyzer/scope/source context, separate matching identity, and exact-byte revision guard.
-- An LLM (Claude Code, Cursor, Codex, a CI bot, or the optional built-in consumer) rewrites regions.
-- **`verify` / `apply`** are the deterministic safety gate (`deslop.patch/3`): reconstruct the persisted proposal, re-parse, run your
-  `--check-cmd`, match the exact `revision_guard`, and only apply changes that clear the gate.
+The product is the deterministic analyzer and its output contract, not a model.
+The loop has three steps:
+
+1. `deslop propose` emits work orders (`deslop.workorder/3`) with the full
+   analyzer, scope, and source context, plus an exact-byte revision guard.
+2. Something rewrites the flagged regions. That can be you, an editor agent, a
+   CI bot, or the bundled `deslop fix` consumer.
+3. `deslop verify` and `deslop apply` are the gate (`deslop.patch/3`). They
+   reconstruct the persisted proposal, re-parse, run your `--check-cmd`, check
+   the revision guard against the exact bytes on disk, and only write patches
+   that clear all of it.
 
 ## Install
 
 ```sh
 cargo install --path crates/deslop-cli --features mcp   # CLI + MCP server
-# deslop-lsp is a separate binary: cargo install --path crates/deslop-lsp
+cargo install --path crates/deslop-lsp                  # LSP is a separate binary
 ```
 
-## CLI
+## Commands
 
-| Command | Purpose |
+| Command | What it does |
 |---|---|
-| `deslop scan <paths>` | Findings (`text`/`json`/`agent`/`sarif`); `--fail-on <sev>` for CI gating |
-| `deslop slop <paths>` | Slop score + per-rule counts |
-| `deslop metrics` | Transparent structural/lexical measurements, experimental heuristic burden, and scan-local triage outliers; never a rewrite gate |
-| `deslop graph <paths>` | Agent-ready `deslop.graph/2` dependency graph for refactor planning (`json`/`dot`) |
-| `deslop propose <paths>` | Work orders for agent-rewrite findings; `safe-auto` is deterministic and `never-auto` is report-only |
-| `deslop fix` | The bundled LLM consumer: propose → rewrite → verify → apply |
-| `deslop fix --diff` | Preview deterministic safe-auto edits as a unified diff without writing |
-| `deslop verify` / `apply` | Verify / atomically apply self-contained `deslop.patch/3` patches |
-| `deslop characterize` / `verify-characterization` | Generate/accept behavior-pinning tests for risky regions |
-| `deslop baseline` / `scan --baseline` | Snapshot findings; gate only on regressions |
-| `deslop eval` | Run the labeled corpus; per-rule precision/recall |
-| `deslop feedback <fingerprint> --false-positive` | Turn reviewed false positives into eval cases |
-| `deslop undo` · `deslop rules` · `deslop mcp` | Undo safe-auto edits · rule catalog · run MCP server |
+| `deslop scan <paths>` | Report findings as text, JSON, agent output, or SARIF; `--fail-on <sev>` gates CI |
+| `deslop slop <paths>` | Slop score with per-rule counts |
+| `deslop metrics` | Structural and lexical measurements plus triage outliers; never a rewrite gate |
+| `deslop graph <paths>` | Dependency graph (`deslop.graph/2`) for refactor planning; `--contract` emits the contract graph instead |
+| `deslop refactor-risk --from <rev> --to <rev>` | Compare revisions for refactor-defect accumulation (see below) |
+| `deslop propose <paths>` | Work orders for agent-rewrite findings |
+| `deslop fix` | The bundled LLM consumer: propose, rewrite, verify, apply |
+| `deslop fix --diff` | Preview deterministic safe-auto edits as a diff without writing |
+| `deslop verify` / `deslop apply` | Verify and atomically apply `deslop.patch/3` patches |
+| `deslop characterize` | Generate behavior-pinning tests for risky regions (`verify-characterization` accepts them) |
+| `deslop baseline` | Snapshot current findings so scans gate only on regressions |
+| `deslop eval` | Run the labeled corpus and report per-rule precision and recall |
+| `deslop feedback <fingerprint> --false-positive` | Turn a reviewed false positive into an eval case |
+| `deslop undo`, `deslop rules`, `deslop mcp` | Undo safe-auto edits, print the rule catalog, run the MCP server |
 
 ## How findings are graded
 
-**Fix-safety lattice** (per finding): `safe-auto` (only this writes in place) · `analyzer-confirmed`
-· `safe-with-precondition` · `risky-suggest` · `llm-only` · `never-auto` (report-only; never
-included in work orders or prompts).
+Every finding carries a fix-safety class: `safe-auto`, `analyzer-confirmed`,
+`safe-with-precondition`, `risky-suggest`, `llm-only`, or `never-auto`. Only
+`safe-auto` findings are ever written in place, and `never-auto` findings are
+report-only; they never enter work orders or prompts.
 
-**Removability verdicts** (the prover, used by `verify`/`apply`): `Removable` · `DeadCandidate` ·
-`UntestedRisky` · `CoverageUnknown` · `Rejected`. By default `apply` writes only `Removable`; widen
-explicitly with `--coverage <mode>` (prove it) or `--allow-unverified` (opt into the unproven band).
+Separately, the prover behind `verify` and `apply` assigns a removability
+verdict: `Removable`, `DeadCandidate`, `UntestedRisky`, `CoverageUnknown`, or
+`Rejected`. By default `apply` writes only `Removable`. You can widen that with
+`--coverage <mode>` (prove it with coverage data) or `--allow-unverified`
+(explicitly opt into the unproven band).
 
-### Detection tiers
+Detection runs in tiers. The core is deterministic tree-sitter parsing with
+scope, duplication, and complexity analysis. External analyzers are opt-in:
+clippy for Rust, clj-kondo for Clojure, StaticLint.jl and JET.jl for Julia.
+Coverage tools (cargo-llvm-cov, cloverage, Coverage.jl, coverage.py) feed the
+removability proof, either from recorded reports or a live mode, and degrade
+gracefully when absent. On top of that sits a native tree-sitter mutation
+engine for Rust, Clojure, Julia, and Python (with Cosmic Ray as a Python
+alternative): surviving mutants downgrade a removal verdict. Mutation refines
+removal safety; it is not itself a slop detector.
 
-- **T0/T1 — deterministic core:** tree-sitter CST + scope/duplication/complexity analysis.
-- **T2 — external analyzers (opt-in):** clippy (Rust), clj-kondo (Clojure), StaticLint.jl / JET.jl (Julia).
-- **Coverage (prove removability):** Rust `cargo-llvm-cov`, Clojure cloverage, Julia Coverage.jl,
-  Python coverage.py — recorded reports or live `Auto` mode, graceful degrade when a tool is absent.
-- **Mutation (high-signal confirmation tier):** a native tree-sitter mutation engine (`deslop-mutate`)
-  for Rust/Clojure/Julia/Python, plus Cosmic Ray (Python) as an opt-in; coverage-gated, timed out,
-  and parallelized (surviving mutants downgrade a removal verdict). Mutation refines removal *safety*;
-  it is not itself a slop detector.
+## The cleanup loop
 
-## The cleanup loop (`deslop fix`)
+`deslop fix` runs the whole loop: propose, build a per-region prompt, call an
+LLM, build a patch, verify, apply.
 
-`fix` runs propose → build a per-region prompt → call an LLM → build a patch → `verify` → apply.
+It is dry-run unless you pass `--apply`, and applies only `Removable` unless
+widened. `--provider anthropic|openai` selects the client, and `--base-url`
+lets the openai client talk to any compatible endpoint (Together, Groq,
+Ollama, OpenRouter, vLLM). API keys come from the environment only, never from
+config, and both clients are optional cargo features; with neither enabled, no
+network code is compiled at all.
 
-- **Providers:** `--provider anthropic|openai` (`--base-url` makes "openai" cover any
-  OpenAI-compatible endpoint: Together, Groq, Ollama, OpenRouter, vLLM, …). API keys are read from the
-  environment only — never from config. Both clients are optional cargo features (`anthropic`,
-  `openai`); with neither, no network code is compiled.
-- **Safe by default:** dry-run unless `--apply`; applies only `Removable` unless widened.
-- **Characterization (`--characterize`):** for weakly-tested regions, generate a test that pins
-  current behavior, accept it only if it passes on unmodified code, then re-verify — turning an
-  unprovable removal into a safe one.
-- **Source-egress consent:** real-provider calls require explicit consent (`--yes`, `DESLOP_SLIM_CONSENT`,
-  `[slim] egress_consent`, or an interactive prompt); non-interactive without consent refuses cleanly.
-- **Progress** streams to stderr (`--quiet` to silence); stdout stays the machine-readable report.
+For weakly-tested regions, `--characterize` generates a test that pins current
+behavior, accepts it only if it passes on unmodified code, and then re-verifies.
+That turns an unprovable removal into a safe one.
 
-## Editor & MCP
+Sending source to a real provider requires explicit consent: `--yes`, the
+`DESLOP_SLIM_CONSENT` variable, `[slim] egress_consent` in config, or an
+interactive prompt. Without consent in a non-interactive run, it refuses and
+says so. Progress goes to stderr; stdout stays machine-readable.
 
-- **MCP server** (`deslop mcp`, `--features mcp`): tools `scan`, `propose`, `verify`, `apply`,
-  `characterize`, `verify_characterization`, `metrics`, `graph`, `rules`, and `fix`. The default build is
-  **network-free**. `fix` defaults to *agent-as-consumer* (returns rewrite prompts + exact revision guards;
-  the calling agent rewrites and submits patches to `apply`); a server-run LLM mode is available only
-  behind the `slim-llm` feature. `scan`, `propose`, and prompt-mode `fix` accept a `config` path and
-  inline `analyzer` overrides, including per-language `long_method_nloc`; inline MCP values override
-  the config file for that tool call.
-- **LSP** (`deslop-lsp`): live diagnostics + code actions wired to the fix-safety lattice (only
-  safe-auto findings get quickfixes; plus a `source.fixAll`), precise UTF-16 ranges, incremental sync.
+## Refactor history analysis
+
+`deslop refactor-risk` compares an ordered window of revisions and reports the
+defects that accumulate when a refactor moves behavioral ownership but leaves
+consumers, verifiers, tests, telemetry, or operational identity attached to
+the former owner. Eleven detector families cover stale consumers, schema
+drift, retired gates, scope collapse, lost score provenance, inert config
+keys, lagging test oracles, duplicated hot-path work, stale telemetry and
+status surfaces, and incomplete adoption chains.
+
+Revisions can be snapshot directories, Git revisions, or Jujutsu revsets;
+`--to` defaults to the working tree, and `--bundle` accepts a caller-produced
+`deslop.refactor-history/1` file, whose revision-pinned LSP facts join as
+supporting or conflicting evidence without overriding the syntax analysis.
+Every finding in this family is review-only (`never-auto`) and carries a
+causal path, counter-evidence, explicit coverage gaps, and a suggested
+verification instead of a fix. The full design and its evaluation gates are in
+[`docs/REFACTOR_DEFECT_ACCUMULATION.md`](docs/REFACTOR_DEFECT_ACCUMULATION.md).
+
+## Editors and MCP
+
+The MCP server (`deslop mcp`, behind `--features mcp`) exposes `scan`,
+`propose`, `verify`, `apply`, `characterize`, `verify_characterization`,
+`metrics`, `graph`, `refactor_risk`, `rules`, and `fix`. The default build is
+network-free. `fix` defaults to agent-as-consumer: it returns rewrite prompts
+and exact revision guards, and the calling agent submits patches back through
+`apply`. A server-side LLM mode exists only behind the `slim-llm` feature.
+Tool calls accept a `config` path and inline analyzer overrides, which win
+over the config file for that call.
+
+The LSP gives live diagnostics and code actions wired to the fix-safety
+lattice: only safe-auto findings get quickfixes, plus a `source.fixAll`. With
+`refactor_base` set in the `[lsp]` section of `deslop.toml`, it also compares
+the live buffer against a base revision and publishes refactor-risk findings
+as review diagnostics.
 
 ## CI
 
-`deslop scan --changed[=<ref>] --format sarif` → upload to GitHub code scanning; `--fail-on major`
-as an exit-code gate; `--baseline` to gate only on new findings; `deslop baseline update` to ratchet
-accepted current findings. A reusable `action.yml`, an example
-`.github/workflows/deslop.yml`, and `.pre-commit-hooks.yaml` are included (see `docs/CI.md`).
+Run `deslop scan --changed[=<ref>] --format sarif` and upload the result to
+GitHub code scanning. `--fail-on major` turns severity into an exit code, and
+`--baseline` gates only on new findings; `deslop baseline update` ratchets the
+accepted set. A reusable `action.yml`, an example workflow, and
+`.pre-commit-hooks.yaml` are included; see `docs/CI.md`.
 
 ## Configuration
 
-`deslop.toml` (or `--config <path>`) sets project defaults; precedence is **CLI flag > env > config >
-default**. Sections: `[external]`, `[slim]` (provider/model/base_url/egress_consent), `[fix]`
-(check_cmd/coverage/allow_unverified), `[scan]` (fail_on/baseline), `[analyzer]`
-(min_duplication_tokens/long_method_nloc/min_meaningful_tokens). See `deslop.toml.example` and
-`docs/CONFIG.md`.
+`deslop.toml` (or `--config <path>`) sets project defaults. Precedence is CLI
+flag, then environment, then config, then built-in default. The sections are
+`[external]`, `[slim]`, `[fix]`, `[scan]`, and `[analyzer]`; see
+`deslop.toml.example` and `docs/CONFIG.md` for the full reference.
 
-`long_method_nloc` defaults to 40 non-comment lines globally and can be overridden per language:
+The long-method threshold defaults to 40 non-comment lines and can be set per
+language:
 
 ```toml
 [analyzer]
@@ -121,87 +165,90 @@ long_method_nloc = 45
 
 [analyzer.python]
 long_method_nloc = 35
-
-[analyzer.typescript]
-long_method_nloc = 45
 ```
 
-Supported per-language analyzer tables are `rust`, `clojure`, `julia`, `python`, `javascript`,
-`typescript`, and `generic`.
+Per-language tables exist for `rust`, `clojure`, `julia`, `python`,
+`javascript`, `typescript`, and `generic`.
 
-Thresholds are global and blunt; **suppression** is the scalpel. Filter findings by rule and by
-path — unknown rule names and unknown `[analyzer]` keys are errors, not silent no-ops:
+Thresholds are blunt; suppression is the scalpel. You can disable a rule
+everywhere, skip paths for all rules, or skip one rule on selected paths.
+Unknown rule names and unknown `[analyzer]` keys are errors, not silent no-ops:
 
 ```toml
 [analyzer]
-disabled_rules = ["magic-number"]          # drop a rule everywhere
-ignore_paths = ["**/generated/**"]          # skip paths for all rules
+disabled_rules = ["magic-number"]
+ignore_paths = ["**/generated/**"]
 
 [analyzer.rules.duplicate-block]
-ignore_paths = ["**/tests/**"]              # skip one rule on selected paths
+ignore_paths = ["**/tests/**"]
 ```
 
-See `docs/CONFIG.md` for the full suppression reference.
+## Config-boundary analysis
 
-## Config-boundary analysis (dishonest wiring)
+`deslop scan` also follows the lifecycle of config keys, from declaration in
+TOML, YAML, or JSON, through parsing, to actual behavioral use, and flags keys
+that only look wired:
 
-`deslop scan` also audits the **config key lifecycle** — declared (TOML/YAML/JSON) → parsed →
-consumed — and flags keys that only *look* wired:
+- `config-key-unread`: declared in a config artifact but never read by any
+  scanned code.
+- `config-key-unconsumed`: parsed, and usually echoed or serialized, but
+  nothing behavioral consumes it.
+- `config-key-shadowed`: parsed, then unconditionally overwritten by a literal
+  before any behavioral use.
 
-| Rule | Meaning |
-|---|---|
-| `config-key-unread` | declared in a config artifact, never read by any scanned code |
-| `config-key-unconsumed` | parsed (and typically echoed/serialized) but nothing behavioral consumes it |
-| `config-key-shadowed` | parsed, then unconditionally overwritten by a literal before any behavioral use |
-
-The analysis is language-agnostic (tree-sitter node-kind heuristics + repo-wide key
-aggregation over normalized names, so `canvas-top-k` in TOML matches `canvas_top_k` in code)
-and precision-first: uses that can't be confidently classified as echo count as live, which
-suppresses the finding. Tune via `[analyzer.boundary]` (`enabled`, `min_key_length`,
-`extra_sinks`, `ignore_keys`, `skip_artifacts`); tool configs like `Cargo.toml`/`package.json`
-are skipped by default.
+The analysis is language-agnostic (key names are normalized, so `canvas-top-k`
+in TOML matches `canvas_top_k` in code) and precision-first: any use that
+cannot be confidently classified as an echo counts as live and suppresses the
+finding. Tune it under `[analyzer.boundary]`; tool configs like `Cargo.toml`
+and `package.json` are skipped by default.
 
 ## Languages
 
-Stable S1 syntax analysis for **Rust, Clojure, Julia, Python, JavaScript, and TypeScript**, plus
-language-agnostic rules where their lexical/structural preconditions are supported. Deeper scope,
-control/data, external-analyzer, and transformation facts carry explicit per-adapter capability and
-provenance; they are not implied by S1.
-JavaScript/JSX, TypeScript (`.ts`/`.mts`/`.cts`), and TSX use distinct Tree-sitter grammar
-selection; TSX shares TypeScript analyzer thresholds and rules.
+Stable syntax-level analysis covers Rust, Clojure, Julia, Python, JavaScript,
+and TypeScript, plus language-agnostic rules wherever their structural
+preconditions hold. JavaScript/JSX, TypeScript, and TSX get distinct grammar
+selection; TSX shares TypeScript's thresholds and rules. Deeper facts (scope
+resolution, control and data flow, external analyzers, transformations) carry
+explicit per-adapter capability and provenance rather than being implied.
 
-## Stable evidence boundary
+## Release status
 
-M10 releases `0.1.0-evidence.1` as **stable-evidence-limited**. The exact shipped/unshipped matrix,
-benchmarks, failure taxonomy, migration rules, and operational policies are in
+The current release, `0.1.0-evidence.1`, is deliberately labeled
+stable-evidence-limited. The exact shipped/unshipped matrix, benchmarks,
+failure taxonomy, and migration rules are in
 [`docs/M10_RELEASE_REPORT.md`](docs/M10_RELEASE_REPORT.md) and
 [`docs/M10_CAPABILITY_MATRIX.md`](docs/M10_CAPABILITY_MATRIX.md).
 
-Important limits: readability labels are unshipped; global transformation precision is demonstrated
-only for the frozen Rust unreachable-literal recipe slice; one-million-LOC performance is not claimed;
-and whole-project finding-proposal batching is unshipped after its measured dogfood timeout. Use the
-bounded work-order protocol for agent workflows. Unknown/partial/unsupported facts remain visible and
-block dependent rewrites.
+The honest limits: readability labels are unshipped, global transformation
+precision is demonstrated only for one frozen Rust recipe slice, million-line
+performance is not claimed, and whole-project finding-proposal batching is
+unshipped after it timed out in a measured dogfood run. Agent workflows should
+use the bounded work-order protocol. Unknown, partial, and unsupported facts
+stay visible and block dependent rewrites instead of being papered over.
 
 ## Workspace
 
-17 crates: `deslop-core` (types) · `deslop-parse` (tree-sitter) · `deslop-lang` (LangPack/Rule/provider
-traits + registries) · `deslop-analyzer` (rules/packs) · `deslop-external` (clippy/clj-kondo/StaticLint/JET)
-· `deslop-metrics` · `deslop-graph` (refactor dependency graph) · `deslop-mutate` (CST mutation operators) · `deslop-verify` (prover, coverage &
-mutation tiers, apply) · `deslop-protocol` (workorder/patch schemas) · `deslop-report` (text/json/agent/SARIF)
-· `deslop-fix` (deterministic safe-auto fixes) · `deslop-slim` (LLM consumer) · `deslop-mcp` · `deslop-lsp`
-· `deslop-eval` (corpus harness) · `deslop-cli`.
+Seventeen crates. `deslop-core` holds the shared types; `deslop-parse` owns
+tree-sitter parsing and snapshots; `deslop-lang` defines the language adapter
+traits and registries; `deslop-analyzer` implements the rules;
+`deslop-external` wraps clippy, clj-kondo, StaticLint, and JET;
+`deslop-metrics`, `deslop-graph`, and `deslop-mutate` do what their names say;
+`deslop-verify` is the prover with the coverage and mutation tiers;
+`deslop-protocol` defines the work-order and patch schemas; `deslop-report`
+renders text, JSON, agent output, and SARIF; `deslop-fix` applies the
+deterministic safe-auto edits; `deslop-slim` is the optional LLM client;
+`deslop-mcp` and `deslop-lsp` are the servers; `deslop-eval` runs the corpus;
+and `deslop-cli` ties it together.
 
-## Design notes & known gaps
+## Known gaps
 
-The full design rationale is in `SPEC.md`. Deferred: tree-sitter 0.26 (blocked upstream by the
-Clojure grammar's pin), Clojure/Julia mutation tools (none source-mappable), workspace-wide LSP scan,
-and equivalent-mutant detection (the path to using mutation as an actual slop *detector*). Release
-exceptions and their exact recheck conditions are maintained in
-[`docs/M10_FAILURE_RISK_REGISTER.md`](docs/M10_FAILURE_RISK_REGISTER.md), not hidden behind a broader
-"complete" claim.
-
-[`docs/REFACTOR_DEFECT_ACCUMULATION.md`](docs/REFACTOR_DEFECT_ACCUMULATION.md) describes a proposed
-history-aware analysis for refactors that move behavioral ownership while leaving consumers, tests,
-verifiers, telemetry, or operational identity attached to the former owner. It uses Tree-sitter and
-optional revision-bound LSP evidence without requiring language-specific compiler tooling.
+The full design rationale lives in `SPEC.md`. Still deferred: the tree-sitter
+0.26 upgrade (blocked upstream by the Clojure grammar's pin), external
+mutation tools for Clojure and Julia (the native engine already covers both;
+the ecosystem's tools are either bytecode-based and not source-mappable, or
+too experimental to be a stable verifier input), workspace-wide LSP scanning,
+and equivalent-mutant detection, which is the path to using mutation as an
+actual slop detector rather than a safety check. Release exceptions and their
+recheck conditions are tracked in
+[`docs/M10_FAILURE_RISK_REGISTER.md`](docs/M10_FAILURE_RISK_REGISTER.md)
+rather than hidden behind a broader "complete" claim.

@@ -12860,3 +12860,23 @@ queries (declared `unknown` today), semantic-provider corpus rows so the
 `refactor-risk`. No service restart.
 
 **Signature:** Claude (Fable 5), refactor-defect accumulation all phases + deferred items shipped, 2026-07-21.
+
+## 2026-07-22 — README reworked into plain prose
+
+**Objective:** Rework `README.md` so it reads like a person wrote it, without losing technical
+precision.
+
+**Changes:** Rewrote the README in full sentences and calm formatting: removed the bold-on-every-noun
+styling, `·` separators, ellipses, arrow chains, and fragment bullets; merged the detection-tier and
+grading bullets into prose; kept the command table and config examples. Content updates folded in:
+added `deslop refactor-risk` and `deslop graph --contract` to the command table, added a
+"Refactor history analysis" section, listed `refactor_risk` among the MCP tools, mentioned the LSP
+`refactor_base` knob, and replaced the stale "proposed history-aware analysis" closing paragraph —
+that feature shipped on 2026-07-21.
+
+**Commands run/results:** `git diff --check` clean. Documentation-only change; no Rust code touched,
+so no build/test gates were run.
+
+**Blockers:** None.
+
+**Signature:** Claude (Fable 5), README prose rework, 2026-07-22.
