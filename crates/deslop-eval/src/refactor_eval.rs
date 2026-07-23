@@ -559,7 +559,7 @@ mod tests {
     fn snapshot_eval_is_separate_and_matches_frozen_manifest() {
         let report = run_snapshot_refactor_eval(&snapshot_corpus_root()).unwrap();
         assert_eq!(report.schema, SNAPSHOT_REFACTOR_EVAL_SCHEMA);
-        assert_eq!(report.cases, 22);
+        assert_eq!(report.cases, 25);
         assert_eq!(report.families.len(), snapshot_rule_names::ALL.len());
         let promoted: Vec<&SnapshotFamilyScore> = report
             .families

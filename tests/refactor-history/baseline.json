@@ -48,6 +48,11 @@
       "recall": 1.0
     },
     {
+      "rule": "sibling-admission-gates-diverged",
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
       "rule": "telemetry-not-bound-to-claim",
       "precision": 1.0,
       "recall": 1.0

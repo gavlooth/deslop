@@ -642,6 +642,9 @@ pub enum QueryFamily {
     /// (`docs/REFACTOR_DEFECT_ACCUMULATION.md`): candidate owner/consumer
     /// functions, call/attribute references, schema literals, config reads,
     /// loop constructs, assertion statements, and whole call expressions.
+    /// Once function boundaries are captured, contract extraction also
+    /// derives bounded admission-guard features from exact function bytes;
+    /// these are source-shape facts, not semantic predicate equivalence.
     /// Adapters that cannot support the family declare it unknown, which
     /// surfaces as a per-language capability gap, never a silent absence.
     Contract,

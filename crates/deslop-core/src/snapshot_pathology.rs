@@ -27,6 +27,7 @@ pub mod rule_names {
     pub const SAME_PATH_EXPENSIVE_WORK_REPEATED: &str = "same-path-expensive-work-repeated";
     pub const PUBLISHED_IDENTITY_NOT_LIVE: &str = "published-identity-not-live";
     pub const CONTRACT_CHAIN_INCOMPLETE: &str = "contract-chain-incomplete";
+    pub const SIBLING_ADMISSION_GUARDS_ASYMMETRIC: &str = "sibling-admission-guards-asymmetric";
 
     pub const ALL: &[&str] = &[
         OWNER_CONSUMER_CONTRACT_SPLIT,
@@ -40,6 +41,7 @@ pub mod rule_names {
         SAME_PATH_EXPENSIVE_WORK_REPEATED,
         PUBLISHED_IDENTITY_NOT_LIVE,
         CONTRACT_CHAIN_INCOMPLETE,
+        SIBLING_ADMISSION_GUARDS_ASYMMETRIC,
     ];
 }
 
@@ -58,6 +60,9 @@ pub fn neutral_family_for_history_rule(rule: &str) -> Option<&'static str> {
         history::HOT_PATH_WORK_DUPLICATED => rule_names::SAME_PATH_EXPENSIVE_WORK_REPEATED,
         history::OPERATIONAL_IDENTITY_STALE => rule_names::PUBLISHED_IDENTITY_NOT_LIVE,
         history::ADOPTION_CHAIN_INCOMPLETE => rule_names::CONTRACT_CHAIN_INCOMPLETE,
+        history::SIBLING_ADMISSION_GATES_DIVERGED => {
+            rule_names::SIBLING_ADMISSION_GUARDS_ASYMMETRIC
+        }
         _ => return None,
     })
 }

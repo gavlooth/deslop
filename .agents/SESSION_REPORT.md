@@ -13033,3 +13033,101 @@ the colocated Git bookmark, and `main@origin` all resolved to `7951ead2091f`. Th
 follow-up records the external-state checkpoint.
 
 Signature: Codex (GPT-5), snapshot-native refactor pathology push confirmation, 2026-07-22.
+
+## 2026-07-23 — Sibling admission-gate asymmetry rule family
+
+**Objective:** Detect fail-loud sibling admission gates whose overlapping
+metric/field contracts have asymmetric zero-observation/NaN admissions or
+substantially overlapping but divergent predicate structures, without
+requiring commit history.
+
+**Target:** `/home/christos/code/deslop`; parse contracts, graph projection,
+snapshot and history analyzers, core rule/identity registries, CLI-visible
+rule registration, frozen evaluation fixtures, documentation, and read-only
+dogfood against `/srv/biotz/RelationExtractor`.
+
+**Changes:** Added bounded `AdmissionGuardFacts` to
+`deslop.contract-snapshot/2` and `deslop.contract-change-history/3`; added a
+shared sibling-gate pairing engine with gate-name, popularity, type-like,
+closure-depth, field-overlap, and predicate-overlap bounds; registered
+snapshot rule `sibling-admission-guards-asymmetric` and history rule
+`sibling-admission-gates-diverged`; preserved Julia short-form
+`(assignment . (call_expression ...))` and long-form `(signature ...)`
+function discovery and post-extracted predicate facts only inside those exact
+function bounds. Both outputs are `NeverAuto`, share a pathology identity,
+and history findings retain stable `rdf1_` identity. Lexical fail-loud gates
+project as partial verifiers. Added positive Julia and aligned/low-overlap
+Python/JavaScript fixtures plus unit, graph, evaluator, and CLI integration
+coverage.
+
+**Dogfood evidence:** The release binary scanned only
+`scripts/train_pointer_triplet_re_head.jl` and
+`scripts/verify_span_pointer_checkpoint.jl` in the live RelationExtractor
+checkout; no file or VCS state there was changed. Coverage was `complete` and
+the new snapshot rule emitted four `never-auto` nominations:
+
+- trainer resume metadata gate at line 4935 versus save structured-activity
+  gate at line 5830 (required save/resume miss);
+- trainer save structured-activity gate at line 5830 versus independent
+  release verifier at line 1093, whose relevant checks begin around line
+  1101 (required trainer/verifier duplicate);
+- resume metadata gate at line 4935 versus that release verifier, the third
+  edge in the same asymmetric contract triangle; and
+- trainer remask gate at line 5918 versus release remask verifier at line
+  1257, an analogous parity-review candidate.
+
+The output is a bounded review queue, not a claim that every pair is a runtime
+defect. Dynamic `getfield` consumer resolution did not block these pairs, so
+no resolution widening was added.
+
+**Precision tuning and invalidated assumption:** The initial caller-closure
+design propagated zero/NaN evidence into every caller and emitted 286
+nominations. This invalidated the assumption that transitive helper evidence
+can be treated as direct guard structure. Intermediate conservative revisions
+emitted 29 and 14. The final design keeps zero/NaN identifiers local to a
+five-line predicate window; uses direct predicate identifiers for general
+divergence; permits only explicit gate-like roots and unique callees with
+popularity at most 3 to depth 2; drops fields present in more than 12 gate
+contexts and type-like symbols; requires a count/observation plus
+mean/rate/effect/lambda/entropy dimension for zero carve-outs; and requires
+at least 8 directly shared predicate identifiers with at least 60% overlap
+for general divergence. This reduced the dogfood set to four.
+
+**Commands run/results:** Focused parse, analyzer, graph, core, evaluator, and
+CLI manifest tests passed. `cargo test --workspace --all-features` passed on
+the final source state, including rustdoc. `cargo build --release` passed.
+`cargo clippy --workspace --all-targets --all-features -- -D warnings`
+passed. `cargo fmt --all -- --check` and `git diff --check` passed. The final
+release-binary dogfood assertion verified complete coverage, exactly four new
+rule findings, `never-auto` safety, and the required 4935↔5830 and
+5830↔1093 line pairs. The rule table lists both snapshot and history names.
+
+**Failure resolved:** Strict Clippy initially reported
+`large_enum_variant` because the new contract facts enlarged
+`ContractFunction`; boxing the analyzer's owned `Holder::Function` payload
+removed the regression, after which focused tests, strict Clippy, full tests,
+release build, and dogfood were rerun successfully.
+
+**Negative-memory status:** The 286→29→14→4 nomination failure and its
+preferred bounded alternative were written to Hindsight session
+`sibling-admission-gates-2026-07-23` and are recorded here. Hindsight
+consolidation did not finish within 50 seconds and was terminated; this local
+report is the durable fallback.
+
+**Current recommendation/checkpoint:** Ship both review-only rules with the
+history family promoted by the frozen fixture and the snapshot family kept at
+candidate authority. Promote the snapshot family only with additional
+cross-project labeled evidence; do not widen dynamic resolution merely to
+increase nominations.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** Downstream consumers must rebuild.
+Install the new release binary separately if the system `deslop` command
+should expose this rule; LSP users must restart/reload that binary. No schema
+migration or RelationExtractor restart is required.
+
+**Next actions:** Describe the Jujutsu commit, create a working bookmark from
+the detached main-history checkout, and audit the final repository state.
+
+**Signature:** Codex (GPT-5.x), sibling admission-gate detector checkpoint, 2026-07-23.

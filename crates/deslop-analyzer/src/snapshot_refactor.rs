@@ -24,6 +24,8 @@ use deslop_parse::{
 };
 use serde::Serialize;
 
+use crate::sibling_gate::{GateAnchor, sibling_gate_asymmetries};
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SnapshotRefactorRiskReport {
@@ -117,6 +119,8 @@ pub fn analyze_snapshot_refactor(
     detect_lossy_confidence(&label, &index, &mut findings);
     detect_repeated_work(&label, &index, &mut findings);
     detect_test_dimension_gap(&label, &index, &mut findings);
+    let revision = snapshot.revision_contracts();
+    detect_sibling_gate_asymmetry(&label, &revision, &mut findings);
 
     findings.sort_by(|left, right| {
         (&left.rule, left.pathology_identity()).cmp(&(&right.rule, right.pathology_identity()))
@@ -378,6 +382,76 @@ fn split_step(indexed: &IndexedFunction<'_>, role: ContractRole, detail: String)
         node: node(indexed, role, CapabilityLevel::Partial),
         token: None,
         detail,
+    }
+}
+
+fn gate_node(anchor: GateAnchor<'_>) -> ContractNodeRef {
+    ContractNodeRef {
+        role: ContractRole::Verifier,
+        path: anchor.path.to_path_buf(),
+        span: anchor.function.span,
+        fingerprint: anchor.function.fingerprint.clone(),
+        provider: FactProvider::TreeSitter,
+        capability: CapabilityLevel::Partial,
+    }
+}
+
+fn detect_sibling_gate_asymmetry(
+    snapshot: &str,
+    revision: &deslop_parse::RevisionContracts,
+    findings: &mut Vec<SnapshotPathology>,
+) {
+    for asymmetry in sibling_gate_asymmetries(revision) {
+        let left_node = gate_node(asymmetry.left);
+        let right_node = gate_node(asymmetry.right);
+        let shared = asymmetry
+            .shared_identifiers
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        let detail = format!(
+            "fail-loud gates `{}` and `{}` share [{}], but {}",
+            asymmetry.left.function.name,
+            asymmetry.right.function.name,
+            shared,
+            asymmetry.detail()
+        );
+        findings.push(pathology(
+            snapshot,
+            rule_names::SIBLING_ADMISSION_GUARDS_ASYMMETRIC,
+            vec![left_node.clone(), right_node.clone()],
+            vec![
+                ContractStep {
+                    edge: ContractEdgeKind::Verifies,
+                    node: left_node.clone(),
+                    token: asymmetry.shared_identifiers.iter().next().cloned(),
+                    detail: format!(
+                        "`{}` is a fail-loud admission gate over [{}]",
+                        asymmetry.left.function.name, shared
+                    ),
+                },
+                ContractStep {
+                    edge: ContractEdgeKind::Verifies,
+                    node: right_node.clone(),
+                    token: asymmetry.shared_identifiers.iter().next().cloned(),
+                    detail,
+                },
+            ],
+            vec![EvidenceItem {
+                provider: FactProvider::TreeSitter,
+                detail: format!(
+                    "{} shared domain identifier(s) survive type-like, callable, \
+                     popularity, and overlap bounds",
+                    asymmetry.shared_identifiers.len()
+                ),
+                node: Some(right_node),
+            }],
+            vec![syntax_gap(
+                "guard features and unique-callee closure are syntactic; runtime admission equivalence and field aliasing are not proved",
+            )],
+            "exercise both sibling gates with identical missing, zero-observation/NaN, non-finite, boundary, and valid payloads; centralize the predicate or document intentional asymmetry",
+        ));
     }
 }
 
@@ -889,6 +963,39 @@ mod tests {
                 !text.contains(forbidden),
                 "snapshot finding contains {forbidden}: {text}"
             );
+        }
+    }
+
+    #[test]
+    fn current_sibling_admission_asymmetry_is_neutral_and_review_only() {
+        let report = analyze_snapshot_refactor(
+            "current",
+            analysis(&[(
+                "gates.jl",
+                r#"
+function require_save(activity)
+    activity.controller_lambda_observations > 0 || throw(ArgumentError("empty"))
+    isfinite(activity.controller_lambda_mean) || throw(ArgumentError("mean"))
+end
+function require_resume(activity)
+    isnan(activity.controller_lambda_mean) &&
+        iszero(activity.controller_lambda_observations) && return true
+    isfinite(activity.controller_lambda_mean) || throw(ArgumentError("mean"))
+end
+"#,
+            )]),
+        )
+        .unwrap();
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::SIBLING_ADMISSION_GUARDS_ASYMMETRIC)
+            .expect("current sibling admission asymmetry");
+        assert_eq!(finding.safety, SafetyClass::NeverAuto);
+        assert!(finding.pathology_identity().starts_with("rsp1_"));
+        let wire = serde_json::to_string(finding).unwrap();
+        for forbidden in ["owner_before", "owner_after", "persistence", "retired"] {
+            assert!(!wire.contains(forbidden), "{wire}");
         }
     }
 

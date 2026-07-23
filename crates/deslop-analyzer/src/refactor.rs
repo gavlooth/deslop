@@ -1,6 +1,6 @@
 //! Refactor-defect accumulation detection over a revision window.
 //!
-//! Design: `docs/REFACTOR_DEFECT_ACCUMULATION.md`. All eleven detector
+//! Design: `docs/REFACTOR_DEFECT_ACCUMULATION.md`. All twelve detector
 //! families run here over [`ContractChangeHistory`] facts extracted from
 //! exact `ProjectAnalysis` snapshots:
 //!
@@ -24,6 +24,10 @@
 //!   states what remains unproved, never that the implementation is wrong;
 //! - `hot-path-work-duplicated`: an introduced structurally equivalent
 //!   composite call on one reachable path; cost stays an explicit gap;
+//! - `sibling-admission-gates-diverged`: fail-loud sibling gates that cover
+//!   the same bounded field set but differ in zero/NaN admission or in a
+//!   substantially overlapping predicate set; lexical evidence only, with a
+//!   parity test requested before any repair;
 //! - `adoption-chain-incomplete` summaries: when several families share one
 //!   owner migration, one summary is emitted in
 //!   [`RefactorRiskReport::summaries`] — never in `findings` — so baselines
@@ -67,6 +71,8 @@ use deslop_parse::{
     RevisionContracts, RootSpec, ScopeSpec,
 };
 use serde::Serialize;
+
+use crate::sibling_gate::sibling_gate_asymmetries;
 
 /// Wire schema identifier for a refactor-risk report over one revision window.
 pub const REFACTOR_RISK_SCHEMA: &str = "deslop.refactor-risk/1";
@@ -392,6 +398,8 @@ enum TokenDomain {
     Literals,
     /// Config-key read tokens.
     ConfigKeys,
+    /// Identifier-shaped fields compared by sibling admission gates.
+    GuardIdentifiers,
 }
 
 impl TokenDomain {
@@ -400,6 +408,7 @@ impl TokenDomain {
             Self::References => &function.references,
             Self::Literals => &function.literals,
             Self::ConfigKeys => &function.config_keys,
+            Self::GuardIdentifiers => &function.admission_guard.domain_identifiers,
         }
     }
 
@@ -409,6 +418,7 @@ impl TokenDomain {
             Self::References => Vec::new(),
             Self::Literals => file.module_literals.keys().map(String::as_str).collect(),
             Self::ConfigKeys => file.module_config_keys.keys().map(String::as_str).collect(),
+            Self::GuardIdentifiers => Vec::new(),
         }
     }
 
@@ -417,6 +427,7 @@ impl TokenDomain {
             Self::References => "reference",
             Self::Literals => "schema field",
             Self::ConfigKeys => "config key",
+            Self::GuardIdentifiers => "guard field",
         }
     }
 }
@@ -494,7 +505,7 @@ impl Family {
 enum Holder {
     Function {
         path: PathBuf,
-        function: ContractFunction,
+        function: Box<ContractFunction>,
     },
     Module {
         path: PathBuf,
@@ -901,9 +912,83 @@ fn detect_pair(
         drafts,
     );
     detect_config_inert(pair_index, labels, rev_before, rev_after, drafts);
+    detect_sibling_gate_divergence(pair_index, labels, rev_before, rev_after, drafts);
     detect_test_oracle_lag(
         pair_index, labels, rev_before, rev_after, pair_start, drafts,
     );
+}
+
+fn gate_function<'r>(
+    revision: &'r RevisionContracts,
+    path: &Path,
+    name: &str,
+) -> Option<&'r ContractFunction> {
+    revision
+        .files
+        .iter()
+        .find(|file| file.path == path)?
+        .functions
+        .iter()
+        .filter(|function| function.name == name)
+        .max_by_key(|function| {
+            (
+                function.admission_guard.domain_identifiers.len(),
+                function.span.end_byte - function.span.start_byte,
+            )
+        })
+}
+
+fn detect_sibling_gate_divergence(
+    pair_index: usize,
+    labels: &[String],
+    rev_before: &RevisionContracts,
+    rev_after: &RevisionContracts,
+    drafts: &mut Vec<FindingDraft>,
+) {
+    let before_pairs: BTreeSet<_> = sibling_gate_asymmetries(rev_before)
+        .into_iter()
+        .map(|asymmetry| asymmetry.pair_key())
+        .collect();
+    for asymmetry in sibling_gate_asymmetries(rev_after) {
+        if before_pairs.contains(&asymmetry.pair_key()) {
+            continue;
+        }
+        let Some(owner_after) = gate_function(
+            rev_after,
+            asymmetry.left.path,
+            &asymmetry.left.function.name,
+        ) else {
+            continue;
+        };
+        let owner_before = gate_function(
+            rev_before,
+            asymmetry.left.path,
+            &asymmetry.left.function.name,
+        )
+        .cloned();
+        drafts.push(FindingDraft {
+            rule: rule_names::SIBLING_ADMISSION_GATES_DIVERGED,
+            pair_index,
+            before_label: labels[pair_index].clone(),
+            after_label: labels[pair_index + 1].clone(),
+            path: asymmetry.left.path.to_path_buf(),
+            owner_before,
+            owner_after: Some(owner_after.clone()),
+            dependent: Holder::Function {
+                path: asymmetry.right.path.to_path_buf(),
+                function: Box::new(asymmetry.right.function.clone()),
+            },
+            domain: TokenDomain::GuardIdentifiers,
+            stale: asymmetry.shared_identifiers.clone(),
+            surviving: asymmetry.shared_identifiers.clone(),
+            added: BTreeSet::new(),
+            note: Some(asymmetry.detail()),
+            persistence: Persistence {
+                revisions: 1,
+                independent_edits: 0,
+            },
+        });
+    }
 }
 
 /// Run one direct-dependent migration detector family over the migrations
@@ -966,7 +1051,7 @@ fn detect_family(
                 owner_after: Some(migration.owner_after.clone()),
                 dependent: Holder::Function {
                     path: file_after.path.clone(),
-                    function: (*dependent_after).clone(),
+                    function: Box::new((*dependent_after).clone()),
                 },
                 domain,
                 stale,
@@ -1020,7 +1105,7 @@ fn detect_config_inert(
                 if function.literals.contains(key) {
                     holders.push(Holder::Function {
                         path: file.path.clone(),
-                        function: function.clone(),
+                        function: Box::new(function.clone()),
                     });
                 }
             }
@@ -1140,7 +1225,7 @@ fn detect_provenance_lost(
                 owner_after: Some(migration.owner_after.clone()),
                 dependent: Holder::Function {
                     path: file_after.path.clone(),
-                    function: (*dependent_after).clone(),
+                    function: Box::new((*dependent_after).clone()),
                 },
                 domain: TokenDomain::References,
                 stale: lossy,
@@ -1340,7 +1425,7 @@ fn detect_reach_families(
                 owner_after: Some(migration.owner_after.clone()),
                 dependent: Holder::Function {
                     path: file_after.path.clone(),
-                    function: (*dependent_after).clone(),
+                    function: Box::new((*dependent_after).clone()),
                 },
                 domain: TokenDomain::References,
                 stale,
@@ -1397,7 +1482,7 @@ fn detect_scope_collapse(
             owner_after: Some((*function_after).clone()),
             dependent: Holder::Function {
                 path: file_after.path.clone(),
-                function: (*function_after).clone(),
+                function: Box::new((*function_after).clone()),
             },
             domain: TokenDomain::References,
             stale: gained_flatten.clone(),
@@ -1490,7 +1575,7 @@ fn detect_hot_path(
                 owner_after: None,
                 dependent: Holder::Function {
                     path: file_after.path.clone(),
-                    function: function_after.clone(),
+                    function: Box::new(function_after.clone()),
                 },
                 domain: TokenDomain::References,
                 stale: BTreeSet::from([(*text).clone()]),
@@ -1643,7 +1728,7 @@ fn detect_test_oracle_lag(
                     owner_after: migration.owner_after.clone(),
                     dependent: Holder::Function {
                         path: file.path.clone(),
-                        function: function.clone(),
+                        function: Box::new(function.clone()),
                     },
                     domain: migration.domain,
                     stale,
@@ -1672,7 +1757,7 @@ fn locate(rev: &RevisionContracts, holder: &Holder) -> Option<Holder> {
             .find(|candidate| candidate.name == function.name)
             .map(|candidate| Holder::Function {
                 path: path.clone(),
-                function: candidate.clone(),
+                function: Box::new(candidate.clone()),
             }),
         Holder::Module { path, token, .. } => rev
             .files
@@ -1700,6 +1785,18 @@ fn changed_between(before: &RevisionContracts, after: &RevisionContracts, holder
 
 /// Whether the draft's stale condition still holds in one revision.
 fn stale_holds(draft: &FindingDraft, rev: &RevisionContracts) -> bool {
+    if draft.rule == rule_names::SIBLING_ADMISSION_GATES_DIVERGED {
+        let Some(owner_name) = draft.owner_name() else {
+            return false;
+        };
+        let dependent_name = draft.dependent.display_name();
+        return sibling_gate_asymmetries(rev).into_iter().any(|asymmetry| {
+            asymmetry.left.path == draft.path
+                && asymmetry.left.function.name == owner_name
+                && asymmetry.right.path == draft.dependent.path()
+                && asymmetry.right.function.name == dependent_name
+        });
+    }
     if draft.rule == rule_names::ACCEPTED_CONFIG_INERT {
         let Some(key) = draft.stale.iter().next() else {
             return false;
@@ -1801,7 +1898,7 @@ fn track_persistence(history: &ContractChangeHistory, draft: &mut FindingDraft) 
             Some(owner) => {
                 let holder = Holder::Function {
                     path: draft.path.clone(),
-                    function: owner.clone(),
+                    function: Box::new(owner.clone()),
                 };
                 changed_between(&history.revisions[index], rev, &holder)
             }
@@ -2444,6 +2541,92 @@ fn build_finding(draft: &FindingDraft, window: usize) -> RefactorDefect {
                     BTreeMap::from([("stale-edges".to_string(), 1)]),
                 )
             }
+            rule_names::SIBLING_ADMISSION_GATES_DIVERGED => {
+                let left = draft
+                    .owner_after
+                    .as_ref()
+                    .expect("sibling-gate draft has left gate");
+                let left_node = ContractNodeRef {
+                    role: ContractRole::Verifier,
+                    path: draft.path.clone(),
+                    span: left.span,
+                    fingerprint: left.fingerprint.clone(),
+                    provider: FactProvider::TreeSitter,
+                    capability: CapabilityLevel::Partial,
+                };
+                let right_node = draft.dependent.node_ref(ContractRole::Verifier);
+                let divergence = draft
+                    .note
+                    .clone()
+                    .unwrap_or_else(|| "the sibling guard predicate features differ".to_string());
+                coverage_gaps.push(CoverageGap {
+                    provider: FactProvider::TreeSitter,
+                    capability: CapabilityLevel::Partial,
+                    reason: "guard features and unique-callee closure are syntactic; runtime \
+                             admission equivalence and field aliasing are not proved"
+                        .to_string(),
+                });
+                (
+                    draft
+                        .stale
+                        .iter()
+                        .map(|identifier| ContractStep {
+                            token: Some(identifier.clone()),
+                            edge: ContractEdgeKind::Verifies,
+                            node: right_node.clone(),
+                            detail: format!(
+                                "`{dependent_name}` guards shared field `{identifier}` with \
+                                 a predicate that differs from `{}`",
+                                left.name
+                            ),
+                        })
+                        .collect(),
+                    vec![
+                        ContractStep {
+                            token: None,
+                            edge: ContractEdgeKind::Verifies,
+                            node: left_node.clone(),
+                            detail: format!(
+                                "`{}` is a fail-loud admission gate over [{stale_list}]",
+                                left.name
+                            ),
+                        },
+                        ContractStep {
+                            token: None,
+                            edge: ContractEdgeKind::Verifies,
+                            node: right_node.clone(),
+                            detail: format!(
+                                "revision {} introduced sibling admission asymmetry: {divergence}",
+                                draft.after_label
+                            ),
+                        },
+                    ],
+                    vec![
+                        EvidenceItem {
+                            provider: FactProvider::TreeSitter,
+                            detail: format!(
+                                "both gates are fail-loud and share {} bounded domain field(s): \
+                                 [{stale_list}]",
+                                draft.stale.len()
+                            ),
+                            node: Some(left_node),
+                        },
+                        EvidenceItem {
+                            provider: FactProvider::TreeSitter,
+                            detail: divergence,
+                            node: Some(right_node),
+                        },
+                    ],
+                    "exercise both sibling gates with identical missing, zero-observation/NaN, \
+                     non-finite, boundary, and valid payloads; centralize the predicate or \
+                     document intentional asymmetry"
+                        .to_string(),
+                    BTreeMap::from([
+                        ("introduced-asymmetry".to_string(), 1),
+                        ("shared-guard-fields".to_string(), draft.stale.len() as i64),
+                    ]),
+                )
+            }
             _ => unreachable!("unknown draft rule {}", draft.rule),
         };
 
@@ -2488,6 +2671,7 @@ fn owner_role(rule: &str) -> ContractRole {
         rule_names::PRODUCER_VERIFIER_SCHEMA_DRIFT | rule_names::OPERATIONAL_IDENTITY_STALE => {
             ContractRole::Producer
         }
+        rule_names::SIBLING_ADMISSION_GATES_DIVERGED => ContractRole::Verifier,
         _ => ContractRole::Owner,
     }
 }
@@ -2649,6 +2833,67 @@ mod tests {
             ("after".to_string(), analysis(after)),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn sibling_admission_gate_divergence_is_introduced_and_rdf_stable() {
+        let before = br#"
+function require_save(activity)
+    activity.controller_lambda_observations > 0 || throw(ArgumentError("empty"))
+    isfinite(activity.controller_lambda_mean) || throw(ArgumentError("mean"))
+end
+function require_resume(activity)
+    activity.controller_lambda_observations > 0 || throw(ArgumentError("empty"))
+    isfinite(activity.controller_lambda_mean) || throw(ArgumentError("mean"))
+end
+"#;
+        let after = br#"
+function require_save(activity)
+    activity.controller_lambda_observations > 0 || throw(ArgumentError("empty"))
+    isfinite(activity.controller_lambda_mean) || throw(ArgumentError("mean"))
+end
+function require_resume(activity)
+    isnan(activity.controller_lambda_mean) &&
+        iszero(activity.controller_lambda_observations) && return true
+    isfinite(activity.controller_lambda_mean) || throw(ArgumentError("mean"))
+end
+"#;
+        let after_analysis = analysis(&[("gates.jl", after)]);
+        let report = analyze_refactor_risk(
+            ("before".to_string(), analysis(&[("gates.jl", before)])),
+            ("after".to_string(), Arc::clone(&after_analysis)),
+        )
+        .unwrap();
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.rule == rule_names::SIBLING_ADMISSION_GATES_DIVERGED)
+            .expect("introduced sibling admission asymmetry");
+        assert_eq!(finding.safety, SafetyClass::NeverAuto);
+        assert!(finding.stable_identity().starts_with("rdf1_"));
+        assert_eq!(finding.priority_inputs["shared-guard-fields"], 2);
+        let current =
+            crate::snapshot_refactor::analyze_snapshot_refactor("current", after_analysis).unwrap();
+        let snapshot_finding = current
+            .findings
+            .iter()
+            .find(|finding| {
+                finding.rule
+                    == deslop_core::snapshot_pathology::rule_names::SIBLING_ADMISSION_GUARDS_ASYMMETRIC
+            })
+            .expect("snapshot sibling admission asymmetry");
+        assert_eq!(
+            finding.pathology_identity().unwrap(),
+            snapshot_finding.pathology_identity()
+        );
+
+        let preexisting = compare(&[("gates.jl", after)], &[("gates.jl", after)]);
+        assert!(
+            preexisting
+                .findings
+                .iter()
+                .all(|finding| finding.rule != rule_names::SIBLING_ADMISSION_GATES_DIVERGED)
+        );
     }
 
     const SCORER_BEFORE: &[u8] = br#"class Scorer:

@@ -31,12 +31,12 @@ use deslop_core::Span;
 use crate::{FactCoverage, NodeId, ProjectAnalysis};
 
 /// Wire schema identifier for a contract change history.
-pub const CONTRACT_CHANGE_HISTORY_SCHEMA: &str = "deslop.contract-change-history/2";
+pub const CONTRACT_CHANGE_HISTORY_SCHEMA: &str = "deslop.contract-change-history/3";
 
 /// Wire schema identifier for contract facts extracted from one exact
 /// project snapshot. Snapshot-native refactor analysis consumes this type
 /// directly; ordered history is a composition of these facts.
-pub const CONTRACT_SNAPSHOT_SCHEMA: &str = "deslop.contract-snapshot/1";
+pub const CONTRACT_SNAPSHOT_SCHEMA: &str = "deslop.contract-snapshot/2";
 
 /// Errors building a [`ContractChangeHistory`].
 #[derive(Debug)]
@@ -58,8 +58,36 @@ impl fmt::Display for ContractHistoryBuildError {
 
 impl std::error::Error for ContractHistoryBuildError {}
 
+/// Bounded syntactic facts used to compare sibling admission gates.
+///
+/// These facts describe source shape only. In particular, `zero_nan_admission`
+/// records the co-occurrence of a NaN check and a zero equality/carve-out; it
+/// does not claim that the branch is semantically reachable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdmissionGuardFacts {
+    /// The function contains a fail-loud construct (`throw`, `error`,
+    /// `raise`, or `assert`).
+    pub fail_loud: bool,
+    /// Identifier-shaped metric/field candidates, with call targets,
+    /// language keywords, and type-like names removed.
+    pub domain_identifiers: BTreeSet<String>,
+    /// Coarse predicate features retained for bounded structural comparison.
+    pub predicate_features: BTreeSet<String>,
+    /// Concrete domain identifiers referenced by predicate lines, including
+    /// simple local aliases such as `mean = activity.metric_mean`.
+    pub predicate_identifiers: BTreeSet<String>,
+    /// A NaN value is conditionally paired with a zero comparison or
+    /// `iszero` check, the characteristic undefined-mean carve-out.
+    pub zero_nan_admission: bool,
+    /// Domain identifiers local to the NaN/zero predicate window. Small
+    /// helper functions also retain their bounded symbol arguments so a
+    /// caller can connect `mean_name`/`count_name` to concrete fields.
+    pub zero_nan_identifiers: BTreeSet<String>,
+}
+
 /// One function extracted from one revision: a candidate contract owner,
-/// consumer, producer, or verifier.
+/// consumer, producer, verifier, or admission gate.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContractFunction {
@@ -88,6 +116,8 @@ pub struct ContractFunction {
     /// Duplication evidence for hot-path detection; texts longer than
     /// [`CALL_TEXT_LIMIT`] bytes are stored as `blake3:` digests.
     pub call_texts: BTreeMap<String, u64>,
+    /// Bounded source-shape facts for sibling admission-gate comparison.
+    pub admission_guard: AdmissionGuardFacts,
 }
 
 /// Contract facts for one file at one revision.
@@ -226,7 +256,7 @@ impl ContractSnapshot {
 }
 
 /// Contract facts over an ordered revision window
-/// (`deslop.contract-change-history/1`).
+/// (`deslop.contract-change-history/3`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContractChangeHistory {
@@ -324,6 +354,318 @@ fn normalize_call_text(text: &str) -> String {
         format!("blake3:{}", blake3::hash(normalized.as_bytes()).to_hex())
     } else {
         normalized
+    }
+}
+
+/// Mask strings and comments while preserving token order. Guard extraction
+/// must not treat words such as "zero" or "error" inside diagnostics as
+/// executable predicates.
+fn executable_text(text: &str) -> String {
+    #[derive(Clone, Copy)]
+    enum State {
+        Code,
+        Quote(char),
+        LineComment,
+        BlockComment,
+    }
+
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut state = State::Code;
+    let mut escaped = false;
+    let mut index = 0;
+    while index < chars.len() {
+        let ch = chars[index];
+        let next = chars.get(index + 1).copied();
+        match state {
+            State::Code if ch == '#' => {
+                state = State::LineComment;
+                out.push(' ');
+            }
+            State::Code if ch == '/' && next == Some('/') => {
+                state = State::LineComment;
+                out.push(' ');
+                out.push(' ');
+                index += 1;
+            }
+            State::Code if ch == '/' && next == Some('*') => {
+                state = State::BlockComment;
+                out.push(' ');
+                out.push(' ');
+                index += 1;
+            }
+            State::Code if matches!(ch, '\'' | '"' | '`') => {
+                state = State::Quote(ch);
+                escaped = false;
+                out.push(' ');
+            }
+            State::Code => out.push(ch),
+            State::Quote(quote) if escaped => {
+                escaped = false;
+                out.push(if ch == '\n' { '\n' } else { ' ' });
+                if ch == '\n' && quote != '`' {
+                    state = State::Code;
+                }
+            }
+            State::Quote(_) if ch == '\\' => {
+                escaped = true;
+                out.push(' ');
+            }
+            State::Quote(quote) if ch == quote => {
+                state = State::Code;
+                out.push(' ');
+            }
+            State::Quote(_) => out.push(if ch == '\n' { '\n' } else { ' ' }),
+            State::LineComment if ch == '\n' => {
+                state = State::Code;
+                out.push('\n');
+            }
+            State::LineComment => out.push(' '),
+            State::BlockComment if ch == '*' && next == Some('/') => {
+                state = State::Code;
+                out.push(' ');
+                out.push(' ');
+                index += 1;
+            }
+            State::BlockComment => out.push(if ch == '\n' { '\n' } else { ' ' }),
+        }
+        index += 1;
+    }
+    out
+}
+
+fn identifier_tokens(text: &str) -> Vec<(String, usize)> {
+    let bytes = text.as_bytes();
+    let mut tokens = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index].is_ascii_alphabetic() || bytes[index] == b'_' {
+            let start = index;
+            index += 1;
+            while index < bytes.len()
+                && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_')
+            {
+                index += 1;
+            }
+            tokens.push((text[start..index].to_string(), index));
+        } else {
+            index += 1;
+        }
+    }
+    tokens
+}
+
+fn is_domain_identifier(token: &str) -> bool {
+    const EXCLUDED: &[&str] = &[
+        "activity",
+        "assert",
+        "begin",
+        "break",
+        "catch",
+        "class",
+        "const",
+        "continue",
+        "else",
+        "elseif",
+        "end",
+        "error",
+        "false",
+        "finally",
+        "for",
+        "function",
+        "if",
+        "let",
+        "local",
+        "missing",
+        "new",
+        "nothing",
+        "null",
+        "raise",
+        "return",
+        "status",
+        "struct",
+        "throw",
+        "true",
+        "try",
+        "undefined",
+        "verify",
+        "while",
+    ];
+    if token.len() < 6
+        || token.starts_with('_')
+        || token
+            .chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_uppercase())
+        || EXCLUDED.contains(&token.to_ascii_lowercase().as_str())
+    {
+        return false;
+    }
+    token.contains('_')
+        || token
+            .as_bytes()
+            .windows(2)
+            .any(|pair| pair[0].is_ascii_lowercase() && pair[1].is_ascii_uppercase())
+}
+
+fn admission_guard_facts(source: &str) -> AdmissionGuardFacts {
+    let executable = executable_text(source);
+    let compact = executable
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let tokens = identifier_tokens(&executable);
+    let token_names: BTreeSet<String> = tokens
+        .iter()
+        .map(|(token, _)| token.to_ascii_lowercase())
+        .collect();
+    let fail_loud = token_names
+        .iter()
+        .any(|token| matches!(token.as_str(), "throw" | "error" | "raise" | "assert"));
+
+    let mut domain_identifiers = BTreeSet::new();
+    for (token, end) in tokens {
+        let called = executable[end..].chars().find(|ch| !ch.is_whitespace()) == Some('(');
+        if !called && is_domain_identifier(&token) {
+            domain_identifiers.insert(token);
+        }
+    }
+    // Keep the wire bounded on generated/adversarial functions.
+    domain_identifiers = domain_identifiers.into_iter().take(96).collect();
+
+    let mut aliases = BTreeMap::new();
+    for line in executable.lines() {
+        let Some((left, right)) = line.split_once('=') else {
+            continue;
+        };
+        if right.starts_with('=') || left.ends_with(['<', '>', '!', '=']) {
+            continue;
+        }
+        let Some(alias) = identifier_tokens(left)
+            .last()
+            .map(|(token, _)| token.clone())
+        else {
+            continue;
+        };
+        let Some(target) = identifier_tokens(right)
+            .into_iter()
+            .map(|(token, _)| token)
+            .find(|token| is_domain_identifier(token))
+        else {
+            continue;
+        };
+        aliases.insert(alias, target);
+    }
+    let mut predicate_identifiers = BTreeSet::new();
+    for line in executable.lines() {
+        let compact_line = line
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        let is_predicate = compact_line.contains("&&")
+            || compact_line.contains("||")
+            || compact_line.contains("==")
+            || compact_line.contains("!=")
+            || compact_line.contains("<=")
+            || compact_line.contains(">=")
+            || compact_line.contains(">0")
+            || compact_line.contains("0<")
+            || compact_line.contains("isfinite(")
+            || compact_line.contains("isnan(")
+            || compact_line.contains("iszero(")
+            || compact_line.starts_with("if")
+            || compact_line.starts_with("assert");
+        if !is_predicate {
+            continue;
+        }
+        for (token, _) in identifier_tokens(line) {
+            if is_domain_identifier(&token) {
+                predicate_identifiers.insert(token.clone());
+            }
+            if let Some(target) = aliases.get(&token) {
+                predicate_identifiers.insert(target.clone());
+            }
+        }
+    }
+    predicate_identifiers = predicate_identifiers.into_iter().take(64).collect();
+
+    let mut predicate_features = BTreeSet::new();
+    let has_zero_equality = compact.contains("==0")
+        || compact.contains("===0")
+        || compact.contains("0==")
+        || compact.contains("0===");
+    let has_iszero = compact.contains("iszero(");
+    if compact.contains("isfinite(") {
+        predicate_features.insert("finite".to_string());
+    }
+    if compact.contains("isnan(") {
+        predicate_features.insert("nan".to_string());
+    }
+    if has_zero_equality || has_iszero {
+        predicate_features.insert("zero-equality".to_string());
+    }
+    if compact.contains(">0") || compact.contains("0<") {
+        predicate_features.insert("positive".to_string());
+    }
+    if compact.contains("<=") || compact.contains(">=") {
+        predicate_features.insert("bounded".to_string());
+    }
+    if compact.contains("==") || compact.contains("===") {
+        predicate_features.insert("equality".to_string());
+    }
+    if compact.contains("hasproperty(")
+        || compact.contains("haskey(")
+        || compact.contains("inkeys(")
+    {
+        predicate_features.insert("presence".to_string());
+    }
+    if token_names
+        .iter()
+        .any(|token| matches!(token.as_str(), "nothing" | "null" | "none" | "missing"))
+    {
+        predicate_features.insert("missing-value".to_string());
+    }
+    let mut zero_nan_identifiers = BTreeSet::new();
+    let lines: Vec<&str> = executable.lines().collect();
+    let mut has_local_zero_nan = false;
+    for start in 0..lines.len() {
+        let window = lines[start..lines.len().min(start + 5)].join(" ");
+        let compact_window = window
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        let zero = compact_window.contains("iszero(")
+            || compact_window.contains("==0")
+            || compact_window.contains("===0")
+            || compact_window.contains("0==")
+            || compact_window.contains("0===");
+        if !compact_window.contains("isnan(") || !zero {
+            continue;
+        }
+        has_local_zero_nan = true;
+        for (identifier, end) in identifier_tokens(&window) {
+            let called = window[end..].chars().find(|ch| !ch.is_whitespace()) == Some('(');
+            if !called && is_domain_identifier(&identifier) {
+                zero_nan_identifiers.insert(identifier);
+            }
+        }
+    }
+    if has_local_zero_nan && executable.len() <= 3_000 {
+        zero_nan_identifiers.extend(domain_identifiers.iter().cloned());
+    }
+    zero_nan_identifiers = zero_nan_identifiers.into_iter().take(32).collect();
+    let zero_nan_admission = !zero_nan_identifiers.is_empty();
+
+    AdmissionGuardFacts {
+        fail_loud,
+        domain_identifiers,
+        predicate_features,
+        predicate_identifiers,
+        zero_nan_admission,
+        zero_nan_identifiers,
     }
 }
 
@@ -473,6 +815,7 @@ fn extract_file(
                 loops: 0,
                 assertions: 0,
                 call_texts: BTreeMap::new(),
+                admission_guard: admission_guard_facts(function_node.text()),
             });
         }
     }
@@ -763,6 +1106,61 @@ def flatten_rank(docs):
             .expect("missing rank");
         assert_eq!(rank.loops, 1);
         assert_eq!(rank.assertions, 1);
+    }
+
+    #[test]
+    fn admission_guard_facts_ignore_diagnostics_and_capture_zero_nan_carve_out() {
+        let source = br#"
+function require_resume(activity)
+    observations = activity.controller_lambda_observations
+    lambda_mean = activity.controller_lambda_mean
+    input_mean = activity.input_effect_mean
+    isnan(lambda_mean) && iszero(observations) && return true
+    isfinite(lambda_mean) && lambda_mean > 0 ||
+        throw(ArgumentError("error: zero diagnostic_only_field is rejected"))
+    return input_mean > 0
+end
+"#;
+        let history = history(&[("gates.jl", source)]);
+        let function = &history.revisions[0].files[0].functions[0];
+        assert!(function.admission_guard.fail_loud);
+        assert!(function.admission_guard.zero_nan_admission);
+        assert!(
+            function
+                .admission_guard
+                .zero_nan_identifiers
+                .contains("controller_lambda_observations")
+        );
+        assert!(
+            function
+                .admission_guard
+                .domain_identifiers
+                .contains("controller_lambda_observations")
+        );
+        assert!(
+            function
+                .admission_guard
+                .domain_identifiers
+                .contains("controller_lambda_mean")
+        );
+        assert!(
+            function
+                .admission_guard
+                .predicate_features
+                .contains("positive")
+        );
+        assert!(
+            function
+                .admission_guard
+                .predicate_identifiers
+                .contains("controller_lambda_mean")
+        );
+        assert!(
+            !function
+                .admission_guard
+                .domain_identifiers
+                .contains("diagnostic_only_field")
+        );
     }
 
     #[test]

@@ -427,6 +427,51 @@
           "note": "a second structurally equivalent expensive call introduced on one path"
         }
       ]
+    },
+    {
+      "name": "jl-sibling-gate-asymmetry",
+      "language": "julia",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "sibling-admission-gates-diverged",
+          "should_fire": true,
+          "note": "resume admits a zero-observation NaN mean while its fail-loud save sibling does not"
+        }
+      ]
+    },
+    {
+      "name": "py-sibling-gates-aligned",
+      "language": "python",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "sibling-admission-gates-diverged",
+          "should_fire": false,
+          "note": "sibling fail-loud gates enforce the same predicate set"
+        }
+      ]
+    },
+    {
+      "name": "js-sibling-gates-low-overlap",
+      "language": "javascript",
+      "revisions": [
+        "01-before",
+        "02-after"
+      ],
+      "expectations": [
+        {
+          "rule": "sibling-admission-gates-diverged",
+          "should_fire": false,
+          "note": "divergent guards sharing only one field are unrelated, not a sibling contract"
+        }
+      ]
     }
   ]
 }

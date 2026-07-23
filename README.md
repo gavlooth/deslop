@@ -107,8 +107,11 @@ says so. Progress goes to stderr; stdout stays machine-readable.
 `deslop refactor-risk [paths]` analyzes one exact current source snapshot. It
 does not call Git or Jujutsu and works outside a repository. Snapshot findings
 use present-state names such as `owner-consumer-contract-split` and
-`producer-verifier-schema-mismatch`; they do not claim that an owner moved, a
-mechanism is retired, or a condition persisted. Findings are emitted as
+`producer-verifier-schema-mismatch`. It also reports
+`sibling-admission-guards-asymmetric` when fail-loud sibling gates cover the
+same bounded fields but disagree on a zero/NaN admission or high-overlap
+predicate set. Snapshot findings do not claim that an owner moved, a mechanism
+is retired, or a condition persisted. Findings are emitted as
 `deslop.snapshot-pathology/1` inside `deslop.snapshot-refactor-risk/1`.
 
 Supplying `--from` (plus optional `--to` and repeated `--then`) selects the

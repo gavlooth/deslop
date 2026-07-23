@@ -41,6 +41,7 @@ pub mod rule_names {
     pub const HOT_PATH_WORK_DUPLICATED: &str = "hot-path-work-duplicated";
     pub const OPERATIONAL_IDENTITY_STALE: &str = "operational-identity-stale";
     pub const ADOPTION_CHAIN_INCOMPLETE: &str = "adoption-chain-incomplete";
+    pub const SIBLING_ADMISSION_GATES_DIVERGED: &str = "sibling-admission-gates-diverged";
 
     /// Every refactor-defect detector family, including the summary rule.
     pub const ALL: &[&str] = &[
@@ -55,6 +56,7 @@ pub mod rule_names {
         HOT_PATH_WORK_DUPLICATED,
         OPERATIONAL_IDENTITY_STALE,
         ADOPTION_CHAIN_INCOMPLETE,
+        SIBLING_ADMISSION_GATES_DIVERGED,
     ];
 }
 

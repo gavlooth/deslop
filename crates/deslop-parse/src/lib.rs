@@ -87,9 +87,9 @@ pub use architecture::{
 };
 pub use arena::{SourcePoint, SyntaxSpan};
 pub use contract_history::{
-    CONTRACT_CHANGE_HISTORY_SCHEMA, CONTRACT_SNAPSHOT_SCHEMA, ContractChangeHistory,
-    ContractFunction, ContractHistoryBuildError, ContractSnapshot, FileContracts,
-    RevisionContracts,
+    AdmissionGuardFacts, CONTRACT_CHANGE_HISTORY_SCHEMA, CONTRACT_SNAPSHOT_SCHEMA,
+    ContractChangeHistory, ContractFunction, ContractHistoryBuildError, ContractSnapshot,
+    FileContracts, RevisionContracts,
 };
 pub use control_flow::{
     CONTROL_FLOW_POLICY_SCHEMA, CONTROL_FLOW_SCHEMA, ControlAbruptKind, ControlBranchKind,

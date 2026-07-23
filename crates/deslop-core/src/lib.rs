@@ -798,6 +798,11 @@ pub mod rules {
             default: "review (summary of an incomplete owner-migration chain)",
         },
         RuleInfo {
+            name: "sibling-admission-gates-diverged",
+            safety: "never-auto",
+            default: "review (sibling fail-loud gates gained asymmetric predicates)",
+        },
+        RuleInfo {
             name: "owner-consumer-contract-split",
             safety: "never-auto",
             default: "review (current owner and consumer paths disagree)",
@@ -851,6 +856,11 @@ pub mod rules {
             name: "contract-chain-incomplete",
             safety: "never-auto",
             default: "review (summary of current contract-path splits)",
+        },
+        RuleInfo {
+            name: "sibling-admission-guards-asymmetric",
+            safety: "never-auto",
+            default: "review (current sibling fail-loud gates disagree on admission)",
         },
     ];
 

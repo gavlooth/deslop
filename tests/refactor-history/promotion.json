@@ -66,6 +66,12 @@
       "promoted": true,
       "min_precision": 1.0,
       "note": "promoted: summary emitted only when several families share one owner migration, kept out of findings so baselines and severity counts never double-count"
+    },
+    {
+      "rule": "sibling-admission-gates-diverged",
+      "promoted": true,
+      "min_precision": 1.0,
+      "note": "promoted: fail-loud sibling gates share bounded domain fields but differ by a zero-observation NaN carve-out or a high-overlap predicate feature set; low-overlap and aligned gates remain negative"
     }
   ]
 }

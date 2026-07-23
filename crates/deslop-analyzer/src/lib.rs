@@ -26,6 +26,7 @@ mod clojure;
 mod julia;
 mod packs;
 pub mod refactor;
+mod sibling_gate;
 pub mod snapshot_refactor;
 
 pub use boundary::BoundaryConfig;

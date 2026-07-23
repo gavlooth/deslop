@@ -12,7 +12,8 @@
     {"rule": "test-contract-dimension-uncovered", "history_rule": "test-oracle-lag", "status": "candidate"},
     {"rule": "same-path-expensive-work-repeated", "history_rule": "hot-path-work-duplicated", "status": "candidate"},
     {"rule": "published-identity-not-live", "history_rule": "operational-identity-stale", "status": "candidate"},
-    {"rule": "contract-chain-incomplete", "history_rule": "adoption-chain-incomplete", "status": "candidate"}
+    {"rule": "contract-chain-incomplete", "history_rule": "adoption-chain-incomplete", "status": "candidate"},
+    {"rule": "sibling-admission-guards-asymmetric", "history_rule": "sibling-admission-gates-diverged", "status": "candidate"}
   ],
   "cases": [
     {"name": "jl-owner-moved-stale", "snapshot": "02-after", "coverage": "complete", "findings": ["owner-consumer-contract-split"], "summaries": []},
@@ -36,6 +37,9 @@
     {"name": "py-scope-collapse-oracle", "snapshot": "02-after", "coverage": "complete", "findings": [], "summaries": []},
     {"name": "py-scope-collapse", "snapshot": "02-after", "coverage": "complete", "findings": ["test-contract-dimension-uncovered"], "summaries": []},
     {"name": "py-telemetry-stale", "snapshot": "02-after", "coverage": "complete", "findings": ["telemetry-claim-unbound"], "summaries": []},
-    {"name": "py-test-oracle-lag", "snapshot": "02-after", "coverage": "complete", "findings": ["owner-consumer-contract-split"], "summaries": []}
+    {"name": "py-test-oracle-lag", "snapshot": "02-after", "coverage": "complete", "findings": ["owner-consumer-contract-split"], "summaries": []},
+    {"name": "jl-sibling-gate-asymmetry", "snapshot": "02-after", "coverage": "complete", "findings": ["sibling-admission-guards-asymmetric"], "summaries": []},
+    {"name": "py-sibling-gates-aligned", "snapshot": "02-after", "coverage": "complete", "findings": [], "summaries": []},
+    {"name": "js-sibling-gates-low-overlap", "snapshot": "02-after", "coverage": "complete", "findings": [], "summaries": []}
   ]
 }

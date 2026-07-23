@@ -1,6 +1,6 @@
 # Detecting refactor-defect accumulation
 
-Status: shipped. All eleven history detector families, snapshot-native
+Status: shipped. All twelve history detector families, snapshot-native
 present-state pathology detection, the contract graph projection, history
 providers, LSP/MCP integration, and separate history/snapshot evaluation gates
 are implemented behind `deslop refactor-risk` (history 2026-07-21; snapshot
@@ -10,7 +10,7 @@ boundaries that remain explicit capability gaps.
 ## Current-snapshot mode
 
 `deslop refactor-risk [paths...]` requires no commit history and never invokes
-a VCS provider. It extracts one `deslop.contract-snapshot/1` from the exact
+a VCS provider. It extracts one `deslop.contract-snapshot/2` from the exact
 current `ProjectAnalysis` and reports present-state invariant violations as
 `deslop.snapshot-pathology/1` findings in
 `deslop.snapshot-refactor-risk/1`.
@@ -317,6 +317,21 @@ Tree-sitter can nominate the duplication. Cost and safe reuse remain unproved
 unless profiling or effect facts are available, so this family stays
 review-only.
 
+### `sibling-admission-gates-diverged`
+
+Two fail-loud admission gates cover the same bounded metric or field set but
+enforce different guard structures. The strongest shape is a
+zero-observation NaN carve-out in one sibling and no corresponding admission
+in the other; a second shape requires substantially overlapping predicate
+identifiers with divergent predicate features.
+
+The snapshot counterpart is the neutral candidate
+`sibling-admission-guards-asymmetric`. Both rules are `NeverAuto` and request a
+shared parity test. Pairing excludes type-like symbols, very popular shared
+utilities, low-overlap contexts, and unbounded caller closure. Lexical
+fail-loud gates project as partial verifier capabilities because syntax cannot
+establish which admission policy is correct.
+
 ### `operational-identity-stale`
 
 A process, artifact, checkpoint, receipt, or deployment identity is replaced,
@@ -606,8 +621,9 @@ Shipped:
 Shipped:
 
 - Build `ContractChangeHistory` from exact `ProjectAnalysis` snapshots
-  (`deslop.contract-change-history/2`: references, literals, config keys,
-  loops, assertions, and normalized call texts per function).
+  (`deslop.contract-change-history/3`: references, literals, config keys,
+  loops, assertions, normalized call texts, and bounded admission-guard
+  predicate facts per function).
 - Add contract query families to the first adapters' `LanguageQueryPack`s
   (the seventh `contract` family; extraction reads the query text from the
   snapshot's stored adapter identity, never by pack reselection).
@@ -655,6 +671,8 @@ terminates at the retired owner), `confidence-provenance-lost` (a formerly
 bound consumer re-deriving through a lossy operation without the new
 evidence), and `hot-path-work-duplicated` (an introduced structurally
 equivalent composite call; cost stays an explicit runtime gap).
+`sibling-admission-gates-diverged` compares bounded fail-loud sibling
+predicates and stays review-only with an explicit parity-test requirement.
 
 Contract query text lives in each adapter's `LanguageQueryPack` as the
 seventh `contract` query family (adapter schema `deslop-lang-adapter/4`),
@@ -688,7 +706,7 @@ Shipped:
 
 Shipped:
 
-- The multi-language corpus (22 cases: Python, Julia, JavaScript) is frozen
+- The multi-language corpus (25 cases: Python, Julia, JavaScript) is frozen
   with per-family precision/recall rows in
   `tests/refactor-history/baseline.json` (`deslop.eval-baseline/1`) and
   ratcheted by `deslop-eval`'s refactor evaluation
@@ -780,3 +798,11 @@ all of which suppress candidates and never promote one:
 On the case-study window these filters took raw nominations from 161 to 2
 plausible review candidates while the frozen corpus stayed at full precision
 and recall, and the actual repair commit produces zero findings.
+
+Snapshot dogfooding of the sibling-admission family against the two relevant
+RelationExtractor scripts produced four bounded review nominations. The set
+contains the save-versus-resume structured-activity gate, the independent
+release-verifier duplicate, their third pairwise edge, and one analogous
+remask trainer/verifier pair. The exact scan was complete without relying on
+dynamic `getfield` resolution; the output remains a parity-review queue, not a
+claim that all four pairs are defects.

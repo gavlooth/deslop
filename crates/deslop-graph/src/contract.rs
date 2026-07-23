@@ -35,7 +35,7 @@ pub const CONTRACT_GRAPH_SCHEMA: &str = "deslop.contract-graph/2";
 
 const CONTRACT_PROJECTION_SCHEMA: &str = "deslop.contract-graph.projection/2";
 const CONTRACT_CAPABILITIES: &[u8] =
-    b"contract=deslop.contract-snapshot/1;multi-role=true;unresolved-endpoints=true";
+    b"contract=deslop.contract-snapshot/2;multi-role=true;unresolved-endpoints=true";
 
 /// Observation-surface object names classifying telemetry producers.
 /// Mirrors the analyzer's classification sets; lexical supporting evidence.
@@ -196,7 +196,8 @@ fn classify(
     if is_test_function(path, &function.name) {
         roles.push(ContractRole::TestEntryPoint);
     }
-    if function.assertions > 0 {
+    let lexical_fail_loud_gate = function.assertions == 0 && function.admission_guard.fail_loud;
+    if function.assertions > 0 || lexical_fail_loud_gate {
         roles.push(ContractRole::Verifier);
     }
     if function
@@ -249,6 +250,7 @@ fn classify(
         || roles.contains(&ContractRole::TelemetrySurface)
         || roles.contains(&ContractRole::Producer)
         || roles.contains(&ContractRole::Owner)
+        || lexical_fail_loud_gate
     {
         CapabilityLevel::Partial
     } else {
@@ -561,6 +563,23 @@ def load_config():
         assert_eq!(status.role, ContractRole::RuntimeIdentity);
         assert_eq!(status.capability, CapabilityLevel::Partial);
         assert_eq!(role_of("test_decide").role, ContractRole::TestEntryPoint);
+    }
+
+    #[test]
+    fn julia_throw_gate_is_a_partial_verifier() {
+        let projection = contract_graph_analysis(analysis(&[(
+            "gate.jl",
+            b"function require_activity(x)\n    x.metric_count > 0 || throw(ArgumentError(\"empty\"))\nend\n",
+        )]))
+        .unwrap();
+        let gate = projection
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.name == "require_activity")
+            .expect("Julia gate node");
+        assert!(gate.roles.contains(&ContractRole::Verifier));
+        assert_eq!(gate.capability, CapabilityLevel::Partial);
     }
 
     #[test]
