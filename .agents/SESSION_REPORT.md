@@ -13131,3 +13131,14 @@ migration or RelationExtractor restart is required.
 the detached main-history checkout, and audit the final repository state.
 
 **Signature:** Codex (GPT-5.x), sibling admission-gate detector checkpoint, 2026-07-23.
+
+### Push confirmation — 2026-07-23
+
+The verified sibling admission-gate implementation was pushed by advancing
+`main` from `90671dd0a189` to `16c877b85d9c`. A post-push
+`jj git fetch --remote origin` reported no changes, and direct
+`git ls-remote` inspection confirmed `refs/heads/main` at
+`16c877b85d9c484eb80eda5c4ff044e7f770e218`. Jujutsu created the expected
+empty mutable working-copy commit above the immutable pushed commit.
+
+**Signature:** Codex (GPT-5.x), sibling admission-gate push confirmation, 2026-07-23.
