@@ -444,22 +444,18 @@ fn paths_schema() -> Value {
 fn patches_schema() -> Value {
     json!({
         "type": "array",
-        "items": { "$ref": "#/$defs/deslop.patch/3" },
-        "$defs": {
-            "deslop.patch/3": {
-                "type": "object",
-                "required": ["schema", "workorder_id", "revision_guard", "proposal_context", "replacement", "by"],
-                "properties": {
-                    "schema": { "const": "deslop.patch/3" },
-                    "workorder_id": { "type": "string" },
-                    "revision_guard": { "type": "string", "pattern": "^rg1_[0-9]+_[0-9a-f]{64}$" },
-                    "proposal_context": { "$ref": "#/$defs/deslop.proposal-context/1" },
-                    "replacement": { "type": "string" },
-                    "by": { "type": "string" }
-                },
-                "additionalProperties": false
+        "items": {
+            "type": "object",
+            "required": ["schema", "workorder_id", "revision_guard", "proposal_context", "replacement", "by"],
+            "properties": {
+                "schema": { "const": "deslop.patch/3" },
+                "workorder_id": { "type": "string" },
+                "revision_guard": { "type": "string", "pattern": "^rg1_[0-9]+_[0-9a-f]{64}$" },
+                "proposal_context": proposal_context_schema(),
+                "replacement": { "type": "string" },
+                "by": { "type": "string" }
             },
-            "deslop.proposal-context/1": proposal_context_schema()
+            "additionalProperties": false
         }
     })
 }
@@ -478,25 +474,21 @@ fn coverage_schema() -> Value {
 fn characterization_tests_schema() -> Value {
     json!({
         "type": "array",
-        "items": { "$ref": "#/$defs/deslop.characterization-test/3" },
-        "default": [],
-        "$defs": {
-            "deslop.characterization-test/3": {
-                "type": "object",
-                "required": ["schema", "workorder_id", "revision_guard", "proposal_context", "test_path", "test_text", "by"],
-                "properties": {
-                    "schema": { "const": "deslop.characterization-test/3" },
-                    "workorder_id": { "type": "string" },
-                    "revision_guard": { "type": "string", "pattern": "^rg1_[0-9]+_[0-9a-f]{64}$" },
-                    "proposal_context": { "$ref": "#/$defs/deslop.proposal-context/1" },
-                    "test_path": { "type": "string" },
-                    "test_text": { "type": "string" },
-                    "by": { "type": "string" }
-                },
-                "additionalProperties": false
+        "items": {
+            "type": "object",
+            "required": ["schema", "workorder_id", "revision_guard", "proposal_context", "test_path", "test_text", "by"],
+            "properties": {
+                "schema": { "const": "deslop.characterization-test/3" },
+                "workorder_id": { "type": "string" },
+                "revision_guard": { "type": "string", "pattern": "^rg1_[0-9]+_[0-9a-f]{64}$" },
+                "proposal_context": proposal_context_schema(),
+                "test_path": { "type": "string" },
+                "test_text": { "type": "string" },
+                "by": { "type": "string" }
             },
-            "deslop.proposal-context/1": proposal_context_schema()
-        }
+            "additionalProperties": false
+        },
+        "default": []
     })
 }
 
@@ -1291,6 +1283,7 @@ mod tests {
         let tools = response["result"]["tools"].as_array().expect("tools");
         assert_expected_tool_names(tools);
         assert!(tools.iter().all(|tool| tool.get("inputSchema").is_some()));
+        assert!(tools.iter().all(|tool| !contains_key(tool, "$ref")));
         assert_scan_analyzer_schema(tool_by_name(tools, "scan"));
         assert_scan_analyzer_schema(tool_by_name(tools, "propose"));
         assert_verify_coverage_schema(tool_by_name(tools, "verify"));
@@ -1530,6 +1523,16 @@ mod tests {
             .expect("tool")
     }
 
+    fn contains_key(value: &Value, key: &str) -> bool {
+        match value {
+            Value::Array(values) => values.iter().any(|value| contains_key(value, key)),
+            Value::Object(values) => {
+                values.contains_key(key) || values.values().any(|value| contains_key(value, key))
+            }
+            _ => false,
+        }
+    }
+
     fn assert_verify_coverage_schema(verify: &Value) {
         let coverage = &verify["inputSchema"]["properties"]["coverage"];
         assert_eq!(coverage["default"], false);
@@ -1540,9 +1543,7 @@ mod tests {
                 .expect("description")
                 .contains("lcov:<path>")
         );
-        let patches = &verify["inputSchema"]["properties"]["patches"];
-        assert_eq!(patches["items"]["$ref"], "#/$defs/deslop.patch/3");
-        let patch = &patches["$defs"]["deslop.patch/3"];
+        let patch = &verify["inputSchema"]["properties"]["patches"]["items"];
         assert_eq!(patch["properties"]["schema"]["const"], "deslop.patch/3");
         assert!(
             patch["required"]
