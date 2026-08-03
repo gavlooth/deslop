@@ -402,7 +402,7 @@ header). `safe-auto`: `consecutive-blank-lines` (collapse).
 
 ```
 deslop scan     [PATHS…] [--format text|json|sarif|agent] [--baseline FILE] [--since REF] [--fail-on major] [--julia-external[=staticlint|jet|off]] [--julia-project DIR]
-deslop metrics  [PATHS…] [--format text|json] [--hotspots-only] [--sigma N]
+deslop metrics  [PATHS…] [--format text|json] [--hotspots-only] [--sigma N] [--from REV [--to REV]]
 deslop slop     [PATHS…] [--format text|json]                 # weighted slop score
 deslop graph    [PATHS…] [--format json|dot] [--no-calls]      # file/symbol dependency graph for refactor planning
 deslop fix      [--paths PATH… | --workorders FILE] [--apply] [--characterize] [--allow-unverified] [--coverage MODE] [--provider anthropic|openai] [--base-url URL] [--model M] [--mock recorded.txt] [--check-cmd "CMD"] [--no-backup] # bundled slim consumer; dry-run by default
@@ -461,8 +461,8 @@ deslop rules                                                   # class, precondi
 
 ## 9. Metrics
 
-`deslop metrics` measures structural and lexical properties per region, independently of rule
-findings. It is built on
+`deslop metrics` measures structural, lexical, repository-local language-model, and analyzer-backed
+static-waste properties per exclusively owned region. It is built on
 `LangPack`: each pack declares metric region node kinds, branch node kinds,
 nesting/control-flow node kinds, line-comment tokens, and Halstead operator tokens.
 `deslop-parse` supplies the CST. A non-complete file emits diagnostics and no structural regions.
@@ -472,16 +472,35 @@ project-derived normalization, outliers, and hotspots are withheld and the CLI e
 Per region:
 - **Complexity:** current cyclomatic (`branch_count + 1`) and cognitive
   control/nesting/flow-break estimates, max nesting, NLOC, conventional Halstead
-  Volume/Difficulty/lexical-effort formulas, and Maintainability Index normalized 0-100.
+  Volume/Difficulty/lexical-effort formulas, Maintainability Index normalized 0-100,
+  SlopCodeBench structural mass (`CC * sqrt(NLOC)`), and its proposal-compatible
+  `ln(1 + structural_mass)` compression.
 - **Expressivity / density:** decision density (`cyclomatic / tokens`), unique-token
   ratio and comment-to-code ratio.
-- **Tree-sitter entropy:** normalized Shannon entropy over CST leaf tokens plus normalized
-  entropy over CST node kinds. Token information volume is `leaf_count * raw_token_entropy`.
+- **Tree-sitter entropy:** normalized Shannon entropy over CST leaf tokens, CST node kinds, and
+  parent-child AST/CST edge categories. The transparent slop vector uses edge-category entropy;
+  node-kind entropy remains available for compatibility. Token information volume is
+  `leaf_count * raw_token_entropy`.
   A registered text-only language may still emit report-only findings, but metrics remain unavailable
   until the pack supplies a grammar.
 - **Byte entropy:** `byte_entropy_bits_per_byte` is zero-order Shannon entropy in bits per source
   byte (`0.0..8.0`). It is not compression, sequence regularity, surprisal, or evidence with a
   universal good/bad direction.
+- **Requested-snapshot surprisal:** a deterministic leave-one-region-out, add-one-smoothed bigram
+  model is fitted separately per language from the requested complete snapshot. Each region reports
+  mean, p90, and maximum bits plus peer-token count and exact estimator identity. This is a portable
+  local anomaly signal, not an LLM probability or a substitute for a calibrated repository model.
+  It is repository-local only when the requested snapshot covers the repository; a file-only scan
+  deliberately uses only that file's peer regions.
+- **Redundancy and static waste:** analyzer duplicate, anti-pattern, and dead/unused finding spans
+  are assigned to the narrowest owning region and unioned by line before division by region NLOC.
+  Overlapping rule findings therefore do not multiply the reported `redundancy_union_ratio`.
+- **Transparent static-slop vector:** each region retains complexity mass, p90 contextual
+  surprisal when available, structural entropy, and redundancy ratio. No scalar is synthesized;
+  `authority="transparent_vector_only"` is machine-readable.
+- **Robust peer normalization:** regions are grouped by repository snapshot, language, semantic
+  role, and NLOC bin. Each vector component reports median, MAD, tie-aware percentile, and a
+  `1.4826 * MAD` robust z-score. Z-scores abstain for groups smaller than eight or with zero MAD.
 - **Experimental heuristic burden:** the hand-set `deslop-heuristic-burden/1` formula combines
   structural-load, information, entropy, and interaction components with `measurement_support`
   from sample size and CST availability. Higher `score` means more formula burden. The model is
@@ -495,7 +514,8 @@ Per region:
   eight regions and is disabled when the range is below `0.05` or standard deviation below `0.01`.
   This is unusualness within that scan, not an absolute candidate gate. In incomplete snapshots the
   distribution and every `repo_relative` value are `null`.
-- **JSON contract (`deslop.metrics/6`):** `/6` retains the `/5` removal of uncalibrated `health_score`,
+- **JSON contract (`deslop.metrics/7`):** `/7` retains the `/6` evidence-only feature axes and the
+  removal of uncalibrated `health_score`,
   `readability_score`, `readability_model`, `refactor_candidates`, confidence bands, and
   `refactor_confidence_distribution` fields. Region traversal still retains nested containers and
   members so the transparent measurements remain inspectable. Client migration is explicit: the
@@ -503,18 +523,27 @@ Per region:
   survives, with downgraded triage-only authority. `measurement_confidence` becomes
   `measurement_support`, `compression_ratio` becomes `byte_entropy_bits_per_byte`, and Halstead
   `effort` becomes `lexical_effort`; `repo_relative` and the top-level burden distribution are
-  nullable when project context is incomplete. `/6` adds the exclusive, content-addressed
+  nullable when project context is incomplete. `/6` added the exclusive, content-addressed
   `deslop.readability-features/1` vector with eight transparent axes, per-feature estimator/sample
   metadata, CFG-grounded McCabe complexity where complete, and an embedded
   `readability_calibration` disposition. The frozen M8 evaluation selected `evidence_only`, so
   `readability_label_permitted=false`; removed health/readability scores, refactor-confidence
-  fields, and candidate gates still have no replacement or compatibility alias.
+  fields, and candidate gates still have no replacement or compatibility alias. `/7` adds the
+  transparent `static_slop` vector, region role, requested-snapshot surprisal, analyzer-backed
+  redundancy, robust peer groups, file-level structural erosion/vector-p90/weighted-burden
+  summaries, and
+  optional Git change dispersion. See `docs/M11_METRICS_MIGRATION.md`.
 
 For complete requested snapshots, metrics are compared against the run's own distribution. A hotspot is a
 region at least `--sigma` standard deviations from the repo median on high complexity or
 low expressivity. Low-expressivity checks require a minimum token count to avoid tiny helper
 false positives. Ranked hotspots are scan-local triage signals only. Metrics does not create work
 orders, authorize rewrites, or participate in refactor-safety decisions.
+
+With `--from REV`, the CLI additionally runs `git diff --numstat` from `REV` to the working tree,
+or to `--to REV`, and reports normalized Shannon entropy over changed-line counts per text file.
+Binary paths remain visible but contribute no invented line count. This is change scattering only;
+it is not source entropy, semantic coupling, or proof that a cross-cutting change is accidental.
 
 ---
 
@@ -528,7 +557,7 @@ It implements the core JSON-RPC MCP methods needed by coding agents:
 `initialize`, `tools/list`, and `tools/call`. Tool payloads reuse the existing
 `deslop.findings/2`, `deslop.workorder/3`, `deslop.fix/3`, `deslop.patch/3`,
 `deslop.characterization-test/3`, `deslop.verify/1`, `deslop.apply/1`, and
-`deslop.metrics/6`/`deslop.graph/2` schemas. The `fix` tool scans/proposes work orders, reuses
+`deslop.metrics/7`/`deslop.graph/2` schemas. The `fix` tool scans/proposes work orders, reuses
 `deslop_slim::build_prompt`, and returns prompt entries containing `workorder_id`, `path`,
 exact line/byte range, matching-only `region_fingerprint`, `revision_guard`, contract, findings,
 proposal context, and prompt text. The caller rewrites the region and submits `deslop.patch/3` patches through `apply`, so the existing

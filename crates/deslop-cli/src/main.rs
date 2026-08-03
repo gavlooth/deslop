@@ -19,8 +19,8 @@ use deslop_graph::{
     GraphConfig, graph_paths, render_dot as render_graph_dot, render_json as render_graph_json,
 };
 use deslop_metrics::{
-    MetricsConfig, metrics_paths, render_json as render_metrics_json,
-    render_text as render_metrics_text,
+    ChangedFileMetrics, MetricsConfig, change_dispersion_metrics, metrics_paths,
+    render_json as render_metrics_json, render_text as render_metrics_text,
 };
 use deslop_protocol::{
     SharedWorkOrder, WorkOrderProtocolInput, WorkOrderProtocolRequest, WorkOrderService,
@@ -269,6 +269,14 @@ struct MetricsArgs {
 
     #[arg(long, default_value_t = 2.0)]
     sigma: f64,
+
+    /// Add Git change-dispersion evidence from this revision to the working tree or `--to`.
+    #[arg(long, value_name = "REV")]
+    from: Option<String>,
+
+    /// Compare `--from` with this revision instead of the working tree.
+    #[arg(long, value_name = "REV", requires = "from")]
+    to: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -900,7 +908,10 @@ fn render_recipe_diff(root: &Path, candidates: &[TransformationCandidate]) -> Re
 }
 
 fn metrics(args: MetricsArgs) -> Result<()> {
-    let report = metrics_paths(&args.paths, MetricsConfig { sigma: args.sigma })?;
+    let mut report = metrics_paths(&args.paths, MetricsConfig { sigma: args.sigma })?;
+    if let Some(from) = args.from {
+        report.change_dispersion = Some(git_change_dispersion(from, args.to, &args.paths)?);
+    }
     let rendered = match args.format {
         MetricsFormat::Text => render_metrics_text(&report, args.hotspots_only),
         MetricsFormat::Json => render_metrics_json(&report)?,
@@ -910,6 +921,53 @@ fn metrics(args: MetricsArgs) -> Result<()> {
         std::process::exit(2);
     }
     Ok(())
+}
+
+fn git_change_dispersion(
+    from: String,
+    to: Option<String>,
+    paths: &[PathBuf],
+) -> Result<deslop_metrics::ChangeDispersionMetrics> {
+    let mut git = std::process::Command::new("git");
+    git.args(["diff", "--numstat", &from]);
+    if let Some(to) = &to {
+        git.arg(to);
+    }
+    git.arg("--").args(paths);
+    let output = git
+        .output()
+        .context("failed to run git diff for metrics change dispersion")?;
+    if !output.status.success() {
+        bail!(
+            "metrics --from requires Git-compatible history; git diff failed with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let files = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.splitn(3, '\t');
+            let added = fields.next()?;
+            let deleted = fields.next()?;
+            let path = fields.next()?;
+            let binary = added == "-" || deleted == "-";
+            let added_lines = added.parse::<usize>().unwrap_or(0);
+            let deleted_lines = deleted.parse::<usize>().unwrap_or(0);
+            Some(ChangedFileMetrics {
+                path: PathBuf::from(path),
+                added_lines,
+                deleted_lines,
+                changed_lines: added_lines + deleted_lines,
+                binary,
+            })
+        })
+        .collect();
+    Ok(change_dispersion_metrics(
+        from,
+        to.unwrap_or_else(|| "working-tree".into()),
+        files,
+    ))
 }
 
 fn refactor_risk(args: RefactorRiskArgs) -> Result<()> {
@@ -2158,6 +2216,17 @@ mod tests {
         assert_eq!(args.paths, vec![PathBuf::from("src")]);
         assert!(matches!(args.format, GraphFormat::Dot));
         assert!(args.no_calls);
+    }
+
+    #[test]
+    fn parses_metrics_change_dispersion_revisions() {
+        let cli = Cli::parse_from(["deslop", "metrics", "src", "--from", "main", "--to", "HEAD"]);
+        let Command::Metrics(args) = cli.command else {
+            panic!("expected metrics command");
+        };
+        assert_eq!(args.paths, vec![PathBuf::from("src")]);
+        assert_eq!(args.from.as_deref(), Some("main"));
+        assert_eq!(args.to.as_deref(), Some("HEAD"));
     }
 
     #[test]

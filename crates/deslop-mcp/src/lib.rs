@@ -260,7 +260,7 @@ fn patch_verification_properties() -> Value {
 fn metrics_tool_spec() -> Value {
     tool(
         "metrics",
-        "Return read-only deslop.metrics/6 JSON with exclusive deslop.readability-features/1 axes, the evidence-only calibration disposition, per-region structural measurements, experimental heuristic burden, scan-local burden outliers, and complexity/entropy hotspots. No readability label is permitted; burden and outliers are not health, readability, refactor need, probability, confidence, or safety.",
+        "Return read-only deslop.metrics/7 JSON with exclusive deslop.readability-features/1 axes, the evidence-only calibration disposition, per-region structural measurements, transparent complexity/surprisal/entropy/redundancy vectors, robust peer groups, file summaries, experimental heuristic burden, scan-local burden outliers, and hotspots. No readability label is permitted; vectors, burden, and outliers are not health, readability, refactor need, probability, confidence, or safety.",
         object_schema(json!({
             "paths": paths_schema(),
             "sigma": { "type": "number", "default": 2.0 }
@@ -1298,7 +1298,7 @@ mod tests {
         let metrics_description = tool_by_name(tools, "metrics")["description"]
             .as_str()
             .expect("metrics description");
-        assert!(metrics_description.contains("deslop.metrics/6"));
+        assert!(metrics_description.contains("deslop.metrics/7"));
         assert!(metrics_description.contains("experimental heuristic burden"));
         assert!(metrics_description.contains("not health, readability, refactor need"));
         assert!(
@@ -1450,7 +1450,7 @@ mod tests {
         )
         .expect("fixture");
         let report = metrics_tool(&json!({ "paths": [source] })).expect("metrics");
-        assert_eq!(report["schema"], "deslop.metrics/6");
+        assert_eq!(report["schema"], "deslop.metrics/7");
         assert_eq!(report["heuristic_model"]["experimental"], true);
         assert_eq!(report["heuristic_model"]["human_calibrated"], false);
         assert_eq!(report["heuristic_model"]["authority"], "triage_only");

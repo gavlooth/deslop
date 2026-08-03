@@ -213,7 +213,7 @@ fn patch_verification_properties() -> Value {
 fn metrics_tool_spec() -> Value {
     tool(
         "metrics",
-        "Read-only. Return deslop.metrics/6 with exclusive deslop.readability-features/1 axes, the evidence-only calibration disposition, per-region structural measurements, experimental heuristic burden, scan-local burden outliers, and complexity/entropy hotspots. No readability label is permitted; burden and outliers are not health, readability, refactor need, probability, confidence, or safety. No writes, no network.",
+        "Read-only. Return deslop.metrics/7 with exclusive deslop.readability-features/1 axes, the evidence-only calibration disposition, per-region structural measurements, transparent complexity/surprisal/entropy/redundancy vectors, robust peer groups, file summaries, experimental heuristic burden, scan-local burden outliers, and hotspots. No readability label is permitted; vectors, burden, and outliers are not health, readability, refactor need, probability, confidence, or safety. No writes, no network.",
         ToolBehavior::read_only("Structural measurements and scan-local triage outliers"),
         object_schema(json!({
             "paths": paths_schema(),

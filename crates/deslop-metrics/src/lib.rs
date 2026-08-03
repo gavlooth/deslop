@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use deslop_core::{AnalysisStatus, FileAnalysis, Lang, Span, file_analyses_status};
+use deslop_analyzer::{AnalyzerConfig, scan_analysis, scan_analysis_with_presentation};
+use deslop_core::{
+    AnalysisStatus, FileAnalysis, FileReport, Finding, Lang, Span, file_analyses_status,
+};
 use deslop_lang::{LangPack, RegionClass, RegionSpan};
 use deslop_parse::{
     ControlEdgePrecision, ControlFlowPolicyId, DiscoveryPolicy, FactCoverage,
@@ -31,6 +34,9 @@ pub struct MetricsReport {
     pub status: AnalysisStatus,
     pub analyses: Vec<FileAnalysis>,
     pub functions: Vec<RegionMetrics>,
+    pub files: Vec<FileMetricsSummary>,
+    pub peer_groups: Vec<PeerGroupSummary>,
+    pub change_dispersion: Option<ChangeDispersionMetrics>,
     pub heuristic_outliers: Vec<HeuristicBurdenOutlier>,
     pub heuristic_burden_distribution: Option<BurdenDistribution>,
     pub hotspots: Vec<Hotspot>,
@@ -40,7 +46,7 @@ pub struct MetricsReport {
 }
 
 const METRICS_PROJECTION_SCHEMA: &str = "deslop.metrics.projection/1";
-const METRICS_CAPABILITIES: &[u8] = b"report=deslop.metrics/6\0features=deslop.readability-features/1\0calibration=deslop.readability-evaluation/1\0heuristic=deslop-heuristic-burden/1";
+const METRICS_CAPABILITIES: &[u8] = b"report=deslop.metrics/7\0features=deslop.readability-features/1\0calibration=deslop.readability-evaluation/1\0heuristic=deslop-heuristic-burden/1\0static-slop=transparent-vector/1\0surprisal=requested-snapshot-bigram/1\0redundancy=owned-line-union/1\0peer-normalization=median-mad/1";
 
 #[derive(Debug)]
 pub struct MetricsProjection {
@@ -64,12 +70,157 @@ pub struct RegionMetrics {
     pub lang: Lang,
     pub name: String,
     pub kind: String,
+    pub role: MetricRegionRole,
     pub span: Span,
     pub complexity: ComplexityMetrics,
     pub expressivity: ExpressivityMetrics,
     pub halstead: HalsteadMetrics,
+    pub surprisal: Option<SurprisalMetrics>,
+    pub redundancy: RedundancyMetrics,
+    pub static_slop: StaticSlopVector,
     pub heuristic_burden: HeuristicBurdenMetrics,
     pub features: NodeFeatureVector,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MetricRegionRole {
+    Behavioral,
+    Container,
+    File,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct SurprisalMetrics {
+    pub mean_bits: f64,
+    pub p90_bits: f64,
+    pub max_bits: f64,
+    pub sample_size: usize,
+    pub peer_tokens: usize,
+    pub estimator: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct RedundancyMetrics {
+    pub clone_lines: usize,
+    pub anti_pattern_lines: usize,
+    pub dead_or_unused_lines: usize,
+    pub union_lines: usize,
+    pub finding_count: usize,
+    pub nloc: usize,
+    pub clone_ratio: f64,
+    pub anti_pattern_ratio: f64,
+    pub dead_or_unused_ratio: f64,
+    pub union_ratio: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StaticSlopVector {
+    pub complexity_mass: f64,
+    pub contextual_surprisal_p90: Option<f64>,
+    pub structural_entropy: f64,
+    pub redundancy_ratio: f64,
+    pub peer_relative: Option<PeerRelativeSlopVector>,
+    pub authority: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PeerRelativeSlopVector {
+    pub peer_group: String,
+    pub peer_count: usize,
+    pub complexity_mass: RobustRelativeMetric,
+    pub contextual_surprisal_p90: Option<RobustRelativeMetric>,
+    pub structural_entropy: RobustRelativeMetric,
+    pub redundancy_ratio: RobustRelativeMetric,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct RobustRelativeMetric {
+    pub median: f64,
+    pub mad: f64,
+    pub robust_zscore: Option<f64>,
+    pub positive_robust_zscore: Option<f64>,
+    pub percentile: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PeerGroupSummary {
+    pub id: String,
+    pub lang: Lang,
+    pub role: MetricRegionRole,
+    pub size_bin: &'static str,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FileMetricsSummary {
+    pub path: PathBuf,
+    pub lang: Lang,
+    pub behavioral_regions: usize,
+    pub behavioral_nloc: usize,
+    pub structural_mass: f64,
+    pub complexity_mass: f64,
+    pub complexity_mass_p90: f64,
+    pub contextual_surprisal_p90: Option<f64>,
+    pub structural_entropy_p90: f64,
+    pub structural_erosion: f64,
+    pub heuristic_burden_weighted_mean: f64,
+    pub heuristic_burden_p90: f64,
+    pub heuristic_burden_max: f64,
+    pub redundancy_union_ratio: f64,
+    pub redundancy_ratio_p90: f64,
+    pub top_hotspot: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeDispersionMetrics {
+    pub from: String,
+    pub to: String,
+    pub files: Vec<ChangedFileMetrics>,
+    pub changed_lines: usize,
+    pub normalized_entropy: f64,
+    pub authority: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangedFileMetrics {
+    pub path: PathBuf,
+    pub added_lines: usize,
+    pub deleted_lines: usize,
+    pub changed_lines: usize,
+    pub binary: bool,
+}
+
+pub fn change_dispersion_metrics(
+    from: String,
+    to: String,
+    mut files: Vec<ChangedFileMetrics>,
+) -> ChangeDispersionMetrics {
+    files.sort_by(|left, right| left.path.cmp(&right.path));
+    let changed_lines = files.iter().map(|file| file.changed_lines).sum::<usize>();
+    let weighted_files = files.iter().filter(|file| file.changed_lines > 0).count();
+    let normalized_entropy = if weighted_files <= 1 || changed_lines == 0 {
+        0.0
+    } else {
+        let entropy = files
+            .iter()
+            .filter(|file| file.changed_lines > 0)
+            .map(|file| {
+                let probability = file.changed_lines as f64 / changed_lines as f64;
+                -probability * probability.log2()
+            })
+            .sum::<f64>();
+        entropy / (weighted_files as f64).log2()
+    };
+    ChangeDispersionMetrics {
+        from,
+        to,
+        files,
+        changed_lines,
+        normalized_entropy,
+        authority: "git-numstat-change-distribution/1",
+    }
 }
 
 pub const READABILITY_FEATURE_SCHEMA_ID: &str = "deslop.readability-features/1";
@@ -232,6 +383,10 @@ pub struct ComplexityMetrics {
     pub cognitive: f64,
     pub max_nesting: usize,
     pub nloc: usize,
+    /// SlopCodeBench structural mass: CC * sqrt(NLOC).
+    pub structural_mass: f64,
+    /// Size-compressed proposal component: ln(1 + structural_mass).
+    pub complexity_mass: f64,
     pub maintainability_index: f64,
 }
 
@@ -245,6 +400,7 @@ pub struct ExpressivityMetrics {
     pub byte_entropy_bits_per_byte: f64,
     pub token_entropy: f64,
     pub structural_entropy: f64,
+    pub ast_edge_entropy: f64,
     pub information_volume: f64,
 }
 
@@ -331,6 +487,12 @@ struct Token {
     start_byte: usize,
 }
 
+#[derive(Debug, Clone)]
+struct MeasuredRegion {
+    metrics: RegionMetrics,
+    model_tokens: Vec<String>,
+}
+
 pub fn metrics_paths(paths: &[PathBuf], config: MetricsConfig) -> Result<MetricsReport> {
     let invocation_base =
         std::env::current_dir().context("resolve metrics invocation directory")?;
@@ -374,8 +536,9 @@ fn metrics_report(
     config: MetricsConfig,
     presentation: Option<&SnapshotPresentationMap>,
 ) -> Result<MetricsReport> {
+    let reports = analyzer_reports_for_metrics(Arc::clone(&analysis), presentation)?;
     let cfg = cfg_complexity_by_owner(Arc::clone(&analysis))?;
-    let mut functions = Vec::new();
+    let mut measured = Vec::new();
     let mut analyses = Vec::new();
     for file in analysis.files() {
         let display_path = presentation
@@ -389,28 +552,55 @@ fn metrics_report(
         if file.provenance().permits_rewrites() {
             let mut file_metrics = metrics_file(&analysis, file, &cfg)?;
             for region in &mut file_metrics {
-                region.path.clone_from(&display_path);
+                region.metrics.path.clone_from(&display_path);
             }
-            functions.extend(file_metrics);
+            measured.extend(file_metrics);
         }
     }
-    finish_metrics_report(analyses, functions, config)
+    finish_metrics_report(analyses, measured, reports, config)
+}
+
+fn analyzer_reports_for_metrics(
+    analysis: Arc<ProjectAnalysis>,
+    presentation: Option<&SnapshotPresentationMap>,
+) -> Result<Vec<FileReport>> {
+    let mut analyzer = AnalyzerConfig::default();
+    analyzer.boundary.enabled = false;
+    let projection = if let Some(presentation) = presentation {
+        scan_analysis_with_presentation(analysis, presentation, analyzer)?
+    } else {
+        scan_analysis(analysis, analyzer)?
+    };
+    Ok(projection.reports)
 }
 
 fn finish_metrics_report(
     mut analyses: Vec<FileAnalysis>,
-    mut functions: Vec<RegionMetrics>,
+    mut measured: Vec<MeasuredRegion>,
+    reports: Vec<FileReport>,
     config: MetricsConfig,
 ) -> Result<MetricsReport> {
-    functions.sort_by(|a, b| {
-        a.path
-            .cmp(&b.path)
-            .then(a.span.start_line.cmp(&b.span.start_line))
-            .then(a.name.cmp(&b.name))
+    measured.sort_by(|a, b| {
+        a.metrics
+            .path
+            .cmp(&b.metrics.path)
+            .then(a.metrics.span.start_line.cmp(&b.metrics.span.start_line))
+            .then(a.metrics.name.cmp(&b.metrics.name))
     });
     analyses.sort_by(|a, b| a.path.cmp(&b.path));
     let status = file_analyses_status(&analyses);
     let authoritative = status == AnalysisStatus::Complete;
+    let peer_groups = if authoritative {
+        apply_repository_surprisal(&mut measured);
+        apply_redundancy_evidence(&mut measured, &reports);
+        normalize_static_slop_vectors(&mut measured)
+    } else {
+        Vec::new()
+    };
+    let mut functions = measured
+        .into_iter()
+        .map(|region| region.metrics)
+        .collect::<Vec<_>>();
     let heuristic_burden_distribution =
         authoritative.then(|| normalize_heuristic_burden(&mut functions));
     let heuristic_outliers = heuristic_burden_distribution.map_or_else(Vec::new, |distribution| {
@@ -421,11 +611,19 @@ fn finish_metrics_report(
     } else {
         Vec::new()
     };
+    let files = if authoritative {
+        summarize_files(&functions, &hotspots)
+    } else {
+        Vec::new()
+    };
     Ok(MetricsReport {
-        schema: "deslop.metrics/6",
+        schema: "deslop.metrics/7",
         status,
         analyses,
         functions,
+        files,
+        peer_groups,
+        change_dispersion: None,
         heuristic_outliers,
         heuristic_burden_distribution,
         hotspots,
@@ -573,7 +771,7 @@ fn metrics_file(
     analysis: &ProjectAnalysis,
     file: &ParsedFile,
     cfg: &HashMap<NodeKey, CfgComplexityEvidence>,
-) -> Result<Vec<RegionMetrics>> {
+) -> Result<Vec<MeasuredRegion>> {
     let context = MetricFile::new(analysis, file)?;
     let pack = analysis
         .language_adapter(&file.key().path)
@@ -608,9 +806,13 @@ pub fn metrics_source(source: &SourceFile) -> Result<Vec<RegionMetrics>> {
     let mut metrics = metrics_file(&analysis, file, &cfg)?;
     let display = built.presentation.display_path(&file.key().path);
     for region in &mut metrics {
-        region.path = display.to_path_buf();
+        region.metrics.path = display.to_path_buf();
     }
-    Ok(metrics)
+    let reports = analyzer_reports_for_metrics(Arc::clone(&analysis), Some(&built.presentation))?;
+    apply_repository_surprisal(&mut metrics);
+    apply_redundancy_evidence(&mut metrics, &reports);
+    normalize_static_slop_vectors(&mut metrics);
+    Ok(metrics.into_iter().map(|region| region.metrics).collect())
 }
 
 pub fn render_text(report: &MetricsReport, hotspots_only: bool) -> String {
@@ -635,6 +837,18 @@ pub fn render_text(report: &MetricsReport, hotspots_only: bool) -> String {
         report.readability_calibration.capture_id,
     ));
     out.push_str(&metrics_summary_line(report));
+    out.push_str(&file_summaries_text(&report.files));
+    if let Some(change) = &report.change_dispersion {
+        out.push_str(&format!(
+            "\nchange dispersion: {} -> {} files={} changed-lines={} normalized-entropy={:.3} ({})\n",
+            change.from,
+            change.to,
+            change.files.len(),
+            change.changed_lines,
+            change.normalized_entropy,
+            change.authority,
+        ));
+    }
     if !hotspots_only {
         out.push_str(&regions_text(&report.functions));
     }
@@ -670,7 +884,7 @@ fn metrics_summary_line(report: &MetricsReport) -> String {
 
 fn regions_text(functions: &[RegionMetrics]) -> String {
     let mut out = String::from(
-        "\nregion                                kind          burden support     z   pct cyc cog nest nloc   MI  dens uniq byteH  tokH  astH   info\n",
+        "\nregion                                kind          burden support     z   pct cyc cog nest nloc  Cmass   X90     R   MI  dens uniq byteH  tokH  astH   info\n",
     );
     for region in functions {
         out.push_str(&region_text_line(region));
@@ -688,8 +902,12 @@ fn region_text_line(region: &RegionMetrics) -> String {
             )
         },
     );
+    let surprisal = region.surprisal.map_or_else(
+        || "n/a".to_string(),
+        |value| format!("{:.2}", value.p90_bits),
+    );
     format!(
-        "{:<37} {:<13} {:>6.3} {:>6.3} {:>5} {:>5} {:>3.0} {:>3.0} {:>4} {:>4} {:>5.1} {:>5.3} {:>4.2} {:>5.3} {:>5.3} {:>5.3} {:>6.1}\n",
+        "{:<37} {:<13} {:>6.3} {:>6.3} {:>5} {:>5} {:>3.0} {:>3.0} {:>4} {:>4} {:>6.2} {:>5} {:>5.3} {:>5.1} {:>5.3} {:>4.2} {:>5.3} {:>5.3} {:>5.3} {:>6.1}\n",
         short_name(region),
         region.kind,
         region.heuristic_burden.score,
@@ -700,6 +918,9 @@ fn region_text_line(region: &RegionMetrics) -> String {
         region.complexity.cognitive,
         region.complexity.max_nesting,
         region.complexity.nloc,
+        region.complexity.complexity_mass,
+        surprisal,
+        region.redundancy.union_ratio,
         region.complexity.maintainability_index,
         region.expressivity.decision_density,
         region.expressivity.unique_token_ratio,
@@ -708,6 +929,37 @@ fn region_text_line(region: &RegionMetrics) -> String {
         region.expressivity.structural_entropy,
         region.expressivity.information_volume,
     )
+}
+
+fn file_summaries_text(files: &[FileMetricsSummary]) -> String {
+    let mut out = String::from("\nfile summaries (function-weighted; evidence only)\n");
+    if files.is_empty() {
+        out.push_str("  unavailable\n");
+        return out;
+    }
+    for file in files {
+        out.push_str(&format!(
+            "  {} regions={} nloc={} mass={:.2} erosion={:.3} C-p90={:.2} X-p90={} A-p90={:.3} R={:.3} R-p90={:.3} burden-mean={:.3} burden-p90={:.3} max={:.3} top={}\n",
+            file.path.display(),
+            file.behavioral_regions,
+            file.behavioral_nloc,
+            file.structural_mass,
+            file.structural_erosion,
+            file.complexity_mass_p90,
+            file.contextual_surprisal_p90.map_or_else(
+                || "n/a".to_string(),
+                |value| format!("{value:.2}"),
+            ),
+            file.structural_entropy_p90,
+            file.redundancy_union_ratio,
+            file.redundancy_ratio_p90,
+            file.heuristic_burden_weighted_mean,
+            file.heuristic_burden_p90,
+            file.heuristic_burden_max,
+            file.top_hotspot.as_deref().unwrap_or("none"),
+        ));
+    }
+    out
 }
 
 fn hotspots_text(hotspots: &[Hotspot]) -> String {
@@ -1048,7 +1300,7 @@ fn measure_region_owned(
     ownership: &MetricOwnership,
     cfg_by_owner: &HashMap<NodeKey, CfgComplexityEvidence>,
     region: MetricRegion,
-) -> RegionMetrics {
+) -> MeasuredRegion {
     let owner = region
         .semantic_owner
         .expect("owned metric region has a semantic owner");
@@ -1107,6 +1359,12 @@ fn measure_region_owned(
         ast.node_count,
         region.node.is_some(),
     );
+    let role = metric_region_role(&region, source);
+    let model_tokens = tokens
+        .iter()
+        .filter(|token| !token.is_comment)
+        .map(|token| token.text.clone())
+        .collect();
     let path = source.file.key().path.clone();
     let span = span_from_region(region.span);
     let features = node_feature_vector(NodeFeatureInput {
@@ -1122,18 +1380,73 @@ fn measure_region_owned(
         byte_samples: bytes.len(),
         parse_complete: source.file.provenance().permits_rewrites(),
     });
-    RegionMetrics {
-        path,
-        lang: source.file.grammar().lang(),
-        name: region.name,
-        kind: region.kind,
-        span,
-        complexity,
-        expressivity,
-        halstead,
-        heuristic_burden,
-        features,
+    MeasuredRegion {
+        metrics: RegionMetrics {
+            path,
+            lang: source.file.grammar().lang(),
+            name: region.name,
+            kind: region.kind,
+            role,
+            span,
+            complexity,
+            expressivity,
+            halstead,
+            surprisal: None,
+            redundancy: RedundancyMetrics {
+                nloc: complexity.nloc,
+                ..RedundancyMetrics::default()
+            },
+            static_slop: StaticSlopVector {
+                complexity_mass: complexity.complexity_mass,
+                contextual_surprisal_p90: None,
+                structural_entropy: expressivity.ast_edge_entropy,
+                redundancy_ratio: 0.0,
+                peer_relative: None,
+                authority: "transparent_vector_only",
+            },
+            heuristic_burden,
+            features,
+        },
+        model_tokens,
     }
+}
+
+fn metric_region_role(region: &MetricRegion, source: &MetricFile<'_>) -> MetricRegionRole {
+    if region.kind == "file" {
+        return MetricRegionRole::File;
+    }
+    if region
+        .node
+        .is_some_and(|node| source.fact(node).region_class() == RegionClass::Behavioral)
+        || matches!(
+            region.kind.as_str(),
+            "function_item"
+                | "function_definition"
+                | "function_declaration"
+                | "function_expression"
+                | "function"
+                | "arrow_function"
+                | "method_definition"
+                | "do_clause"
+        )
+    {
+        return MetricRegionRole::Behavioral;
+    }
+    if region
+        .node
+        .is_some_and(|node| source.fact(node).region_class() == RegionClass::Declaration)
+        || matches!(
+            region.kind.as_str(),
+            "impl_item"
+                | "class_definition"
+                | "class_declaration"
+                | "struct_definition"
+                | "module_definition"
+        )
+    {
+        return MetricRegionRole::Container;
+    }
+    MetricRegionRole::Other
 }
 
 struct NodeFeatureInput<'a> {
@@ -1185,6 +1498,22 @@ fn node_feature_vector(input: NodeFeatureInput<'_>) -> NodeFeatureVector {
             value: input.complexity.max_nesting as f64,
             estimator: "owned-syntax-max-nesting/1".into(),
             sample_size: input.ast_nodes,
+        },
+    );
+    structural.measurements.insert(
+        "structural_mass".into(),
+        FeatureMeasurement {
+            value: input.complexity.structural_mass,
+            estimator: "cyclomatic-times-sqrt-nloc/1".into(),
+            sample_size: input.complexity.nloc,
+        },
+    );
+    structural.measurements.insert(
+        "complexity_mass".into(),
+        FeatureMeasurement {
+            value: input.complexity.complexity_mass,
+            estimator: "ln-one-plus-structural-mass/1".into(),
+            sample_size: input.complexity.nloc,
         },
     );
     if let Some(cfg) = input.cfg {
@@ -1271,6 +1600,12 @@ fn node_feature_vector(input: NodeFeatureInput<'_>) -> NodeFeatureVector {
             input.expressivity.structural_entropy,
             "shannon-plugin-normalized-by-log2-support/1",
             input.ast_nodes,
+        ),
+        (
+            "ast_edge_entropy_normalized",
+            input.expressivity.ast_edge_entropy,
+            "shannon-ast-edge-normalized-by-log2-support/1",
+            input.ast_nodes.saturating_sub(1),
         ),
         (
             "byte_entropy_bits_per_byte",
@@ -1387,11 +1722,14 @@ fn complexity_metrics(
     nloc: usize,
     maintainability_index: f64,
 ) -> ComplexityMetrics {
+    let structural_mass = cyclomatic * (nloc as f64).sqrt();
     ComplexityMetrics {
         cyclomatic,
         cognitive: ast.cognitive as f64,
         max_nesting: ast.max_nesting,
         nloc,
+        structural_mass,
+        complexity_mass: structural_mass.ln_1p(),
         maintainability_index,
     }
 }
@@ -1407,11 +1745,12 @@ fn ast_complexity_owned(
         reset_nodes: &'visit BTreeSet<NodeId>,
         stats: AstStats,
         kinds: BTreeMap<String, usize>,
+        edges: BTreeMap<(String, String), usize>,
         leaf_tokens: BTreeMap<String, usize>,
     }
 
     impl Visitor<'_, '_> {
-        fn visit(&mut self, node: NodeId, nesting: usize) {
+        fn visit(&mut self, node: NodeId, nesting: usize, parent_kind: Option<&str>) {
             if node != self.root && self.reset_nodes.contains(&node) {
                 return;
             }
@@ -1420,9 +1759,15 @@ fn ast_complexity_owned(
                 .analysis
                 .node(node)
                 .expect("node is analysis-owned");
-            let kind = view.raw_kind();
+            let kind = view.raw_kind().to_string();
             self.stats.node_count += 1;
-            *self.kinds.entry(kind.to_string()).or_insert(0) += 1;
+            *self.kinds.entry(kind.clone()).or_insert(0) += 1;
+            if let Some(parent_kind) = parent_kind {
+                *self
+                    .edges
+                    .entry((parent_kind.to_string(), kind.clone()))
+                    .or_insert(0) += 1;
+            }
             if view.is_leaf() && !kind.contains("comment") {
                 let token = view.text();
                 if !token.trim().is_empty() {
@@ -1441,7 +1786,7 @@ fn ast_complexity_owned(
             let next_nesting = nesting + usize::from(fact.is_metric_nesting());
             self.stats.max_nesting = self.stats.max_nesting.max(next_nesting);
             for child in view.children() {
-                self.visit(child, next_nesting);
+                self.visit(child, next_nesting, Some(&kind));
             }
         }
     }
@@ -1452,12 +1797,14 @@ fn ast_complexity_owned(
         reset_nodes,
         stats: AstStats::default(),
         kinds: BTreeMap::new(),
+        edges: BTreeMap::new(),
         leaf_tokens: BTreeMap::new(),
     };
-    visitor.visit(node, 0);
+    visitor.visit(node, 0, None);
     visitor.stats.information = information_stats(
         &visitor.leaf_tokens,
         normalized_entropy(visitor.kinds.values().copied()),
+        normalized_entropy(visitor.edges.values().copied()),
     );
     visitor.stats
 }
@@ -1486,6 +1833,7 @@ struct InformationStats {
     vocabulary: usize,
     token_entropy: f64,
     structural_entropy: f64,
+    ast_edge_entropy: f64,
     information_volume: f64,
 }
 
@@ -1648,7 +1996,7 @@ fn expressivity_from_evidence(
             *counts.entry(token.text.as_str()).or_insert(0usize) += 1;
             counts
         });
-    let fallback_information = information_stats(&token_counts, 0.0);
+    let fallback_information = information_stats(&token_counts, 0.0, 0.0);
     let information = if tree_sitter_information.tokens > 0 {
         tree_sitter_information
     } else {
@@ -1663,6 +2011,7 @@ fn expressivity_from_evidence(
         byte_entropy_bits_per_byte,
         token_entropy: information.token_entropy,
         structural_entropy: information.structural_entropy,
+        ast_edge_entropy: information.ast_edge_entropy,
         information_volume: information.information_volume,
     }
 }
@@ -1670,6 +2019,7 @@ fn expressivity_from_evidence(
 fn information_stats<K: Ord>(
     counts: &BTreeMap<K, usize>,
     structural_entropy: f64,
+    ast_edge_entropy: f64,
 ) -> InformationStats {
     let tokens = counts.values().sum::<usize>();
     let token_entropy_bits = shannon_entropy(counts.values().copied());
@@ -1678,8 +2028,484 @@ fn information_stats<K: Ord>(
         vocabulary: counts.len(),
         token_entropy: normalized_entropy(counts.values().copied()),
         structural_entropy,
+        ast_edge_entropy,
         information_volume: token_entropy_bits * tokens as f64,
     }
+}
+
+const SURPRISAL_ESTIMATOR: &str = "requested-snapshot-leave-one-region-out-bigram-add-one/1";
+const MIN_PEER_GROUP_REGIONS: usize = 8;
+
+#[derive(Debug, Default)]
+struct BigramModel {
+    pairs: BTreeMap<(String, String), usize>,
+    contexts: BTreeMap<String, usize>,
+    vocabulary: BTreeSet<String>,
+    tokens: usize,
+}
+
+fn region_pairs(tokens: &[String]) -> Vec<(String, String)> {
+    let mut previous = "<START>".to_string();
+    let mut pairs = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        pairs.push((previous, token.clone()));
+        previous = token.clone();
+    }
+    pairs
+}
+
+fn apply_repository_surprisal(regions: &mut [MeasuredRegion]) {
+    let mut models = BTreeMap::<String, BigramModel>::new();
+    for region in regions.iter() {
+        let model = models.entry(region.metrics.lang.to_string()).or_default();
+        model.tokens += region.model_tokens.len();
+        for token in &region.model_tokens {
+            model.vocabulary.insert(token.clone());
+        }
+        for (context, token) in region_pairs(&region.model_tokens) {
+            *model.contexts.entry(context.clone()).or_default() += 1;
+            *model.pairs.entry((context, token)).or_default() += 1;
+        }
+    }
+
+    for region in regions {
+        let Some(model) = models.get(&region.metrics.lang.to_string()) else {
+            continue;
+        };
+        let peer_tokens = model.tokens.saturating_sub(region.model_tokens.len());
+        if peer_tokens == 0 || region.model_tokens.is_empty() || model.vocabulary.is_empty() {
+            continue;
+        }
+        let local_pairs = region_pairs(&region.model_tokens);
+        let mut local_pair_counts = BTreeMap::<(String, String), usize>::new();
+        let mut local_context_counts = BTreeMap::<String, usize>::new();
+        for (context, token) in &local_pairs {
+            *local_context_counts.entry(context.clone()).or_default() += 1;
+            *local_pair_counts
+                .entry((context.clone(), token.clone()))
+                .or_default() += 1;
+        }
+        let support = model.vocabulary.len() as f64 + 1.0;
+        let mut values = local_pairs
+            .iter()
+            .map(|(context, token)| {
+                let global_pair = model
+                    .pairs
+                    .get(&(context.clone(), token.clone()))
+                    .copied()
+                    .unwrap_or(0);
+                let local_pair = local_pair_counts
+                    .get(&(context.clone(), token.clone()))
+                    .copied()
+                    .unwrap_or(0);
+                let global_context = model.contexts.get(context).copied().unwrap_or(0);
+                let local_context = local_context_counts.get(context).copied().unwrap_or(0);
+                let probability = (global_pair.saturating_sub(local_pair) as f64 + 1.0)
+                    / (global_context.saturating_sub(local_context) as f64 + support);
+                -probability.log2()
+            })
+            .collect::<Vec<_>>();
+        values.sort_by(f64::total_cmp);
+        let measurement = SurprisalMetrics {
+            mean_bits: values.iter().sum::<f64>() / values.len() as f64,
+            p90_bits: quantile(&values, 0.90),
+            max_bits: *values.last().unwrap_or(&0.0),
+            sample_size: values.len(),
+            peer_tokens,
+            estimator: SURPRISAL_ESTIMATOR,
+        };
+        region.metrics.surprisal = Some(measurement);
+        region.metrics.static_slop.contextual_surprisal_p90 = Some(measurement.p90_bits);
+        let axis = &mut region.metrics.features.axes.surprisal;
+        axis.unknowns.clear();
+        for (name, value) in [
+            ("mean_bits", measurement.mean_bits),
+            ("p90_bits", measurement.p90_bits),
+            ("max_bits", measurement.max_bits),
+        ] {
+            axis.measurements.insert(
+                name.into(),
+                FeatureMeasurement {
+                    value,
+                    estimator: SURPRISAL_ESTIMATOR.into(),
+                    sample_size: measurement.sample_size,
+                },
+            );
+        }
+        refresh_feature_identity(&mut region.metrics.features);
+    }
+}
+
+#[derive(Default)]
+struct RedundancyLineSets {
+    clone: BTreeSet<usize>,
+    anti_pattern: BTreeSet<usize>,
+    dead_or_unused: BTreeSet<usize>,
+    findings: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum WasteClass {
+    Clone,
+    AntiPattern,
+    DeadOrUnused,
+}
+
+fn waste_class(rule: &str) -> Option<WasteClass> {
+    match rule {
+        "duplicate-block" | "near-duplicate" => Some(WasteClass::Clone),
+        "unused-arg" | "unused-binding" | "unused-private-def" | "unused-namespace"
+        | "single-use-binding" => Some(WasteClass::DeadOrUnused),
+        "consecutive-blank-lines"
+        | "reimpl-not="
+        | "reimpl-some?"
+        | "reimpl-boolean"
+        | "redundant-do"
+        | "reimpl-empty?"
+        | "reimpl-seq"
+        | "reimpl-vec"
+        | "reimpl-isempty"
+        | "reimpl-eachindex"
+        | "reimpl-isnothing"
+        | "useless-format"
+        | "py-none-comparison"
+        | "py-range-len"
+        | "py-dict-keys-membership"
+        | "py-list-comprehension-wrapper"
+        | "js-loose-equality"
+        | "js-var-declaration"
+        | "js-unnecessary-await"
+        | "redundant-closure"
+        | "let-and-return"
+        | "needless-clone"
+        | "needless-return"
+        | "incompleteness"
+        | "magic-number"
+        | "narrating-comment"
+        | "comment-block" => Some(WasteClass::AntiPattern),
+        _ => None,
+    }
+}
+
+fn apply_redundancy_evidence(regions: &mut [MeasuredRegion], reports: &[FileReport]) {
+    let mut sets = (0..regions.len())
+        .map(|_| RedundancyLineSets::default())
+        .collect::<Vec<_>>();
+    for report in reports {
+        for finding in &report.findings {
+            let Some(class) = waste_class(&finding.rule) else {
+                continue;
+            };
+            let Some(index) = narrowest_owning_region(regions, finding) else {
+                continue;
+            };
+            let region = &regions[index].metrics;
+            let start = finding.span.start_line.max(region.span.start_line);
+            let end = finding.span.end_line.min(region.span.end_line);
+            if start > end {
+                continue;
+            }
+            let target = match class {
+                WasteClass::Clone => &mut sets[index].clone,
+                WasteClass::AntiPattern => &mut sets[index].anti_pattern,
+                WasteClass::DeadOrUnused => &mut sets[index].dead_or_unused,
+            };
+            target.extend(start..=end);
+            sets[index].findings += 1;
+        }
+    }
+
+    for (region, lines) in regions.iter_mut().zip(sets) {
+        let union = lines
+            .clone
+            .union(&lines.anti_pattern)
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .union(&lines.dead_or_unused)
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let nloc = region.metrics.complexity.nloc;
+        let redundancy = RedundancyMetrics {
+            clone_lines: lines.clone.len(),
+            anti_pattern_lines: lines.anti_pattern.len(),
+            dead_or_unused_lines: lines.dead_or_unused.len(),
+            union_lines: union.len(),
+            finding_count: lines.findings,
+            nloc,
+            clone_ratio: bounded_ratio(lines.clone.len(), nloc),
+            anti_pattern_ratio: bounded_ratio(lines.anti_pattern.len(), nloc),
+            dead_or_unused_ratio: bounded_ratio(lines.dead_or_unused.len(), nloc),
+            union_ratio: bounded_ratio(union.len(), nloc),
+        };
+        region.metrics.redundancy = redundancy;
+        region.metrics.static_slop.redundancy_ratio = redundancy.union_ratio;
+        let axis = &mut region.metrics.features.axes.redundancy;
+        axis.unknowns.clear();
+        for (name, value) in [
+            ("clone_line_ratio", redundancy.clone_ratio),
+            ("anti_pattern_line_ratio", redundancy.anti_pattern_ratio),
+            ("dead_or_unused_line_ratio", redundancy.dead_or_unused_ratio),
+            ("redundancy_union_ratio", redundancy.union_ratio),
+        ] {
+            axis.measurements.insert(
+                name.into(),
+                FeatureMeasurement {
+                    value,
+                    estimator: "owned-finding-line-union/1".into(),
+                    sample_size: nloc,
+                },
+            );
+        }
+        refresh_feature_identity(&mut region.metrics.features);
+    }
+}
+
+fn narrowest_owning_region(regions: &[MeasuredRegion], finding: &Finding) -> Option<usize> {
+    regions
+        .iter()
+        .enumerate()
+        .filter(|(_, region)| {
+            region.metrics.path == finding.path
+                && region.metrics.span.start_line <= finding.span.start_line
+                && region.metrics.span.end_line >= finding.span.end_line
+        })
+        .min_by_key(|(_, region)| {
+            (
+                region.metrics.span.end_line - region.metrics.span.start_line,
+                usize::from(region.metrics.role != MetricRegionRole::Behavioral),
+            )
+        })
+        .map(|(index, _)| index)
+}
+
+fn refresh_feature_identity(features: &mut NodeFeatureVector) {
+    features.id = feature_vector_id(&features.subject, &features.axes);
+}
+
+fn bounded_ratio(numerator: usize, denominator: usize) -> f64 {
+    ratio(numerator as f64, denominator).clamp(0.0, 1.0)
+}
+
+fn normalize_static_slop_vectors(regions: &mut [MeasuredRegion]) -> Vec<PeerGroupSummary> {
+    let mut groups = BTreeMap::<String, Vec<usize>>::new();
+    for (index, region) in regions.iter().enumerate() {
+        groups
+            .entry(peer_group_id(&region.metrics))
+            .or_default()
+            .push(index);
+    }
+    let mut summaries = Vec::with_capacity(groups.len());
+    for (id, indices) in groups {
+        let first = &regions[indices[0]].metrics;
+        summaries.push(PeerGroupSummary {
+            id: id.clone(),
+            lang: first.lang,
+            role: first.role,
+            size_bin: size_bin(first.complexity.nloc),
+            count: indices.len(),
+        });
+        let complexity = indices
+            .iter()
+            .map(|index| regions[*index].metrics.static_slop.complexity_mass)
+            .collect::<Vec<_>>();
+        let structural = indices
+            .iter()
+            .map(|index| regions[*index].metrics.static_slop.structural_entropy)
+            .collect::<Vec<_>>();
+        let redundancy = indices
+            .iter()
+            .map(|index| regions[*index].metrics.static_slop.redundancy_ratio)
+            .collect::<Vec<_>>();
+        let surprisal = indices
+            .iter()
+            .filter_map(|index| regions[*index].metrics.static_slop.contextual_surprisal_p90)
+            .collect::<Vec<_>>();
+        for (offset, index) in indices.iter().copied().enumerate() {
+            let current_surprisal = regions[index].metrics.static_slop.contextual_surprisal_p90;
+            regions[index].metrics.static_slop.peer_relative = Some(PeerRelativeSlopVector {
+                peer_group: id.clone(),
+                peer_count: indices.len(),
+                complexity_mass: robust_relative_metric(&complexity, complexity[offset]),
+                contextual_surprisal_p90: current_surprisal
+                    .map(|value| robust_relative_metric(&surprisal, value)),
+                structural_entropy: robust_relative_metric(&structural, structural[offset]),
+                redundancy_ratio: robust_relative_metric(&redundancy, redundancy[offset]),
+            });
+        }
+    }
+    summaries
+}
+
+fn peer_group_id(region: &RegionMetrics) -> String {
+    format!(
+        "{}/{:?}/{}",
+        region.lang,
+        region.role,
+        size_bin(region.complexity.nloc)
+    )
+    .to_lowercase()
+}
+
+fn size_bin(nloc: usize) -> &'static str {
+    match nloc {
+        0..=15 => "000-015",
+        16..=31 => "016-031",
+        32..=63 => "032-063",
+        64..=127 => "064-127",
+        _ => "128-plus",
+    }
+}
+
+fn robust_relative_metric(values: &[f64], value: f64) -> RobustRelativeMetric {
+    let mut sorted = values
+        .iter()
+        .copied()
+        .filter(|candidate| candidate.is_finite())
+        .collect::<Vec<_>>();
+    sorted.sort_by(f64::total_cmp);
+    if sorted.is_empty() {
+        return RobustRelativeMetric {
+            median: 0.0,
+            mad: 0.0,
+            robust_zscore: None,
+            positive_robust_zscore: None,
+            percentile: 0.5,
+        };
+    }
+    let median = quantile(&sorted, 0.50);
+    let mut deviations = sorted
+        .iter()
+        .map(|candidate| (candidate - median).abs())
+        .collect::<Vec<_>>();
+    deviations.sort_by(f64::total_cmp);
+    let mad = quantile(&deviations, 0.50);
+    let scaled_mad = 1.4826 * mad;
+    let robust_zscore = (sorted.len() >= MIN_PEER_GROUP_REGIONS && scaled_mad > f64::EPSILON)
+        .then_some((value - median) / scaled_mad);
+    RobustRelativeMetric {
+        median,
+        mad,
+        robust_zscore,
+        positive_robust_zscore: robust_zscore.map(|score| score.max(0.0)),
+        percentile: tie_aware_percentile(&sorted, value),
+    }
+}
+
+fn tie_aware_percentile(sorted: &[f64], value: f64) -> f64 {
+    if sorted.len() <= 1 {
+        return 0.5;
+    }
+    let start = sorted.partition_point(|candidate| candidate.total_cmp(&value).is_lt());
+    let end = sorted.partition_point(|candidate| !candidate.total_cmp(&value).is_gt());
+    ((start + end.saturating_sub(1)) as f64 / 2.0) / (sorted.len() - 1) as f64
+}
+
+fn summarize_files(functions: &[RegionMetrics], hotspots: &[Hotspot]) -> Vec<FileMetricsSummary> {
+    let mut paths = BTreeMap::<PathBuf, Vec<&RegionMetrics>>::new();
+    for region in functions {
+        paths.entry(region.path.clone()).or_default().push(region);
+    }
+    let mut summaries = Vec::with_capacity(paths.len());
+    for (path, all_regions) in paths {
+        let mut regions = all_regions
+            .iter()
+            .copied()
+            .filter(|region| region.role == MetricRegionRole::Behavioral)
+            .collect::<Vec<_>>();
+        if regions.is_empty() {
+            regions.extend(
+                all_regions
+                    .iter()
+                    .copied()
+                    .filter(|region| region.role == MetricRegionRole::File),
+            );
+        }
+        if regions.is_empty() {
+            continue;
+        }
+        let behavioral_nloc = regions
+            .iter()
+            .map(|region| region.complexity.nloc)
+            .sum::<usize>();
+        let structural_mass = regions
+            .iter()
+            .map(|region| region.complexity.structural_mass)
+            .sum::<f64>();
+        let complexity_mass = regions
+            .iter()
+            .map(|region| region.complexity.complexity_mass)
+            .sum::<f64>();
+        let mut complexity_masses = regions
+            .iter()
+            .map(|region| region.complexity.complexity_mass)
+            .collect::<Vec<_>>();
+        complexity_masses.sort_by(f64::total_cmp);
+        let mut surprisals = regions
+            .iter()
+            .filter_map(|region| region.surprisal.map(|value| value.p90_bits))
+            .collect::<Vec<_>>();
+        surprisals.sort_by(f64::total_cmp);
+        let mut structural_entropies = regions
+            .iter()
+            .map(|region| region.expressivity.ast_edge_entropy)
+            .collect::<Vec<_>>();
+        structural_entropies.sort_by(f64::total_cmp);
+        let eroded_mass = regions
+            .iter()
+            .filter(|region| region.complexity.cyclomatic > 10.0)
+            .map(|region| region.complexity.structural_mass)
+            .sum::<f64>();
+        let weighted_denominator = regions
+            .iter()
+            .map(|region| region.complexity.nloc.max(1))
+            .sum::<usize>();
+        let heuristic_burden_weighted_mean = regions
+            .iter()
+            .map(|region| region.heuristic_burden.score * region.complexity.nloc.max(1) as f64)
+            .sum::<f64>()
+            / weighted_denominator as f64;
+        let mut burdens = regions
+            .iter()
+            .map(|region| region.heuristic_burden.score)
+            .collect::<Vec<_>>();
+        burdens.sort_by(f64::total_cmp);
+        let redundancy_lines = regions
+            .iter()
+            .map(|region| region.redundancy.union_lines)
+            .sum::<usize>();
+        let mut redundancy_ratios = regions
+            .iter()
+            .map(|region| region.redundancy.union_ratio)
+            .collect::<Vec<_>>();
+        redundancy_ratios.sort_by(f64::total_cmp);
+        summaries.push(FileMetricsSummary {
+            path: path.clone(),
+            lang: regions[0].lang,
+            behavioral_regions: regions.len(),
+            behavioral_nloc,
+            structural_mass,
+            complexity_mass,
+            complexity_mass_p90: quantile(&complexity_masses, 0.90),
+            contextual_surprisal_p90: (!surprisals.is_empty()).then(|| quantile(&surprisals, 0.90)),
+            structural_entropy_p90: quantile(&structural_entropies, 0.90),
+            structural_erosion: if structural_mass > 0.0 {
+                (eroded_mass / structural_mass).max(0.0)
+            } else {
+                0.0
+            },
+            heuristic_burden_weighted_mean,
+            heuristic_burden_p90: quantile(&burdens, 0.90),
+            heuristic_burden_max: *burdens.last().unwrap_or(&0.0),
+            redundancy_union_ratio: bounded_ratio(redundancy_lines, behavioral_nloc),
+            redundancy_ratio_p90: quantile(&redundancy_ratios, 0.90),
+            top_hotspot: hotspots
+                .iter()
+                .find(|hotspot| hotspot.path == path)
+                .map(|hotspot| hotspot.name.clone()),
+        });
+    }
+    summaries.sort_by(|left, right| left.path.cmp(&right.path));
+    summaries
 }
 
 fn heuristic_burden_metrics(
@@ -2269,6 +3095,9 @@ mod tests {
                 include_bytes!("../../../tests/corpus/sloppy/julia_idioms.jl").as_slice(),
             ),
         ];
+        let checkout_has_crlf = sources
+            .iter()
+            .any(|(_, source)| source.windows(2).any(|window| window == b"\r\n"));
         let mut builder = ProjectSnapshotBuilder::new(
             root.path(),
             RepositoryId::explicit("m1-gold-metric-ownership").unwrap(),
@@ -2335,7 +3164,13 @@ mod tests {
                 + ownership.nloc_by_owner.values().sum::<usize>()
                 + ownership.comment_lines_by_owner.values().sum::<usize>();
             assert_eq!(assigned_lines, nonblank_lines);
-            total_bytes += file.source().len();
+            total_bytes += file.source().len()
+                - context
+                    .text()
+                    .as_bytes()
+                    .iter()
+                    .filter(|byte| **byte == b'\r')
+                    .count();
             total_nonblank_lines += nonblank_lines;
             total_semantic_owners += ownership.by_owner.len();
         }
@@ -2344,7 +3179,10 @@ mod tests {
         assert_eq!(total_semantic_owners, 17);
         assert_eq!(total_exclusive_ranges, 700);
         assert_eq!(first.functions.len(), 17);
-        assert_eq!(analysis.node_count(), 746);
+        assert_eq!(
+            analysis.node_count(),
+            if checkout_has_crlf { 750 } else { 746 }
+        );
 
         assert_eq!(analysis.parse_counts(), second.analysis.parse_counts());
         assert_eq!(deslop_parse::parse_source_invocations(), 0);
@@ -2412,7 +3250,7 @@ mod tests {
 
         let report = metrics_paths(&[malformed], MetricsConfig::default()).expect("metrics");
 
-        assert_eq!(report.schema, "deslop.metrics/6");
+        assert_eq!(report.schema, "deslop.metrics/7");
         assert_eq!(report.status, AnalysisStatus::Partial);
         assert!(report.functions.is_empty());
         assert!(report.heuristic_outliers.is_empty());
@@ -2542,7 +3380,7 @@ mod tests {
             assert!(!text.contains(forbidden), "unexpected text {forbidden}");
         }
         let json = serde_json::to_value(&report).expect("metrics JSON");
-        assert_eq!(json["schema"], "deslop.metrics/6");
+        assert_eq!(json["schema"], "deslop.metrics/7");
         assert_eq!(json["heuristic_model"]["authority"], "triage_only");
         assert_eq!(json["heuristic_model"]["gating_permitted"], false);
         for forbidden in [
@@ -2599,6 +3437,7 @@ mod tests {
         for name in [
             "token_entropy_normalized",
             "ast_kind_entropy_normalized",
+            "ast_edge_entropy_normalized",
             "byte_entropy_bits_per_byte",
         ] {
             let measurement = &function.features.axes.entropy.measurements[name];
@@ -2606,7 +3445,15 @@ mod tests {
             assert!(measurement.sample_size > 0);
         }
         assert!(!function.features.axes.surprisal.unknowns.is_empty());
-        assert!(!function.features.axes.redundancy.unknowns.is_empty());
+        assert!(
+            function
+                .features
+                .axes
+                .redundancy
+                .measurements
+                .contains_key("redundancy_union_ratio")
+        );
+        assert!(function.features.axes.redundancy.unknowns.is_empty());
         assert!(!function.features.axes.cohesion.unknowns.is_empty());
         assert!(!function.features.axes.impact.unknowns.is_empty());
 
@@ -2664,7 +3511,20 @@ mod tests {
         let pack = analysis.language_adapter(&file.key().path).unwrap();
         let regions = metric_regions_owned(pack, &context).unwrap();
         let ownership = metric_ownership(pack, &context, &regions).unwrap();
-        assert_eq!(ownership.file_ranges.bytes(), 34);
+        let non_cr_bytes = |ranges: &OwnedRanges| {
+            ranges.bytes()
+                - ranges
+                    .ranges
+                    .iter()
+                    .map(|(start, end)| {
+                        context.text().as_bytes()[*start..*end]
+                            .iter()
+                            .filter(|byte| **byte == b'\r')
+                            .count()
+                    })
+                    .sum::<usize>()
+        };
+        assert_eq!(non_cr_bytes(&ownership.file_ranges), 34);
         assert_eq!(ownership.file_ranges.ranges.len(), 10);
         assert_eq!(ownership.file_nloc, 1);
         let expected = [
@@ -2680,7 +3540,11 @@ mod tests {
                 .find(|region| region.name == name)
                 .and_then(|region| region.semantic_owner)
                 .unwrap();
-            assert_eq!(ownership.by_owner[&owner].bytes(), bytes, "{name} bytes");
+            assert_eq!(
+                non_cr_bytes(&ownership.by_owner[&owner]),
+                bytes,
+                "{name} bytes"
+            );
             assert_eq!(
                 ownership.by_owner[&owner].ranges.len(),
                 segments,
@@ -3340,6 +4204,8 @@ mod tests {
             cognitive: 0.0,
             max_nesting: 0,
             nloc: 12,
+            structural_mass: 0.0,
+            complexity_mass: 0.0,
             maintainability_index: 90.0,
         };
         let high_complexity = ComplexityMetrics {
@@ -3381,6 +4247,8 @@ mod tests {
             cognitive: 6.0,
             max_nesting: 2,
             nloc: 8,
+            structural_mass: 0.0,
+            complexity_mass: 0.0,
             maintainability_index: 70.0,
         };
         let mut small = burden_test_expressivity(0.85, 0.70, 256.0);
@@ -3399,6 +4267,8 @@ mod tests {
                 cognitive: 0.0,
                 max_nesting: 0,
                 nloc: 80,
+                structural_mass: 0.0,
+                complexity_mass: 0.0,
                 maintainability_index: 90.0,
             },
             &burden_test_expressivity(0.95, 0.50, 256.0),
@@ -3431,6 +4301,8 @@ mod tests {
                 cognitive: 0.0,
                 max_nesting: 0,
                 nloc: 12,
+                structural_mass: 0.0,
+                complexity_mass: 0.0,
                 maintainability_index: 90.0,
             },
             &burden_test_expressivity(0.90, 0.50, 256.0),
@@ -3485,6 +4357,8 @@ mod tests {
                 cognitive: 6.0,
                 max_nesting: 2,
                 nloc: 12,
+                structural_mass: 0.0,
+                complexity_mass: 0.0,
                 maintainability_index: 70.0,
             },
             &burden_test_expressivity(0.90, 0.50, 256.0),
@@ -3508,6 +4382,80 @@ mod tests {
         }
     }
 
+    #[test]
+    fn proposed_complexity_mass_uses_cc_and_size_compression() {
+        let metrics = complexity_metrics(AstStats::default(), 4.0, 25, 80.0);
+        assert_close(metrics.structural_mass, 20.0);
+        assert_close(metrics.complexity_mass, 21.0_f64.ln());
+    }
+
+    #[test]
+    fn robust_peer_normalization_uses_median_and_mad_and_abstains_for_small_groups() {
+        let values = [1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 20.0];
+        let relative = robust_relative_metric(&values, 20.0);
+        assert_close(relative.median, 2.5);
+        assert_close(relative.mad, 1.0);
+        assert!(relative.robust_zscore.unwrap() > 10.0);
+        assert_eq!(relative.positive_robust_zscore, relative.robust_zscore);
+        assert_close(relative.percentile, 1.0);
+
+        let small = robust_relative_metric(&values[..7], 4.0);
+        assert!(small.robust_zscore.is_none());
+        assert!(small.positive_robust_zscore.is_none());
+    }
+
+    #[test]
+    fn change_dispersion_is_normalized_over_changed_line_distribution() {
+        let report = change_dispersion_metrics(
+            "base".into(),
+            "head".into(),
+            vec![
+                ChangedFileMetrics {
+                    path: "a.rs".into(),
+                    added_lines: 5,
+                    deleted_lines: 5,
+                    changed_lines: 10,
+                    binary: false,
+                },
+                ChangedFileMetrics {
+                    path: "b.rs".into(),
+                    added_lines: 10,
+                    deleted_lines: 0,
+                    changed_lines: 10,
+                    binary: false,
+                },
+            ],
+        );
+        assert_eq!(report.changed_lines, 20);
+        assert_close(report.normalized_entropy, 1.0);
+    }
+
+    #[test]
+    fn repository_surprisal_and_owned_redundancy_are_joined_without_a_scalar_claim() {
+        let source = SourceFile::new(
+            PathBuf::from("sample.py"),
+            "def first(values):\n    total = sum(values)\n    positive = [value for value in values if value > 0]\n    adjusted = total + len(positive)\n    return adjusted * 2 if adjusted > 10 else adjusted - 1\n\ndef second(items):\n    total = sum(items)\n    positive = [value for value in items if value > 0]\n    adjusted = total + len(positive)\n    return adjusted * 2 if adjusted > 10 else adjusted - 1\n"
+                .to_string(),
+        );
+        let report = metrics_source(&source).expect("metrics");
+        let functions = report
+            .iter()
+            .filter(|region| region.role == MetricRegionRole::Behavioral)
+            .collect::<Vec<_>>();
+        assert_eq!(functions.len(), 2);
+        assert!(functions.iter().all(|region| region.surprisal.is_some()));
+        assert!(
+            functions
+                .iter()
+                .any(|region| region.redundancy.union_lines > 0)
+        );
+        assert!(functions.iter().all(|region| {
+            region.static_slop.authority == "transparent_vector_only"
+                && region.static_slop.contextual_surprisal_p90.is_some()
+                && region.static_slop.peer_relative.is_some()
+        }));
+    }
+
     fn assert_close(actual: f64, expected: f64) {
         assert!(
             (actual - expected).abs() < 1e-12,
@@ -3529,6 +4477,7 @@ mod tests {
             byte_entropy_bits_per_byte: 4.0,
             token_entropy,
             structural_entropy,
+            ast_edge_entropy: structural_entropy,
             information_volume,
         }
     }

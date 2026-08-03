@@ -45,7 +45,7 @@ cargo install --path crates/deslop-lsp                  # LSP is a separate bina
 |---|---|
 | `deslop scan <paths>` | Report findings as text, JSON, agent output, or SARIF; `--fail-on <sev>` gates CI |
 | `deslop slop <paths>` | Slop score with per-rule counts |
-| `deslop metrics` | Structural and lexical measurements plus triage outliers; never a rewrite gate |
+| `deslop metrics` | Transparent complexity, repository-local surprisal, entropy, redundancy, robust peer, and file-level evidence; `--from` adds Git change entropy; never a rewrite gate |
 | `deslop graph <paths>` | Dependency graph (`deslop.graph/2`) for refactor planning; `--contract` emits the multi-role contract graph (`deslop.contract-graph/2`) |
 | `deslop refactor-risk [paths]` | Find current contract pathologies without history; `--from/--to` adds historical causation and persistence |
 | `deslop propose <paths>` | Work orders for agent-rewrite findings |

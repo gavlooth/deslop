@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 blake3.workspace = true
+deslop-analyzer.workspace = true
 deslop-core.workspace = true
 deslop-lang.workspace = true
 deslop-parse.workspace = true

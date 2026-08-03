@@ -457,6 +457,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "blake3",
+ "deslop-analyzer",
  "deslop-core",
  "deslop-lang",
  "deslop-parse",
