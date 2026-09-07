@@ -13142,3 +13142,110 @@ The verified sibling admission-gate implementation was pushed by advancing
 empty mutable working-copy commit above the immutable pushed commit.
 
 **Signature:** Codex (GPT-5.x), sibling admission-gate push confirmation, 2026-07-23.
+
+## 2026-07-27 — Restore the installed MCP-capable binary
+
+**Objective:** Diagnose and repair the registered deslop stdio MCP server after clients could not
+start it.
+
+**Target:** The clean deslop working tree at `1245af6710328047c5ee29014fe53824c752e359`,
+the installed `/home/christos/.cargo/bin/deslop`, and the existing Codex/Claude MCP launch
+configuration.
+
+**Changes:** No product source or MCP configuration changed. Both clients already selected the
+correct executable and `mcp` argument. Reinstalled `deslop-cli` from the current working tree with
+the required optional feature:
+`cargo install --path crates/deslop-cli --features mcp --locked --force`.
+The installed binary SHA-256 is
+`000ca53ba26c284e965da6336f39bfe4af495eec4fe71356b98b6289b03a282c`.
+
+**Failure mode and root cause:** The previous installed binary exited 2 with
+`unrecognized subcommand 'mcp'`; its help omitted MCP, while the current debug artifact exposed it.
+The registered server had therefore been compiled without `deslop-cli`'s optional `mcp` feature.
+This invalidates the assumption that a later generic `cargo install --path crates/deslop-cli`
+preserves previously selected features.
+
+**Commands run/results:**
+
+- Reproduced `/home/christos/.cargo/bin/deslop mcp`: failed before repair with the unrecognized
+  subcommand.
+- `cargo test -p deslop-mcp --locked`: pass, 24 tests.
+- `cargo test -p deslop-cli --features mcp --locked`: pass; all active unit/integration suites,
+  with one designated slow probe ignored.
+- `cargo clippy -p deslop-cli --features mcp --locked -- -D warnings`: pass.
+- `cargo fmt --all -- --check`: pass.
+- Feature-correct forced install: pass; executable replaced.
+- Installed-binary `initialize` plus `tools/list` stdio transcript: pass.
+- Installed-binary `initialize` plus `tools/call scan` transcript: pass and returned
+  `deslop.findings/2` with findings for the sloppy corpus fixture.
+- Pre-report `jj status`, `jj diff --stat`, and `git diff --check`: clean.
+
+**Commands not run:** The full workspace test suite was not rerun because no repository code
+changed; the MCP crate, feature-enabled CLI suites, strict feature-enabled Clippy, formatting, and
+the exact installed executable were tested directly.
+
+**Current recommendation/checkpoint:** Use `--features mcp` for every installed binary that backs
+the registered stdio server. A successful default-feature CLI build is not MCP release evidence.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** Existing Codex, Claude, or other MCP client processes must
+restart/reconnect so they spawn the replacement executable. No config change, migration, or cache
+clear is required.
+
+**Negative-memory status:** Consolidated in Hindsight session
+`deslop-mcp-binary-2026-07-27`, including the invalidated generic-install assumption and exact
+installed-artifact verification requirement.
+
+**Next actions:** Restart the affected MCP client and confirm deslop tools appear. If they do not,
+recheck the exact installed binary hash and capture the client's launch stderr before changing
+configuration.
+
+**Signature:** Codex (GPT-5), deslop MCP installed-artifact repair owner, 2026-07-27.
+
+## 2026-08-03 — Replace installed CLI and MCP with the combined metrics/7 artifact
+
+**Date/time:** 2026-08-03T14:06:02+02:00
+
+**Objective:** Replace the currently installed deslop CLI/MCP implementation with one authoritative
+executable built from the pulled `main` revision, combining the new `deslop.metrics/7` behavior and
+the stdio MCP server.
+
+**Target:** `/home/christos/code/deslop` at parent revision `4c261c816cbd`; installed executable
+`/home/christos/.cargo/bin/deslop`; existing Codex and Claude MCP registrations that launch that
+executable with argument `mcp`.
+
+**Changes:** No product source or MCP configuration changed. Reinstalled `deslop-cli` from the
+current working tree with `cargo install --path crates/deslop-cli --features mcp --locked --force`.
+The replacement executable SHA-256 is
+`6d4d63ab8dba8d91180a0771fdb1d2b4dec9c20762a141e9c047a6e4231649cc`.
+
+**Commands run/results:** Feature-enabled CLI and MCP test gate passed, including 21 CLI unit tests,
+24 MCP tests, and all invoked active integration suites; one designated slow algorithm probe remained
+ignored. `cargo fmt --all -- --check` passed. Feature-enabled warnings-denied Clippy passed. The
+feature-correct forced release install passed and replaced the registered executable. Installed CLI
+smoke returned `deslop.metrics/7`, complete status, five regions, one file summary, and two peer
+groups for `tests/fixtures/python/behavioral.py`. Installed MCP JSON-RPC initialize and tools/list
+passed with 12 tools; the metrics tool advertised `/7`, and an installed MCP metrics call returned a
+complete `/7` report with five regions.
+
+**Invalidated assumptions:** None newly discovered. The active negative-memory constraint remains:
+a generic install without `--features mcp` can silently remove the MCP subcommand, so it is not valid
+replacement evidence for the registered combined executable.
+
+**Current recommendation/checkpoint:** Treat the installed SHA above as the authoritative combined
+CLI/MCP artifact for revision `4c261c816cbd`. Future replacement installs must retain `--features
+mcp --locked` and verify both the normal CLI and JSON-RPC surfaces through the exact installed path.
+
+**Blockers:** None.
+
+**Dependencies/restart requirements:** New invocations immediately use the replacement. Already
+running Codex, Claude, or other MCP client processes must reconnect or restart before they spawn the
+new executable. No configuration change, migration, or cache clear is required.
+
+**Negative-memory status:** Existing `deslop-mcp-binary-2026-07-27` constraint remains active; no
+new negative memory was necessary.
+
+**Next actions:** Reconnect any currently running MCP client that must consume metrics schema `/7`.
+
+**Signature:** Codex (GPT-5), combined installed CLI/MCP artifact owner, 2026-08-03.
