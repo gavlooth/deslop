@@ -34,18 +34,24 @@ that come back. Any LLM is a **swappable, external consumer**, never a dependenc
 analyzer + an output an LLM can act on + a deterministic gate that checks the LLM's work.**
 deslop owns the deterministic ends; the model in the middle is interchangeable.
 
-The AI-slop catalog is empirical, not provenance-based. Recent smell-taxonomy work on
-LLM-generated code reports that implementation smells dominate the measured gap, with an
-average implementation-smell increase of roughly 73% per task
-(https://arxiv.org/abs/2510.03029). deslop uses that evidence to prioritize intrinsic,
-baseline-free cleanup rules such as stubs, magic numbers, long methods, duplication, and
-over-narration. It is **not** an AI-authorship detector: clean code should pass whether a
-human or model wrote it, and sloppy code should be fixable regardless of provenance.
+The AI-slop catalog is not provenance-based: findings carry no claim about who
+or what wrote the code. Published smell taxonomies motivate selected
+constructs only — e.g. implementation-smell prevalence in LLM-generated Java
+(`paul-2025-smells`, §6; Java population only, not a cross-language claim).
+Every rule's own standing (empirical, algorithmic, or engineering heuristic)
+is recorded per claim in the research registry; the catalog as a whole is not
+labelled empirical. In particular, narration-comment findings are a deslop
+engineering heuristic: Paul §3.2.1's documentation smell means *insufficient*
+comments and does not support deleting narration. deslop uses the evidence to
+prioritize intrinsic, baseline-free cleanup rules such as stubs, magic
+numbers, long methods, and duplication. It is **not** an AI-authorship
+detector: findings are reviewed without regard to provenance, and no detector
+identifies who or what wrote the code.
 
 ### Goals
 - A genuine analyzer (tree-sitter CST + scope/ref graph + token duplication + complexity),
   Clojure/Julia/Rust first-class by consuming clj-kondo / StaticLint or JET / clippy.
-- **Report broadly; auto-fix narrowly** (only provably behavior-preserving edits, in place).
+- **Report broadly; auto-fix narrowly** (only edits whose exact candidate state clears the verifier gate, in place; evidence about the checks run, never a general proof of equivalence — see `docs/RESEARCH_LIMITATIONS.md`).
 - A **machine/agent output** rich enough to rewrite from without re-deriving anything.
 - A **`propose → verify → apply`** loop so the safety contract survives even when the LLM
   is external and unknown to deslop.
@@ -83,13 +89,12 @@ and mandatory before any non-`safe-auto` write.
 ---
 
 ## 3. The fix-safety lattice (retained spine)
-
 Every rule has a **safety class**. `scan` reports all; `fix`/`apply` key off it.
 
 | class | meaning | in-place by `fix`? | to apply otherwise |
 |---|---|---|---|
-| `safe-auto` | behavior-preserving under **all** syntactic conditions | **yes** | — |
-| `analyzer-confirmed` | safe **iff** clj-kondo/StaticLint/JET/clippy confirms the fact | yes, iff T2 confirms | — |
+| `safe-auto` | behavior-preserving under the recipe's stated syntactic + semantic preconditions and the verifier/apply policy for its language (not a universal proof from tests alone) | **yes** | — |
+| `analyzer-confirmed` | safe **iff** clj-kondo/StaticLint/JET/clippy confirms the fact (analyzer confirmation of the stated fact, not a general equivalence proof) | yes, iff T2 confirms | — |
 | `safe-with-precondition` | safe only under a stated, not-always-checkable precondition | no (suggest) | `apply` with passing `--check-cmd` |
 | `risky-suggest` | plausible but real semantic surface | no (suggest) | `apply` with `--check-cmd` |
 | `llm-only` | needs judgment; no deterministic edit | no | `propose` → LLM → `verify`/`apply` |
@@ -170,7 +175,7 @@ source regions; Heretic is promising and Clojure-specific but currently labels i
 experimental/not released, so its JSON/EDN contract is not yet a stable verifier input. Julia's
 older Vimes.jl path reports patches/diffs but is legacy, while Gremlins.jl is a new 0.x
 source-splicing project; both are deferred until a maintained, source-line machine-readable report
-contract is proven.
+contract is demonstrated with passing checks.
 
 Bundled real-provider LLM calls are source egress and require affirmative consent before any
 Anthropic/OpenAI request, including dry-run rewrites. Consent can come from `--yes`/`--consent`,
@@ -286,8 +291,8 @@ JavaScript/JSX uses `tree-sitter-javascript`. The TypeScript language family kee
 public `type-script` identity while `.ts`/`.mts`/`.cts` select the TypeScript grammar and
 `.tsx` selects the distinct TSX grammar from the source path.
 Shared fixtures under `tests/fixtures/typescript` freeze typed TypeScript, JSX, TSX, region,
-and malformed-syntax behavior. Tree-sitter parse success proves CST recovery without `ERROR` or
-missing nodes; it does not prove matching JSX tag names.
+and malformed-syntax behavior. Tree-sitter parse success establishes CST recovery without `ERROR` or
+missing nodes; it does not establish matching JSX tag names.
 
 Every analyzed source carries `AnalysisProvenance { status, diagnostics }`. `complete` means the
 path-selected grammar produced a tree with no `ERROR` or missing nodes. `partial` means Tree-sitter
@@ -429,10 +434,9 @@ deslop rules                                                   # class, precondi
 - **`graph`**: emits `deslop.graph/2`, a deterministic Tree-sitter-derived dependency graph
   for LLM refactor planning. Nodes are files, symbols, and external-or-unresolved placeholders; edges are
   `contains`, `imports`, `calls`, and `inherits`. In graph/2, `resolved` is exact syntax ownership
-  on `contains`; reference edges are `syntactic` best-candidate or `ambiguous` evidence until a
-  scope/type authority proves binding. A syntactic edge to an `external-symbol` node means unresolved,
-  not proven external; every reference `to` is a planning hint rather than a proven binding.
-  `syntactic` is not resolution proof, and every graph edge remains planning evidence that needs normal
+  scope/type authority confirms binding. A syntactic edge to an `external-symbol` node means unresolved,
+  not confirmed external; every reference `to` is a planning hint rather than a confirmed binding.
+  `syntactic` is not resolution evidence, and every graph edge remains planning evidence that needs normal
   verification before edits.
 - **`fix`**: the bundled `deslop-slim` consumer. It proposes work orders from `--paths` or
   reads JSONL from `--workorders`, builds prompts, asks a swappable `LlmClient`, converts
@@ -574,7 +578,7 @@ is opt-in server-run LLM execution: it constructs a `deslop-slim` client from
 feature, which enables `deslop-slim/anthropic` and `deslop-slim/openai`; default MCP builds
 keep `slim-llm` off and return a clear feature-required error for `mode="auto"`.
 
-`deslop-slim` exists to prove the loop and to serve users with no agent harness. The runtime
+`deslop-slim` exists to exercise the loop and to serve users with no agent harness. The runtime
 loop is: propose/load work orders → build a constrained prompt from instruction, exact region
 text, findings, and contract → `LlmClient::rewrite` → strip markdown fences → emit
 `deslop.patch/3` with copied proposal context and `by = deslop-slim/<model>` → `verify_patches` → default dry-run report
@@ -591,7 +595,7 @@ generated tests are rejected and do not weaken the removable-only apply gate.
 `{base_url}/chat/completions`, defaults
 `base_url` to `https://api.openai.com/v1`, and reads `OPENAI_API_KEY` with
 `DESLOP_SLIM_API_KEY` fallback. Neither client logs keys. `RecordedClient` reads a response
-from disk and is the test/replay client. It enforces nothing the core doesn't; all guarantees
+from disk and is the test/replay client. It enforces nothing the core doesn't; all checks
 live in `verify`. The HTTP clients are behind `deslop-slim`'s optional `anthropic` and
 `openai` features; default slim builds enable both, while MCP depends on `deslop-slim` with
 default features disabled unless `deslop-mcp/slim-llm` is explicitly enabled. Deferred
@@ -677,7 +681,7 @@ guard; a stale `revision_guard` is rejected, including boundary-only whitespace)
 present/absent fixture/degrade tests; plugin registry dispatch; Rust CST region
 extraction; `slim` deterministic prompt/client/e2e tests with no network/API key, including
 default hold of `coverage-unknown`, `--allow-unverified` opt-in apply, rejected rewrites
-blocked in both modes, `--characterize` accept/reject paths that prove accepted tests upgrade
+blocked in both modes, `--characterize` accept/reject paths where accepted tests upgrade
 weak verdicts while failing tests stay held, and LCOV-backed `removable` apply by default.
 Optional live smoke sits outside the default suite.
 Mutation tests cover exact native CST mutant generation for Rust, Clojure, Julia, and Python,
@@ -700,7 +704,7 @@ default-build `fix mode=auto` feature-required errors, propose→verify round-tr
 `revision_guard` rejection and zero-write apply, MCP coverage bool back-compat/defaults, bad coverage-mode
 errors, LCOV mode-string `apply` upgrading a covered patch to `removable`, and an
 initialize/list/scan stdio transcript. With `deslop-mcp/slim-llm`, a deterministic mock
-auto-mode test proves a covered `deslop.slim/4` rewrite writes and a rejected rewrite does
+auto-mode test checks a covered `deslop.slim/4` rewrite writes and a rejected rewrite does
 not.
 LSP tests cover precise UTF-16 diagnostic ranges including non-ASCII text, safety-lattice
 code-action gating, `source.fixAll` for all safe findings in a file, no fix-all for riskier

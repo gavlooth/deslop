@@ -474,7 +474,7 @@ fn expected_delta(
     let removed_points = flow
         .points()
         .iter()
-        .filter(|point| point.source().is_some_and(&contains))
+        .filter(|point| point.source().is_some_and(contains))
         .map(|point| point.key())
         .collect::<BTreeSet<_>>();
     let mut changes = Vec::new();
@@ -501,7 +501,7 @@ fn expected_delta(
     for node in graph
         .nodes()
         .iter()
-        .filter(|node| node.source().is_some_and(&contains))
+        .filter(|node| node.source().is_some_and(contains))
     {
         changes.push(removal(
             GraphEvidenceLayer::DataFlow,

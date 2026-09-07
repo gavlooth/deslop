@@ -46,6 +46,9 @@ path = "src/bin/m10_dogfood.rs"
 [[bin]]
 name = "m10-release"
 path = "src/bin/m10_release.rs"
+[[bin]]
+name = "research-registry"
+path = "src/bin/research_registry.rs"
 
 [dev-dependencies]
 deslop-parse.workspace = true

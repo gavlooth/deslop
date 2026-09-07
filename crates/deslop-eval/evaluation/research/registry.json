@@ -1,0 +1,1807 @@
+{
+  "schema": "deslop.research-registry/1",
+  "registry_version": "1.0.0",
+  "construct": "Task-relative unnecessary code: a syntax region, callable, file, patch, or checkpoint sequence is unnecessary only relative to a declared task contract (requirements, compatibility, observability, error handling, performance, security). Degradation evidence (duplication, concentrated complexity, indirection, growth) is distinct from a cleanup hypothesis, which is distinct from a verification result on an exact candidate state. Sources reviewed are not independently validated facilities.",
+  "units": [
+    "syntax-region",
+    "callable",
+    "file",
+    "patch",
+    "checkpoint-sequence",
+    "human-maintenance-task"
+  ],
+  "sources": [
+    {
+      "id": "paul-2025-smells",
+      "citation": "Debalina Ghosh Paul, Hong Zhu, Ian Bayley. Investigating The Smells of LLM Generated Code (arXiv 2510.03029v1 (extended ICCBDCS 2025 paper; submitted to Information and Software Technology), 2025)",
+      "identifier": "arXiv 2510.03029v1",
+      "identifier_kind": "arxiv",
+      "identifier_version": "v1",
+      "publication_status": "preprint",
+      "peer_reviewed": false,
+      "dataset_artifact_revision": "dataset revision not pinned (not stated \u2014 no import); dataset license unverified \u2014 no import",
+      "dataset_artifact_license": "unverified \u2014 no import (paper CC-BY-4.0 / arXiv terms are paper terms only, not data terms)",
+      "studied_population": "Java programs; 4 LLMs (Gemini Pro, ChatGPT, Codex, Falcon)",
+      "comparison_baseline": "textbook + StackOverflow reference solutions as human baseline; ScenEval dataset",
+      "relevant_sections": "\u00a71 Motivation/Challenges; \u00a72 Related work/RQs; \u00a73 Smell taxonomy/detection; \u00a74 Test system; \u00a75 Experiment design; \u00a76 Results; \u00a77 Threats; \u00a78 Conclusion",
+      "threats": "smell subjectivity/low human agreement (\u00a71.2, \u00a73.1); Java-only; tool-threshold arbitrariness",
+      "access": "partial",
+      "url": "https://arxiv.org/html/2510.03029v1"
+    },
+    {
+      "id": "liu-2023-refining",
+      "citation": "Yue Liu, Thanh Le-Cong, Ratnadira Widyasari, et al.. Refining ChatGPT-Generated Code: Characterizing and Mitigating Code Quality Issues (arXiv 2307.12596v1, 2023)",
+      "identifier": "arXiv 2307.12596v1",
+      "identifier_kind": "arxiv",
+      "identifier_version": "v1",
+      "publication_status": "preprint",
+      "peer_reviewed": false,
+      "dataset_artifact_revision": "dataset revision not pinned; replication: figshare doi:10.6084/m9.figshare.22773665, license unchecked \u2014 no import",
+      "dataset_artifact_license": "unverified (replication copy on figshare, license unchecked \u2014 no import; arXiv page terms are paper terms only, not data terms)",
+      "studied_population": "ChatGPT GPT-3.5 Mar 2023; 2,033 LeetCode tasks; 4,066 Java/Python programs",
+      "comparison_baseline": "LeetCode official test suites; PMD/CheckStyle (Java), Pylint/Flake8 (Python)",
+      "relevant_sections": "\u00a71 Introduction/RQs; \u00a72 Background/motivation; \u00a73 Study design; \u00a74 RQ1 performance; \u00a75 RQ2 static analysis + card sort; \u00a76 RQ3 repair (partial)",
+      "threats": "LeetCode-in-training-data memorization confound (\u00a74); single-model/single-run (temp 0); tool false positives",
+      "access": "partial",
+      "url": "https://arxiv.org/html/2307.12596v1"
+    },
+    {
+      "id": "velasco-2024-smells",
+      "citation": "Alejandro Velasco, Daniel Rodriguez-Cardenas, David N. Palacio, et al.. How Propense Are Large Language Models at Producing Code Smells? A Benchmarking Study (arXiv 2412.18989v1, 2024)",
+      "identifier": "arXiv 2412.18989v1",
+      "identifier_kind": "arxiv",
+      "identifier_version": "v1",
+      "publication_status": "preprint",
+      "peer_reviewed": false,
+      "dataset_artifact_revision": "dataset revision not pinned; code: github.com/WM-SEMERU/CodeSmells, license unchecked \u2014 no import",
+      "dataset_artifact_license": "unverified (code copy on github.com/WM-SEMERU/CodeSmells, license unchecked \u2014 no import; paper CC-BY-SA-4.0 is the paper license only, not a data license)",
+      "studied_population": "CodeLlama-7B, Mistral-7B; ~142k Python method-level smells, 13 Pylint types",
+      "comparison_baseline": "CodeSmellData mined Python methods as PSC evaluation corpus; no human baseline",
+      "relevant_sections": "\u00a7I Introduction; \u00a7II Benchmark (PSC, CodeSmellData, protocol); \u00a7III Case study; \u00a7IV Related work; \u00a7V Future plans",
+      "threats": "training-data hypothesis explicitly unconfirmed (\u00a7III-A); Pylint-only; method-level only; sampling bias (\u00a7V)",
+      "access": "partial",
+      "url": "https://arxiv.org/html/2412.18989v1"
+    },
+    {
+      "id": "zhang-2024-copilot",
+      "citation": "Beiqi Zhang, Peng Liang, Qiong Feng, et al.. Copilot Refinement: Addressing Code Smells in Copilot-Generated Python Code (v1 title; plan cites Copilot-in-the-Loop) (arXiv 2401.14176v1, 2024)",
+      "identifier": "arXiv 2401.14176v1",
+      "identifier_kind": "arxiv",
+      "identifier_version": "v1",
+      "publication_status": "preprint",
+      "peer_reviewed": false,
+      "dataset_artifact_revision": "dataset revision not pinned (not stated \u2014 no import); dataset license unverified \u2014 no import",
+      "dataset_artifact_license": "unverified \u2014 no import (paper CC-BY-4.0 / arXiv terms are paper terms only, not data terms)",
+      "studied_population": "311 Copilot-generated Python files (GitHub keyword search Nov 2023); 102 smells; Copilot Chat v0.12.2 (GPT-4)",
+      "comparison_baseline": "Pysmell Tuning Machine strategy as detector; manual true-positive recheck",
+      "relevant_sections": "\u00a71 Introduction/RQs; \u00a72 Python smell taxonomy (Chen et al. 2018, Table 1); \u00a73 Methodology (dataset + prompts); \u00a74 Results RQ1+RQ2; \u00a75 Discussion; \u00a76 Conclusions",
+      "threats": "self-attributed Copilot provenance unverifiable; Copilot version unidentifiable; fixes can introduce new smells (\u00a75)",
+      "access": "partial",
+      "url": "https://arxiv.org/html/2401.14176v1"
+    },
+    {
+      "id": "orlanski-2026-slopcodebench",
+      "citation": "Gabriel Orlanski, Devjeet Roy, Alexander Yun, et al.. SlopCodeBench: Benchmarking How Coding Agents Degrade Over Long-Horizon Iterative Tasks (arXiv 2603.24755v1, 2026)",
+      "identifier": "arXiv 2603.24755v1",
+      "identifier_kind": "arxiv",
+      "identifier_version": "v1",
+      "publication_status": "preprint",
+      "peer_reviewed": false,
+      "dataset_artifact_revision": "dataset revision not pinned; site: scbench.ai, license unchecked \u2014 no import",
+      "dataset_artifact_license": "unverified (site scbench.ai, license unchecked \u2014 no import; paper CC-BY-4.0 is the paper license only, not a data license)",
+      "studied_population": "v1: 20 problems/93 checkpoints; Python track; native CLI harnesses",
+      "comparison_baseline": "hidden black-box tests per checkpoint; 48-repo Python panel explicitly NOT matched baseline (\u00a74.2)",
+      "relevant_sections": "\u00a71 Introduction; \u00a72 Benchmark + design principles + metrics (Eqs. 2-4); \u00a73 Setup (partial); \u00a74 Results (partial)",
+      "threats": "Python-track-only results; harness-version sensitivity (App. C); later result sections unread",
+      "access": "partial",
+      "url": "https://arxiv.org/html/2603.24755v1"
+    },
+    {
+      "id": "mathai-2026-trim",
+      "citation": "Alex Mathai, Shobini Iyer, Aleksandr Nogikh, et al.. TRIM: Reducing AI-Generated CodeSlop via Agent Trajectory Minimization (arXiv 2607.18161v1, 2026)",
+      "identifier": "arXiv 2607.18161v1",
+      "identifier_kind": "arxiv",
+      "identifier_version": "v1",
+      "publication_status": "preprint",
+      "peer_reviewed": false,
+      "dataset_artifact_revision": "dataset revision not pinned (not stated \u2014 no import); dataset license unverified \u2014 no import",
+      "dataset_artifact_license": "unverified \u2014 no import (paper CC-BY-4.0 / arXiv terms are paper terms only, not data terms)",
+      "studied_population": "Live-kBench (534 vulns), SWE-Bench-Verified (500 issues); 4 scaffolds; 4,544 trajectories",
+      "comparison_baseline": "agent repair test suite TF as correctness signal; delta-debugging + agentic baselines",
+      "relevant_sections": "\u00a7I Introduction; \u00a7II Motivating examples; \u00a7III Formulation (Defs 1-3); \u00a7IV Method (trajectory search); \u00a7V Design (benchmarks, metrics); \u00a7VI Results (partial, tables unread)",
+      "threats": "minimization uses ONLY repair-agent TF \u2014 held-out oracle risk; agentic self-minimization fails 3.8-44.9% (\u00a7VI); cost tables unread",
+      "access": "partial",
+      "url": "https://arxiv.org/html/2607.18161v1"
+    },
+    {
+      "id": "hindle-2012-naturalness",
+      "citation": "Abram Hindle, Earl T. Barr, Zhendong Su, et al.. On the Naturalness of Software (ICSE 2012, doi:10.1109/ICSE.2012.6227135, 2012)",
+      "identifier": "DOI 10.1109/ICSE.2012.6227135",
+      "identifier_kind": "doi",
+      "identifier_version": "n/a",
+      "publication_status": "peer-reviewed conference",
+      "peer_reviewed": true,
+      "dataset_artifact_revision": "no dataset artifact stated in reviewed sections",
+      "dataset_artifact_license": "unverified (author manuscript consulted; not a license grant)",
+      "studied_population": "10 Java projects + Ubuntu C domains",
+      "comparison_baseline": "Brown + Gutenberg English corpora as natural-language control; cross-project entropy as control",
+      "relevant_sections": "Abstract; \u00a7I Introduction/hypothesis; \u00a7II Background/language models; \u00a7III Methodology + findings (Figs. 1-3); \u00a7IV Eclipse suggestion plugin",
+      "threats": "Java/C only; n-gram order saturates at tri/4-grams; suggestion gains decline with token length",
+      "access": "partial",
+      "url": "https://softwareprocess.es/pubs/hindle2012ICSE.pdf"
+    },
+    {
+      "id": "posnett-2011-readability",
+      "citation": "Daryl Posnett, Abram Hindle, Premkumar Devanbu. A Simpler Model of Software Readability (MSR 2011, doi:10.1145/1985441.1985454, 2011)",
+      "identifier": "DOI 10.1145/1985441.1985454",
+      "identifier_kind": "doi",
+      "identifier_version": "n/a",
+      "publication_status": "peer-reviewed conference",
+      "peer_reviewed": true,
+      "dataset_artifact_revision": "no dataset artifact stated in reviewed sections",
+      "dataset_artifact_license": "unverified (author manuscript consulted; not a license grant)",
+      "studied_population": "100 Java snippets 4-11 lines; 120 student raters",
+      "comparison_baseline": "Buse 100-snippet/12,000-judgment data re-modeled; 10-fold CV, Wilcox tests",
+      "relevant_sections": "Abstract; \u00a71 Introduction; \u00a72 Foundations/RQ1-RQ6; \u00a73 Data + modeling; \u00a74.1-4.3 (size, Halstead, entropy results)",
+      "threats": "small-snippet only; \u00a74.4 warns large-function classification lacks credibility; lines/characters multicollinearity noted",
+      "access": "partial",
+      "url": "https://softwareprocess.es/pubs/posnett2011MSR-readability.pdf"
+    },
+    {
+      "id": "ray-2016-buggy-code",
+      "citation": "Baishakhi Ray, Vincent Hellendoorn, Saheel Godhane, et al.. On the Naturalness of Buggy Code (ICSE 2016, doi:10.1145/2884781.2884848 (preprint arXiv:1506.01159), 2016)",
+      "identifier": "DOI 10.1145/2884781.2884848",
+      "identifier_kind": "doi",
+      "identifier_version": "n/a",
+      "publication_status": "peer-reviewed conference",
+      "peer_reviewed": true,
+      "dataset_artifact_revision": "no dataset artifact stated in reviewed sections",
+      "dataset_artifact_license": "unverified (preprint consulted under arXiv perpetual non-exclusive terms; paper license only, not a data license)",
+      "studied_population": "~8,296 bug-fix commits, 10 Java projects (Phase I); 5 Apache releases Phase II",
+      "comparison_baseline": "PMD + FindBugs as static-finder comparators (RQ4-RQ5 unread)",
+      "relevant_sections": "Abstract; \u00a71 Introduction; \u00a72 Background (LM, SBF, AUCEC, RQ1-RQ5); \u00a73 Method (cache LM Eq. 5, data collection); \u00a74 Results RQ1-RQ3 (entropy drop, AUCEC inspection)",
+      "threats": "copy-paste bugs invert entropy signal (examples 4-5); effect shrinks with bug size; RQ4-RQ5 comparison unread",
+      "access": "partial",
+      "url": "https://arxiv.org/html/1506.01159v1"
+    },
+    {
+      "id": "scalabrino-2018-readability",
+      "citation": "Simone Scalabrino, Mario Linares-Vasquez, Rocco Oliveto, et al.. A Comprehensive Model for Code Readability (Journal of Software: Evolution and Process, doi:10.1002/smr.1958, 2018)",
+      "identifier": "DOI 10.1002/smr.1958",
+      "identifier_kind": "doi",
+      "identifier_version": "n/a",
+      "publication_status": "peer-reviewed journal",
+      "peer_reviewed": true,
+      "dataset_artifact_revision": "no dataset artifact stated in reviewed sections",
+      "dataset_artifact_license": "unverified (author manuscript consulted; not a license grant)",
+      "studied_population": "Db&w 100 Java snippets/120 raters; Ddorn 360 Java/Python/CUDA/5,468 raters; Dnew 200 methods/9 raters",
+      "comparison_baseline": "Buse/Posnett/Dorn feature sets as baselines; logistic regression + 10-fold CV + Wilcox/Holm/Cliff",
+      "relevant_sections": "Summary; \u00a71 Introduction; \u00a72 Background (Buse/Posnett/Dorn feature tables); \u00a73 Textual features 3.1-3.7; \u00a74 Study design 4.1-4.3",
+      "threats": "results \u00a7\u00a74.4+ unread \u2014 no accuracy/FindBugs numbers reproduced; Dnew only 9 completers of 30 invited",
+      "access": "partial",
+      "url": "https://sscalabrino.github.io/files/2018/JSEP2018AComprehensiveModel.pdf"
+    },
+    {
+      "id": "mccabe-1976-complexity",
+      "citation": "Thomas J. McCabe. A Complexity Measure (IEEE Transactions on Software Engineering, vol SE-2 no 4, 308-320, 1976)",
+      "identifier": "DOI 10.1109/TSE.1976.233837",
+      "identifier_kind": "doi",
+      "identifier_version": "n/a",
+      "publication_status": "peer-reviewed journal",
+      "peer_reviewed": true,
+      "dataset_artifact_revision": "local_copy: /tmp/mccabe.pdf scratch only, not redistributed",
+      "dataset_artifact_license": "unverified (scanned copy consulted; not a license grant)",
+      "studied_population": "Fortran subroutines; no human study",
+      "comparison_baseline": "Fortran program control graphs via FLOW tool (PDP-10/APL)",
+      "relevant_sections": "Abstract; \u00a7I Introduction; \u00a7II Complexity measure (Def. 1); \u00a7III Working experience (FLOW tool); \u00a7IV Decomposition (predicates+1, regions method); \u00a7VI Nonstructured programming (graphs a-d); \u00a7VII Testing methodology",
+      "threats": "untestable-small-program examples are illustrative; testing section explicitly disclaims guarantee/proof (\u00a7VII); \u00a7V skimmed",
+      "access": "partial",
+      "url": ""
+    },
+    {
+      "id": "sjoberg-2013-maintenance",
+      "citation": "Dag I.K. Sjoberg, Aiko Yamashita, Bente C.D. Anda, et al.. Quantifying the Effect of Code Smells on Maintenance Effort (IEEE Transactions on Software Engineering, vol 39 no 8, 1144-1156, 2013)",
+      "identifier": "DOI 10.1109/TSE.2012.89",
+      "identifier_kind": "doi",
+      "identifier_version": "n/a",
+      "publication_status": "peer-reviewed journal",
+      "peer_reviewed": true,
+      "dataset_artifact_revision": "unavailable: UNAVAILABLE after actual attempts: author PDF uio.no 404 (direct fetch); OpenAlex DOI closed, no repository fulltext; Scholar search API 429 (no verdict); web search found citations only, no authorized manuscript. Next: library copy.",
+      "dataset_artifact_license": "unavailable",
+      "studied_population": "unavailable: UNAVAILABLE after actual attempts: author PDF uio.no 404 (direct fetch); OpenAlex DOI closed, no repository fulltext; Scholar search API 429 (no verdict); web search found citations only, no authorized manuscript. Next: library copy.",
+      "comparison_baseline": "unavailable",
+      "relevant_sections": "unavailable",
+      "threats": "unavailable: UNAVAILABLE after actual attempts: author PDF uio.no 404 (direct fetch); OpenAlex DOI closed, no repository fulltext; Scholar search API 429 (no verdict); web search found citations only, no authorized manuscript. Next: library copy.",
+      "access": "unavailable",
+      "url": "https://doi.org/10.1109/TSE.2012.89"
+    },
+    {
+      "id": "neron-2015-name-resolution",
+      "citation": "Pierre Neron, Andrew Tolmach, Eelco Visser, et al.. A Theory of Name Resolution (ESOP 2015 / LNCS, doi:10.1007/978-3-662-46669-8_9, 2015)",
+      "identifier": "DOI 10.1007/978-3-662-46669-8_9",
+      "identifier_kind": "doi",
+      "identifier_version": "n/a",
+      "publication_status": "peer-reviewed chapter",
+      "peer_reviewed": true,
+      "dataset_artifact_revision": "n/a (design citation, not a dataset)",
+      "dataset_artifact_license": "unverified (author manuscript consulted; not a license grant)",
+      "studied_population": "formalism \u2014 no empirical population",
+      "comparison_baseline": "LM toy language demonstrations; Java/ML binding patterns (\u00a73, unread)",
+      "relevant_sections": "Abstract; \u00a71 Introduction; \u00a72 Scope graphs + resolution paths/calculus (Figs. 1-3); \u00a72.1-2.4 (LM language, imports)",
+      "threats": "graph construction is language-dependent by design (\u00a71); binding-spec language deferred; \u00a7\u00a72.5+ unread",
+      "access": "partial",
+      "url": "https://doi.org/10.1007/978-3-662-46669-8_9"
+    },
+    {
+      "id": "buse-2010-readability",
+      "citation": "Raymond P. L. Buse, Westley R. Weimer. Learning a Metric for Code Readability (IEEE Transactions on Software Engineering, vol 36 no 4, 546-558, 2010)",
+      "identifier": "DOI 10.1109/TSE.2009.70",
+      "identifier_kind": "doi",
+      "identifier_version": "n/a",
+      "publication_status": "peer-reviewed journal",
+      "peer_reviewed": true,
+      "dataset_artifact_revision": "unavailable: UNAVAILABLE after actual attempts: umich author PDF TLS cert failure (https) / redirect-loop cert failure (http); virginia old path HTTP 403; umich --insecure HTTP 404; Scholar API openAccessPdf CLOSED empty URL; OpenAlex is_oa false, no repository fulltext. Next: library copy.",
+      "dataset_artifact_license": "unavailable",
+      "studied_population": "unavailable: UNAVAILABLE after actual attempts: umich author PDF TLS cert failure (https) / redirect-loop cert failure (http); virginia old path HTTP 403; umich --insecure HTTP 404; Scholar API openAccessPdf CLOSED empty URL; OpenAlex is_oa false, no repository fulltext. Next: library copy.",
+      "comparison_baseline": "unavailable",
+      "relevant_sections": "unavailable",
+      "threats": "unavailable: UNAVAILABLE after actual attempts: umich author PDF TLS cert failure (https) / redirect-loop cert failure (http); virginia old path HTTP 403; umich --insecure HTTP 404; Scholar API openAccessPdf CLOSED empty URL; OpenAlex is_oa false, no repository fulltext. Next: library copy.",
+      "access": "unavailable",
+      "url": "https://doi.org/10.1109/TSE.2009.70"
+    },
+    {
+      "id": "torres-2025-entropy",
+      "citation": "Adriano Torres, Sebastian Baltes, Christoph Treude, et al.. Information-theoretic detection of unusual source code changes (Empirical Software Engineering 30:153 (2025), 2025)",
+      "identifier": "DOI 10.1007/s10664-025-10644-y",
+      "identifier_kind": "doi",
+      "identifier_version": "n/a",
+      "publication_status": "unconfirmed",
+      "peer_reviewed": false,
+      "dataset_artifact_revision": "dataset revision not pinned; supplementary: Zenodo 11180885, not imported \u2014 no import",
+      "dataset_artifact_license": "unverified for data (paper is open access \u00a9 The Author(s) 2025 \u2014 paper license only, not the supplementary-data license); supplementary Zenodo 11180885 not imported",
+      "studied_population": "95 Java projects; 1,827,204 change events / 294,028 commits",
+      "comparison_baseline": "McCabe cyclomatic + nloc/tokens/insertions as classic-metric comparators; Lehman laws as RQ3 frame",
+      "relevant_sections": "Abstract; \u00a71 Intro (Shannon Eqs. 1-4, RQs); \u00a72 Review (\u00a7\u00a72-2.3: maturity/validation findings); \u00a73 Methods (95 Java projects, commit-by-commit); \u00a74 Results (RQ1-RQ4: trends, Tables 4-5 correlations, anomaly Table 7)",
+      "threats": "Java-only (claimed language-agnostic, untested); validity/discussion \u00a7\u00a75+ skimmed; supplementary Zenodo 11180885 not imported",
+      "access": "partial",
+      "url": "https://doi.org/10.1007/s10664-025-10644-y"
+    },
+    {
+      "id": "bergum-2024-comprehension",
+      "citation": "Bergum et al.. Fixation-related potentials / atoms-of-confusion comprehension data (Zenodo 14229849, 2024)",
+      "identifier": "Zenodo 14229849",
+      "identifier_kind": "zenodo",
+      "identifier_version": "zenodo-14229849",
+      "publication_status": "dataset record",
+      "peer_reviewed": false,
+      "dataset_artifact_revision": "zenodo-14229849 (pinned in crates/deslop-eval/evaluation/m8/dataset_registry.json; checksum from that file)",
+      "dataset_artifact_license": "see crates/deslop-eval/evaluation/m8/dataset_registry.json (this registry does not re-pin)",
+      "studied_population": "24 participants, Java atoms-of-confusion trials (per M8 registry)",
+      "comparison_baseline": "unread (paper not read)",
+      "relevant_sections": "record README/file listing",
+      "threats": "comprehension-correctness/time only \u2014 not preference evidence; P0 source gate stays open",
+      "access": "record-only",
+      "url": "https://zenodo.org/records/14229849"
+    },
+    {
+      "id": "themis-codepreference",
+      "citation": ". Themis-CodePreference frozen artifact (crates/deslop-eval/evaluation/m8/dataset_registry.json)",
+      "identifier": "crates/deslop-eval/evaluation/m8/dataset_registry.json",
+      "identifier_kind": "local",
+      "identifier_version": "deslop.m8-pilot/1",
+      "publication_status": "local artifact",
+      "peer_reviewed": false,
+      "dataset_artifact_revision": "deslop.m8-pilot/1 (per that registry file; checksum/license from that file)",
+      "dataset_artifact_license": "see crates/deslop-eval/evaluation/m8/dataset_registry.json (this registry does not re-pin)",
+      "studied_population": "per registry file",
+      "comparison_baseline": "existing exploratory evidence, not fresh holdout",
+      "relevant_sections": "registry file",
+      "threats": "must not be re-tuned/rebranded as independent validation; P0 source gate stays open",
+      "access": "record-only",
+      "url": "crates/deslop-eval/evaluation/m8/dataset_registry.json"
+    }
+  ],
+  "metric_exhaustiveness_note": "metric_fields enumerates exact serializer leaf paths observed from a live MetricsReport over crates/deslop-eval/src (288 regions), plus explicit container paths for empty-array arms (diagnostics, axis unknowns) and the null change-dispersion children (no revision pair requested in the probe). Feature-axis measurement keys are enumerated per-estimator leaf paths. Observation caveat: arms observed only as null in this probe (change_dispersion children; surprisal/peer_relative/repo_relative None arms; robust z-score nulls under zero MAD) are declared but not live-observed; the validator checks null-arm markers rather than counting metadata as measurements. Zero fidelity=reproduced claims: no P3 reference reproduction has been run.",
+  "metric_fields": [
+    "analyses[]",
+    "analyses[].analysis.diagnostics[]",
+    "analyses[].analysis.status",
+    "analyses[].lang",
+    "analyses[].path",
+    "change_dispersion",
+    "change_dispersion.authority",
+    "change_dispersion.changed_lines",
+    "change_dispersion.files[]",
+    "change_dispersion.files[].added_lines",
+    "change_dispersion.files[].binary",
+    "change_dispersion.files[].changed_lines",
+    "change_dispersion.files[].deleted_lines",
+    "change_dispersion.files[].path",
+    "change_dispersion.from",
+    "change_dispersion.normalized_entropy",
+    "change_dispersion.to",
+    "feature_schema.aggregation_policy",
+    "feature_schema.axes[]",
+    "feature_schema.axes[].aggregate",
+    "feature_schema.axes[].meaning",
+    "feature_schema.axes[].name",
+    "feature_schema.id",
+    "feature_schema.locality",
+    "files[]",
+    "files[].behavioral_nloc",
+    "files[].behavioral_regions",
+    "files[].complexity_mass",
+    "files[].complexity_mass_p90",
+    "files[].contextual_surprisal_p90",
+    "files[].heuristic_burden_max",
+    "files[].heuristic_burden_p90",
+    "files[].heuristic_burden_weighted_mean",
+    "files[].lang",
+    "files[].path",
+    "files[].redundancy_ratio_p90",
+    "files[].redundancy_union_ratio",
+    "files[].structural_entropy_p90",
+    "files[].structural_erosion",
+    "files[].structural_mass",
+    "files[].top_hotspot",
+    "functions[]",
+    "functions[].complexity.cognitive",
+    "functions[].complexity.complexity_mass",
+    "functions[].complexity.cyclomatic",
+    "functions[].complexity.maintainability_index",
+    "functions[].complexity.max_nesting",
+    "functions[].complexity.nloc",
+    "functions[].complexity.structural_mass",
+    "functions[].expressivity.ast_edge_entropy",
+    "functions[].expressivity.byte_entropy_bits_per_byte",
+    "functions[].expressivity.comment_to_code_ratio",
+    "functions[].expressivity.decision_density",
+    "functions[].expressivity.information_volume",
+    "functions[].expressivity.structural_entropy",
+    "functions[].expressivity.token_entropy",
+    "functions[].expressivity.tokens",
+    "functions[].expressivity.unique_token_ratio",
+    "functions[].expressivity.vocabulary",
+    "functions[].features.aggregation_policy",
+    "functions[].features.axes.cohesion.unknowns[]",
+    "functions[].features.axes.entropy.measurements.ast_edge_entropy_normalized.estimator",
+    "functions[].features.axes.entropy.measurements.ast_edge_entropy_normalized.sample_size",
+    "functions[].features.axes.entropy.measurements.ast_edge_entropy_normalized.value",
+    "functions[].features.axes.entropy.measurements.ast_kind_entropy_normalized.estimator",
+    "functions[].features.axes.entropy.measurements.ast_kind_entropy_normalized.sample_size",
+    "functions[].features.axes.entropy.measurements.ast_kind_entropy_normalized.value",
+    "functions[].features.axes.entropy.measurements.byte_entropy_bits_per_byte.estimator",
+    "functions[].features.axes.entropy.measurements.byte_entropy_bits_per_byte.sample_size",
+    "functions[].features.axes.entropy.measurements.byte_entropy_bits_per_byte.value",
+    "functions[].features.axes.entropy.measurements.token_entropy_normalized.estimator",
+    "functions[].features.axes.entropy.measurements.token_entropy_normalized.sample_size",
+    "functions[].features.axes.entropy.measurements.token_entropy_normalized.value",
+    "functions[].features.axes.entropy.unknowns[]",
+    "functions[].features.axes.impact.unknowns[]",
+    "functions[].features.axes.lexical_visual.measurements.comment_to_code_ratio.estimator",
+    "functions[].features.axes.lexical_visual.measurements.comment_to_code_ratio.sample_size",
+    "functions[].features.axes.lexical_visual.measurements.comment_to_code_ratio.value",
+    "functions[].features.axes.lexical_visual.measurements.halstead_volume.estimator",
+    "functions[].features.axes.lexical_visual.measurements.halstead_volume.sample_size",
+    "functions[].features.axes.lexical_visual.measurements.halstead_volume.value",
+    "functions[].features.axes.lexical_visual.measurements.token_count.estimator",
+    "functions[].features.axes.lexical_visual.measurements.token_count.sample_size",
+    "functions[].features.axes.lexical_visual.measurements.token_count.value",
+    "functions[].features.axes.lexical_visual.measurements.unique_token_ratio.estimator",
+    "functions[].features.axes.lexical_visual.measurements.unique_token_ratio.sample_size",
+    "functions[].features.axes.lexical_visual.measurements.unique_token_ratio.value",
+    "functions[].features.axes.lexical_visual.measurements.vocabulary_size.estimator",
+    "functions[].features.axes.lexical_visual.measurements.vocabulary_size.sample_size",
+    "functions[].features.axes.lexical_visual.measurements.vocabulary_size.value",
+    "functions[].features.axes.lexical_visual.unknowns[]",
+    "functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.estimator",
+    "functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.sample_size",
+    "functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.value",
+    "functions[].features.axes.redundancy.measurements.clone_line_ratio.estimator",
+    "functions[].features.axes.redundancy.measurements.clone_line_ratio.sample_size",
+    "functions[].features.axes.redundancy.measurements.clone_line_ratio.value",
+    "functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.estimator",
+    "functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.sample_size",
+    "functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.value",
+    "functions[].features.axes.redundancy.measurements.redundancy_union_ratio.estimator",
+    "functions[].features.axes.redundancy.measurements.redundancy_union_ratio.sample_size",
+    "functions[].features.axes.redundancy.measurements.redundancy_union_ratio.value",
+    "functions[].features.axes.redundancy.unknowns[]",
+    "functions[].features.axes.safety.measurements.parse_complete.estimator",
+    "functions[].features.axes.safety.measurements.parse_complete.sample_size",
+    "functions[].features.axes.safety.measurements.parse_complete.value",
+    "functions[].features.axes.safety.unknowns[]",
+    "functions[].features.axes.structural.measurements.cfg_components.estimator",
+    "functions[].features.axes.structural.measurements.cfg_components.sample_size",
+    "functions[].features.axes.structural.measurements.cfg_components.value",
+    "functions[].features.axes.structural.measurements.cfg_edges.estimator",
+    "functions[].features.axes.structural.measurements.cfg_edges.sample_size",
+    "functions[].features.axes.structural.measurements.cfg_edges.value",
+    "functions[].features.axes.structural.measurements.cfg_points.estimator",
+    "functions[].features.axes.structural.measurements.cfg_points.sample_size",
+    "functions[].features.axes.structural.measurements.cfg_points.value",
+    "functions[].features.axes.structural.measurements.cognitive_complexity.estimator",
+    "functions[].features.axes.structural.measurements.cognitive_complexity.sample_size",
+    "functions[].features.axes.structural.measurements.cognitive_complexity.value",
+    "functions[].features.axes.structural.measurements.complexity_mass.estimator",
+    "functions[].features.axes.structural.measurements.complexity_mass.sample_size",
+    "functions[].features.axes.structural.measurements.complexity_mass.value",
+    "functions[].features.axes.structural.measurements.cyclomatic_complexity.estimator",
+    "functions[].features.axes.structural.measurements.cyclomatic_complexity.sample_size",
+    "functions[].features.axes.structural.measurements.cyclomatic_complexity.value",
+    "functions[].features.axes.structural.measurements.max_nesting.estimator",
+    "functions[].features.axes.structural.measurements.max_nesting.sample_size",
+    "functions[].features.axes.structural.measurements.max_nesting.value",
+    "functions[].features.axes.structural.measurements.nloc.estimator",
+    "functions[].features.axes.structural.measurements.nloc.sample_size",
+    "functions[].features.axes.structural.measurements.nloc.value",
+    "functions[].features.axes.structural.measurements.structural_mass.estimator",
+    "functions[].features.axes.structural.measurements.structural_mass.sample_size",
+    "functions[].features.axes.structural.measurements.structural_mass.value",
+    "functions[].features.axes.structural.unknowns[]",
+    "functions[].features.axes.surprisal.measurements.max_bits.estimator",
+    "functions[].features.axes.surprisal.measurements.max_bits.sample_size",
+    "functions[].features.axes.surprisal.measurements.max_bits.value",
+    "functions[].features.axes.surprisal.measurements.mean_bits.estimator",
+    "functions[].features.axes.surprisal.measurements.mean_bits.sample_size",
+    "functions[].features.axes.surprisal.measurements.mean_bits.value",
+    "functions[].features.axes.surprisal.measurements.p90_bits.estimator",
+    "functions[].features.axes.surprisal.measurements.p90_bits.sample_size",
+    "functions[].features.axes.surprisal.measurements.p90_bits.value",
+    "functions[].features.axes.surprisal.unknowns[]",
+    "functions[].features.exclusive",
+    "functions[].features.id",
+    "functions[].features.schema",
+    "functions[].features.subject.kind",
+    "functions[].features.subject.lang",
+    "functions[].features.subject.name",
+    "functions[].features.subject.span.end_byte",
+    "functions[].features.subject.span.end_line",
+    "functions[].features.subject.span.start_byte",
+    "functions[].features.subject.span.start_line",
+    "functions[].halstead.difficulty",
+    "functions[].halstead.distinct_operands",
+    "functions[].halstead.distinct_operators",
+    "functions[].halstead.lexical_effort",
+    "functions[].halstead.total_operands",
+    "functions[].halstead.total_operators",
+    "functions[].halstead.volume",
+    "functions[].heuristic_burden.basis",
+    "functions[].heuristic_burden.complexity_burden",
+    "functions[].heuristic_burden.entropy_burden",
+    "functions[].heuristic_burden.information_burden",
+    "functions[].heuristic_burden.interaction_burden",
+    "functions[].heuristic_burden.measurement_support",
+    "functions[].heuristic_burden.repo_relative.percentile",
+    "functions[].heuristic_burden.repo_relative.zscore",
+    "functions[].heuristic_burden.score",
+    "functions[].heuristic_burden.size_support",
+    "functions[].kind",
+    "functions[].lang",
+    "functions[].name",
+    "functions[].path",
+    "functions[].redundancy.anti_pattern_lines",
+    "functions[].redundancy.anti_pattern_ratio",
+    "functions[].redundancy.clone_lines",
+    "functions[].redundancy.clone_ratio",
+    "functions[].redundancy.dead_or_unused_lines",
+    "functions[].redundancy.dead_or_unused_ratio",
+    "functions[].redundancy.finding_count",
+    "functions[].redundancy.nloc",
+    "functions[].redundancy.union_lines",
+    "functions[].redundancy.union_ratio",
+    "functions[].role",
+    "functions[].span.end_byte",
+    "functions[].span.end_line",
+    "functions[].span.start_byte",
+    "functions[].span.start_line",
+    "functions[].static_slop.authority",
+    "functions[].static_slop.complexity_mass",
+    "functions[].static_slop.contextual_surprisal_p90",
+    "functions[].static_slop.peer_relative.complexity_mass.mad",
+    "functions[].static_slop.peer_relative.complexity_mass.median",
+    "functions[].static_slop.peer_relative.complexity_mass.percentile",
+    "functions[].static_slop.peer_relative.complexity_mass.positive_robust_zscore",
+    "functions[].static_slop.peer_relative.complexity_mass.robust_zscore",
+    "functions[].static_slop.peer_relative.contextual_surprisal_p90.mad",
+    "functions[].static_slop.peer_relative.contextual_surprisal_p90.median",
+    "functions[].static_slop.peer_relative.contextual_surprisal_p90.percentile",
+    "functions[].static_slop.peer_relative.contextual_surprisal_p90.positive_robust_zscore",
+    "functions[].static_slop.peer_relative.contextual_surprisal_p90.robust_zscore",
+    "functions[].static_slop.peer_relative.peer_count",
+    "functions[].static_slop.peer_relative.peer_group",
+    "functions[].static_slop.peer_relative.redundancy_ratio.mad",
+    "functions[].static_slop.peer_relative.redundancy_ratio.median",
+    "functions[].static_slop.peer_relative.redundancy_ratio.percentile",
+    "functions[].static_slop.peer_relative.redundancy_ratio.positive_robust_zscore",
+    "functions[].static_slop.peer_relative.redundancy_ratio.robust_zscore",
+    "functions[].static_slop.peer_relative.structural_entropy.mad",
+    "functions[].static_slop.peer_relative.structural_entropy.median",
+    "functions[].static_slop.peer_relative.structural_entropy.percentile",
+    "functions[].static_slop.peer_relative.structural_entropy.positive_robust_zscore",
+    "functions[].static_slop.peer_relative.structural_entropy.robust_zscore",
+    "functions[].static_slop.redundancy_ratio",
+    "functions[].static_slop.structural_entropy",
+    "functions[].surprisal.estimator",
+    "functions[].surprisal.max_bits",
+    "functions[].surprisal.mean_bits",
+    "functions[].surprisal.p90_bits",
+    "functions[].surprisal.peer_tokens",
+    "functions[].surprisal.sample_size",
+    "heuristic_burden_distribution.count",
+    "heuristic_burden_distribution.flat",
+    "heuristic_burden_distribution.max",
+    "heuristic_burden_distribution.mean",
+    "heuristic_burden_distribution.median",
+    "heuristic_burden_distribution.min",
+    "heuristic_burden_distribution.p25",
+    "heuristic_burden_distribution.p75",
+    "heuristic_burden_distribution.relative_outlier_eligible",
+    "heuristic_burden_distribution.stddev",
+    "heuristic_model.authority",
+    "heuristic_model.experimental",
+    "heuristic_model.gating_permitted",
+    "heuristic_model.human_calibrated",
+    "heuristic_model.id",
+    "heuristic_model.meaning",
+    "heuristic_outliers[]",
+    "heuristic_outliers[].basis",
+    "heuristic_outliers[].heuristic_burden",
+    "heuristic_outliers[].kind",
+    "heuristic_outliers[].measurement_support",
+    "heuristic_outliers[].name",
+    "heuristic_outliers[].path",
+    "heuristic_outliers[].rank",
+    "heuristic_outliers[].reasons[]",
+    "heuristic_outliers[].repo_relative.percentile",
+    "heuristic_outliers[].repo_relative.zscore",
+    "heuristic_outliers[].size_support",
+    "heuristic_outliers[].span.end_byte",
+    "heuristic_outliers[].span.end_line",
+    "heuristic_outliers[].span.start_byte",
+    "heuristic_outliers[].span.start_line",
+    "hotspots[]",
+    "hotspots[].name",
+    "hotspots[].path",
+    "hotspots[].rank",
+    "hotspots[].reasons[]",
+    "hotspots[].score",
+    "hotspots[].span.end_byte",
+    "hotspots[].span.end_line",
+    "hotspots[].span.start_byte",
+    "hotspots[].span.start_line",
+    "peer_groups[]",
+    "peer_groups[].count",
+    "peer_groups[].id",
+    "peer_groups[].lang",
+    "peer_groups[].role",
+    "peer_groups[].size_bin",
+    "readability_calibration.capture_id",
+    "readability_calibration.disposition",
+    "readability_calibration.evidence",
+    "readability_calibration.readability_label_permitted",
+    "readability_calibration.schema",
+    "readability_calibration.transparent_axes_preserved",
+    "schema",
+    "status"
+  ],
+  "entries": [
+    {
+      "claim_id": "fac:quality-claim:m8-evidence-only",
+      "references": [],
+      "exact_claim": "The M8 calibration keeps an evidence-only disposition and must not gate writes.",
+      "studied_population": "deslop M8 pilot corpus: 300 pairs, 1727 comprehension samples, 240 cleanup tasks, 40 unsafe near-misses",
+      "construct": "calibration disposition policy",
+      "unit": "human-maintenance-task",
+      "kind": "quality-claim",
+      "facility_ids": [
+        "claim:m8-evidence-only"
+      ],
+      "implementation_symbols": [
+        "deslop_eval::m8_calibration::model_card"
+      ],
+      "estimator_threshold_origin": "policy: failed promotion retained; accuracy 0.5700 reported in M8 model card",
+      "counterexamples": [],
+      "evaluation_artifacts": [
+        "crates/deslop-eval/evaluation/m8/evaluation_report.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "treat M8 output as evidence only"
+      ],
+      "prohibited": [
+        "do not use M8 scores to authorize writes or claim validation"
+      ]
+    },
+    {
+      "claim_id": "fac:quality-claim:metrics-evidence-only",
+      "references": [],
+      "exact_claim": "Metrics surfaces report evidence with an evidence-only readability disposition and no gating role.",
+      "studied_population": "unvalidated policy statement: no studied population",
+      "construct": "metrics disposition policy",
+      "unit": "file",
+      "kind": "quality-claim",
+      "facility_ids": [
+        "claim:metrics-evidence-only"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::MetricsReport",
+        "deslop.metrics/7"
+      ],
+      "estimator_threshold_origin": "policy: docs/M11_METRICS_MIGRATION.md preserves evidence-only disposition",
+      "counterexamples": [],
+      "evaluation_artifacts": [
+        "docs/M11_METRICS_MIGRATION.md"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "use metrics for triage"
+      ],
+      "prohibited": [
+        "do not use metrics as proof, health, readability, or safety"
+      ]
+    },
+    {
+      "claim_id": "fac:quality-claim:no-authorship-detection",
+      "references": [],
+      "exact_claim": "Deslop is not an AI-authorship detector: findings are reviewed on code properties, never as authorship verdicts. No precision or removability guarantee is made.",
+      "studied_population": "unvalidated policy statement: no studied population",
+      "construct": "product scope boundary",
+      "unit": "file",
+      "kind": "quality-claim",
+      "facility_ids": [
+        "claim:no-authorship-detection"
+      ],
+      "implementation_symbols": [
+        "SPEC.md thesis section"
+      ],
+      "estimator_threshold_origin": "policy: scope boundary; no classifier is shipped and no authorship precision is claimed",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "evaluate findings on code properties, not authorship"
+      ],
+      "prohibited": [
+        "do not claim any finding identifies AI authorship"
+      ]
+    },
+    {
+      "claim_id": "fac:quality-claim:propose-verify-apply",
+      "references": [],
+      "exact_claim": "Cleanup follows propose, verify, apply: selected checks run against the exact candidate state under the existing check-policy contract before writes.",
+      "studied_population": "unvalidated policy statement: no studied population",
+      "construct": "write authorization policy",
+      "unit": "patch",
+      "kind": "quality-claim",
+      "facility_ids": [
+        "claim:propose-verify-apply"
+      ],
+      "implementation_symbols": [
+        "deslop_protocol",
+        "deslop_verify",
+        "deslop_recipes"
+      ],
+      "estimator_threshold_origin": "policy: existing check-policy contract (selected checks, no network for verify/apply); P2 execution-boundary hardening pending",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "require verification evidence before writes"
+      ],
+      "prohibited": [
+        "do not treat passing checks as proof of arbitrary behavioral equivalence"
+      ]
+    },
+    {
+      "claim_id": "fac:quality-claim:spec-catalog-prioritization",
+      "references": [
+        "paul-2025-smells"
+      ],
+      "exact_claim": "The slop catalog prioritizes intrinsic baseline-free cleanup rules; the Paul/Zhu/Bayley taxonomy (Java programs; 4 LLMs Gemini Pro/ChatGPT/Codex/Falcon; reviewed sections per source entry paul-2025-smells) motivates the catalog shape. It does not validate any specific deslop rule, language, or current agent.",
+      "studied_population": "Java programs; 4 LLMs (Gemini Pro, ChatGPT, Codex, Falcon) \u2014 motivating taxonomy only, no detector validation",
+      "construct": "catalog motivation",
+      "unit": "file",
+      "kind": "quality-claim",
+      "facility_ids": [
+        "claim:spec-catalog-prioritization"
+      ],
+      "implementation_symbols": [
+        "SPEC.md:37-43",
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "citation pending primary-source review; do not generalize the cited sample",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "inspiration-only",
+      "permitted": [
+        "catalog motivation only"
+      ],
+      "prohibited": [
+        "do not claim the citation validates any specific rule, language, or current agent"
+      ]
+    },
+    {
+      "claim_id": "fac:recipe:rust-enabled-catalog",
+      "references": [],
+      "exact_claim": "Sixteen enabled Rust transformation recipes cover dead code, branch factoring, guard inversion, extraction, inlining, ordering, and splitting hypotheses.",
+      "studied_population": "unvalidated engineering heuristic: no published studied population recorded",
+      "construct": "cleanup transformation hypothesis",
+      "unit": "syntax-region",
+      "kind": "recipe-group",
+      "facility_ids": [
+        "recipe:rust-convert-exhaustive-chain-to-match",
+        "recipe:rust-extract-sese-branch-method",
+        "recipe:rust-factor-equivalent-branch-fragments",
+        "recipe:rust-inline-exact-single-use-helper",
+        "recipe:rust-inline-exact-single-use-temporary",
+        "recipe:rust-inline-single-use-conversion-allocation",
+        "recipe:rust-invert-guard-clause",
+        "recipe:rust-merge-adjacent-conditions",
+        "recipe:rust-remove-independent-unused-literal-local",
+        "recipe:rust-remove-literal-dead-arm",
+        "recipe:rust-remove-unreachable-literal-statement",
+        "recipe:rust-remove-unused-pure-literal-expression",
+        "recipe:rust-sort-hoisted-private-function-block",
+        "recipe:rust-sort-simple-import-block",
+        "recipe:rust-split-dependence-cohesive-callable",
+        "recipe:rust-split-independent-branch-actions"
+      ],
+      "implementation_symbols": [
+        "deslop_recipes::enabled_rust_recipe_catalog"
+      ],
+      "estimator_threshold_origin": "heuristic: detector preconditions per recipe; automatic application requires P2 verification policy per candidate",
+      "counterexamples": [
+        "public API compatibility",
+        "reflection",
+        "macro-generated call sites",
+        "intentional duplication"
+      ],
+      "evaluation_artifacts": [
+        "deslop_recipes::frozen_unreachable_rust_manifest"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "propose candidates with preconditions and verification plans"
+      ],
+      "prohibited": [
+        "do not apply automatically without per-candidate verification; a smell is not proof removal is desirable"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:analyzer-confirmed",
+      "references": [],
+      "exact_claim": "Analyzer-confirmed rules carry the analyzer-confirmed safety class: the named external analyzer confirmation (clippy, StaticLint, clj-kondo) is the stated condition for the fix-authorized default action. No reporting gate beyond the catalog safety/default-action labels is claimed.",
+      "studied_population": "unvalidated engineering heuristic: no published studied population recorded",
+      "construct": "lint-backed finding",
+      "unit": "syntax-region",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:needless-return",
+        "rule:unused-arg",
+        "rule:unused-binding",
+        "rule:unused-namespace",
+        "rule:unused-private-def"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "catalog safety class + named external analyzer verdicts (clippy, StaticLint, clj-kondo); no paper estimator",
+      "counterexamples": [
+        "analyzer false positives on generated or macro code"
+      ],
+      "evaluation_artifacts": [
+        "tests/corpus/manifest.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "fix only with the named analyzer confirmation"
+      ],
+      "prohibited": [
+        "do not treat confirmation as proof of maintenance benefit"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:comment-narration",
+      "references": [],
+      "exact_claim": "Comment-narration rules flag comments that restate adjacent code as propose-only cleanup hypotheses. No empirical support claimed.",
+      "studied_population": "no studied population",
+      "construct": "over-narration hypothesis",
+      "unit": "syntax-region",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:comment-block",
+        "rule:narrating-comment"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "heuristic: comment/code overlap judgment; no paper estimator",
+      "counterexamples": [
+        "explanatory comments recording why, not what",
+        "public API documentation",
+        "Paul/Zhu/Bayley document an insufficient-comments finding (paul-2025-smells); that is negative counter-evidence against narration-deletion, not support"
+      ],
+      "evaluation_artifacts": [
+        "tests/corpus/manifest.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "propose removal for human review"
+      ],
+      "prohibited": [
+        "do not auto-remove; explanatory comments are counterexamples"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:duplication",
+      "references": [
+        "paul-2025-smells",
+        "zhang-2024-copilot"
+      ],
+      "exact_claim": "Duplication rules flag repeated blocks or near-duplicate regions as propose-only cleanup hypotheses. The cited catalogs motivate looking at duplication; they do not validate this detector (sections not reviewed by this worker; P0 source gate open).",
+      "studied_population": "unvalidated until P0 primary-source review records studied populations and limits",
+      "construct": "redundant code hypothesis",
+      "unit": "syntax-region",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:duplicate-block",
+        "rule:near-duplicate"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "heuristic: token duplication and similarity thresholds; P1 pilot family: duplication",
+      "counterexamples": [
+        "intentional duplication",
+        "compatibility layers",
+        "test fixtures",
+        "generated files"
+      ],
+      "evaluation_artifacts": [
+        "tests/corpus/manifest.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "inspiration-only",
+      "permitted": [
+        "propose for human review with verification"
+      ],
+      "prohibited": [
+        "do not treat a finding as proof removal is desirable or behavior-preserving"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:incompleteness",
+      "references": [],
+      "exact_claim": "Incompleteness flags stub or placeholder regions as propose-only hypotheses.",
+      "studied_population": "unvalidated engineering heuristic: no published studied population recorded",
+      "construct": "unfinished-code hypothesis",
+      "unit": "syntax-region",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:incompleteness"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "heuristic: stub/placeholder patterns; no paper estimator",
+      "counterexamples": [
+        "intentional extension points",
+        "required unimplemented trait members"
+      ],
+      "evaluation_artifacts": [
+        "tests/corpus/manifest.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "propose for human review"
+      ],
+      "prohibited": [
+        "do not auto-remove declared extension points"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:language-idiom",
+      "references": [],
+      "exact_claim": "Language-idiom rules suggest idiomatic replacements guarded by stated preconditions.",
+      "studied_population": "unvalidated engineering heuristic: no published studied population recorded",
+      "construct": "idiom hypothesis",
+      "unit": "syntax-region",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:js-loose-equality",
+        "rule:js-unnecessary-await",
+        "rule:js-var-declaration",
+        "rule:let-and-return",
+        "rule:py-dict-keys-membership",
+        "rule:py-list-comprehension-wrapper",
+        "rule:py-none-comparison",
+        "rule:py-range-len",
+        "rule:redundant-closure",
+        "rule:redundant-do",
+        "rule:reimpl-boolean",
+        "rule:reimpl-eachindex",
+        "rule:reimpl-empty?",
+        "rule:reimpl-isempty",
+        "rule:reimpl-isnothing",
+        "rule:reimpl-not=",
+        "rule:reimpl-seq",
+        "rule:reimpl-some?",
+        "rule:reimpl-vec",
+        "rule:single-use-binding",
+        "rule:useless-format"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "heuristic: per-rule preconditions in the default-action label; no paper estimator",
+      "counterexamples": [
+        "operator overloading",
+        "non-standard collection semantics",
+        "intentional strictness differences"
+      ],
+      "evaluation_artifacts": [
+        "tests/corpus/manifest.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "suggest subject to the stated precondition"
+      ],
+      "prohibited": [
+        "do not apply where the precondition is unmet"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:long-method-complexity",
+      "references": [
+        "paul-2025-smells"
+      ],
+      "exact_claim": "Long-method flags concentrated complexity as a propose-only extraction hypothesis. The cited catalog motivates looking at concentrated complexity; it does not validate this detector (sections not reviewed by this worker; P0 source gate open).",
+      "studied_population": "unvalidated until P0 primary-source review records studied populations and limits",
+      "construct": "concentrated complexity hypothesis",
+      "unit": "callable",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:long-method"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "heuristic: nloc threshold; P1 pilot family: concentrated complexity/long methods",
+      "counterexamples": [
+        "single-responsibility dispatch tables",
+        "required protocol implementations"
+      ],
+      "evaluation_artifacts": [
+        "tests/corpus/manifest.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "inspiration-only",
+      "permitted": [
+        "propose extraction for human review with verification"
+      ],
+      "prohibited": [
+        "do not treat length as proof of a defect or maintenance cost"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:magic-number",
+      "references": [],
+      "exact_claim": "Magic-number flags unexplained literals as suggest-only naming hypotheses.",
+      "studied_population": "unvalidated engineering heuristic: no published studied population recorded",
+      "construct": "unexplained-literal hypothesis",
+      "unit": "syntax-region",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:magic-number"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "heuristic: literal patterns; no paper estimator",
+      "counterexamples": [
+        "domain constants",
+        "test fixtures",
+        "protocol constants"
+      ],
+      "evaluation_artifacts": [
+        "tests/corpus/manifest.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "suggest naming for human review"
+      ],
+      "prohibited": [
+        "do not auto-rename without confirming domain meaning"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:needless-clone",
+      "references": [],
+      "exact_claim": "Needless-clone is a propose-only hypothesis about redundant cloning.",
+      "studied_population": "unvalidated engineering heuristic: no published studied population recorded",
+      "construct": "redundant-clone hypothesis",
+      "unit": "syntax-region",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:needless-clone"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "heuristic: ownership pattern judgment; no paper estimator",
+      "counterexamples": [
+        "required defensive copies",
+        "borrow checker mandated clones"
+      ],
+      "evaluation_artifacts": [
+        "tests/corpus/manifest.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "propose for human review"
+      ],
+      "prohibited": [
+        "do not auto-remove without ownership proof"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:never-auto-review",
+      "references": [],
+      "exact_claim": "Never-auto rules report contract, configuration, and history pathologies for human review only.",
+      "studied_population": "unvalidated engineering heuristic: no published studied population recorded",
+      "construct": "review-only pathology evidence",
+      "unit": "file",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:accepted-config-inert",
+        "rule:accepted-config-no-behavioral-reach",
+        "rule:adoption-chain-incomplete",
+        "rule:confidence-derived-after-lossy-commit",
+        "rule:confidence-provenance-lost",
+        "rule:config-key-shadowed",
+        "rule:config-key-unconsumed",
+        "rule:config-key-unread",
+        "rule:contract-chain-incomplete",
+        "rule:hot-path-work-duplicated",
+        "rule:julia-jet",
+        "rule:mechanism-gate-contract-split",
+        "rule:mechanism-live-gate-retired",
+        "rule:missing-reference",
+        "rule:operational-identity-stale",
+        "rule:owner-consumer-contract-split",
+        "rule:owner-moved-consumer-stale",
+        "rule:partition-boundary-not-preserved",
+        "rule:producer-verifier-schema-drift",
+        "rule:producer-verifier-schema-mismatch",
+        "rule:published-identity-not-live",
+        "rule:same-path-expensive-work-repeated",
+        "rule:scope-collapse-after-refactor",
+        "rule:sibling-admission-gates-diverged",
+        "rule:sibling-admission-guards-asymmetric",
+        "rule:telemetry-claim-unbound",
+        "rule:telemetry-not-bound-to-claim",
+        "rule:test-contract-dimension-uncovered",
+        "rule:test-oracle-lag"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "heuristic: per-rule contract evidence; no paper estimator",
+      "counterexamples": [
+        "dynamic resolution",
+        "generated sources",
+        "partial coverage"
+      ],
+      "evaluation_artifacts": [
+        "tests/refactor-snapshot/manifest.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "human review only"
+      ],
+      "prohibited": [
+        "do not auto-apply; do not infer intent, movement, or causation from a snapshot"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:safe-auto-whitespace",
+      "references": [],
+      "exact_claim": "Consecutive-blank-lines cleanup is a safe automatic whitespace normalization.",
+      "studied_population": "unvalidated engineering heuristic: no published studied population recorded",
+      "construct": "whitespace normalization",
+      "unit": "syntax-region",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:consecutive-blank-lines"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "heuristic: blank-line runs; behavior-preserving by construction",
+      "counterexamples": [],
+      "evaluation_artifacts": [
+        "tests/corpus/manifest.json"
+      ],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "safe automatic fix"
+      ],
+      "prohibited": [
+        "do not generalize this safety to any other rule"
+      ]
+    },
+    {
+      "claim_id": "fac:rule:slop-score-report",
+      "references": [],
+      "exact_claim": "Slop-score is a report surface, not a validated universal score.",
+      "studied_population": "unvalidated: no studied population",
+      "construct": "report aggregation",
+      "unit": "file",
+      "kind": "rule-group",
+      "facility_ids": [
+        "rule:slop-score"
+      ],
+      "implementation_symbols": [
+        "deslop_core::rules::RULES"
+      ],
+      "estimator_threshold_origin": "heuristic aggregation; explicitly not a universal score per RESEARCH_PLAN non-goals",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "permitted": [
+        "report aggregation only"
+      ],
+      "prohibited": [
+        "do not claim universal health, readability, or quality"
+      ]
+    },
+    {
+      "claim_id": "metric-complexity",
+      "kind": "metric",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Cyclomatic, cognitive, nesting, NLOC, structural mass, complexity mass, and maintainability index are transparent structural measurements with no empirical support claimed.",
+      "studied_population": "no studied population",
+      "construct": "control-flow size load",
+      "unit": "callable",
+      "facility_ids": [
+        "metric:functions[].complexity.cognitive",
+        "metric:functions[].complexity.complexity_mass",
+        "metric:functions[].complexity.cyclomatic",
+        "metric:functions[].complexity.maintainability_index",
+        "metric:functions[].complexity.max_nesting",
+        "metric:functions[].complexity.nloc",
+        "metric:functions[].complexity.structural_mass",
+        "metric:functions[].span.start_line",
+        "metric:functions[].span.end_line",
+        "metric:functions[].span.start_byte",
+        "metric:functions[].span.end_byte"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::ComplexityMetrics"
+      ],
+      "estimator_threshold_origin": "deslop-local counting; no paper estimator",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "permitted": [
+        "report as structural measurement"
+      ],
+      "prohibited": [
+        "claim readability, health, refactor-need, or validation"
+      ]
+    },
+    {
+      "claim_id": "metric-expressivity",
+      "kind": "metric",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Token, vocabulary, density, comment-ratio, byte/token/structural/AST-edge entropy, and information volume are deslop-local distributional measurements; no empirical support claimed.",
+      "studied_population": "no studied population",
+      "construct": "lexical/informational load",
+      "unit": "callable",
+      "facility_ids": [
+        "metric:functions[].expressivity.ast_edge_entropy",
+        "metric:functions[].expressivity.byte_entropy_bits_per_byte",
+        "metric:functions[].expressivity.comment_to_code_ratio",
+        "metric:functions[].expressivity.decision_density",
+        "metric:functions[].expressivity.information_volume",
+        "metric:functions[].expressivity.structural_entropy",
+        "metric:functions[].expressivity.token_entropy",
+        "metric:functions[].expressivity.tokens",
+        "metric:functions[].expressivity.unique_token_ratio",
+        "metric:functions[].expressivity.vocabulary"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::ExpressivityMetrics"
+      ],
+      "estimator_threshold_origin": "deslop-local token/AST counting; entropy is not a readability label",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "permitted": [
+        "report as distributional evidence"
+      ],
+      "prohibited": [
+        "call entropy a readability label",
+        "claim LLM probability"
+      ]
+    },
+    {
+      "claim_id": "metric-halstead",
+      "kind": "metric",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Halstead operator/operand counts, volume, difficulty, and lexical effort are transparent lexical measurements with no empirical support claimed.",
+      "studied_population": "no studied population",
+      "construct": "lexical volume",
+      "unit": "callable",
+      "facility_ids": [
+        "metric:functions[].halstead.difficulty",
+        "metric:functions[].halstead.distinct_operands",
+        "metric:functions[].halstead.distinct_operators",
+        "metric:functions[].halstead.lexical_effort",
+        "metric:functions[].halstead.total_operands",
+        "metric:functions[].halstead.total_operators",
+        "metric:functions[].halstead.volume"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::HalsteadMetrics",
+        "deslop_metrics::halstead_for_text"
+      ],
+      "estimator_threshold_origin": "deslop-local tokenizer; no paper estimator",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "permitted": [
+        "report as lexical evidence"
+      ],
+      "prohibited": [
+        "claim readability, health, or validation"
+      ]
+    },
+    {
+      "claim_id": "metric-surprisal",
+      "kind": "metric",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Repository-local leave-one-region-out bigram surprisal (requested-snapshot-leave-one-region-out-bigram-add-one/1) is a snapshot-local anomaly signal; it is not an LLM probability and has no empirical support claimed. Observed as a value in this probe; the None arm serializes as an explicit null (no skip attributes) and is covered by the observation caveat.",
+      "studied_population": "no studied population",
+      "construct": "local token anomaly",
+      "unit": "callable",
+      "facility_ids": [
+        "metric:functions[].surprisal.estimator",
+        "metric:functions[].surprisal.max_bits",
+        "metric:functions[].surprisal.mean_bits",
+        "metric:functions[].surprisal.p90_bits",
+        "metric:functions[].surprisal.peer_tokens",
+        "metric:functions[].surprisal.sample_size",
+        "metric:functions[].features.axes.surprisal.measurements.max_bits.estimator",
+        "metric:functions[].features.axes.surprisal.measurements.max_bits.sample_size",
+        "metric:functions[].features.axes.surprisal.measurements.max_bits.value",
+        "metric:functions[].features.axes.surprisal.measurements.mean_bits.estimator",
+        "metric:functions[].features.axes.surprisal.measurements.mean_bits.sample_size",
+        "metric:functions[].features.axes.surprisal.measurements.mean_bits.value",
+        "metric:functions[].features.axes.surprisal.measurements.p90_bits.estimator",
+        "metric:functions[].features.axes.surprisal.measurements.p90_bits.sample_size",
+        "metric:functions[].features.axes.surprisal.measurements.p90_bits.value",
+        "metric:functions[].features.axes.surprisal.unknowns[]"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::SurprisalMetrics"
+      ],
+      "estimator_threshold_origin": "deslop-local bigram estimator id requested-snapshot-leave-one-region-out-bigram-add-one/1",
+      "counterexamples": [
+        "single-region language populations have no peers; absent surprisal must not be read as zero"
+      ],
+      "evaluation_artifacts": [],
+      "permitted": [
+        "report as local anomaly evidence within the same model identity"
+      ],
+      "prohibited": [
+        "reinterpret as LLM probability",
+        "average across model identities",
+        "read absent as zero"
+      ]
+    },
+    {
+      "claim_id": "metric-redundancy",
+      "kind": "metric",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Clone/anti-pattern/dead-union line counts and ratios use owned-line union over analyzer findings; overlapping findings do not double-count. No empirical support claimed.",
+      "studied_population": "no studied population",
+      "construct": "redundancy",
+      "unit": "callable",
+      "facility_ids": [
+        "metric:functions[].redundancy.anti_pattern_lines",
+        "metric:functions[].redundancy.anti_pattern_ratio",
+        "metric:functions[].redundancy.clone_lines",
+        "metric:functions[].redundancy.clone_ratio",
+        "metric:functions[].redundancy.dead_or_unused_lines",
+        "metric:functions[].redundancy.dead_or_unused_ratio",
+        "metric:functions[].redundancy.finding_count",
+        "metric:functions[].redundancy.nloc",
+        "metric:functions[].redundancy.union_lines",
+        "metric:functions[].redundancy.union_ratio",
+        "metric:functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.estimator",
+        "metric:functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.sample_size",
+        "metric:functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.value",
+        "metric:functions[].features.axes.redundancy.measurements.clone_line_ratio.estimator",
+        "metric:functions[].features.axes.redundancy.measurements.clone_line_ratio.sample_size",
+        "metric:functions[].features.axes.redundancy.measurements.clone_line_ratio.value",
+        "metric:functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.estimator",
+        "metric:functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.sample_size",
+        "metric:functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.value",
+        "metric:functions[].features.axes.redundancy.measurements.redundancy_union_ratio.estimator",
+        "metric:functions[].features.axes.redundancy.measurements.redundancy_union_ratio.sample_size",
+        "metric:functions[].features.axes.redundancy.measurements.redundancy_union_ratio.value",
+        "metric:functions[].features.axes.redundancy.unknowns[]"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::RedundancyMetrics"
+      ],
+      "estimator_threshold_origin": "owned-line union; narrowest owning region assignment",
+      "counterexamples": [
+        "intentional duplication"
+      ],
+      "evaluation_artifacts": [],
+      "permitted": [
+        "report as redundancy evidence"
+      ],
+      "prohibited": [
+        "sum sub-ratios; use union_ratio for a single total",
+        "claim removability"
+      ]
+    },
+    {
+      "claim_id": "metric-static-slop",
+      "kind": "metric",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "The static_slop (C,X,A,R) vector plus robust peer-relative evidence is a transparent triage vector with authority transparent_vector_only; no scalar, probability, or gate is emitted. Robust z-scores legitimately serialize as null when peer MAD is zero; null arms are covered by the observation caveat.",
+      "studied_population": "no studied population",
+      "construct": "peer-relative structural anomaly",
+      "unit": "callable",
+      "facility_ids": [
+        "metric:functions[].static_slop.authority",
+        "metric:functions[].static_slop.complexity_mass",
+        "metric:functions[].static_slop.contextual_surprisal_p90",
+        "metric:functions[].static_slop.peer_relative.complexity_mass.mad",
+        "metric:functions[].static_slop.peer_relative.complexity_mass.median",
+        "metric:functions[].static_slop.peer_relative.complexity_mass.percentile",
+        "metric:functions[].static_slop.peer_relative.complexity_mass.positive_robust_zscore",
+        "metric:functions[].static_slop.peer_relative.complexity_mass.robust_zscore",
+        "metric:functions[].static_slop.peer_relative.contextual_surprisal_p90.mad",
+        "metric:functions[].static_slop.peer_relative.contextual_surprisal_p90.median",
+        "metric:functions[].static_slop.peer_relative.contextual_surprisal_p90.percentile",
+        "metric:functions[].static_slop.peer_relative.contextual_surprisal_p90.positive_robust_zscore",
+        "metric:functions[].static_slop.peer_relative.contextual_surprisal_p90.robust_zscore",
+        "metric:functions[].static_slop.peer_relative.peer_count",
+        "metric:functions[].static_slop.peer_relative.peer_group",
+        "metric:functions[].static_slop.peer_relative.redundancy_ratio.mad",
+        "metric:functions[].static_slop.peer_relative.redundancy_ratio.median",
+        "metric:functions[].static_slop.peer_relative.redundancy_ratio.percentile",
+        "metric:functions[].static_slop.peer_relative.redundancy_ratio.positive_robust_zscore",
+        "metric:functions[].static_slop.peer_relative.redundancy_ratio.robust_zscore",
+        "metric:functions[].static_slop.peer_relative.structural_entropy.mad",
+        "metric:functions[].static_slop.peer_relative.structural_entropy.median",
+        "metric:functions[].static_slop.peer_relative.structural_entropy.percentile",
+        "metric:functions[].static_slop.peer_relative.structural_entropy.positive_robust_zscore",
+        "metric:functions[].static_slop.peer_relative.structural_entropy.robust_zscore",
+        "metric:functions[].static_slop.redundancy_ratio",
+        "metric:functions[].static_slop.structural_entropy",
+        "metric:peer_groups[].id",
+        "metric:peer_groups[].lang",
+        "metric:peer_groups[].role",
+        "metric:peer_groups[].size_bin",
+        "metric:peer_groups[].count"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::StaticSlopVector",
+        "deslop_metrics::PeerRelativeSlopVector",
+        "deslop_metrics::PeerGroupSummary"
+      ],
+      "estimator_threshold_origin": "median/MAD normalization over language/role/NLOC-bin peer groups; groups below threshold or with zero MAD abstain with null z-scores",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "permitted": [
+        "report as triage evidence"
+      ],
+      "prohibited": [
+        "use as write authority, readability, health, authorship, refactor necessity, probability, or confidence",
+        "interpret missing z-score as zero"
+      ]
+    },
+    {
+      "claim_id": "metric-burden-hotspots",
+      "kind": "metric",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Heuristic burden (tree_heuristic_v1), scan-local outliers, burden distribution, and complexity/entropy hotspots are experimental read-only triage evidence, machine-labeled experimental=true, human_calibrated=false, gating_permitted=false.",
+      "studied_population": "no studied population",
+      "construct": "heuristic burden",
+      "unit": "callable",
+      "facility_ids": [
+        "metric:functions[].heuristic_burden.basis",
+        "metric:functions[].heuristic_burden.complexity_burden",
+        "metric:functions[].heuristic_burden.entropy_burden",
+        "metric:functions[].heuristic_burden.information_burden",
+        "metric:functions[].heuristic_burden.interaction_burden",
+        "metric:functions[].heuristic_burden.measurement_support",
+        "metric:functions[].heuristic_burden.repo_relative.percentile",
+        "metric:functions[].heuristic_burden.repo_relative.zscore",
+        "metric:functions[].heuristic_burden.score",
+        "metric:functions[].heuristic_burden.size_support",
+        "metric:heuristic_outliers[].basis",
+        "metric:heuristic_outliers[].heuristic_burden",
+        "metric:heuristic_outliers[].kind",
+        "metric:heuristic_outliers[].measurement_support",
+        "metric:heuristic_outliers[].name",
+        "metric:heuristic_outliers[].path",
+        "metric:heuristic_outliers[].rank",
+        "metric:heuristic_outliers[].reasons[]",
+        "metric:heuristic_outliers[].repo_relative.percentile",
+        "metric:heuristic_outliers[].repo_relative.zscore",
+        "metric:heuristic_outliers[].size_support",
+        "metric:heuristic_outliers[].span.end_byte",
+        "metric:heuristic_outliers[].span.end_line",
+        "metric:heuristic_outliers[].span.start_byte",
+        "metric:heuristic_outliers[].span.start_line",
+        "metric:heuristic_burden_distribution.count",
+        "metric:heuristic_burden_distribution.flat",
+        "metric:heuristic_burden_distribution.max",
+        "metric:heuristic_burden_distribution.mean",
+        "metric:heuristic_burden_distribution.median",
+        "metric:heuristic_burden_distribution.min",
+        "metric:heuristic_burden_distribution.p25",
+        "metric:heuristic_burden_distribution.p75",
+        "metric:heuristic_burden_distribution.relative_outlier_eligible",
+        "metric:heuristic_burden_distribution.stddev",
+        "metric:hotspots[].name",
+        "metric:hotspots[].path",
+        "metric:hotspots[].rank",
+        "metric:hotspots[].reasons[]",
+        "metric:hotspots[].score",
+        "metric:hotspots[].span.end_byte",
+        "metric:hotspots[].span.end_line",
+        "metric:hotspots[].span.start_byte",
+        "metric:hotspots[].span.start_line",
+        "metric:heuristic_model.authority",
+        "metric:heuristic_model.experimental",
+        "metric:heuristic_model.gating_permitted",
+        "metric:heuristic_model.human_calibrated",
+        "metric:heuristic_model.id",
+        "metric:heuristic_model.meaning"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::HeuristicBurdenMetrics",
+        "deslop_metrics::HeuristicBurdenOutlier",
+        "deslop_metrics::Hotspot",
+        "deslop_metrics::HeuristicBurdenModel"
+      ],
+      "estimator_threshold_origin": "deslop-local saturating combination",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "permitted": [
+        "report as triage evidence"
+      ],
+      "prohibited": [
+        "measure human readability, health, refactor need, safety, probability, or confidence",
+        "use as rewrite gate"
+      ]
+    },
+    {
+      "claim_id": "metric-features-axes",
+      "kind": "metric",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Readability feature axes (deslop.readability-features/1) preserve exclusive-owned-node locality and aggregation policy with per-estimator measurement keys enumerated as leaf paths; cohesion/impact axes currently emit unknowns only. No readability label is emitted and no empirical support is claimed.",
+      "studied_population": "no studied population",
+      "construct": "readability features",
+      "unit": "callable",
+      "facility_ids": [
+        "metric:functions[].features.aggregation_policy",
+        "metric:functions[].features.axes.cohesion.unknowns[]",
+        "metric:functions[].features.axes.entropy.measurements.ast_edge_entropy_normalized.estimator",
+        "metric:functions[].features.axes.entropy.measurements.ast_edge_entropy_normalized.sample_size",
+        "metric:functions[].features.axes.entropy.measurements.ast_edge_entropy_normalized.value",
+        "metric:functions[].features.axes.entropy.measurements.ast_kind_entropy_normalized.estimator",
+        "metric:functions[].features.axes.entropy.measurements.ast_kind_entropy_normalized.sample_size",
+        "metric:functions[].features.axes.entropy.measurements.ast_kind_entropy_normalized.value",
+        "metric:functions[].features.axes.entropy.measurements.byte_entropy_bits_per_byte.estimator",
+        "metric:functions[].features.axes.entropy.measurements.byte_entropy_bits_per_byte.sample_size",
+        "metric:functions[].features.axes.entropy.measurements.byte_entropy_bits_per_byte.value",
+        "metric:functions[].features.axes.entropy.measurements.token_entropy_normalized.estimator",
+        "metric:functions[].features.axes.entropy.measurements.token_entropy_normalized.sample_size",
+        "metric:functions[].features.axes.entropy.measurements.token_entropy_normalized.value",
+        "metric:functions[].features.axes.entropy.unknowns[]",
+        "metric:functions[].features.axes.impact.unknowns[]",
+        "metric:functions[].features.axes.lexical_visual.measurements.comment_to_code_ratio.estimator",
+        "metric:functions[].features.axes.lexical_visual.measurements.comment_to_code_ratio.sample_size",
+        "metric:functions[].features.axes.lexical_visual.measurements.comment_to_code_ratio.value",
+        "metric:functions[].features.axes.lexical_visual.measurements.halstead_volume.estimator",
+        "metric:functions[].features.axes.lexical_visual.measurements.halstead_volume.sample_size",
+        "metric:functions[].features.axes.lexical_visual.measurements.halstead_volume.value",
+        "metric:functions[].features.axes.lexical_visual.measurements.token_count.estimator",
+        "metric:functions[].features.axes.lexical_visual.measurements.token_count.sample_size",
+        "metric:functions[].features.axes.lexical_visual.measurements.token_count.value",
+        "metric:functions[].features.axes.lexical_visual.measurements.unique_token_ratio.estimator",
+        "metric:functions[].features.axes.lexical_visual.measurements.unique_token_ratio.sample_size",
+        "metric:functions[].features.axes.lexical_visual.measurements.unique_token_ratio.value",
+        "metric:functions[].features.axes.lexical_visual.measurements.vocabulary_size.estimator",
+        "metric:functions[].features.axes.lexical_visual.measurements.vocabulary_size.sample_size",
+        "metric:functions[].features.axes.lexical_visual.measurements.vocabulary_size.value",
+        "metric:functions[].features.axes.lexical_visual.unknowns[]",
+        "metric:functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.estimator",
+        "metric:functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.sample_size",
+        "metric:functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.value",
+        "metric:functions[].features.axes.redundancy.measurements.clone_line_ratio.estimator",
+        "metric:functions[].features.axes.redundancy.measurements.clone_line_ratio.sample_size",
+        "metric:functions[].features.axes.redundancy.measurements.clone_line_ratio.value",
+        "metric:functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.estimator",
+        "metric:functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.sample_size",
+        "metric:functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.value",
+        "metric:functions[].features.axes.redundancy.measurements.redundancy_union_ratio.estimator",
+        "metric:functions[].features.axes.redundancy.measurements.redundancy_union_ratio.sample_size",
+        "metric:functions[].features.axes.redundancy.measurements.redundancy_union_ratio.value",
+        "metric:functions[].features.axes.redundancy.unknowns[]",
+        "metric:functions[].features.axes.safety.measurements.parse_complete.estimator",
+        "metric:functions[].features.axes.safety.measurements.parse_complete.sample_size",
+        "metric:functions[].features.axes.safety.measurements.parse_complete.value",
+        "metric:functions[].features.axes.safety.unknowns[]",
+        "metric:functions[].features.axes.structural.measurements.cfg_components.estimator",
+        "metric:functions[].features.axes.structural.measurements.cfg_components.sample_size",
+        "metric:functions[].features.axes.structural.measurements.cfg_components.value",
+        "metric:functions[].features.axes.structural.measurements.cfg_edges.estimator",
+        "metric:functions[].features.axes.structural.measurements.cfg_edges.sample_size",
+        "metric:functions[].features.axes.structural.measurements.cfg_edges.value",
+        "metric:functions[].features.axes.structural.measurements.cfg_points.estimator",
+        "metric:functions[].features.axes.structural.measurements.cfg_points.sample_size",
+        "metric:functions[].features.axes.structural.measurements.cfg_points.value",
+        "metric:functions[].features.axes.structural.measurements.cognitive_complexity.estimator",
+        "metric:functions[].features.axes.structural.measurements.cognitive_complexity.sample_size",
+        "metric:functions[].features.axes.structural.measurements.cognitive_complexity.value",
+        "metric:functions[].features.axes.structural.measurements.complexity_mass.estimator",
+        "metric:functions[].features.axes.structural.measurements.complexity_mass.sample_size",
+        "metric:functions[].features.axes.structural.measurements.complexity_mass.value",
+        "metric:functions[].features.axes.structural.measurements.cyclomatic_complexity.estimator",
+        "metric:functions[].features.axes.structural.measurements.cyclomatic_complexity.sample_size",
+        "metric:functions[].features.axes.structural.measurements.cyclomatic_complexity.value",
+        "metric:functions[].features.axes.structural.measurements.max_nesting.estimator",
+        "metric:functions[].features.axes.structural.measurements.max_nesting.sample_size",
+        "metric:functions[].features.axes.structural.measurements.max_nesting.value",
+        "metric:functions[].features.axes.structural.measurements.nloc.estimator",
+        "metric:functions[].features.axes.structural.measurements.nloc.sample_size",
+        "metric:functions[].features.axes.structural.measurements.nloc.value",
+        "metric:functions[].features.axes.structural.measurements.structural_mass.estimator",
+        "metric:functions[].features.axes.structural.measurements.structural_mass.sample_size",
+        "metric:functions[].features.axes.structural.measurements.structural_mass.value",
+        "metric:functions[].features.axes.structural.unknowns[]",
+        "metric:functions[].features.axes.surprisal.measurements.max_bits.estimator",
+        "metric:functions[].features.axes.surprisal.measurements.max_bits.sample_size",
+        "metric:functions[].features.axes.surprisal.measurements.max_bits.value",
+        "metric:functions[].features.axes.surprisal.measurements.mean_bits.estimator",
+        "metric:functions[].features.axes.surprisal.measurements.mean_bits.sample_size",
+        "metric:functions[].features.axes.surprisal.measurements.mean_bits.value",
+        "metric:functions[].features.axes.surprisal.measurements.p90_bits.estimator",
+        "metric:functions[].features.axes.surprisal.measurements.p90_bits.sample_size",
+        "metric:functions[].features.axes.surprisal.measurements.p90_bits.value",
+        "metric:functions[].features.axes.surprisal.unknowns[]",
+        "metric:functions[].features.exclusive",
+        "metric:functions[].features.id",
+        "metric:functions[].features.schema",
+        "metric:functions[].features.subject.kind",
+        "metric:functions[].features.subject.lang",
+        "metric:functions[].features.subject.name",
+        "metric:functions[].features.subject.span.end_byte",
+        "metric:functions[].features.subject.span.end_line",
+        "metric:functions[].features.subject.span.start_byte",
+        "metric:functions[].features.subject.span.start_line",
+        "metric:feature_schema.aggregation_policy",
+        "metric:feature_schema.axes[].aggregate",
+        "metric:feature_schema.axes[].meaning",
+        "metric:feature_schema.axes[].name",
+        "metric:feature_schema.id",
+        "metric:feature_schema.locality",
+        "metric:functions[].kind",
+        "metric:functions[].lang",
+        "metric:functions[].name",
+        "metric:functions[].path",
+        "metric:functions[].role"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::NodeFeatureVector",
+        "deslop_metrics::READABILITY_FEATURE_SCHEMA"
+      ],
+      "estimator_threshold_origin": "exclusive owned slices; unknowns propagate",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "permitted": [
+        "preserve as evidence-only axes"
+      ],
+      "prohibited": [
+        "emit or imply a readability label/score",
+        "claim human calibration"
+      ]
+    },
+    {
+      "claim_id": "metric-calibration",
+      "kind": "metric",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Readability calibration carries the frozen M8 evidence_only disposition (engineering reproduction of the frozen evaluation, not fresh scientific validation); readability_label_permitted=false.",
+      "studied_population": "M8 frozen evaluation (engineering reproduction, not fresh validation)",
+      "construct": "calibration disposition",
+      "unit": "callable",
+      "facility_ids": [
+        "metric:readability_calibration.capture_id",
+        "metric:readability_calibration.disposition",
+        "metric:readability_calibration.evidence",
+        "metric:readability_calibration.readability_label_permitted",
+        "metric:readability_calibration.schema",
+        "metric:readability_calibration.transparent_axes_preserved"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::ReadabilityCalibration"
+      ],
+      "estimator_threshold_origin": "frozen M8 evaluation; no refit",
+      "counterexamples": [],
+      "evaluation_artifacts": [
+        "crates/deslop-eval/evaluation/m8/evaluation_report.json"
+      ],
+      "permitted": [
+        "cite as exploratory evidence with evidence_only disposition"
+      ],
+      "prohibited": [
+        "claim validated detector quality or human benefit",
+        "retune and rebrand as independent validation"
+      ]
+    },
+    {
+      "claim_id": "metric-report-envelope",
+      "kind": "metric",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Report envelope (schema, status, per-file analyses, file summaries, change dispersion, top-level shape) frames the evidence. Change dispersion was null in this probe (no revision pair requested); its declared children are covered by the observation caveat, not by live observation.",
+      "studied_population": "no studied population",
+      "construct": "report envelope",
+      "unit": "file",
+      "facility_ids": [
+        "metric:schema",
+        "metric:status",
+        "metric:analyses[].analysis.diagnostics[]",
+        "metric:analyses[].analysis.status",
+        "metric:analyses[].lang",
+        "metric:analyses[].path",
+        "metric:files[].behavioral_nloc",
+        "metric:files[].behavioral_regions",
+        "metric:files[].complexity_mass",
+        "metric:files[].complexity_mass_p90",
+        "metric:files[].contextual_surprisal_p90",
+        "metric:files[].heuristic_burden_max",
+        "metric:files[].heuristic_burden_p90",
+        "metric:files[].heuristic_burden_weighted_mean",
+        "metric:files[].lang",
+        "metric:files[].path",
+        "metric:files[].redundancy_ratio_p90",
+        "metric:files[].redundancy_union_ratio",
+        "metric:files[].structural_entropy_p90",
+        "metric:files[].structural_erosion",
+        "metric:files[].structural_mass",
+        "metric:files[].top_hotspot",
+        "metric:change_dispersion.authority",
+        "metric:change_dispersion.changed_lines",
+        "metric:change_dispersion.files[].added_lines",
+        "metric:change_dispersion.files[].binary",
+        "metric:change_dispersion.files[].changed_lines",
+        "metric:change_dispersion.files[].deleted_lines",
+        "metric:change_dispersion.files[].path",
+        "metric:change_dispersion.from",
+        "metric:change_dispersion.normalized_entropy",
+        "metric:change_dispersion.to",
+        "metric:change_dispersion",
+        "metric:analyses[]",
+        "metric:functions[]",
+        "metric:files[]",
+        "metric:peer_groups[]",
+        "metric:heuristic_outliers[]",
+        "metric:hotspots[]",
+        "metric:feature_schema.axes[]",
+        "metric:change_dispersion.files[]"
+      ],
+      "implementation_symbols": [
+        "deslop_metrics::MetricsReport",
+        "deslop_metrics::FileMetricsSummary",
+        "deslop_metrics::ChangeDispersionMetrics"
+      ],
+      "estimator_threshold_origin": "deslop-local aggregation; change dispersion from Git numstat when --from is supplied",
+      "counterexamples": [],
+      "evaluation_artifacts": [],
+      "permitted": [
+        "report as triage evidence"
+      ],
+      "prohibited": [
+        "claim health, readability, or refactor necessity",
+        "read a null change dispersion as zero change"
+      ]
+    }
+  ]
+}

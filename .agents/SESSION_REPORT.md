@@ -13249,3 +13249,101 @@ new negative memory was necessary.
 **Next actions:** Reconnect any currently running MCP client that must consume metrics schema `/7`.
 
 **Signature:** Codex (GPT-5), combined installed CLI/MCP artifact owner, 2026-08-03.
+
+## 2026-09-08 — P0 research claim registry and bounded evidence documentation
+
+**Date/time:** 2026-09-08T01:33:58Z (heartbeat finalized 2026-09-08T04:30:00Z).
+
+**Target objective:** P0 of `docs/RESEARCH_PLAN.md` only — the entire research
+contract/inventory with an executable canonical registry. NOT the P1–P8 future
+work, NOT the whole plan.
+
+**Changed files:**
+- `crates/deslop-eval/evaluation/research/registry.json` (new; canonical
+  `deslop.research-registry/1` v1.0.0).
+- `crates/deslop-eval/src/research.rs` (new; typed validator + live-shape
+  check + inventory/claims renderers).
+- `crates/deslop-eval/src/bin/research_registry.rs` (new; `check`/`inventory`/
+  `claims` + `--registry` temp-copy override for invalid smoke).
+- `crates/deslop-eval/src/lib.rs` (one-line `pub mod research`).
+- `crates/deslop-eval/Cargo.toml` (`research-registry` bin).
+- `crates/deslop-recipes/src/unreachable.rs` (2-line lint fix: removed
+  needless borrows at lines 477/504, `is_some_and(&contains)` →
+  `is_some_and(contains)`; no behavior change).
+- `docs/RESEARCH.md` (new; sibling bibliography/findings/blockers + registry-
+  GENERATED §4 construct-to-facility table, byte-exact renderer output).
+- `docs/RESEARCH_LIMITATIONS.md`, `docs/RESEARCH_PROTOCOL.md` (sibling-owned;
+  preserved in this change).
+- `docs/RESEARCH_PLAN.md` (P0 execution checkpoint appended; 4 acceptance
+  bullets intact).
+- `README.md`, `SPEC.md` (sibling terminology pass; preserved in this change).
+- `.agents/NEXT_TASK.md` (stale June-24 Task-15 pointer replaced; history kept
+  as reference-only lines), `.agents/HEARTBEAT.md` (timestamp + checkpoint).
+
+**Implementation coverage:** 100% of the 65 shipped catalog rules
+(`deslop_core::rules::RULES`, including `rule:slop-score` — no bypass), all 16
+enabled Rust recipes (`enabled_rust_recipe_catalog`), and 281 serialized
+metric fields enumerated as exact leaf paths from a live `MetricsReport` over
+`crates/deslop-eval/src` (288 regions) unioned with real typed
+`change_dispersion_metrics` output. Basis: live-catalog/live-serializer
+comparison, NOT scientific validation — this is 100% inventory coverage, NOT
+100% of scientific P0 and NOT the whole plan.
+**Sources:** 17 registry IDs; 13 section-reviewed (partial), 2 record-only
+(bergum-2024-comprehension, themis-codepreference), 2 unavailable
+(sjoberg-2013-maintenance, buse-2010-readability). Zero `reproduced`
+fidelity claims. Scientific references are ledger metadata only — never
+write authority, never `ProofState`.
+
+**Exact commands and results:**
+- `cargo run -p deslop-eval --bin research-registry -- check
+  crates/deslop-eval/src` → exit 0:
+  `research registry OK: 65 rules, 16 recipes, 281 metric fields, 27 claims
+  (live metrics shape checked)`; repeat run diff-clean (deterministic).
+- `cargo run -p deslop-eval --bin research-registry -- inventory` → exit 0
+  (31-line table); `... -- claims` → exit 0; §4 table verified
+  TABLE-MATCHES-RENDERER by diff.
+- `cargo test -p deslop-eval --lib -- research::` → 8 passed, 0 failed.
+- `cargo test -p deslop-eval` → 25 lib + m6/m8/m9 definition-of-done suites
+  pass.
+- `cargo test -p deslop-recipes` → 63 passed, 0 failed, 1 ignored.
+- `cargo test --workspace` → 59 suites ok, 0 failures.
+- `cargo fmt -p deslop-eval -- --check` → clean; `cargo build --workspace`
+  → ok; `cargo build -p deslop-slim --no-default-features` → ok;
+  `cargo clippy --workspace --all-targets -- -D warnings` → exit 0.
+- Invalid-registry smoke (temp copies via `--registry`, 6 cases, all fail as
+  designed): missing `rule:magic-number` → `unregistered facilities`;
+  missing `rule:slop-score` → `unregistered facilities`; unknown source ref
+  → unknown-source error; invented metric field → `without covering claim`;
+  removed `functions[].complexity.cyclomatic` → `missing from registry`;
+  bad schema → `unsupported research registry schema`.
+- Logs: `/tmp/deslop-research-*.log` (15 files incl. summary).
+
+**Initial clippy failure and fix:** workspace clippy `-D warnings` failed on
+2 pre-existing `needless_borrows_for_generic_args` in
+`crates/deslop-recipes/src/unreachable.rs:477,504`; fixed at the source (2
+borrows removed, no suppression/refactor); rerun green.
+
+**Invalidated assumptions:** the stale `.agents/NEXT_TASK.md` Task-15 pointer
+(June 24, `jj new lmmlzykp` ancestor) is superseded — Task 15 is complete per
+`.agents/SESSION_REPORT.md`/e158292. The P0 source gate cannot close on
+abstracts/metadata alone.
+
+**No new dataset import, no new validation, no authority changes.** M8/M11
+evidence-only dispositions preserved; frozen M8 artifacts untouched.
+
+**P0 full-text blockers (attempt detail in `docs/RESEARCH.md` §5 + registry
+`threats`):** sjoberg-2013-maintenance — author PDF 404, OpenAlex closed with
+no repository fulltext, Scholar API 429, web citations only; buse-2010-
+readability — umich TLS failure (https) + redirect-loop (http), virginia 403,
+umich --insecure 404, Scholar openAccessPdf CLOSED/empty, OpenAlex is_oa
+false single-location. Prerequisite: library copies. P0 source review stays
+BLOCKED, not complete.
+
+**Next actions:** P1 pilot (rubric, provenance schema, importer) and P2
+execution-boundary hardening per plan; no human-benefit/validation claims
+until their gates pass.
+
+**Dependencies/restart requirements:** none beyond rebuilt dev binaries for
+the new `research-registry` invocations above. No push performed.
+
+**Signature:** Codex (gpt-6-astra), 2026-09-08.

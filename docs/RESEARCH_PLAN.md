@@ -98,6 +98,16 @@ Minimum registry fields: stable claim ID; research references; exact supported c
 - No source is presented as validating languages, models, or transformations it did not study.
 - Current M8/M11 evidence-only restrictions remain in force.
 
+> **P0 execution checkpoint (2026-09-08): engineering DONE, source gate BLOCKED.**
+> Registry `crates/deslop-eval/evaluation/research/registry.json`
+> (`deslop.research-registry/1` v1.0.0) with executable check
+> (`cargo run -p deslop-eval --bin research-registry -- check` →
+> `research registry OK: 65 rules, 16 recipes, 281 metric fields, 27 claims`).
+> Zero `reproduced` methods; M8/M11 evidence-only holds. Source review NOT
+> complete: sjoberg-2013-maintenance and buse-2010-readability full texts
+> unavailable after documented attempts (see `docs/RESEARCH.md` §5). This
+> marks P0 engineering only — NOT the entire P1–P8 plan.
+
 ## P1. Preregister the evaluation and build licensed, independently labeled data
 
 ### Study questions

@@ -9,9 +9,13 @@ model's word for anything.
 
 Two things are worth knowing up front.
 
-First, "slop" here means removable without changing behavior. It does not mean
-"written by an AI", and deslop is not an authorship detector. A finding says
-"this looks like it can go"; nothing actually goes until the gate proves it.
+First, "slop" here means a cleanup hypothesis: code that looks removable
+without changing behavior. It does not mean "written by an AI", and deslop is
+not an authorship detector. A finding says "this looks like it can go"; a
+finding alone never authorizes a write. Writes follow the existing fix-safety
+and verification policies, and a `Removable` verdict means the selected checks
+passed on the exact candidate state — evidence about those checks, not a proof
+of equivalence (see `docs/RESEARCH_LIMITATIONS.md`).
 
 Second, no LLM is bundled or required. Whatever rewrites code, whether that is
 Claude Code, Cursor, a CI bot, or the optional built-in client, is an external
@@ -65,17 +69,17 @@ Every finding carries a fix-safety class: `safe-auto`, `analyzer-confirmed`,
 `safe-auto` findings are ever written in place, and `never-auto` findings are
 report-only; they never enter work orders or prompts.
 
-Separately, the prover behind `verify` and `apply` assigns a removability
+Separately, the verifier behind `verify` and `apply` assigns a removability
 verdict: `Removable`, `DeadCandidate`, `UntestedRisky`, `CoverageUnknown`, or
 `Rejected`. By default `apply` writes only `Removable`. You can widen that with
-`--coverage <mode>` (prove it with coverage data) or `--allow-unverified`
+`--coverage <mode>` (add coverage evidence) or `--allow-unverified`
 (explicitly opt into the unproven band).
 
 Detection runs in tiers. The core is deterministic tree-sitter parsing with
 scope, duplication, and complexity analysis. External analyzers are opt-in:
 clippy for Rust, clj-kondo for Clojure, StaticLint.jl and JET.jl for Julia.
-Coverage tools (cargo-llvm-cov, cloverage, Coverage.jl, coverage.py) feed the
-removability proof, either from recorded reports or a live mode, and degrade
+Coverage tools (cargo-llvm-cov, cloverage, Coverage.jl, coverage.py) supply
+removability evidence, either from recorded reports or a live mode, and degrade
 gracefully when absent. On top of that sits a native tree-sitter mutation
 engine for Rust, Clojure, Julia, and Python (with Cosmic Ray as a Python
 alternative): surviving mutants downgrade a removal verdict. Mutation refines
@@ -95,7 +99,8 @@ network code is compiled at all.
 
 For weakly-tested regions, `--characterize` generates a test that pins current
 behavior, accepts it only if it passes on unmodified code, and then re-verifies.
-That turns an unprovable removal into a safe one.
+That can turn an untestable removal into one with supporting evidence — still
+evidence about the checks run, not a proof of equivalence.
 
 Sending source to a real provider requires explicit consent: `--yes`, the
 `DESLOP_SLIM_CONSENT` variable, `[slim] egress_consent` in config, or an
@@ -237,12 +242,8 @@ stay visible and block dependent rewrites instead of being papered over.
 
 ## Workspace
 
-Seventeen crates. `deslop-core` holds the shared types; `deslop-parse` owns
-tree-sitter parsing and snapshots; `deslop-lang` defines the language adapter
-traits and registries; `deslop-analyzer` implements the rules;
-`deslop-external` wraps clippy, clj-kondo, StaticLint, and JET;
 `deslop-metrics`, `deslop-graph`, and `deslop-mutate` do what their names say;
-`deslop-verify` is the prover with the coverage and mutation tiers;
+`deslop-verify` is the verifier with the coverage and mutation tiers;
 `deslop-protocol` defines the work-order and patch schemas; `deslop-report`
 renders text, JSON, agent output, and SARIF; `deslop-fix` applies the
 deterministic safe-auto edits; `deslop-slim` is the optional LLM client;

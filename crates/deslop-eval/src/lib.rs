@@ -15,7 +15,7 @@ pub mod m10_release;
 pub mod m6_benchmark;
 pub mod m8_calibration;
 pub mod m9_scale;
-pub mod refactor_eval;
+pub mod research;
 
 const DEFAULT_EPSILON: f64 = 0.0001;
 
