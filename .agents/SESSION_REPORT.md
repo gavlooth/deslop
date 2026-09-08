@@ -13252,7 +13252,7 @@ new negative memory was necessary.
 
 ## 2026-09-08 — P0 research claim registry and bounded evidence documentation
 
-**Date/time:** 2026-09-08T01:33:58Z (heartbeat finalized 2026-09-08T04:30:00Z).
+**Date/time:** 2026-09-08T01:47:33Z (observed UTC at write; entry first recorded 2026-09-08T01:33:58Z).
 
 **Target objective:** P0 of `docs/RESEARCH_PLAN.md` only — the entire research
 contract/inventory with an executable canonical registry. NOT the P1–P8 future
