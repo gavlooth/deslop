@@ -13343,7 +13343,19 @@ BLOCKED, not complete.
 execution-boundary hardening per plan; no human-benefit/validation claims
 until their gates pass.
 
-**Dependencies/restart requirements:** none beyond rebuilt dev binaries for
-the new `research-registry` invocations above. No push performed.
+**McCabe citation correction (2026-09-08T02:02:50Z, observed UTC):** metadata-only fix in
+`registry.json` source `mccabe-1976-complexity` — DOI identifier retained
+(`DOI 10.1109/TSE.1976.233837`); `dataset_artifact_revision` scratch path
+(`/tmp/mccabe.pdf`) replaced with honest `No dataset artifact revision pinned;
+scanned publication copy consulted, not redistributed`; `url` set to canonical
+`https://doi.org/10.1109/TSE.1976.233837` (public scan at
+`http://www.literateprogramming.com/mccabe.pdf` was actually fetched earlier).
+No checker/schema/test/generated-table/threshold/dependency/fetch change.
+Verification: `cargo run -q -p deslop-eval --bin research-registry -- check` →
+exit 0, `research registry OK: 65 rules, 16 recipes, 281 metric fields, 27 claims
+(live metrics shape checked)` (log `/tmp/deslop-mccabe-citation-check.log`).
+Heartbeat timestamp updated to actual observed 2026-09-08T02:02:50Z.
+
+**Dependencies/restart requirements:** none beyond rebuilt dev binaries for the new `research-registry` invocations above. No push performed.
 
 **Signature:** Codex (gpt-6-astra), 2026-09-08.

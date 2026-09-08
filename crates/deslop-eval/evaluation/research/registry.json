@@ -189,14 +189,14 @@
       "identifier_version": "n/a",
       "publication_status": "peer-reviewed journal",
       "peer_reviewed": true,
-      "dataset_artifact_revision": "local_copy: /tmp/mccabe.pdf scratch only, not redistributed",
+      "dataset_artifact_revision": "No dataset artifact revision pinned; scanned publication copy consulted, not redistributed",
       "dataset_artifact_license": "unverified (scanned copy consulted; not a license grant)",
       "studied_population": "Fortran subroutines; no human study",
       "comparison_baseline": "Fortran program control graphs via FLOW tool (PDP-10/APL)",
       "relevant_sections": "Abstract; \u00a7I Introduction; \u00a7II Complexity measure (Def. 1); \u00a7III Working experience (FLOW tool); \u00a7IV Decomposition (predicates+1, regions method); \u00a7VI Nonstructured programming (graphs a-d); \u00a7VII Testing methodology",
       "threats": "untestable-small-program examples are illustrative; testing section explicitly disclaims guarantee/proof (\u00a7VII); \u00a7V skimmed",
       "access": "partial",
-      "url": ""
+      "url": "https://doi.org/10.1109/TSE.1976.233837"
     },
     {
       "id": "sjoberg-2013-maintenance",
