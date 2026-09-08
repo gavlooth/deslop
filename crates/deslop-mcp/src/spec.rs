@@ -118,7 +118,7 @@ fn fix_tool_properties() -> Value {
         "provider": {
             "type": "string",
             "enum": ["anthropic", "openai"],
-            "default": "anthropic",
+            "default": "openai",
             "description": "auto mode only; API keys are read from environment variables, never MCP arguments."
         },
         "model": string_schema("auto mode only; defaults via DESLOP_SLIM_MODEL or deslop-slim's built-in default."),

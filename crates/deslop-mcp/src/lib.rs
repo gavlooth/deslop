@@ -207,7 +207,7 @@ fn fix_tool_properties() -> Value {
         "provider": {
             "type": "string",
             "enum": ["anthropic", "openai"],
-            "default": "anthropic",
+            "default": "openai",
             "description": "auto mode only; API keys are read from environment variables, never MCP arguments."
         },
         "model": string_schema("auto mode only; defaults via DESLOP_SLIM_MODEL or deslop-slim's built-in default."),
@@ -910,7 +910,7 @@ fn mcp_deslop_config(args: &Value) -> Result<McpDeslopConfig> {
 #[cfg(feature = "slim-llm")]
 fn provider_arg(args: &Value) -> Result<&str> {
     match args.get("provider") {
-        None => Ok("anthropic"),
+        None => Ok("openai"),
         Some(Value::String(provider)) => Ok(provider),
         Some(_) => bail!("provider must be a string"),
     }
@@ -1727,6 +1727,10 @@ mod tests {
         assert_eq!(mode["default"], "prompts");
         assert_eq!(mode["enum"], json!(["prompts", "auto"]));
         assert_eq!(
+            fix["inputSchema"]["properties"]["provider"]["default"],
+            "openai"
+        );
+        assert_eq!(
             fix["inputSchema"]["properties"]["consent"]["default"],
             false
         );
@@ -2191,21 +2195,22 @@ mod tests {
     #[test]
     fn fix_auto_real_provider_requires_explicit_consent() {
         let fixture = rust_slim_fixture();
-        let error = call_tool(
-            "fix",
-            json!({
-                "mode": "auto",
-                "paths": [fixture.source],
-                "provider": "anthropic",
-                "config": repo_relative_temp_path(&fixture._temp, "missing-deslop.toml")
-            }),
-        )
-        .expect_err("consent error");
-        let error = error.to_string();
-        assert!(error.contains("without source-egress consent"), "{error}");
-        assert!(error.contains("anthropic"), "{error}");
-        assert!(error.contains("DESLOP_SLIM_CONSENT=1"), "{error}");
-        assert!(!error.contains("ANTHROPIC_API_KEY"), "{error}");
+        let mut args = json!({
+            "mode": "auto",
+            "paths": [fixture.source],
+            "config": repo_relative_temp_path(&fixture._temp, "missing-deslop.toml")
+        });
+        for provider in ["openai", "anthropic"] {
+            if provider == "anthropic" {
+                args["provider"] = json!(provider);
+            }
+            let error = call_tool("fix", args.clone()).expect_err("consent error");
+            let error = error.to_string();
+            assert!(error.contains("without source-egress consent"), "{error}");
+            assert!(error.contains(provider), "{error}");
+            assert!(error.contains("DESLOP_SLIM_CONSENT=1"), "{error}");
+            assert!(!error.contains("API_KEY"), "{error}");
+        }
     }
 
     #[cfg(feature = "slim-llm")]

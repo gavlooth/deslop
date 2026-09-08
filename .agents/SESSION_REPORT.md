@@ -13574,8 +13574,8 @@ notes. No PDF, training corpus or model is redistributed in the repository.
 
 **Coverage/evidence:** Both previously unavailable requested primary texts are
 now reviewed: 36/50 original deliverables plus five verified late-review tasks.
-Web `read` delivered Sjøberg (artifact 668); browser publication links, curl,
-primary evidence. Updated two-source ledger validation passed (65 rules/16
+Web `read` delivered Sjøberg (artifact 668); browser links, curl, pdfinfo and local
+`read` delivered Buse. Corrected-ledger validation passed (65 rules/16
 recipes/281 metric fields/31 claims), both strict report-contract tests passed,
 and the rebuilt scratch install served metadata-only rules and the MCP request
 stream. Source hashes crosschecked with Python hashlib and sha256sum:
@@ -13605,10 +13605,52 @@ checkpoint's incorrect transcriptions. A smoke also used an unsupported
 `rules --explain` option and assumed the wrong authority wording; the established
 `rules --rule long-method --format json` command succeeded without code changes.
 
-**Next/blockers:** Refresh the archive with corrected provenance and revalidate
-the corrected embedded ledger projection.
-Independent corpus, consent, ethics, pilot variance and owner freeze remain
+**Final source checkpoint:** Corrected ledger validation and reinstall passed;
+installed rules/MCP smoke passed again. Updated
+`.agents/RESEARCH_IMPLEMENTATION_MANIFEST.json` pins corrected source commit
+`d73dcd71bb2ea5c15f2df0622e6ff27a2edfe53a`, both primary-source checksums,
+current file hashes and source-review scope. All PDF size/digest and archived-file
+digest assertions passed. Final archive SHA-256:
+`78b3e6a421cc25e45a6f5271482e0b9116ab72276bdbec21b9ee55526ebd5e8d`.
+
+**Remaining blockers:** Independent corpus, consent, ethics, pilot variance and owner freeze remain
 unavailable (14 original deliverables blocked). Prior engineering test evidence
 is unchanged; no new detector-quality or human-benefit claim. No push.
+
+Signature: Codex (gpt-6-astra).
+
+## 2026-09-08 — System installation with GPT-6 Astra default
+
+**Objective/workspace:** Compile and install deslop system-wide from
+`/home/heefoo/Documents/code/deslop`, with `gpt-6-astra` as its built-in model.
+
+**Implementation coverage:** Requested installation/default cutover is implemented;
+verification remains in progress. The separate research plan remains 36/50 complete
+with 14 external study deliverables blocked.
+
+**Changes:** A task agent changed the clean fallback pair to
+`provider = "openai"` and `model = "gpt-6-astra"` across Slim, CLI and both MCP
+schema surfaces. Explicit CLI/environment/project configuration still takes
+precedence. `docs/CONFIG.md` and `deslop.toml.example` now show the coherent
+OpenAI setup. No credentials or consent defaults changed.
+
+**Commands/results:** `cargo fmt --all`; focused CLI/MCP tests, including real-
+provider consent gating; release build with MCP; and focused clippy all passed.
+`sudo install -o root -g root -m 0755 target/release/deslop
+/usr/local/bin/deslop` passed. Source and installed binary SHA-256 both equal
+`4b27e6e5258247a6f8a7fe91e649857389a80d303ae325c739ce565b28114600`;
+installed file is root-owned mode 0755 and `--help` lists the MCP command.
+
+**Negative memory/current checkpoint:** The first model smoke called
+`deslop fix .`, but `fix` takes paths through its option contract rather than
+a positional argument; clap rejected `.` before behavior ran. This is smoke
+syntax error, not an implementation failure. Re-run with supported arguments,
+then inspect installed MCP `tools/list` for provider default. Do not claim final
+model-default verification until those checks pass.
+
+**Next/blockers:** Exercise `/usr/local/bin/deslop fix --mock ...` with
+`DESLOP_SLIM_MODEL` unset, verify report model `gpt-6-astra`, verify installed
+MCP provider default `openai`, and record final evidence. System installation
+does not resolve the independent corpus/human-study blockers. No push.
 
 Signature: Codex (gpt-6-astra).

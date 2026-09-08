@@ -25,7 +25,7 @@ use deslop_verify::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
+pub const DEFAULT_MODEL: &str = "gpt-6-astra";
 pub const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com/v1/messages";
 pub const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 

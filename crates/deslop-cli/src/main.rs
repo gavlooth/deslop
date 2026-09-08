@@ -1918,7 +1918,7 @@ fn resolve_scan_fail_on(cli: Option<SeverityArg>, config: &DeslopConfig) -> Opti
 
 fn resolve_slim_provider(cli: Option<SlimProvider>, config: &DeslopConfig) -> SlimProvider {
     cli.or_else(|| config.slim.as_ref().and_then(|slim| slim.provider))
-        .unwrap_or(SlimProvider::Anthropic)
+        .unwrap_or(SlimProvider::Openai)
 }
 
 fn resolve_slim_base_url(cli: Option<String>, config: &DeslopConfig) -> Option<String> {
@@ -2554,14 +2554,28 @@ mod tests {
     }
 
     #[test]
-    fn slim_model_precedence_is_cli_env_config_default() {
+    fn slim_precedence_is_cli_env_config_default() {
         let config: DeslopConfig = toml::from_str(
             r#"
             [slim]
+            provider = "anthropic"
             model = "config-model"
             "#,
         )
         .expect("parse config");
+
+        assert_eq!(
+            resolve_slim_provider(Some(SlimProvider::Openai), &config),
+            SlimProvider::Openai
+        );
+        assert_eq!(
+            resolve_slim_provider(None, &config),
+            SlimProvider::Anthropic
+        );
+        assert_eq!(
+            resolve_slim_provider(None, &DeslopConfig::default()),
+            SlimProvider::Openai
+        );
 
         assert_eq!(
             resolve_slim_model(
@@ -2578,7 +2592,7 @@ mod tests {
         assert_eq!(resolve_slim_model(None, None, &config), "config-model");
         assert_eq!(
             resolve_slim_model(None, None, &DeslopConfig::default()),
-            DEFAULT_MODEL
+            "gpt-6-astra"
         );
     }
 

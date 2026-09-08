@@ -43,14 +43,16 @@ Feeds `deslop fix`. `coverage` uses the same parser as the CLI:
 
 ```toml
 [slim]
-provider = "anthropic"         # anthropic | openai
-model = "claude-sonnet-4-6"
+provider = "openai"            # anthropic | openai
+model = "gpt-6-astra"
 base_url = "https://api.openai.com/v1"
 egress_consent = false
 ```
 
 Feeds the bundled `deslop fix` LLM consumer. `DESLOP_SLIM_MODEL` overrides the config
 model when `--model` is not supplied. Provider API keys stay in environment variables.
+The built-in provider and model are `openai` and `gpt-6-astra`. OpenAI requests use
+`https://api.openai.com/v1` unless `base_url` is explicitly overridden.
 
 Real-provider `deslop fix` calls send selected code regions to the configured provider, even
 in dry-run. Consent is required through one of:

@@ -12,8 +12,8 @@
 # allow_unverified = false
 
 [slim]
-# provider = "anthropic" # anthropic | openai
-# model = "claude-sonnet-4-6"
+# provider = "openai" # anthropic | openai
+# model = "gpt-6-astra"
 # base_url = "https://api.openai.com/v1" # used by provider = "openai"
 # egress_consent = false # true permits real-provider source egress without an interactive prompt
 

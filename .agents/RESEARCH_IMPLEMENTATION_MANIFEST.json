@@ -1,14 +1,16 @@
 {
   "schema": "deslop.research-implementation-checkpoint/1",
   "date": "2026-09-08",
-  "source_commit": "3ab7d677d4b211f362e9c95709e33f7e899a4f35",
+  "source_commit": "d73dcd71bb2ea5c15f2df0622e6ff27a2edfe53a",
   "implementation_coverage": {
     "verified_engineering_items": 35,
     "actionable_engineering_items": 35,
     "total_plan_items": 50,
-    "externally_blocked_items": 15,
+    "externally_blocked_items": 14,
     "independent_validation_complete": false,
-    "late_review_items_verified": 5
+    "late_review_items_verified": 5,
+    "verified_plan_items": 36,
+    "source_review_items_verified": 1
   },
   "files_sha256": {
     "Cargo.lock": "5d935bb8c5ddceccaff600bbe0e943463fe744bbfa8d896ebee4461a6da53d69",
@@ -18,7 +20,7 @@
     "crates/deslop-eval/evaluation/m8/corpus.json": "80bb9986b3642c2f2471b0c3100bb60f2c37d10cb055e4b900c0db35ef7f55c8",
     "crates/deslop-eval/evaluation/m8/dataset_registry.json": "ec094ba42be05cd26eb1232e6b3744d5a52cb2c635349128a26ef87224e52585",
     "crates/deslop-eval/evaluation/m8/evaluation_report.json": "8c819cbb62d28793796bb7de06f607e25c863330b86c0db1c2a6c9b33cbd7a89",
-    "crates/deslop-eval/evaluation/research/registry.json": "a8583276c7c3d1514f4258f5230f4f6b7e637dc4df2a94e977aea4239d951a49",
+    "crates/deslop-eval/evaluation/research/registry.json": "7947ac928dd46603c5bb2d625caa72080a37b333ad06af028743bf8e351fa1aa",
     "crates/deslop-eval/src/research.rs": "03175c1ddfe4feecc6813d4ef12433c6ec0a04ca4e0687905d5696658975fb72",
     "crates/deslop-eval/tests/p6_trajectory.rs": "d2bb642a41be36e1e32ce0f3e486bba23de5617141d57b1cac1c3f8a31ba01d9",
     "crates/deslop-protocol/src/revision_cleanup.rs": "8455c594b1ab49fe242b8a2937743b44a4cc100ede45e1179b709e82afbee671",
@@ -26,9 +28,9 @@
     "crates/deslop-slim/src/lib.rs": "64f1dd8bfdba5e03d2e0a251642bd6175f10109f507d6ba1fab2a377020081ef",
     "crates/deslop-verify/src/authority.rs": "512ce79d953a09f644f42d48946a6a4b108bcb03817cbfebdb760c1d54ff5b66",
     "crates/deslop-verify/src/runtime.rs": "14a2c98e23de828b3b508e7882739bab927b46966201139287139753c2dc6bd0",
-    "docs/RESEARCH.md": "ae59f1f2a550d1f91f0514a48e6402986d9d15c3b394a7fe139f8b34ebb538b5",
-    "docs/RESEARCH_PLAN.md": "c6ee2b5f289bdda62563d2f19b2dcb94715672cd2e31f7679a07558064717c49",
-    "docs/RESEARCH_PROTOCOL.md": "e40bd99134e8bdd945a5955c53b947bb5222104fdc8396e957436fd7d118de32",
+    "docs/RESEARCH.md": "a8325e95b63b8615a157877ecd50dfcd26fdfa3dc4d2b552003fa9c661d3e320",
+    "docs/RESEARCH_PLAN.md": "6ba64ba722aa5aa8910210a4dbedce3b06544d6f67e5a8be70a7fec5ebad05be",
+    "docs/RESEARCH_PROTOCOL.md": "0dbea2d8e2f740d23ccdd1f7c4aa4dc50902e25dd3f56781ea7ce2bdffd215a3",
     "docs/adr/0009-verification-authority.md": "33c6728e752d93979a4f7272d78f4d089f31b143f6e4602f7c94a9ee2cd7bbe8"
   },
   "toolchains": {
@@ -1211,12 +1213,65 @@
   "randomness": "No randomized study or model invocation in these final engineering gates; frozen corpus seeds remain in its pinned artifacts.",
   "external_service_limits": "No claim of reproducing agent/model behavior; public-export adapter source pinned to OpenCode dff8fbc149fb7492e4f07b713ac31ea70d9a541c. Scratch absolute paths must be rematerialized and proposals regenerated, not reused as authority.",
   "blocked": [
-    "Authorized Sjoberg/Buse full texts",
     "Independent licensed corpus and annotations",
     "Pilot variance and owner-approved preregistration freeze",
     "Consented participants, ethics approval and held-out maintenance tasks",
     "Independent snapshot/revision/trajectory benefit comparisons"
   ],
   "signature": "Codex (gpt-6-astra)",
-  "supersedes_source_commit": "37092abebe8646e0ee7158d0f74578458580776b"
+  "supersedes_source_commit": "37092abebe8646e0ee7158d0f74578458580776b",
+  "engineering_source_commit": "3ab7d677d4b211f362e9c95709e33f7e899a4f35",
+  "source_review": {
+    "date": "2026-09-08",
+    "sources": {
+      "sjoberg-2013-maintenance": {
+        "id": "sjoberg-2013-maintenance",
+        "citation": "Dag I.K. Sjoberg, Aiko Yamashita, Bente C.D. Anda, et al.. Quantifying the Effect of Code Smells on Maintenance Effort (IEEE Transactions on Software Engineering, vol 39 no 8, 1144-1156, 2013)",
+        "identifier": "DOI 10.1109/TSE.2012.89",
+        "identifier_kind": "doi",
+        "identifier_version": "n/a",
+        "publication_status": "peer-reviewed journal",
+        "peer_reviewed": true,
+        "dataset_artifact_revision": "Author-hosted preprint accessed 2026-09-08; PDF SHA-256 bce67dea23fb44051c18a4ace609ae09229664e7a40ff075e62280d5ba29b66c (866532 bytes). No study dataset imported. Journal DOI/version retained separately.",
+        "dataset_artifact_license": "Author-hosted reading copy; IEEE copyright notice. No dataset or redistribution license inferred.",
+        "studied_population": "Six professional developers selected from a 65-person pool; three adaptive/perfective maintenance tasks on four independently implemented, functionally equivalent Java web systems. Eleven completed developer-system combinations; 298 distinct modified Java files.",
+        "comparison_baseline": "Nested file-level log-linear models: developer/system/round; add 12 tool-defined smells; add file size; add revisions as a quality proxy. No randomized cleaned-versus-original intervention.",
+        "relevant_sections": "Full author manuscript pp. 1-15: sections 1-7, Tables 1-9 and appendix. Model 3 adjusted R2=0.58 with or without smell predictors; section 5.1 explicitly distinguishes God Class/Method from unmeasured Large Class/Long Method.",
+        "threats": "Small selected professional sample; four small Java web systems; one unfinished developer-system round excluded; tool-specific smell definitions; file-level effort can miss cross-file/method-level effects; first major maintenance may miss long-term effects. Revisions are a quality proxy, not direct defects. No universal harmlessness or causal benefit from reducing size follows.",
+        "access": "fulltext",
+        "url": "https://www.mn.uio.no/ifi/personer/vit/dagsj/sjoberg_etal_code-smells.pdf"
+      },
+      "buse-2010-readability": {
+        "id": "buse-2010-readability",
+        "citation": "Raymond P. L. Buse, Westley R. Weimer. Learning a Metric for Code Readability (IEEE Transactions on Software Engineering, vol 36 no 4, 546-558, 2010)",
+        "identifier": "DOI 10.1109/TSE.2009.70",
+        "identifier_kind": "doi",
+        "identifier_version": "n/a",
+        "publication_status": "peer-reviewed journal",
+        "peer_reviewed": true,
+        "dataset_artifact_revision": "Author-linked 14-page TSE preprint accessed 2026-09-08; PDF SHA-256 7eb4313d2a3d2f090de5eab362970b9ac69b7da205b8dac32f7d299a6644fac9 (1635323 bytes). No training data or model imported. Reader TLS validation failed; browser confirmed author link and curl --insecure retrieved it. This identifies the reading copy, not publisher byte identity.",
+        "dataset_artifact_license": "Author-linked reading copy; no dataset/model redistribution license inferred.",
+        "studied_population": "120 University of Virginia CS students (17 first-year, 63 second-year, 30 third/fourth-year, 10 graduate) judged the same 100 short Java snippets from five projects; 12000 rating opportunities, 15 skipped. External correlations on 15 Java projects; 12 had sufficient version-control history.",
+        "comparison_baseline": "Random-label classifiers and annotator-versus-average agreement; repeated 10-fold snippet cross-validation (10 repetitions). External correlations with FindBugs, version changes, bug-mentioning commits, maturity and cyclomatic complexity, not randomized readability improvements.",
+        "relevant_sections": "Full 14-page preprint sections 1-9, Figures 1-15 and references. Sections 2-4: survey, feature extraction, threshold 3.14, repeated cross-validation; sections 5-7: external correlations, descriptive-not-prescriptive warning and validity limits.",
+        "threats": "Single-institution mostly undergraduate Java judgment sample; local snippets deliberately omit wider context; same snippet order, unguided subjective scoring, and source-project overlap do not establish project-held-out transfer. Bug mentions/FindBugs/churn are proxies. Section 6 explicitly rejects treating descriptive feature associations as prescriptive edits; not a Rust/Python or maintenance-benefit validation.",
+        "access": "fulltext",
+        "url": "https://web.eecs.umich.edu/~weimerw/p/weimer-tse2010-readability-preprint.pdf"
+      }
+    },
+    "scope": "Both requested primary-text blockers resolved; not dataset import or independent deslop validation. Paper plots not independently digitized.",
+    "validation": {
+      "registry": "65 rules, 16 recipes, 281 metric fields, 31 claims",
+      "report_contract_tests_passed": 2,
+      "installed_rules_authority": "metadata-only; citations and evaluation artifacts grant no source proof or write authority",
+      "installed_mcp_ids": [
+        null,
+        null,
+        1,
+        2,
+        3,
+        4
+      ]
+    }
+  }
 }
