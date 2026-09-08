@@ -1802,6 +1802,50 @@
         "claim health, readability, or refactor necessity",
         "read a null change dispersion as zero change"
       ]
+    },
+    {
+      "claim_id": "fac:quality-claim:p1-pilot-evidence",
+      "kind": "quality-claim",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "The P1 pilot facility provides a strict, read-only, license- and integrity-gated import/evaluation path for case evidence; it reports bounded observations and detector predictions without treating supplier outcomes, synthetic rows, or unavailable analyses as independent truth.",
+      "studied_population": "fictional local engineering fixtures only; no human participants, external study corpus, or population claim",
+      "construct": "bounded pilot evidence import and evaluation policy",
+      "unit": "human-maintenance-task",
+      "facility_ids": [
+        "claim:p1-pilot-evidence"
+      ],
+      "implementation_symbols": [
+        "deslop_eval::pilot::import_bundle",
+        "deslop_eval::pilot::evaluate_dir",
+        "deslop_eval::pilot::analyzer_config_pin",
+        "crates/deslop-eval/src/bin/pilot_eval.rs",
+        "crates/deslop-eval/tests/p1_pilot.rs",
+        "docs/RESEARCH_PROTOCOL.md:P1 pilot rubric and machine contract"
+      ],
+      "estimator_threshold_origin": "policy: P1-pilot/1 draft; deterministic case identity, strict schema/license/integrity/leakage gates, within-file analysis, and unweighted descriptive rates; no scientific threshold or population estimator",
+      "counterexamples": [
+        "sealed rows are excluded before analysis and denominators",
+        "unsupported Rust/Python branch simplification is retained but never scored as a clean negative",
+        "synthetic, unresolved, imported, and unavailable rows do not provide independent-truth scores",
+        "supplier outcomes and declared checks are retained reporting-only and never gate static detection"
+      ],
+      "evaluation_artifacts": [
+        "crates/deslop-eval/tests/p1_pilot.rs",
+        "/tmp/deslop-p1-smoke.log"
+      ],
+      "permitted": [
+        "run deterministic read-only engineering checks on licensed, integrity-validated bundles",
+        "report per-case predictions and stratified descriptive evidence within the declared scope"
+      ],
+      "prohibited": [
+        "claim independently validated detector quality, human benefit, prevalence, deployment precision, or population generalization",
+        "treat supplier checks as trusted receipts or use them to filter static analysis",
+        "authorize automatic cleanup or execute imported commands, network calls, or model calls"
+      ]
     }
   ]
 }

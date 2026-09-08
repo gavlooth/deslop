@@ -49,6 +49,9 @@ path = "src/bin/m10_release.rs"
 [[bin]]
 name = "research-registry"
 path = "src/bin/research_registry.rs"
+[[bin]]
+name = "pilot-eval"
+path = "src/bin/pilot_eval.rs"
 
 [dev-dependencies]
 deslop-parse.workspace = true

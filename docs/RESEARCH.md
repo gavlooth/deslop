@@ -1,15 +1,19 @@
-# Research ledger (P0)
+# Research ledger (P0 + P1 engineering)
 
-Status: P0 in progress. Maintained bibliography, operational definition, and
-construct pointer required by `docs/RESEARCH_PLAN.md` P0. Records what primary
-sources were actually read — not what the plan cites. No finding below is a
-validation claim for deslop's detectors.
+Status: P0 source review remains blocked on two unavailable full texts.
+The P1 read-only import/evaluation facility is implemented, but the
+confirmatory protocol is NOT frozen and no independent human-study data,
+licensed external import, validated detector result, or maintenance-benefit
+result exists. This ledger records what primary sources were actually read,
+the bounded engineering contract, and explicit blockers; it does not promote
+engineering fixtures or smoke output into empirical evidence.
 
 Canonical claim registry: `crates/deslop-eval/evaluation/research/registry.json`
 (`deslop.research-registry/1`). That registry is the machine-readable source
-for rule/metric/recipe claims, including every per-facility fidelity status.
-This ledger makes NO per-facility fidelity assertion; §4 is a construct-level
-pointer only. Generate the registry inventory with the offline binary:
+for rule/metric/recipe/quality-policy claims, including every per-facility
+fidelity status. This ledger makes NO per-facility fidelity assertion; §4 is
+the generated construct-to-facility inventory. Generate the registry inventory
+with the offline binary:
 
 ```sh
 cargo run -p deslop-eval --bin research-registry -- check   # or: ... -- claims
@@ -176,6 +180,33 @@ Claim units and the evidence each unit requires:
 M8 frozen numbers (unchanged): challenger accuracy 0.5700 (95% 0.5134–0.6248),
 ECE 0.0764; disposition `evidence_only`. See `docs/M8_MODEL_CARD.md`.
 
+## P1 engineering facility (not empirical evidence)
+
+The bounded read-only pilot facility is implemented in
+`crates/deslop-eval/src/pilot.rs` with the CLI
+`crates/deslop-eval/src/bin/pilot_eval.rs`. Strict versioned schemas,
+independent typed source/annotation license grants, retrieval and source
+integrity checks, full analyzer-config pins, deterministic full-length case
+IDs, source-range validation, duplicate-unit/leakage checks, derived
+annotation eligibility, and sealed-row exclusion are enforced before
+analysis. `evaluate_dir` revalidates imported records and runs only the
+within-file analyzer; no imported commands, network, or model calls occur.
+
+The report keeps raw analysis status, per-case predictions, supplier outcomes,
+and scoring denominators distinct. Strata are keyed by family, language,
+provenance, and unit kind. Unsupported Rust/Python branch simplification,
+missing project context, synthetic/unresolved rows, and sealed rows are
+reported as unavailable or unscored rather than clean negatives. Rates are
+unweighted sampled-case descriptive quantities with explicit denominators;
+zero-denominator precision/recall/rates are null. The only exercise data are
+fictional engineering fixtures and `/tmp/deslop-p1-smoke.log`; they establish
+execution behavior, not detector quality, independent validation, population
+precision, or human benefit.
+
+The registry records this bounded policy as
+`fac:quality-claim:p1-pilot-evidence` with fidelity `none`; it adds no
+scientific reference or validation claim.
+
 ## 4. Construct-to-facility table (GENERATED — do not hand-edit)
 
 Regenerate with:
@@ -216,6 +247,7 @@ Per-facility fidelity lives ONLY in the registry (`fidelity` field per
 | metric-features-axes | metric | none | metric:functions[].features.aggregation_policy, metric:functions[].features.axes.cohesion.unknowns[], metric:functions[].features.axes.entropy.measurements.ast_edge_entropy_normalized.estimator, metric:functions[].features.axes.entropy.measurements.ast_edge_entropy_normalized.sample_size, metric:functions[].features.axes.entropy.measurements.ast_edge_entropy_normalized.value, metric:functions[].features.axes.entropy.measurements.ast_kind_entropy_normalized.estimator, metric:functions[].features.axes.entropy.measurements.ast_kind_entropy_normalized.sample_size, metric:functions[].features.axes.entropy.measurements.ast_kind_entropy_normalized.value, metric:functions[].features.axes.entropy.measurements.byte_entropy_bits_per_byte.estimator, metric:functions[].features.axes.entropy.measurements.byte_entropy_bits_per_byte.sample_size, metric:functions[].features.axes.entropy.measurements.byte_entropy_bits_per_byte.value, metric:functions[].features.axes.entropy.measurements.token_entropy_normalized.estimator, metric:functions[].features.axes.entropy.measurements.token_entropy_normalized.sample_size, metric:functions[].features.axes.entropy.measurements.token_entropy_normalized.value, metric:functions[].features.axes.entropy.unknowns[], metric:functions[].features.axes.impact.unknowns[], metric:functions[].features.axes.lexical_visual.measurements.comment_to_code_ratio.estimator, metric:functions[].features.axes.lexical_visual.measurements.comment_to_code_ratio.sample_size, metric:functions[].features.axes.lexical_visual.measurements.comment_to_code_ratio.value, metric:functions[].features.axes.lexical_visual.measurements.halstead_volume.estimator, metric:functions[].features.axes.lexical_visual.measurements.halstead_volume.sample_size, metric:functions[].features.axes.lexical_visual.measurements.halstead_volume.value, metric:functions[].features.axes.lexical_visual.measurements.token_count.estimator, metric:functions[].features.axes.lexical_visual.measurements.token_count.sample_size, metric:functions[].features.axes.lexical_visual.measurements.token_count.value, metric:functions[].features.axes.lexical_visual.measurements.unique_token_ratio.estimator, metric:functions[].features.axes.lexical_visual.measurements.unique_token_ratio.sample_size, metric:functions[].features.axes.lexical_visual.measurements.unique_token_ratio.value, metric:functions[].features.axes.lexical_visual.measurements.vocabulary_size.estimator, metric:functions[].features.axes.lexical_visual.measurements.vocabulary_size.sample_size, metric:functions[].features.axes.lexical_visual.measurements.vocabulary_size.value, metric:functions[].features.axes.lexical_visual.unknowns[], metric:functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.estimator, metric:functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.sample_size, metric:functions[].features.axes.redundancy.measurements.anti_pattern_line_ratio.value, metric:functions[].features.axes.redundancy.measurements.clone_line_ratio.estimator, metric:functions[].features.axes.redundancy.measurements.clone_line_ratio.sample_size, metric:functions[].features.axes.redundancy.measurements.clone_line_ratio.value, metric:functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.estimator, metric:functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.sample_size, metric:functions[].features.axes.redundancy.measurements.dead_or_unused_line_ratio.value, metric:functions[].features.axes.redundancy.measurements.redundancy_union_ratio.estimator, metric:functions[].features.axes.redundancy.measurements.redundancy_union_ratio.sample_size, metric:functions[].features.axes.redundancy.measurements.redundancy_union_ratio.value, metric:functions[].features.axes.redundancy.unknowns[], metric:functions[].features.axes.safety.measurements.parse_complete.estimator, metric:functions[].features.axes.safety.measurements.parse_complete.sample_size, metric:functions[].features.axes.safety.measurements.parse_complete.value, metric:functions[].features.axes.safety.unknowns[], metric:functions[].features.axes.structural.measurements.cfg_components.estimator, metric:functions[].features.axes.structural.measurements.cfg_components.sample_size, metric:functions[].features.axes.structural.measurements.cfg_components.value, metric:functions[].features.axes.structural.measurements.cfg_edges.estimator, metric:functions[].features.axes.structural.measurements.cfg_edges.sample_size, metric:functions[].features.axes.structural.measurements.cfg_edges.value, metric:functions[].features.axes.structural.measurements.cfg_points.estimator, metric:functions[].features.axes.structural.measurements.cfg_points.sample_size, metric:functions[].features.axes.structural.measurements.cfg_points.value, metric:functions[].features.axes.structural.measurements.cognitive_complexity.estimator, metric:functions[].features.axes.structural.measurements.cognitive_complexity.sample_size, metric:functions[].features.axes.structural.measurements.cognitive_complexity.value, metric:functions[].features.axes.structural.measurements.complexity_mass.estimator, metric:functions[].features.axes.structural.measurements.complexity_mass.sample_size, metric:functions[].features.axes.structural.measurements.complexity_mass.value, metric:functions[].features.axes.structural.measurements.cyclomatic_complexity.estimator, metric:functions[].features.axes.structural.measurements.cyclomatic_complexity.sample_size, metric:functions[].features.axes.structural.measurements.cyclomatic_complexity.value, metric:functions[].features.axes.structural.measurements.max_nesting.estimator, metric:functions[].features.axes.structural.measurements.max_nesting.sample_size, metric:functions[].features.axes.structural.measurements.max_nesting.value, metric:functions[].features.axes.structural.measurements.nloc.estimator, metric:functions[].features.axes.structural.measurements.nloc.sample_size, metric:functions[].features.axes.structural.measurements.nloc.value, metric:functions[].features.axes.structural.measurements.structural_mass.estimator, metric:functions[].features.axes.structural.measurements.structural_mass.sample_size, metric:functions[].features.axes.structural.measurements.structural_mass.value, metric:functions[].features.axes.structural.unknowns[], metric:functions[].features.axes.surprisal.measurements.max_bits.estimator, metric:functions[].features.axes.surprisal.measurements.max_bits.sample_size, metric:functions[].features.axes.surprisal.measurements.max_bits.value, metric:functions[].features.axes.surprisal.measurements.mean_bits.estimator, metric:functions[].features.axes.surprisal.measurements.mean_bits.sample_size, metric:functions[].features.axes.surprisal.measurements.mean_bits.value, metric:functions[].features.axes.surprisal.measurements.p90_bits.estimator, metric:functions[].features.axes.surprisal.measurements.p90_bits.sample_size, metric:functions[].features.axes.surprisal.measurements.p90_bits.value, metric:functions[].features.axes.surprisal.unknowns[], metric:functions[].features.exclusive, metric:functions[].features.id, metric:functions[].features.schema, metric:functions[].features.subject.kind, metric:functions[].features.subject.lang, metric:functions[].features.subject.name, metric:functions[].features.subject.span.end_byte, metric:functions[].features.subject.span.end_line, metric:functions[].features.subject.span.start_byte, metric:functions[].features.subject.span.start_line, metric:feature_schema.aggregation_policy, metric:feature_schema.axes[].aggregate, metric:feature_schema.axes[].meaning, metric:feature_schema.axes[].name, metric:feature_schema.id, metric:feature_schema.locality, metric:functions[].kind, metric:functions[].lang, metric:functions[].name, metric:functions[].path, metric:functions[].role |
 | metric-calibration | metric | none | metric:readability_calibration.capture_id, metric:readability_calibration.disposition, metric:readability_calibration.evidence, metric:readability_calibration.readability_label_permitted, metric:readability_calibration.schema, metric:readability_calibration.transparent_axes_preserved |
 | metric-report-envelope | metric | none | metric:schema, metric:status, metric:analyses[].analysis.diagnostics[], metric:analyses[].analysis.status, metric:analyses[].lang, metric:analyses[].path, metric:files[].behavioral_nloc, metric:files[].behavioral_regions, metric:files[].complexity_mass, metric:files[].complexity_mass_p90, metric:files[].contextual_surprisal_p90, metric:files[].heuristic_burden_max, metric:files[].heuristic_burden_p90, metric:files[].heuristic_burden_weighted_mean, metric:files[].lang, metric:files[].path, metric:files[].redundancy_ratio_p90, metric:files[].redundancy_union_ratio, metric:files[].structural_entropy_p90, metric:files[].structural_erosion, metric:files[].structural_mass, metric:files[].top_hotspot, metric:change_dispersion.authority, metric:change_dispersion.changed_lines, metric:change_dispersion.files[].added_lines, metric:change_dispersion.files[].binary, metric:change_dispersion.files[].changed_lines, metric:change_dispersion.files[].deleted_lines, metric:change_dispersion.files[].path, metric:change_dispersion.from, metric:change_dispersion.normalized_entropy, metric:change_dispersion.to, metric:change_dispersion, metric:analyses[], metric:functions[], metric:files[], metric:peer_groups[], metric:heuristic_outliers[], metric:hotspots[], metric:feature_schema.axes[], metric:change_dispersion.files[] |
+| fac:quality-claim:p1-pilot-evidence | quality-claim | none | claim:p1-pilot-evidence |
 
 ## 5. Access blockers and next attempts (P0 source review NOT complete)
 

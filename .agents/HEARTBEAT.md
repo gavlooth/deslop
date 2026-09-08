@@ -1,6 +1,6 @@
 # Heartbeat
 
-Last update: 2026-09-08T02:02:50Z
+Last update: 2026-09-08T17:05:21Z (observed from `date -u +%Y-%m-%dT%H:%M:%SZ`)
 
 Purpose:
 - This file is the stale-pane heartbeat for the long-running Codex loop in tmux pane `0:1`.
@@ -9,4 +9,5 @@ Purpose:
 
 Iteration rule:
 - Finish each successful round with `jj describe -m "<round summary>"`.
-Checkpoint: P0 registry + bounded evidence docs complete (65/16/281/27 check green, TABLE-MATCHES-RENDERER); P0 source gate blocked (2 full texts unavailable); McCabe citation metadata corrected (durable DOI URL, no scratch-path artifact revision) 2026-09-08T02:02:50Z; session report written 2026-09-08T01:47:33Z.
+- Update the timestamp only from the observed UTC command above; never use a hardcoded or future time.
+- Checkpoint: P1 read-only pilot import/evaluation engineering complete; final CLI proof and workspace gates are green; P0 source gate remains blocked (Sjoberg+Buse full texts unavailable); external pilot, protocol freeze, independent validation, population and human-benefit claims blocked.

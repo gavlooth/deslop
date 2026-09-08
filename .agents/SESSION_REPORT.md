@@ -13359,3 +13359,59 @@ Heartbeat timestamp updated to actual observed 2026-09-08T02:02:50Z.
 **Dependencies/restart requirements:** none beyond rebuilt dev binaries for the new `research-registry` invocations above. No push performed.
 
 **Signature:** Codex (gpt-6-astra), 2026-09-08.
+
+## 2026-09-08 — P1 read-only pilot evidence import/evaluation final record
+
+**Objective/current workspace:** Final P1 engineering proof was completed against the
+savedtree at the observed UTC checkpoint `2026-09-08T17:05:21Z`. This records the
+read-only pilot evidence import/evaluation contract only, not the whole P1 study or
+plan. Implementation coverage is 100% of that engineering contract, based on the
+actual CLI proof and 23 P1 tests. No external datasets were imported and no actual
+human validation was performed.
+
+**Changed files:** P1 source, tests, and documentation were already complete in the
+current working child; this recording additionally updates `.agents/HEARTBEAT.md`,
+appends this report entry, and writes `/tmp/deslop-p1-record-proof.log`. No
+production/test/Cargo implementation edits were made in this session.
+
+**Contract coverage:** Four families are represented: Rust, Python, metadata, and
+branch simplification (Rust/Python unsupported because no Clojure emitter exists
+here). Matching is within-file only, with no threshold/FN filter. Source and
+annotation licenses are separate typed records; manifests carry full config pins,
+64-hex IDs, and context pins with strict validation. Source/derived revalidation,
+per-rater observations, cleanup and adjudication, source-range prediction,
+synthetic-static-but-not-truth handling, sealed-case exclusion, unit kind,
+provenance strata, correct counters, unweighted rates, null handling, no confidence
+intervals, and no authority escalation are all represented. Fixtures are fictional
+contract fixtures, not an empirical study.
+
+**Exact final CLI proof:** `cargo run -q -p deslop-eval --bin pilot-eval -- eval
+--dir /tmp/deslop-p1-final-b --protocol-pin p1-smoke-v1` → exit 0; repeated for
+`/tmp/deslop-p1-final-a` → exit 0; `cmp -s
+/tmp/deslop-p1-final-a/report.json /tmp/deslop-p1-final-b/report.json` → exit 0.
+Both reports said `4 cases, 1 sealed excluded`. Full captured output is
+`/tmp/deslop-p1-record-proof.log`.
+
+**Workspace evidence (all previously completed, logs retained):**
+`cargo fmt --all -- --check` → exit 0 (`/tmp/deslop-p1-final-fmt.log`);
+`cargo build --workspace` → exit 0 (`/tmp/deslop-p1-final-build-workspace.log`);
+`cargo build -p deslop-slim --no-default-features` → exit 0
+(`/tmp/deslop-p1-final-build-slim.log`); `cargo test --workspace` → exit 0,
+including 23 P1 tests (`/tmp/deslop-p1-final-test-workspace.log`);
+`cargo clippy --workspace --all-targets -- -D warnings` → exit 0
+(`/tmp/deslop-p1-final-clippy.log`). Prior smoke proof recorded four cases
+(one sealed, three unsealed; predictions T,T,F), challenge TP1/TN1p/rate .5 and
+coverage 1, and synthetic prediction true with NULL truth.
+
+**Negative approach:** Existing 23 tests plus prior CLI bad-checksum and annotation-
+grant proofs passed. The prior CLI typo used `pilot_eval` and exited 101; corrected
+`pilot-eval` import exited 0. Prior directory diff and eval proof exited 0, with
+`NEGATIVE_SCOPE_PROOF_OK`; no fabricated new negative result is claimed.
+
+**Checkpoint/next:** Best checkpoint is P1 engineering complete; next is P2.
+P1 curation prerequisites remain independent humans, licensed corpus, consent,
+variance/power, and owner freeze. P0 library/full-text blocks remain (Sjoberg and
+Buse unavailable). No install/restart was needed beyond the new dev binary; no push
+was performed.
+
+**Signature:** Codex (gpt-6-astra), 2026-09-08.

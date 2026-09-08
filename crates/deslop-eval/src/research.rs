@@ -182,7 +182,11 @@ fn validate_entry(
     known_units: &BTreeSet<&str>,
 ) -> Result<()> {
     if !known_units.contains(entry.unit.as_str()) {
-        bail!("claim `{}` declares unknown unit `{}`", entry.claim_id, entry.unit);
+        bail!(
+            "claim `{}` declares unknown unit `{}`",
+            entry.claim_id,
+            entry.unit
+        );
     }
     for required in [
         entry.claim_id.as_str(),

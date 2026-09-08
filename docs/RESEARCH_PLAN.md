@@ -1,7 +1,8 @@
 # Research-grounded deslop: implementation and validation plan
 
 Date: 2026-09-07
-Status: Proposed implementation plan; not an implementation or an evaluation result.
+Status: Proposed implementation and validation plan; P1 read-only engineering
+facility checkpointed below; this is not an evaluation result.
 
 ## 1. Objective and boundaries
 
@@ -100,9 +101,11 @@ Minimum registry fields: stable claim ID; research references; exact supported c
 
 > **P0 execution checkpoint (2026-09-08): engineering DONE, source gate BLOCKED.**
 > Registry `crates/deslop-eval/evaluation/research/registry.json`
-> (`deslop.research-registry/1` v1.0.0) with executable check
-> (`cargo run -p deslop-eval --bin research-registry -- check` →
-> `research registry OK: 65 rules, 16 recipes, 281 metric fields, 27 claims`).
+> (`deslop.research-registry/1` v1.0.0); the P0 check command was
+> `cargo run -p deslop-eval --bin research-registry -- check`.
+> At that checkpoint the result was `research registry OK: 65 rules, 16
+> recipes, 281 metric fields, 27 claims`; the later P1 policy entry raises the
+> current registry count to 28 claims.
 > Zero `reproduced` methods; M8/M11 evidence-only holds. Source review NOT
 > complete: sjoberg-2013-maintenance and buse-2010-readability full texts
 > unavailable after documented attempts (see `docs/RESEARCH.md` §5). This
@@ -143,6 +146,25 @@ Minimum registry fields: stable claim ID; research references; exact supported c
 ### Acceptance
 
 A deterministic data import and evaluation command reproduces the same case IDs, split memberships, and metrics. License and leakage checks pass. Labels are not detector outputs recycled as ground truth. The protocol and confirmatory gates are frozen before test results are inspected. If independent annotators or sufficient data are unavailable, read-only engineering evaluation can finish, but independent validation and human-benefit claims remain blocked.
+
+> **P1 engineering checkpoint (2026-09-08): read-only facility implemented; external study blocked.**
+> `deslop-eval` now has strict versioned pilot import/evaluation schemas,
+> typed independent source/annotation license gates, full analyzer-config and
+> source integrity pins, deterministic full-length case IDs, derived
+> annotation eligibility, leakage/duplicate-unit validation, sealed-row
+> exclusion before analysis, and within-file prediction/reporting with
+> disjoint scoring and coverage counters. Public entry points are
+> `import_bundle` and `evaluate_dir`; the in-memory scorer remains private.
+> The CLI is flag-checked and performs no imported command, network, or model
+> execution. The implementation is covered by fictional engineering fixtures
+> and the recorded smoke evidence `/tmp/deslop-p1-smoke.log`; this is not
+> empirical data or independent validation.
+>
+> The P1 protocol is still draft and not frozen. No licensed 12-family
+> natural/challenge corpus, independent human roster, participant consent,
+> ethics approval, or population inference is available. P1 engineering can
+> finish after the final test, CLI, and registry gates; independent validation,
+> human-benefit claims, and automatic cleanup authorization remain blocked.
 
 ## P2. Establish trustworthy execution and shared evidence contracts
 
