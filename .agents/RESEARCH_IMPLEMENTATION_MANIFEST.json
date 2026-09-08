@@ -1,25 +1,35 @@
 {
   "schema": "deslop.research-implementation-checkpoint/1",
   "date": "2026-09-08",
-  "source_commit": "37092abebe8646e0ee7158d0f74578458580776b",
+  "source_commit": "3ab7d677d4b211f362e9c95709e33f7e899a4f35",
   "implementation_coverage": {
     "verified_engineering_items": 35,
     "actionable_engineering_items": 35,
     "total_plan_items": 50,
     "externally_blocked_items": 15,
-    "independent_validation_complete": false
+    "independent_validation_complete": false,
+    "late_review_items_verified": 5
   },
   "files_sha256": {
-    "Cargo.lock": "0f513f1a9b5718b9d6eb909f3a246a430378be807fb3d48327a1e7e7d2afeb6d",
+    "Cargo.lock": "5d935bb8c5ddceccaff600bbe0e943463fe744bbfa8d896ebee4461a6da53d69",
     "Cargo.toml": "f4f21245c2202e1d45bf5a90fc7fbfcd89fe1e9c91f5121bacc5638e358e1311",
-    "crates/deslop-eval/evaluation/research/registry.json": "a8583276c7c3d1514f4258f5230f4f6b7e637dc4df2a94e977aea4239d951a49",
-    "crates/deslop-eval/evaluation/m8/dataset_registry.json": "ec094ba42be05cd26eb1232e6b3744d5a52cb2c635349128a26ef87224e52585",
+    "crates/deslop-analyzer/src/revision_cleanup.rs": "2a219edbc2452355274dd1659481258bf51e16829eb4d833e1ce911003d7cc3b",
+    "crates/deslop-core/src/research.rs": "9d4f06f7bee3ec44a75a582ef60edc04c4743028ee801a93ed85e7a6eead93d9",
     "crates/deslop-eval/evaluation/m8/corpus.json": "80bb9986b3642c2f2471b0c3100bb60f2c37d10cb055e4b900c0db35ef7f55c8",
+    "crates/deslop-eval/evaluation/m8/dataset_registry.json": "ec094ba42be05cd26eb1232e6b3744d5a52cb2c635349128a26ef87224e52585",
     "crates/deslop-eval/evaluation/m8/evaluation_report.json": "8c819cbb62d28793796bb7de06f607e25c863330b86c0db1c2a6c9b33cbd7a89",
-    "docs/RESEARCH_PLAN.md": "c6ee2b5f289bdda62563d2f19b2dcb94715672cd2e31f7679a07558064717c49",
-    "docs/RESEARCH_PROTOCOL.md": "fe9ac8800a7f03e5f363510171735c0e4adcc49e91f101d520442db3f06010c7",
+    "crates/deslop-eval/evaluation/research/registry.json": "a8583276c7c3d1514f4258f5230f4f6b7e637dc4df2a94e977aea4239d951a49",
+    "crates/deslop-eval/src/research.rs": "03175c1ddfe4feecc6813d4ef12433c6ec0a04ca4e0687905d5696658975fb72",
+    "crates/deslop-eval/tests/p6_trajectory.rs": "d2bb642a41be36e1e32ce0f3e486bba23de5617141d57b1cac1c3f8a31ba01d9",
+    "crates/deslop-protocol/src/revision_cleanup.rs": "8455c594b1ab49fe242b8a2937743b44a4cc100ede45e1179b709e82afbee671",
+    "crates/deslop-report/src/research.rs": "d8e7f6c7c0eead0ba93b2edd53e57234149d1833f8718c9d0c59f18c3882145c",
+    "crates/deslop-slim/src/lib.rs": "64f1dd8bfdba5e03d2e0a251642bd6175f10109f507d6ba1fab2a377020081ef",
     "crates/deslop-verify/src/authority.rs": "512ce79d953a09f644f42d48946a6a4b108bcb03817cbfebdb760c1d54ff5b66",
-    "crates/deslop-verify/src/runtime.rs": "aa33cb13de8e4e610c85574117b22d1e28f644b7e8b32c7c6c6493b05aae41b5"
+    "crates/deslop-verify/src/runtime.rs": "14a2c98e23de828b3b508e7882739bab927b46966201139287139753c2dc6bd0",
+    "docs/RESEARCH.md": "ae59f1f2a550d1f91f0514a48e6402986d9d15c3b394a7fe139f8b34ebb538b5",
+    "docs/RESEARCH_PLAN.md": "c6ee2b5f289bdda62563d2f19b2dcb94715672cd2e31f7679a07558064717c49",
+    "docs/RESEARCH_PROTOCOL.md": "e40bd99134e8bdd945a5955c53b947bb5222104fdc8396e957436fd7d118de32",
+    "docs/adr/0009-verification-authority.md": "33c6728e752d93979a4f7272d78f4d089f31b143f6e4602f7c94a9ee2cd7bbe8"
   },
   "toolchains": {
     "cargo": "1.89.0 (c24e10642 2025-06-23)",
@@ -42,7 +52,11 @@
     "network": "denied",
     "host_home_mounted": false,
     "unavailable_backend": "fail-closed",
-    "disk_limit_caveat": "Per-file kernel limit and inventory watchdog; no aggregate hard disk quota"
+    "disk_limit_caveat": "Per-file kernel limit and inventory watchdog; no aggregate hard disk quota",
+    "admission": "Read actual cgroup v2 memory.max, memory.swap.max, pids.max; require writable cgroup.kill before workload release",
+    "startup_status": "Bubblewrap --json-status-fd; workload file limit applied inside namespace",
+    "cleanup_timeout_millis": 2000,
+    "cleanup": "Kill entire owned cgroup subtree and check unpopulated on success, timeout, and errors; scope RuntimeMaxSec backstop"
   },
   "commands": [
     "cargo fmt --all -- --check",
@@ -51,10 +65,12 @@
     "cargo test --workspace --features deslop-cli/mcp --no-fail-fast",
     "cargo clippy --workspace --all-targets --features deslop-cli/mcp -- -D warnings",
     "cargo run -p deslop-eval --bin research-registry -- check crates/deslop-eval/src",
-    "cargo install --locked --path crates/deslop-cli --features mcp --debug --root /tmp/deslop-plan-install --force"
+    "cargo install --locked --path crates/deslop-cli --features mcp --debug --root /tmp/deslop-plan-install --force",
+    "cargo test -p deslop-verify runtime::tests -- --nocapture",
+    "cargo run -p deslop-eval --bin research-registry -- inventory"
   ],
   "results": {
-    "tests_passed": 876,
+    "tests_passed": 889,
     "tests_ignored": 3,
     "registry": {
       "rules": 65,
@@ -575,7 +591,7 @@
         "schema": "deslop.verify/1",
         "results": [
           {
-            "workorder_id": "wo3_8c3053a7721e839daecfa6b3b3e5a61d53e3d8df2fde15eaf7c7d122bc4ac590",
+            "workorder_id": "wo3_fe47ae8ff21c384173c9f1648b87e98a1093cb57db169061b919940807ff76b9",
             "path": "value.rs",
             "passed": true,
             "verdict": "coverage-unknown",
@@ -591,7 +607,15 @@
       ]
     },
     "installed_undo_stdout": "restored ./value.rs\n",
-    "installed_source_restored_exactly": true
+    "installed_source_restored_exactly": true,
+    "live_runtime_regressions": {
+      "passed": 7,
+      "unavailable_backend_skips": 0,
+      "evidence": "Actual kernel memory/pids admission and stopped descendant heartbeats after timeout/filesystem failure; no resource exhaustion stress test"
+    },
+    "installed_apply_mode": "Deliberately broad allow_non_removable override; not per-patch consent. Sandboxed test -f value.rs exercises runtime, not semantic preservation.",
+    "stale_archived_patch": "Rejected for proposal-context drift; current proposal regenerated before apply.",
+    "generated_inventory": "Regenerated and byte-matched docs/RESEARCH.md table: 31 claims"
   },
   "fictional_fixtures": {
     "scope": "Engineering smoke only; not independent corpus evidence",
@@ -604,12 +628,12 @@
     "apply_original": "fn value() -> i32 {\n    return 1;\n}\n",
     "apply_patch": {
       "schema": "deslop.patch/3",
-      "workorder_id": "wo3_8c3053a7721e839daecfa6b3b3e5a61d53e3d8df2fde15eaf7c7d122bc4ac590",
+      "workorder_id": "wo3_fe47ae8ff21c384173c9f1648b87e98a1093cb57db169061b919940807ff76b9",
       "revision_guard": "rg1_36_512d86c29e09f1637c3decc310e18adb743af2f9cc82a3184e9e80727bff7a17",
       "proposal_context": {
         "schema": "deslop.proposal-context/1",
         "analyzer_semantics": "deslop-analyzer/2",
-        "context_id": "pc1_459add27547e4a690811da5088bbb0827fd274404638d0db55b6e5698322d334",
+        "context_id": "pc1_1f75e5099271936014b7c7612079d4353b8eee978e53ac618924a3917ea9377b",
         "requested_scope": [
           {
             "path": "",
@@ -684,6 +708,15 @@
         "excluded_fingerprints": [],
         "sources": [
           {
+            "path": ".deslop/undo/tx1_53f228bd5c3d487f8766abe8defcabc70dc226c3e9c1d5da56448937b3652522/manifest.json",
+            "lang": "generic",
+            "revision_guard": "rg1_531_aca98d52f526d240f9052f382a81de544a7ef0289a8964274741e8ce973bfdf2",
+            "analysis": {
+              "status": "complete",
+              "diagnostics": []
+            }
+          },
+          {
             "path": "value.rs",
             "lang": "rust",
             "revision_guard": "rg1_36_512d86c29e09f1637c3decc310e18adb743af2f9cc82a3184e9e80727bff7a17",
@@ -697,7 +730,7 @@
         "workorder_set_digest": "dg1_abd18cb22d39a769b6c5bac734d19c846ba83c47df26b3bc4657eb231426281c"
       },
       "replacement": "fn value() -> i32 {\n    1\n}\n",
-      "by": "installed-smoke"
+      "by": "reviewed-installed-smoke"
     },
     "mcp_input": "[\n[]\n{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/call\", \"params\": {\"name\": \"missing\"}}\n{\"jsonrpc\": \"2.0\", \"method\": \"tools/list\"}\n{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"initialize\", \"params\": {}}\n{\"jsonrpc\": \"2.0\", \"id\": 3, \"method\": \"tools/call\", \"params\": {\"name\": \"rules\", \"arguments\": {\"rule\": \"long-method\"}}}\n{\"jsonrpc\": \"2.0\", \"id\": 4, \"method\": \"tools/call\", \"params\": {\"name\": \"revision_cleanup\", \"arguments\": {\"from\": \"/tmp/deslop-plan-smoke-8b1scoo8/base\", \"to\": \"/tmp/deslop-plan-smoke-8b1scoo8/target\", \"scope\": [\"src\"]}}}\n",
     "trajectory": {
@@ -1184,5 +1217,6 @@
     "Consented participants, ethics approval and held-out maintenance tasks",
     "Independent snapshot/revision/trajectory benefit comparisons"
   ],
-  "signature": "Codex (gpt-6-astra)"
+  "signature": "Codex (gpt-6-astra)",
+  "supersedes_source_commit": "37092abebe8646e0ee7158d0f74578458580776b"
 }

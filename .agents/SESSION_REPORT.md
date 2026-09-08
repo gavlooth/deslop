@@ -13502,8 +13502,12 @@ expected replacement using the deliberately broad override. Its verdict
 remained `coverage-unknown`, not behavioral proof. Installed `undo .` restored
 the original source bytes exactly. Temporary Rust smoke examples were removed;
 the meaningful P2/P6 regressions remain.
-The prior `.agents/RESEARCH_IMPLEMENTATION_MANIFEST.json` records the earlier
-source checkpoint; refresh it against this final review commit before delivery.
+`.agents/RESEARCH_IMPLEMENTATION_MANIFEST.json` now archives final source commit
+`3ab7d677d4b211f362e9c95709e33f7e899a4f35`, updated lockfile/source/input checksums,
+all five completed late-review items, actual runtime proof and fresh installed
+responses. Read-back verified every archived file checksum and exact restored
+fixture source. Final manifest SHA-256:
+`19f81075add7dfe546905552eae73a3805f0e40477dd01af6ec57095e67edec7`.
 An extra source-digest assertion incorrectly assumed SHA-256 for revision
 sources, whose implementation uses BLAKE3; it was not counted as product proof.
 
