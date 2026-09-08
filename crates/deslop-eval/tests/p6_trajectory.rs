@@ -37,6 +37,13 @@ fn public_export_replays_but_does_not_grant_write_authority() -> Result<()> {
     let candidates = generate_candidates(&trajectory, &MinimizationBudget::default())?;
     ensure!(candidates.len() == 1);
     fs::write(root.path().join("sample.rs"), verbose)?;
+    for metadata in [".git", ".jj", ".deslop", "target"] {
+        fs::create_dir(root.path().join(metadata))?;
+        fs::write(
+            root.path().join(metadata).join("metadata.bin"),
+            [0xff, 0x00],
+        )?;
+    }
     let proposals = propose_work_orders(root.path(), &[], Default::default())?;
     let order = proposals
         .work_orders
@@ -70,12 +77,15 @@ fn public_export_replays_but_does_not_grant_write_authority() -> Result<()> {
         .is_err()
     );
     ensure!(fs::read_to_string(root.path().join("sample.rs"))? == verbose);
-    // Explicit test-owner approval for this hand-checked fictional rewrite,
-    // not an authority inferred from imported observations or size reduction.
+    // Deliberately broad test-only override for non-rejected patches, not
+    // a per-patch consent receipt or authority granted by imported history.
     options.allow_non_removable = true;
     let result = verify_and_apply_candidate(&candidates[0], &[patch], &options, false)?;
     ensure!(result.applied.verified.failed_count() == 0 && result.applied.written.len() == 1);
     ensure!(fs::read_to_string(root.path().join("sample.rs"))? == clean);
     ensure!(result.candidate_hash == trajectory.base.identity.tree_hash);
+    for metadata in [".git", ".jj", ".deslop", "target"] {
+        ensure!(fs::read(root.path().join(metadata).join("metadata.bin"))? == [0xff, 0x00]);
+    }
     Ok(())
 }

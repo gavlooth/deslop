@@ -1438,14 +1438,9 @@ fn run_mutant_check_cmd_on_temp_copy(
     timeout: Duration,
     worker_id: usize,
 ) -> Result<MutantCheckOutcome> {
-    run_mutant_check_cmd_in_temp_project(
-        root,
-        source.lang,
-        command,
-        timeout,
-        worker_id,
-        |temp_root| write_mutated_source(root, temp_root, source, mutated_source),
-    )
+    run_mutant_check_cmd_in_temp_project(root, source, command, timeout, worker_id, |temp_root| {
+        write_mutated_source(root, temp_root, source, mutated_source)
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -3182,7 +3177,7 @@ fn run_check_cmd_in_temp_project(
 
 fn run_mutant_check_cmd_in_temp_project(
     root: &Path,
-    lang: Lang,
+    source: &SourceFile,
     command: &str,
     timeout: Duration,
     _worker_id: usize,
@@ -3190,65 +3185,113 @@ fn run_mutant_check_cmd_in_temp_project(
 ) -> Result<MutantCheckOutcome> {
     let temp = TempDir::new().context("failed to create mutation check tempdir")?;
     copy_project_for_check(root, temp.path())?;
-    setup(temp.path())?;
-    let mut policy = VerifierExecutionPolicy::hermetic_workspace();
-    policy.maximum_command_millis = timeout.as_millis().max(1) as u64;
-    policy.maximum_total_millis = policy.maximum_command_millis;
-    let started = std::time::Instant::now();
-    if lang == Lang::Rust {
-        // Preserve Cargo build flags, but never infer a compiler command from
-        // an arbitrary shell pipeline or a different test runner.
-        let words: Vec<_> = command.split_whitespace().collect();
-        if !words.starts_with(&["cargo", "test"])
-            || words.iter().any(|word| {
-                !word
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || b"-_=/.:,".contains(&byte))
-            })
-        {
-            bail!(
-                "Rust mutant validity requires a plain cargo test command; unsupported command has unknown viability"
-            );
-        }
-        let available =
-            crate::runtime::run_bounded_sandbox_command(temp.path(), "cargo --version", &policy)?;
-        if !available.0.success() {
-            bail!(
-                "Cargo toolchain is unavailable inside the approved sandbox; mutant viability is unknown"
-            );
-        }
-        let remaining = timeout.saturating_sub(started.elapsed());
+    let deadline = std::time::Instant::now() + timeout;
+    let run = |command: &str| {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         if remaining.is_zero() {
-            return Ok(MutantCheckOutcome::TimedOut);
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "mutation command deadline elapsed",
+            ));
         }
+        let mut policy = VerifierExecutionPolicy::hermetic_workspace();
         policy.maximum_command_millis = remaining.as_millis().max(1) as u64;
         policy.maximum_total_millis = policy.maximum_command_millis;
-        let build_args = words
-            .iter()
-            .position(|word| *word == "--")
-            .unwrap_or(words.len());
-        let validity_command = format!("{} --no-run", words[..build_args].join(" "));
-        let (status, _stdout, _stderr) =
-            crate::runtime::run_bounded_sandbox_command(temp.path(), &validity_command, &policy)
-                .with_context(|| "sandbox unavailable for Rust mutant validity check")?;
-        if !status.success() {
-            return Ok(MutantCheckOutcome::Unviable);
+        crate::runtime::run_bounded_sandbox_command(temp.path(), command, &policy)
+    };
+    let outcome = (|| -> Result<MutantCheckOutcome> {
+        let validity_command = if source.lang == Lang::Rust {
+            // Never infer compiler arguments from an arbitrary shell pipeline.
+            let words: Vec<_> = command.split_whitespace().collect();
+            if !words.starts_with(&["cargo", "test"])
+                || words.iter().any(|word| {
+                    word.starts_with("--message-format")
+                        || !word
+                            .bytes()
+                            .all(|byte| byte.is_ascii_alphanumeric() || b"-_=/.:,".contains(&byte))
+                })
+            {
+                bail!(
+                    "Rust mutant validity requires a plain cargo test command; unsupported command has unknown viability"
+                );
+            }
+            let build_args = words
+                .iter()
+                .position(|word| *word == "--")
+                .unwrap_or(words.len());
+            Some(format!(
+                "{} --no-run --message-format=json",
+                words[..build_args].join(" ")
+            ))
+        } else {
+            None
+        };
+        // A successful original check is positive evidence that this sandbox
+        // contains the runner, toolchain and dependencies. A broken baseline
+        // is unknown evidence, never a mutant kill or compiler-invalid mutant.
+        let baseline = run(command).context("sandbox unavailable for mutation baseline")?;
+        if !baseline.0.success() {
+            bail!(
+                "original mutation check failed; toolchain, dependencies or baseline behavior are unavailable"
+            );
         }
-    }
-    let remaining = timeout.saturating_sub(started.elapsed());
-    if remaining.is_zero() {
-        return Ok(MutantCheckOutcome::TimedOut);
-    }
-    policy.maximum_command_millis = remaining.as_millis().max(1) as u64;
-    policy.maximum_total_millis = policy.maximum_command_millis;
-    match crate::runtime::run_bounded_sandbox_command(temp.path(), command, &policy) {
-        Ok((status, _stdout, _stderr)) if status.success() => Ok(MutantCheckOutcome::Survived),
-        Ok((_status, _stdout, _stderr)) => Ok(MutantCheckOutcome::Killed),
-        Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {
+        setup(temp.path())?;
+        if let Some(validity_command) = validity_command {
+            let (status, stdout, _) = run(&validity_command)
+                .context("sandbox unavailable for Rust mutant validity check")?;
+            if !status.success() {
+                let relative = relative_to_root(root, &source.path)?;
+                if rust_build_rejects_mutated_source(&stdout, temp.path(), &relative) {
+                    return Ok(MutantCheckOutcome::Unviable);
+                }
+                bail!(
+                    "Rust mutant build failed without a compiler error in the mutated source; viability is unknown"
+                );
+            }
+        }
+        match run(command).context("sandbox unavailable for mutation check")? {
+            (status, _, _) if status.success() => Ok(MutantCheckOutcome::Survived),
+            // Cargo's documented test failure status follows a successful
+            // baseline and mutant compilation; launcher failures stay unknown.
+            (status, _, _) if source.lang == Lang::Rust && status.code() == Some(101) => {
+                Ok(MutantCheckOutcome::Killed)
+            }
+            (status, _, _) if matches!(status.code(), Some(126 | 127) | None) => {
+                bail!("mutation runner did not complete; behavioral outcome is unknown")
+            }
+            (_, _, _) if source.lang != Lang::Rust => Ok(MutantCheckOutcome::Killed),
+            _ => bail!("Cargo did not report a test outcome; behavioral outcome is unknown"),
+        }
+    })();
+    match outcome {
+        Err(error)
+            if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::TimedOut) =>
+        {
             Ok(MutantCheckOutcome::TimedOut)
         }
-        Err(error) => Err(error).context("sandbox unavailable for mutation check"),
+        other => other,
     }
+}
+
+fn rust_build_rejects_mutated_source(stdout: &[u8], root: &Path, relative: &Path) -> bool {
+    let expected = root.join(relative);
+    stdout.split(|byte| *byte == b'\n').any(|line| {
+        let Ok(message) = serde_json::from_slice::<serde_json::Value>(line) else {
+            return false;
+        };
+        message["reason"] == "compiler-message"
+            && message["message"]["level"] == "error"
+            && message["message"]["spans"].as_array().is_some_and(|spans| {
+                spans.iter().any(|span| {
+                    span["is_primary"] == true
+                        && span["file_name"]
+                            .as_str()
+                            .is_some_and(|file| root.join(file) == expected)
+                })
+            })
+    })
 }
 
 fn write_patched_source(
@@ -5203,5 +5246,76 @@ mod tests {
         assert_eq!(summary.killed, 1);
         assert_eq!(summary.timed_out, 1);
         assert_eq!(summary.unviable, 1);
+    }
+
+    #[test]
+    fn native_mutation_build_failure_requires_positive_source_diagnostic() {
+        let root = Path::new("/staged");
+        let source = Path::new("src/lib.rs");
+        let diagnostic = serde_json::json!({
+            "reason": "compiler-message",
+            "message": {
+                "level": "error",
+                "spans": [{"file_name": "src/lib.rs", "is_primary": true}]
+            }
+        });
+        assert!(rust_build_rejects_mutated_source(
+            &serde_json::to_vec(&diagnostic).unwrap(),
+            root,
+            source,
+        ));
+        let dependency_error = serde_json::json!({
+            "reason": "compiler-message",
+            "message": {
+                "level": "error",
+                "spans": [{"file_name": "/cache/dependency/src/lib.rs", "is_primary": true}]
+            }
+        });
+        assert!(!rust_build_rejects_mutated_source(
+            &serde_json::to_vec(&dependency_error).unwrap(),
+            root,
+            source,
+        ));
+        assert!(!rust_build_rejects_mutated_source(
+            b"error: no matching package named missing found\n",
+            root,
+            source,
+        ));
+    }
+
+    #[test]
+    fn native_mutation_unavailable_baseline_never_runs_or_kills_mutant() {
+        let root = tempfile::tempdir().unwrap();
+        let source = SourceFile::new(
+            PathBuf::from("sample.rs"),
+            "fn value() -> bool { true }\n".to_string(),
+        );
+        fs::write(root.path().join("sample.rs"), &source.text).unwrap();
+        fs::write(
+            root.path().join("Cargo.toml"),
+            "[package]\nname = \"unavailable-mutation-baseline\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\npath = \"sample.rs\"\n[dependencies]\nmissing = { path = \"absent-build-dependency\" }\n",
+        ).unwrap();
+        let setup_ran = std::cell::Cell::new(false);
+        // A missing local dependency is deterministic even with a working
+        // offline toolchain, and is environmental rather than mutant-invalid.
+        let result = run_mutant_check_cmd_in_temp_project(
+            root.path(),
+            &source,
+            "cargo test",
+            Duration::from_secs(2),
+            0,
+            |_| {
+                setup_ran.set(true);
+                Ok(())
+            },
+        );
+        assert!(
+            matches!(result, Err(_) | Ok(MutantCheckOutcome::TimedOut)),
+            "an unavailable baseline must not produce mutant evidence"
+        );
+        assert!(
+            !setup_ran.get(),
+            "no mutant should run after baseline failure"
+        );
     }
 }

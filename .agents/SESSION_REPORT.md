@@ -13457,9 +13457,9 @@ verifier plans are /2. CI includes P1/P2/P6 regression contracts.
 
 **Commands/results:** `cargo fmt --all -- --check`; workspace build with
 `--features deslop-cli/mcp`; `cargo build -p deslop-slim --no-default-features`;
-`cargo test --workspace --features deslop-cli/mcp --no-fail-fast` (876 passed,
+`cargo test --workspace --features deslop-cli/mcp --no-fail-fast` (889 passed,
 3 ignored); `cargo clippy --workspace --all-targets --features deslop-cli/mcp
--- -D warnings`: all passed. Full gate output: session artifact 617.
+-- -D warnings`: all passed. Final review output: session artifacts 657 and 660.
 `research-registry check crates/deslop-eval/src`: 65 rules, 16 recipes,
 281 metric fields, 31 claims; live serializers agree.
 `cargo install --locked --path crates/deslop-cli --features mcp --debug
@@ -13473,8 +13473,8 @@ proposal reports one introduced finding and one proposal. Materialized Jujutsu
 base/target comparison reports the expected introduced finding after explicit
 fixture snapshotting. P2/P6 end-to-end regressions passed in the workspace run:
 composed checks reject jointly invalid patches without source writes; a public
-OpenCode-shaped export replays and its reversion applies only under explicit
-fixture-owner review permission through the shared verifier.
+OpenCode-shaped export replays and its reversion applies using the deliberately
+broad `allow_non_removable` override, not a per-patch consent receipt.
 
 **Measurement evidence:** Frozen M8 report and model card reproduced exactly:
 accuracy 0.5700, ECE 0.07639981649851604; `evidence_only` unchanged. Eight family
@@ -13498,18 +13498,46 @@ do not expose host caches or credentials to make unavailable checks pass.
 
 **Final installed recovery/archive proof:** Installed `propose` produced the
 fixture-bound work order; installed `apply --allow-non-removable` wrote the exact
-expected replacement with explicit fixture-owner review permission. Its verdict
+expected replacement using the deliberately broad override. Its verdict
 remained `coverage-unknown`, not behavioral proof. Installed `undo .` restored
 the original source bytes exactly. Temporary Rust smoke examples were removed;
 the meaningful P2/P6 regressions remain.
-`.agents/RESEARCH_IMPLEMENTATION_MANIFEST.json` archives source revision
-`37092abebe8646e0ee7158d0f74578458580776b`, input SHA-256 checksums, pinned
-lockfile/grammar versions, command results, resource policy, fictional fixtures,
-family cards and installed response evidence. All archived file checksums were
-read back and verified. Manifest SHA-256:
-`997239ccb8502bd79d414aa173983ddadc96c67be5a74de016a5944d5149b0c1`.
+The prior `.agents/RESEARCH_IMPLEMENTATION_MANIFEST.json` records the earlier
+source checkpoint; refresh it against this final review commit before delivery.
 An extra source-digest assertion incorrectly assumed SHA-256 for revision
 sources, whose implementation uses BLAKE3; it was not counted as product proof.
+
+**Late-review corrections and proof:** Three additional task agents shared strict
+registry types/integrity validation in `deslop-core::research`, restored Slim's
+one-call/one-patch aggregation regression through PreparedRun, and strengthened
+sandbox lifecycle and native mutation validity. Scoped path/language assertions
+confirmed existing normalization rather than adding a second path convention.
+The generated research inventory matches all 31 canonical claims exactly.
+P6 now exercises repository metadata exclusion and preserves metadata bytes.
+Seven runtime regressions ran with the real backend, without unavailable-backend
+skips: actual kernel memory/pids limit admission, timeout and filesystem-failure
+descendant termination, and per-file enforcement. Admission requires writable
+cgroup.kill; cleanup is bounded separately to two seconds, with scope expiry as
+backstop. This is not a memory-exhaustion stress test or sandbox certification.
+Native mutations require a passing original baseline; structured errors naming
+the mutated source distinguish unviable Rust builds from unknown environments.
+
+**Review negative memory:** The first runtime edit incorrectly used Bubblewrap's
+nonexistent `--preserve-fds`; actual execution exposed it. Replaced it with
+documented `--json-status-fd` and parsed trusted child-start status. Applying
+RLIMIT_FSIZE outside Bubblewrap also truncated its status record at a one-byte
+fixture limit; moved the workload limit inside the namespace. Real runtime
+tests then passed. A redundant string-match guard from moving the shared registry
+failed clippy and was simplified. A filtered Slim command with an incomplete
+exact test name ran zero tests; only the subsequent full suite counts as proof.
+
+**Reviewed installed surface:** Reinstalled after all review fixes. MCP malformed
+request isolation, typed rule metadata and nested-scope proposal succeeded.
+An archived patch correctly failed stale proposal-context validation; regeneration
+through installed `propose` produced current authority. Installed `apply` with
+the broad override plus the sandboxed `test -f value.rs` check wrote the expected
+bytes, and installed `undo` restored them exactly. This tests execution/recovery,
+not semantic sufficiency of that existence check.
 
 **Next/checkpoint:** Engineering implementation is complete within the plan's
 bounded structural/review-only shipping contract. Authorized Sjøberg/Buse full

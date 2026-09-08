@@ -204,3 +204,59 @@ fn finding_matches_order(finding: &Finding, order: &WorkOrder, root: &Path) -> b
 fn spans_overlap(left: Span, right: Span) -> bool {
     left.start_byte < right.end_byte && right.start_byte < left.end_byte
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn nested_target() -> Result<tempfile::TempDir> {
+        let target = tempfile::tempdir()?;
+        fs::create_dir(target.path().join("src"))?;
+        fs::write(
+            target.path().join("src/value.rs"),
+            "fn value() -> i32 {\n    return 1;\n}\n",
+        )?;
+        Ok(target)
+    }
+
+    #[test]
+    fn target_scan_rejects_source_drift_in_nested_scope() -> Result<()> {
+        let target = nested_target()?;
+        let root = target.path().canonicalize()?;
+        let scope = [PathBuf::from("src")];
+        let config = AnalyzerConfig::default();
+        let comparison = compare_paths_with_scope(&root, &root, &scope, config.clone())?;
+        let batch = propose_work_orders_with_exclusions(&root, &scope, config.clone(), &[])?;
+        ensure_target_scan_matches(&comparison, &batch, &root, &config)?;
+
+        fs::write(
+            root.join("src/value.rs"),
+            "fn value() -> i32 {\n    return 2;\n}\n",
+        )?;
+        let changed = propose_work_orders_with_exclusions(&root, &scope, config.clone(), &[])?;
+        ensure_target_scan_matches(&comparison, &changed, &root, &config)
+            .expect_err("a later target scan must not authorize stale comparison bytes");
+        Ok(())
+    }
+
+    #[test]
+    fn target_scan_rejects_config_drift_even_with_identical_sources() -> Result<()> {
+        let target = nested_target()?;
+        let root = target.path().canonicalize()?;
+        let scope = [PathBuf::from("src")];
+        let config = AnalyzerConfig::default();
+        let comparison = compare_paths_with_scope(&root, &root, &scope, config.clone())?;
+        let batch = propose_work_orders_with_exclusions(&root, &scope, config.clone(), &[])?;
+        ensure_target_scan_matches(&comparison, &batch, &root, &config)?;
+
+        let changed_config = AnalyzerConfig {
+            min_duplication_tokens: config.min_duplication_tokens + 1,
+            ..config.clone()
+        };
+        let changed = propose_work_orders_with_exclusions(&root, &scope, changed_config, &[])?;
+        ensure_target_scan_matches(&comparison, &changed, &root, &config)
+            .expect_err("unchanged source bytes must not bypass analyzer config guards");
+        Ok(())
+    }
+}

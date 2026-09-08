@@ -1635,6 +1635,56 @@ mod tests {
     }
 
     #[test]
+    fn aggregated_regions_produce_one_llm_call_and_patch_each() -> Result<()> {
+        const FIRST_REWRITTEN: &str = "fn first(value: i32) -> String {\n    value.to_string()\n}";
+        const SECOND_REWRITTEN: &str =
+            "fn second(value: bool) -> String {\n    value.to_string()\n}";
+        let fixture = SlimTestFixture::with_source(concat!(
+            "fn first(value: i32) -> String {\n    return format!(\"{}\", value);\n}\n",
+            "\n",
+            "fn second(value: bool) -> String {\n    return format!(\"{}\", value);\n}\n",
+        ))?;
+        struct RegionClient {
+            prompts: RefCell<Vec<SlimPrompt>>,
+        }
+        impl LlmClient for RegionClient {
+            fn rewrite(&self, prompt: &SlimPrompt) -> Result<String> {
+                self.prompts.borrow_mut().push(prompt.clone());
+                if prompt.text.contains("fn first(") {
+                    Ok(FIRST_REWRITTEN.to_string())
+                } else if prompt.text.contains("fn second(") {
+                    Ok(SECOND_REWRITTEN.to_string())
+                } else {
+                    bail!("unexpected rewrite region")
+                }
+            }
+        }
+        let client = RegionClient {
+            prompts: RefCell::new(Vec::new()),
+        };
+
+        let prepared =
+            PreparedRun::prepare(fixture.recorded_options(true, true, CoverageConfig::Disabled))?;
+        let report = prepared.run(&client)?;
+
+        let prompts = client.prompts.borrow();
+        assert_eq!(prompts.len(), 2);
+        for name in ["fn first(", "fn second("] {
+            let calls = prompts
+                .iter()
+                .filter(|prompt| prompt.text.contains(name))
+                .collect::<Vec<_>>();
+            assert_eq!(calls.len(), 1, "each region gets one provider request");
+            assert!(calls[0].text.contains("needless-return"));
+            assert!(calls[0].text.contains("useless-format"));
+        }
+        assert_eq!(report.patches.len(), 2);
+        assert_gating_counts(&report, 2, 0, 0);
+        assert_fixture_source(&fixture, &format!("{FIRST_REWRITTEN}\n{SECOND_REWRITTEN}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn never_auto_only_scan_has_zero_egress_and_zero_writes_under_widening() -> Result<()> {
         let temp = tempfile::tempdir()?;
         let source = temp.path().join("driver.jl");

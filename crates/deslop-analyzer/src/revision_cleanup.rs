@@ -692,6 +692,52 @@ mod tests {
     }
 
     #[test]
+    fn nested_scope_preserves_source_language_and_attribution_paths() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let root = temp.path().canonicalize()?;
+        std::fs::create_dir(root.join("src"))?;
+        let path = PathBuf::from("src/value.rs");
+        let text = "fn value() -> i32 {\n    return 1;\n}\n";
+        std::fs::write(root.join(&path), text)?;
+        let config = AnalyzerConfig::default();
+        let scan = crate::scan_paths_with_context(&[root.join("src")], config.clone())?;
+        let snapshot = RevisionSnapshot::from_scan_context_at(
+            Some(&root),
+            "target",
+            vec![PathBuf::from("src")],
+            "deslop-analyzer-scanner/1",
+            SnapshotMaterialization::Directory,
+            config.snapshot(),
+            scan,
+        );
+
+        let source = snapshot.source(&path).expect("repository-relative source");
+        assert_eq!(source.lang, Lang::Rust);
+        assert_eq!(source.text, text);
+        assert_eq!(
+            snapshot.context.grammar.keys().collect::<Vec<_>>(),
+            vec![&path]
+        );
+        assert_eq!(snapshot.reports.len(), 1);
+        assert_eq!(snapshot.reports[0].path, path);
+        assert_eq!(snapshot.reports[0].lang, Lang::Rust);
+        assert_eq!(snapshot.reports[0].findings.len(), 1);
+        assert_eq!(snapshot.reports[0].findings[0].path, path);
+
+        let comparison = compare_snapshots(&snapshot, &snapshot)?;
+        assert!(comparison.comparable);
+        assert_eq!(comparison.inherited, 1);
+        let attributed = &comparison.findings[0];
+        assert_eq!(attributed.identity.path, path);
+        let span = attributed.finding.as_ref().unwrap().span;
+        assert_eq!(
+            attributed.identity.region_hash,
+            hash_bytes(&text.as_bytes()[span.start_byte..span.end_byte])
+        );
+        Ok(())
+    }
+
+    #[test]
     fn unchanged_bytes_are_inherited_not_introduced() {
         let base = fixture(
             "base",

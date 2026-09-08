@@ -516,6 +516,7 @@ mod identity_tests {
 }
 
 pub mod refactor_defect;
+pub mod research;
 pub mod snapshot_pathology;
 
 /// The single canonical registry of every rule deslop can emit.

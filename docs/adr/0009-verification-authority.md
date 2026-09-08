@@ -25,6 +25,9 @@ semantic conflict.
    every project build, lint, type, and test fallback.
    Its required process/memory budgets are enforced by a fresh user cgroup scope; per-file size is an
    inherited kernel limit. Missing enforcement rejects execution rather than reverting to an unscoped shell.
+   Admission reads the actual cgroup v2 memory/pids limits before releasing the namespace sandbox.
+   The owned cgroup subtree is killed and checked empty after success, timeout or error. Cleanup
+   is separately bounded to two seconds; systemd scope expiry is an independent lifetime backstop.
 2. Provider observations are artifact- and snapshot-bound. Adapter, compiler, and language-server conclusions are
    retained independently. Current accepted Proven and Disproven evidence yields Conflict and blocks; no provider
    precedence chooses a winner. Syntax and runtime labels cannot masquerade as these semantic providers.

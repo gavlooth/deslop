@@ -369,8 +369,12 @@ protocol, confer statistical promotion, or satisfy P7 human-benefit criteria.
 - External selected commands run under a fresh systemd user scope, namespace
   sandbox, cleared environment, kernel per-file limit and output/time bounds.
   `deslop.verifier-plan/2` requires memory/process budgets; defaults are 2 GiB,
-  no swap and 256 processes. Missing user manager/controllers, `prlimit`,
-  sandbox or unsupported adapters fail closed. File-count watchdogs may
+  no swap and 256 processes. Admission checks the actual cgroup v2 memory/pids
+  limit files and writable `cgroup.kill` before releasing the sandbox. Scope
+  termination kills descendants on success, timeout and failure; cleanup has a
+  separate two-second bound and manager-enforced expiry. Missing user manager,
+  delegated controllers, `prlimit` or Bubblewrap JSON status support fails closed.
+  File-count watchdogs may
   detect an overrun after it occurs; they are **not a hard aggregate disk quota**.
   This is not certification for arbitrary hostile workloads.
 - System executable/library directories and the staged workspace are the
@@ -381,9 +385,11 @@ protocol, confer statistical promotion, or satisfy P7 human-benefit criteria.
   without a policy-bound launcher report unavailable; supplied outcomes
   remain evidence with their existing provenance limits.
 - Rust native mutation validity supports a plain `cargo test` invocation with
-  preserved build flags and a separate `--no-run` phase. Unsupported shell
-  runners or unavailable toolchains have unknown viability. Unviable mutants
-  and timeouts are not kills; incomplete runs do not become a no-survivor claim.
+  preserved build flags and a separate `--no-run` phase after a passing original
+  baseline. Only structured compiler errors naming the mutated source establish
+  an unviable Rust build; missing dependencies/toolchains and unexplained failures
+  remain unknown. Unviable mutants and timeouts are not kills; incomplete runs
+  do not become a no-survivor claim.
 - Prepared Slim runs bind exact prompts, source/read sets, model and egress
   summary before consent. Source drift aborts. LSP initialization returns the
   standard capabilities envelope and edits bind an exact document version.
@@ -441,7 +447,9 @@ The cache hashes complete candidate source and complete declared check policy;
 imported cache status is not authorization. The application API independently
 stages the supplied patches, requires exact candidate inventory equality, then
 uses the existing verifier/apply route. A default review-only proposal still
-does not write; explicit owner approval is separate from replay.
+does not write. The engineering smoke opts into `allow_non_removable`, a broad
+override for non-rejected patches, not a per-patch consent receipt or authority
+derived from replay. It does not demonstrate default automatic application.
 
 ### Disclosure and family cards
 
