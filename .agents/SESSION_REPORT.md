@@ -13553,7 +13553,7 @@ scratch installation does not replace the user's regular binary.
 
 Signature: Codex (gpt-6-astra).
 
-## 2026-09-08 — Recovered Sjøberg primary source; P0 remains partial
+## 2026-09-08 — Recovered both requested primary manuscripts
 
 **Objective/workspace:** Unblock primary-source review for the full research plan
 in `/home/heefoo/Documents/code/deslop`, following the user's selection of primary
@@ -13565,13 +13565,24 @@ returned the actual Sjøberg et al. manuscript. Read all 15 pages, including met
 results, limitations and appendix. Updated its canonical registry source to
 fulltext and corrected `docs/RESEARCH.md` bibliography, findings and blocker.
 Source access does not promote any detector or confer dataset reuse rights.
+Browser access to Weimer's publications exposed the correct 14-page TSE preprint.
+Reader TLS verification failed and browser fetch timed out; `curl --insecure`
+retrieved the publicly author-linked file. Its title/authors/content match the
+named work; this is not TLS-authenticated or publisher-byte identity. Read all
+sections 1–9, figures and references; updated Buse's registry entry and bounded
+notes. No PDF, training corpus or model is redistributed in the repository.
 
-**Coverage/evidence:** One of the two previously unavailable requested primary
-texts is now reviewed. Overall implementation remains 35/50 original deliverables
-plus five verified late-review tasks; primary-source acquisition remains partial.
-Web search and `read` delivered the named author manuscript (session artifact
-668). Search summaries were not used as primary evidence. Registry validation
-and provenance checksum capture remain to run after this checkpoint description.
+**Coverage/evidence:** Both previously unavailable requested primary texts are
+now reviewed: 36/50 original deliverables plus five verified late-review tasks.
+Web `read` delivered Sjøberg (artifact 668); browser publication links, curl,
+pdfinfo and local `read` delivered and verified Buse. Search summaries were not
+primary evidence. Sjøberg-only ledger validation passed (65 rules/16 recipes/
+281 metric fields/31 claims). Validate the updated two-source ledger after
+this checkpoint description. Source hashes:
+- Sjøberg, 655632 bytes:
+  `7b4c18db64b4912518734db67b0f11e82439b762dcd26c40660548076b3cd383`
+- Buse–Weimer, 1635323 bytes:
+  `3b195a00e6e74cc4414f1c46c7c7b7cb5378e2d44ef422d5969054cd53038046`
 
 **Findings/negative memory:** Model 3 adjusted R²=0.58 with or without smells after
 size/revision controls; no measured smell associated with increased effort, within
@@ -13580,10 +13591,16 @@ not an independent validation of deslop. Large Class and Long Method were not
 directly measured (§5.1). The earlier `tse13.pdf` 404 and closed OpenAlex record
 were insufficient to conclude no author manuscript existed. The unrelated 2026
 rjpn.org paper merely cites Buse–Weimer and is not its primary text.
+Buse's model predicts subjective short-Java-snippet ratings from one student
+cohort; repeated snippet cross-validation is not project-held-out transfer.
+Section 6 explicitly distinguishes descriptive associations from prescriptive
+cleanup. No blank-line or identifier-shortening prescription follows. An earlier
+author-URL 404 used the wrong filename. A closed aggregator record and failed
+reader transport were insufficient to establish source unavailability.
 
-**Next/blockers:** Complete provenance/registry verification; continue only
-authorized Buse–Weimer source acquisition. Independent corpus, consent, ethics,
-pilot variance and owner freeze remain unavailable. Prior engineering test
-evidence is unchanged; no new detector-quality or human-benefit claim. No push.
+**Next/blockers:** Verify the updated ledger and installed report metadata.
+Independent corpus, consent, ethics, pilot variance and owner freeze remain
+unavailable (14 original deliverables blocked). Prior engineering test evidence
+is unchanged; no new detector-quality or human-benefit claim. No push.
 
 Signature: Codex (gpt-6-astra).

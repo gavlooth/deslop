@@ -43,15 +43,17 @@ license (e.g. arXiv CC-BY) is the paper's license, never a dataset license.
 | `scalabrino-2018-readability` | Scalabrino et al., *A Comprehensive Model for Code Readability*, JSEP Jun 2018, doi:10.1002/smr.1958 | [R: §§1–4.3] author PDF (sscalabrino.github.io); results §§4.4+ unread | Author manuscript; no dataset import |
 | `mccabe-1976-complexity` | McCabe, *A Complexity Measure*, IEEE TSE Dec 1976, doi:10.1109/TSE.1976.233837 | [R: abstract + §§I–IV, VI–VII] scanned PDF (Def. 1 v(G)=e−n+p; predicates+1 simplification; nonstructured graphs a–d; testing methodology; rest skimmed) | Scanned copy; no dataset import |
 | `neron-2015-name-resolution` | Néron et al., *A Theory of Name Resolution*, ESOP 2015 / LNCS, doi:10.1007/978-3-662-46669-8_9 (author PDF: web.cecs.pdx.edu/~apt/esop15.pdf) | [R: abstract + §§1–2.4] author PDF pp.1–13 (scope graphs, resolution calculus, LM language, imports; §§2.5+ unread) | Author manuscript (Portland State); no dataset import |
-| `buse-2010-readability` | Buse & Weimer, *Learning a Metric for Code Readability*, IEEE TSE Jul 2010 (vol 36 no 4, 546–558), doi:10.1109/TSE.2009.70 | [U] Crossref + Semantic Scholar metadata only; umich author PDF TLS cert failure (http and https), virginia old path 403 | — |
+| `buse-2010-readability` | Buse & Weimer, *Learning a Metric for Code Readability*, IEEE TSE Jul 2010 (vol 36 no 4, 546–558), doi:10.1109/TSE.2009.70 | [R: full 14-page author preprint §§1–9] [author-linked PDF](https://web.eecs.umich.edu/~weimerw/p/weimer-tse2010-readability-preprint.pdf), accessed 2026-09-08; TLS retrieval caveat in §5 | Reading copy; no dataset/model reuse license inferred |
 | `torres-2025-entropy` | Torres et al., *Information-theoretic detection of unusual source code changes*, Empirical Software Engineering 30:153 (2025), doi:10.1007/s10664-025-10644-y — © The Author(s) 2025, open access (PDF retrieved from SpringerLink) | [R: §§1–4.4] full-text PDF (intro, review §§2–2.3, methods §3, results §§4.1–4.4; validity/discussion §§5+ skimmed) | Open access; supplementary data Zenodo 11180885 (not imported) |
 | `bergum-2024-comprehension` | Bergum et al. comprehension data, Zenodo 14229849 | [A] Zenodo record/README only; paper not read | M8 registry pins revision `zenodo-14229849` + sha256 — reuse, do not re-pin |
 | `themis-codepreference` | Themis-CodePreference frozen artifact, `crates/deslop-eval/evaluation/m8/dataset_registry.json` | [A] registry file read | Local frozen artifact, not a paper; license/checksum from that file |
 
-Counts: 14/17 text accessed at section level (only listed sections reviewed);
-2/17 abstract/record familiarity only (`bergum-2024-comprehension`,
-`themis-codepreference`); 1/17 metadata-only (`buse-2010-readability`).
-P0 source review is NOT complete; §5 tracks per-source blockers and next attempts.
+Counts: 15/17 text accessed at section level (only listed sections reviewed);
+2/17 record familiarity only (`bergum-2024-comprehension`, `themis-codepreference`);
+0/17 metadata-only. The two primary-fulltext access blockers are resolved.
+Partial-section and record-only scope remains explicit; this is not a claim that
+every linked artifact, experiment, model or dataset has been reproduced.
+
 ## 2. Operational definition
 
 A **cleanup hypothesis** in deslop is a proposed transformation of a code
@@ -173,7 +175,17 @@ Claim units and the evidence each unit requires:
   inference by sample, tools, file-level measurement and first-maintenance
   setting. Retain size/task/developer controls and independent outcomes; do
   not infer that all smells are harmless or that fewer lines prove benefit.
-- `buse-2010-readability`: metadata only; primary text still unavailable.
+- `buse-2010-readability` (§§2–7): 120 UVA students judged 100 short Java snippets
+  from five projects (12,000 opportunities, 15 skipped). Repeated snippet-level
+  10-fold validation supports prediction of that cohort's ratings, not
+  project-held-out or Rust/Python transfer. The selected Bayesian model's
+  Spearman correlation with mean judgments was 0.71; strong classifiers
+  classified roughly 75–80% correctly. External FindBugs/churn/bug-log
+  correlations are proxy associations, not causal maintenance outcomes.
+  §6 explicitly calls the model descriptive, **not prescriptive**: adding blank
+  lines or shortening identifiers to improve its score need not help humans.
+  Do not import its fitted cutoff of 3.14, weights or prescriptions into deslop.
+  Independent comprehension/maintenance endpoints remain necessary.
 - `mccabe-1976-complexity` (§§I–IV, VI–VII, scanned copy): v(G) = e−n+p
   (Def. 1); structured-program simplification v = predicates+1 (compound
   conditions count per condition; CASE uses N−1); regions-count method via
@@ -265,16 +277,24 @@ Per-facility fidelity lives ONLY in the registry (`fidelity` field per
 | fac:quality-claim:trajectory-replay-evidence | quality-claim | inspiration-only | claim:trajectory-replay-evidence |
 | fac:quality-claim:family-evidence-cards | quality-claim | none | claim:family-evidence-cards |
 
-## 5. Access blockers and next attempts (P0 source review NOT complete)
+## 5. Resolved primary access blockers and remaining review scope
 
 - `sjoberg-2013-maintenance`: RESOLVED on 2026-09-08 through the alternate
   [UiO author-hosted PDF](https://www.mn.uio.no/ifi/personer/vit/dagsj/sjoberg_etal_code-smells.pdf).
   The prior `tse13.pdf` 404 and OpenAlex closed-access record did not establish
   absence of an author manuscript. Full primary text reviewed; no dataset imported.
-- `buse-2010-readability`: UNAVAILABLE. umich author PDF: TLS cert failure on
-  https; plain-http redirects to https (cert failure, unreadable). virginia
-  old path: HTTP 403 on direct fetch. umich --insecure fetch: HTTP 404.
-  Semantic Scholar API: openAccessPdf status CLOSED, empty URL. OpenAlex:
-  is_oa false, no repository fulltext, single location (DOI only). No
-  authorized fulltext reachable; next: library copy. (Posnett/Scalabrino
-  re-describe Buse's design but are not substitutes for Buse's own text.)
+- `buse-2010-readability`: RESOLVED on 2026-09-08. Browser access to
+  [Weimer's publication page](https://web.eecs.umich.edu/~weimerw/) exposed the
+  correct `weimer-tse2010-readability-preprint.pdf` link. The reader's certificate
+  validation still failed; browser fetch timed out, then `curl --insecure`
+  retrieved the public author-linked PDF. Title, authors and 14-page content
+  match the named work; do not claim TLS-authenticated or publisher-byte identity.
+  PDF SHA-256: `3b195a00e6e74cc4414f1c46c7c7b7cb5378e2d44ef422d5969054cd53038046`.
+  Earlier 404s targeted different filenames; closed aggregator records were
+  not proof that no author manuscript existed. No dataset/model imported.
+- Sjøberg PDF SHA-256:
+  `7b4c18db64b4912518734db67b0f11e82439b762dcd26c40660548076b3cd383`.
+  Only provenance and bounded notes are committed, not copyrighted PDF copies.
+- Record-only M8 sources and explicitly unread sections retain their limited
+  status. Neither newly read paper independently validates deslop's detectors,
+  fixes, Rust/Python transfer or human maintenance benefit.
