@@ -13439,10 +13439,10 @@ was performed.
 **Objective/workspace:** Finish `docs/RESEARCH_PLAN.md` using task agents in
 `/home/heefoo/Documents/code/deslop`. Main owns integration and evidence.
 
-**Implementation coverage:** 33/50 tracked deliverables verified (66% overall;
-33/35 actionable engineering items). Fifteen deliverables remain externally
-blocked. Installed apply/recovery proof and reproducibility archive remain open
-at this checkpoint. This is not completion of the independent research program.
+**Implementation coverage:** 35/50 tracked deliverables verified (70% overall;
+35/35 actionable engineering items). Fifteen deliverables remain externally
+blocked. No actionable engineering item remains open. This is not completion
+of the independent research program.
 
 **Changes:** Task agents implemented prepared Slim consent, request-local MCP
 errors, versioned LSP actions, metric estimator corrections, recipe binding
@@ -13496,11 +13496,27 @@ the VCS smoke required an explicit fixture snapshot.
 systemd 261. Supported system/staged toolchains are required for external checks;
 do not expose host caches or credentials to make unavailable checks pass.
 
-**Next/checkpoint:** Finish the installed apply/recovery smoke and archive exact
-input/source/toolchain/policy hashes. Authorized Sjøberg/Buse full texts,
-independent licensed Rust/Python labels, consenting participants/ethics, pilot
-variance, and owner preregistration freeze remain missing. No independent
-detector-quality, trajectory-benefit or maintenance-benefit claim is made.
-No push performed; scratch install does not replace the user's regular binary.
+**Final installed recovery/archive proof:** Installed `propose` produced the
+fixture-bound work order; installed `apply --allow-non-removable` wrote the exact
+expected replacement with explicit fixture-owner review permission. Its verdict
+remained `coverage-unknown`, not behavioral proof. Installed `undo .` restored
+the original source bytes exactly. Temporary Rust smoke examples were removed;
+the meaningful P2/P6 regressions remain.
+`.agents/RESEARCH_IMPLEMENTATION_MANIFEST.json` archives source revision
+`37092abebe8646e0ee7158d0f74578458580776b`, input SHA-256 checksums, pinned
+lockfile/grammar versions, command results, resource policy, fictional fixtures,
+family cards and installed response evidence. All archived file checksums were
+read back and verified. Manifest SHA-256:
+`997239ccb8502bd79d414aa173983ddadc96c67be5a74de016a5944d5149b0c1`.
+An extra source-digest assertion incorrectly assumed SHA-256 for revision
+sources, whose implementation uses BLAKE3; it was not counted as product proof.
+
+**Next/checkpoint:** Engineering implementation is complete within the plan's
+bounded structural/review-only shipping contract. Authorized Sjøberg/Buse full
+texts, independent licensed Rust/Python labels, consenting participants/ethics,
+pilot variance, and owner preregistration freeze remain missing. Obtain those
+prerequisites before independent detector-quality, historical/trajectory-benefit
+comparisons or P7 studies; none of those claims is made. No push performed;
+scratch installation does not replace the user's regular binary.
 
 Signature: Codex (gpt-6-astra).

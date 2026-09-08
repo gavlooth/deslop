@@ -1,0 +1,1188 @@
+{
+  "schema": "deslop.research-implementation-checkpoint/1",
+  "date": "2026-09-08",
+  "source_commit": "37092abebe8646e0ee7158d0f74578458580776b",
+  "implementation_coverage": {
+    "verified_engineering_items": 35,
+    "actionable_engineering_items": 35,
+    "total_plan_items": 50,
+    "externally_blocked_items": 15,
+    "independent_validation_complete": false
+  },
+  "files_sha256": {
+    "Cargo.lock": "0f513f1a9b5718b9d6eb909f3a246a430378be807fb3d48327a1e7e7d2afeb6d",
+    "Cargo.toml": "f4f21245c2202e1d45bf5a90fc7fbfcd89fe1e9c91f5121bacc5638e358e1311",
+    "crates/deslop-eval/evaluation/research/registry.json": "a8583276c7c3d1514f4258f5230f4f6b7e637dc4df2a94e977aea4239d951a49",
+    "crates/deslop-eval/evaluation/m8/dataset_registry.json": "ec094ba42be05cd26eb1232e6b3744d5a52cb2c635349128a26ef87224e52585",
+    "crates/deslop-eval/evaluation/m8/corpus.json": "80bb9986b3642c2f2471b0c3100bb60f2c37d10cb055e4b900c0db35ef7f55c8",
+    "crates/deslop-eval/evaluation/m8/evaluation_report.json": "8c819cbb62d28793796bb7de06f607e25c863330b86c0db1c2a6c9b33cbd7a89",
+    "docs/RESEARCH_PLAN.md": "c6ee2b5f289bdda62563d2f19b2dcb94715672cd2e31f7679a07558064717c49",
+    "docs/RESEARCH_PROTOCOL.md": "fe9ac8800a7f03e5f363510171735c0e4adcc49e91f101d520442db3f06010c7",
+    "crates/deslop-verify/src/authority.rs": "512ce79d953a09f644f42d48946a6a4b108bcb03817cbfebdb760c1d54ff5b66",
+    "crates/deslop-verify/src/runtime.rs": "aa33cb13de8e4e610c85574117b22d1e28f644b7e8b32c7c6c6493b05aae41b5"
+  },
+  "toolchains": {
+    "cargo": "1.89.0 (c24e10642 2025-06-23)",
+    "rustc": "1.89.0 (29483883e 2025-08-04)",
+    "jj": "0.45.1",
+    "bubblewrap": "0.12.0",
+    "systemd": "261 (261.2-1-arch)",
+    "grammar_versions": "Exact tree-sitter packages/checksums in Cargo.lock"
+  },
+  "verifier_policy": {
+    "schema": "deslop.verifier-plan/2",
+    "maximum_total_millis": 300000,
+    "maximum_command_millis": 120000,
+    "maximum_output_bytes": 1048576,
+    "maximum_files": 10000,
+    "maximum_file_bytes": 16777216,
+    "maximum_memory_bytes": 2147483648,
+    "maximum_processes": 256,
+    "swap_bytes": 0,
+    "network": "denied",
+    "host_home_mounted": false,
+    "unavailable_backend": "fail-closed",
+    "disk_limit_caveat": "Per-file kernel limit and inventory watchdog; no aggregate hard disk quota"
+  },
+  "commands": [
+    "cargo fmt --all -- --check",
+    "cargo build --workspace --features deslop-cli/mcp",
+    "cargo build -p deslop-slim --no-default-features",
+    "cargo test --workspace --features deslop-cli/mcp --no-fail-fast",
+    "cargo clippy --workspace --all-targets --features deslop-cli/mcp -- -D warnings",
+    "cargo run -p deslop-eval --bin research-registry -- check crates/deslop-eval/src",
+    "cargo install --locked --path crates/deslop-cli --features mcp --debug --root /tmp/deslop-plan-install --force"
+  ],
+  "results": {
+    "tests_passed": 876,
+    "tests_ignored": 3,
+    "registry": {
+      "rules": 65,
+      "recipes": 16,
+      "metric_fields": 281,
+      "claims": 31
+    },
+    "m8": "Exact frozen report/model-card match; engineering-only",
+    "slopcodebench_reference": {
+      "source": "https://arxiv.org/html/2603.24755v1",
+      "equations": [
+        2,
+        3
+      ],
+      "mass": 96.31593290805353,
+      "erosion": 0.5356805649934541,
+      "tolerance": 1e-12
+    },
+    "installed_mcp_responses": [
+      {
+        "error": {
+          "code": -32700,
+          "message": "failed to parse JSON-RPC"
+        },
+        "id": null,
+        "jsonrpc": "2.0"
+      },
+      {
+        "error": {
+          "code": -32600,
+          "message": "JSON-RPC request must be an object"
+        },
+        "id": null,
+        "jsonrpc": "2.0"
+      },
+      {
+        "error": {
+          "code": -32602,
+          "message": "unknown tool `missing`"
+        },
+        "id": 1,
+        "jsonrpc": "2.0"
+      },
+      {
+        "id": 2,
+        "jsonrpc": "2.0",
+        "result": {
+          "capabilities": {
+            "tools": {}
+          },
+          "protocolVersion": "2024-11-05",
+          "serverInfo": {
+            "name": "deslop",
+            "version": "0.1.0"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "jsonrpc": "2.0",
+        "result": {
+          "content": [
+            {
+              "text": "{\n  \"authority\": \"metadata-only; citations and evaluation artifacts grant no source proof or write authority\",\n  \"claims\": [\n    {\n      \"claim_id\": \"fac:rule:long-method-complexity\",\n      \"construct\": \"concentrated complexity hypothesis\",\n      \"counterexamples\": [\n        \"single-responsibility dispatch tables\",\n        \"required protocol implementations\"\n      ],\n      \"estimator_threshold_origin\": \"heuristic: nloc threshold; P1 pilot family: concentrated complexity/long methods\",\n      \"evaluation_artifacts\": [\n        \"tests/corpus/manifest.json\"\n      ],\n      \"exact_claim\": \"Long-method flags concentrated complexity as a propose-only extraction hypothesis. The cited catalog motivates looking at concentrated complexity; it does not validate this detector (sections not reviewed by this worker; P0 source gate open).\",\n      \"facility_ids\": [\n        \"rule:long-method\"\n      ],\n      \"fidelity\": \"inspiration-only\",\n      \"implementation_symbols\": [\n        \"deslop_core::rules::RULES\"\n      ],\n      \"kind\": \"rule-group\",\n      \"permitted\": [\n        \"propose extraction for human review with verification\"\n      ],\n      \"prohibited\": [\n        \"do not treat length as proof of a defect or maintenance cost\"\n      ],\n      \"references\": [\n        \"paul-2025-smells\"\n      ],\n      \"studied_population\": \"unvalidated until P0 primary-source review records studied populations and limits\",\n      \"support\": [\n        \"heuristic\"\n      ],\n      \"unit\": \"callable\"\n    }\n  ],\n  \"registry_version\": \"1.0.0\",\n  \"schema\": \"deslop.rule-research/1\",\n  \"sources\": [\n    {\n      \"access\": \"partial\",\n      \"citation\": \"Debalina Ghosh Paul, Hong Zhu, Ian Bayley. Investigating The Smells of LLM Generated Code (arXiv 2510.03029v1 (extended ICCBDCS 2025 paper; submitted to Information and Software Technology), 2025)\",\n      \"comparison_baseline\": \"textbook + StackOverflow reference solutions as human baseline; ScenEval dataset\",\n      \"dataset_artifact_license\": \"unverified — no import (paper CC-BY-4.0 / arXiv terms are paper terms only, not data terms)\",\n      \"dataset_artifact_revision\": \"dataset revision not pinned (not stated — no import); dataset license unverified — no import\",\n      \"id\": \"paul-2025-smells\",\n      \"identifier\": \"arXiv 2510.03029v1\",\n      \"identifier_kind\": \"arxiv\",\n      \"identifier_version\": \"v1\",\n      \"peer_reviewed\": false,\n      \"publication_status\": \"preprint\",\n      \"relevant_sections\": \"§1 Motivation/Challenges; §2 Related work/RQs; §3 Smell taxonomy/detection; §4 Test system; §5 Experiment design; §6 Results; §7 Threats; §8 Conclusion\",\n      \"studied_population\": \"Java programs; 4 LLMs (Gemini Pro, ChatGPT, Codex, Falcon)\",\n      \"threats\": \"smell subjectivity/low human agreement (§1.2, §3.1); Java-only; tool-threshold arbitrariness\",\n      \"url\": \"https://arxiv.org/html/2510.03029v1\"\n    }\n  ],\n  \"validation_status\": \"not-independently-validated; engineering fixtures are not a frozen confirmatory evaluation\"\n}",
+              "type": "text"
+            }
+          ],
+          "isError": false,
+          "structuredContent": {
+            "authority": "metadata-only; citations and evaluation artifacts grant no source proof or write authority",
+            "claims": [
+              {
+                "claim_id": "fac:rule:long-method-complexity",
+                "construct": "concentrated complexity hypothesis",
+                "counterexamples": [
+                  "single-responsibility dispatch tables",
+                  "required protocol implementations"
+                ],
+                "estimator_threshold_origin": "heuristic: nloc threshold; P1 pilot family: concentrated complexity/long methods",
+                "evaluation_artifacts": [
+                  "tests/corpus/manifest.json"
+                ],
+                "exact_claim": "Long-method flags concentrated complexity as a propose-only extraction hypothesis. The cited catalog motivates looking at concentrated complexity; it does not validate this detector (sections not reviewed by this worker; P0 source gate open).",
+                "facility_ids": [
+                  "rule:long-method"
+                ],
+                "fidelity": "inspiration-only",
+                "implementation_symbols": [
+                  "deslop_core::rules::RULES"
+                ],
+                "kind": "rule-group",
+                "permitted": [
+                  "propose extraction for human review with verification"
+                ],
+                "prohibited": [
+                  "do not treat length as proof of a defect or maintenance cost"
+                ],
+                "references": [
+                  "paul-2025-smells"
+                ],
+                "studied_population": "unvalidated until P0 primary-source review records studied populations and limits",
+                "support": [
+                  "heuristic"
+                ],
+                "unit": "callable"
+              }
+            ],
+            "registry_version": "1.0.0",
+            "schema": "deslop.rule-research/1",
+            "sources": [
+              {
+                "access": "partial",
+                "citation": "Debalina Ghosh Paul, Hong Zhu, Ian Bayley. Investigating The Smells of LLM Generated Code (arXiv 2510.03029v1 (extended ICCBDCS 2025 paper; submitted to Information and Software Technology), 2025)",
+                "comparison_baseline": "textbook + StackOverflow reference solutions as human baseline; ScenEval dataset",
+                "dataset_artifact_license": "unverified — no import (paper CC-BY-4.0 / arXiv terms are paper terms only, not data terms)",
+                "dataset_artifact_revision": "dataset revision not pinned (not stated — no import); dataset license unverified — no import",
+                "id": "paul-2025-smells",
+                "identifier": "arXiv 2510.03029v1",
+                "identifier_kind": "arxiv",
+                "identifier_version": "v1",
+                "peer_reviewed": false,
+                "publication_status": "preprint",
+                "relevant_sections": "§1 Motivation/Challenges; §2 Related work/RQs; §3 Smell taxonomy/detection; §4 Test system; §5 Experiment design; §6 Results; §7 Threats; §8 Conclusion",
+                "studied_population": "Java programs; 4 LLMs (Gemini Pro, ChatGPT, Codex, Falcon)",
+                "threats": "smell subjectivity/low human agreement (§1.2, §3.1); Java-only; tool-threshold arbitrariness",
+                "url": "https://arxiv.org/html/2510.03029v1"
+              }
+            ],
+            "validation_status": "not-independently-validated; engineering fixtures are not a frozen confirmatory evaluation"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "jsonrpc": "2.0",
+        "result": {
+          "content": [
+            {
+              "text": "{\n  \"base\": \"base\",\n  \"comparable\": true,\n  \"findings\": [\n    {\n      \"counterpart\": null,\n      \"disposition\": \"introduced\",\n      \"evidence\": \"no matching base finding with stable rule and source bytes\",\n      \"finding\": {\n        \"detected_by\": \"idiom\",\n        \"edit\": null,\n        \"fingerprint\": \"e99d9c67b8db7119\",\n        \"message\": \"tail-position return can usually be an expression\",\n        \"path\": \"src/sample.rs\",\n        \"precondition\": \"return is in tail position and control flow remains unchanged\",\n        \"rule\": \"needless-return\",\n        \"safety\": \"safe-with-precondition\",\n        \"severity\": \"minor\",\n        \"span\": {\n          \"end_byte\": 33,\n          \"end_line\": 2,\n          \"start_byte\": 20,\n          \"start_line\": 2\n        },\n        \"suggestion\": \"remove return only after tests/typecheck pass\"\n      },\n      \"identity\": {\n        \"end_byte\": 33,\n        \"occurrence\": 0,\n        \"path\": \"src/sample.rs\",\n        \"region_hash\": \"47ff50cfd478e5f8d61c0720f91306e83f28f5dd0f4f9635765fd7bd4664b0ba\",\n        \"start_byte\": 20\n      }\n    }\n  ],\n  \"incomparability\": null,\n  \"inherited\": 0,\n  \"introduced\": 1,\n  \"moved\": 0,\n  \"removed\": 0,\n  \"schema\": \"deslop.revision-cleanup/1\",\n  \"target\": \"target\",\n  \"target_sources\": {\n    \"src/sample.py\": \"6f183d54db33e69fac28a7add43e3e15e82efcd80baf5ba173f1e58596686623\",\n    \"src/sample.rs\": \"5a5a9f4424324b0fd15d8a3c1d6fe05702d15114f5ff45ab091a78039d0add0b\"\n  },\n  \"uncertain\": 0\n}",
+              "type": "text"
+            }
+          ],
+          "isError": false,
+          "structuredContent": {
+            "base": "base",
+            "comparable": true,
+            "findings": [
+              {
+                "counterpart": null,
+                "disposition": "introduced",
+                "evidence": "no matching base finding with stable rule and source bytes",
+                "finding": {
+                  "detected_by": "idiom",
+                  "edit": null,
+                  "fingerprint": "e99d9c67b8db7119",
+                  "message": "tail-position return can usually be an expression",
+                  "path": "src/sample.rs",
+                  "precondition": "return is in tail position and control flow remains unchanged",
+                  "rule": "needless-return",
+                  "safety": "safe-with-precondition",
+                  "severity": "minor",
+                  "span": {
+                    "end_byte": 33,
+                    "end_line": 2,
+                    "start_byte": 20,
+                    "start_line": 2
+                  },
+                  "suggestion": "remove return only after tests/typecheck pass"
+                },
+                "identity": {
+                  "end_byte": 33,
+                  "occurrence": 0,
+                  "path": "src/sample.rs",
+                  "region_hash": "47ff50cfd478e5f8d61c0720f91306e83f28f5dd0f4f9635765fd7bd4664b0ba",
+                  "start_byte": 20
+                }
+              }
+            ],
+            "incomparability": null,
+            "inherited": 0,
+            "introduced": 1,
+            "moved": 0,
+            "removed": 0,
+            "schema": "deslop.revision-cleanup/1",
+            "target": "target",
+            "target_sources": {
+              "src/sample.py": "6f183d54db33e69fac28a7add43e3e15e82efcd80baf5ba173f1e58596686623",
+              "src/sample.rs": "5a5a9f4424324b0fd15d8a3c1d6fe05702d15114f5ff45ab091a78039d0add0b"
+            },
+            "uncertain": 0
+          }
+        }
+      }
+    ],
+    "installed_revision_proposal": {
+      "schema": "deslop.revision-cleanup-proposal/1",
+      "task_requirements": "Preserve return value and public contract",
+      "comparison": {
+        "schema": "deslop.revision-cleanup/1",
+        "base": "base",
+        "target": "target",
+        "comparable": true,
+        "incomparability": null,
+        "target_sources": {
+          "src/sample.py": "6f183d54db33e69fac28a7add43e3e15e82efcd80baf5ba173f1e58596686623",
+          "src/sample.rs": "5a5a9f4424324b0fd15d8a3c1d6fe05702d15114f5ff45ab091a78039d0add0b"
+        },
+        "findings": [
+          {
+            "finding": {
+              "path": "src/sample.rs",
+              "span": {
+                "start_line": 2,
+                "end_line": 2,
+                "start_byte": 20,
+                "end_byte": 33
+              },
+              "rule": "needless-return",
+              "severity": "minor",
+              "safety": "safe-with-precondition",
+              "detected_by": "idiom",
+              "message": "tail-position return can usually be an expression",
+              "suggestion": "remove return only after tests/typecheck pass",
+              "precondition": "return is in tail position and control flow remains unchanged",
+              "edit": null,
+              "fingerprint": "e99d9c67b8db7119"
+            },
+            "counterpart": null,
+            "disposition": "introduced",
+            "identity": {
+              "path": "src/sample.rs",
+              "region_hash": "47ff50cfd478e5f8d61c0720f91306e83f28f5dd0f4f9635765fd7bd4664b0ba",
+              "start_byte": 20,
+              "end_byte": 33,
+              "occurrence": 0
+            },
+            "evidence": "no matching base finding with stable rule and source bytes"
+          }
+        ],
+        "introduced": 1,
+        "inherited": 0,
+        "removed": 0,
+        "moved": 0,
+        "uncertain": 0
+      },
+      "proposals": [
+        {
+          "schema": "deslop.work-order/1",
+          "id": "wo1_9bef8afdc257d08f6c0968192493040897962ab24b39d1c285c15db5bc555092",
+          "subject": {
+            "kind": "finding-proposal",
+            "order": {
+              "schema": "deslop.workorder/3",
+              "kind": "rewrite-region",
+              "id": "wo3_775f1616c45bbe3e6fb81f3933f2a8a217a52308d87cc762c882e4962ec89cf8",
+              "path": "src/sample.rs",
+              "region": {
+                "start_line": 1,
+                "end_line": 3,
+                "start_byte": 0,
+                "end_byte": 36,
+                "text": "fn value() -> i32 {\n    return 1;\n}\n"
+              },
+              "region_fingerprint": "a90ab059bb00b499",
+              "revision_guard": "rg1_36_e4278012fdd38bdede6c9370e46e96315b539be4e7d45216753f701f00733851",
+              "proposal_context": {
+                "schema": "deslop.proposal-context/1",
+                "analyzer_semantics": "deslop-analyzer/2",
+                "context_id": "pc1_a2ac0c29724731ebe425bdee94975ed425a48dc37076fdf6807c0b2399f14dc2",
+                "requested_scope": [
+                  {
+                    "path": "src",
+                    "kind": "directory"
+                  }
+                ],
+                "analyzer": {
+                  "min_duplication_tokens": 24,
+                  "long_method_nloc": 40,
+                  "min_meaningful_tokens": 8,
+                  "rust": {
+                    "long_method_nloc": null
+                  },
+                  "clojure": {
+                    "long_method_nloc": null
+                  },
+                  "julia": {
+                    "long_method_nloc": null
+                  },
+                  "python": {
+                    "long_method_nloc": null
+                  },
+                  "javascript": {
+                    "long_method_nloc": null
+                  },
+                  "typescript": {
+                    "long_method_nloc": null
+                  },
+                  "generic": {
+                    "long_method_nloc": null
+                  },
+                  "rust_external": false,
+                  "julia_external": "off",
+                  "julia_project": null,
+                  "suppression": {
+                    "disabled_rules": [],
+                    "ignore_paths": [],
+                    "rules": {}
+                  },
+                  "boundary": {
+                    "enabled": true,
+                    "min_key_length": 4,
+                    "extra_sinks": [],
+                    "ignore_keys": [],
+                    "skip_artifacts": [
+                      ".pre-commit-config.yaml",
+                      "Cargo.lock",
+                      "Cargo.toml",
+                      "JuliaProject.toml",
+                      "Manifest.toml",
+                      "Pipfile",
+                      "Project.toml",
+                      "bun.lockb",
+                      "clippy.toml",
+                      "codecov.yml",
+                      "composer.json",
+                      "deno.json",
+                      "deslop.toml",
+                      "jsconfig.json",
+                      "mkdocs.yml",
+                      "package-lock.json",
+                      "package.json",
+                      "poetry.lock",
+                      "pyproject.toml",
+                      "renovate.json",
+                      "rust-toolchain.toml",
+                      "rustfmt.toml",
+                      "tsconfig.json"
+                    ]
+                  }
+                },
+                "excluded_fingerprints": [],
+                "sources": [
+                  {
+                    "path": "src/sample.py",
+                    "lang": "python",
+                    "revision_guard": "rg1_26_d63149cb6c604d1b288c4e50cecc4ba669c7b7559509e8e8d52f8927986b67d3",
+                    "analysis": {
+                      "status": "complete",
+                      "diagnostics": []
+                    }
+                  },
+                  {
+                    "path": "src/sample.rs",
+                    "lang": "rust",
+                    "revision_guard": "rg1_36_e4278012fdd38bdede6c9370e46e96315b539be4e7d45216753f701f00733851",
+                    "analysis": {
+                      "status": "complete",
+                      "diagnostics": []
+                    }
+                  }
+                ],
+                "external_capabilities": [],
+                "workorder_set_digest": "dg1_891300dc73cd8210ef3331af2eb0bbff3aed4c39ae60ba319208a85da5c63543"
+              },
+              "findings": [
+                {
+                  "rule": "needless-return",
+                  "severity": "minor",
+                  "safety": "safe-with-precondition",
+                  "message": "tail-position return can usually be an expression",
+                  "precondition": "return is in tail position and control flow remains unchanged"
+                }
+              ],
+              "instruction": "Task requirements: Preserve return value and public contract\n\nRewrite the region to address every listed finding that can be resolved without changing behavior or the public API. The safety contract wins if findings conflict. Preserve language and indentation.",
+              "contract": {
+                "must_parse": true,
+                "no_new_public_defs": true,
+                "keep_error_handling": true,
+                "max_growth_ratio": 1.0,
+                "check_cmd": null
+              }
+            }
+          },
+          "target": {
+            "path": "src/sample.rs",
+            "span": {
+              "start_line": 1,
+              "end_line": 3,
+              "start_byte": 0,
+              "end_byte": 36
+            },
+            "revision_guard": "rg1_36_e4278012fdd38bdede6c9370e46e96315b539be4e7d45216753f701f00733851",
+            "node": null,
+            "fingerprint": "a90ab059bb00b499"
+          },
+          "recipe": {
+            "identity": "implicit:rewrite-region/v1",
+            "name": "rewrite-region",
+            "version": "1",
+            "parameters": [
+              {
+                "name": "kind",
+                "value": "rewrite-region"
+              }
+            ]
+          },
+          "evidence": [
+            {
+              "kind": "finding",
+              "key": "needless-return",
+              "state": "proven",
+              "layer": null,
+              "entity": "severity:minor",
+              "detail": "tail-position return can usually be an expression"
+            }
+          ],
+          "impact": {
+            "kind": "region",
+            "path": "src/sample.rs",
+            "span": {
+              "start_line": 1,
+              "end_line": 3,
+              "start_byte": 0,
+              "end_byte": 36
+            }
+          },
+          "safety": "safe-with-precondition",
+          "patch_budget": {
+            "maximum_files": 1,
+            "maximum_edits": 1,
+            "maximum_removed_bytes": 36,
+            "maximum_added_bytes": 36
+          },
+          "verification": {
+            "kind": "finding-proposal",
+            "contract": {
+              "must_parse": true,
+              "no_new_public_defs": true,
+              "keep_error_handling": true,
+              "max_growth_ratio": 1.0,
+              "check_cmd": null
+            }
+          },
+          "access": {
+            "reads": [
+              {
+                "kind": "file",
+                "identity": "src/sample.rs"
+              },
+              {
+                "kind": "source-bytes",
+                "identity": "rg1_36_e4278012fdd38bdede6c9370e46e96315b539be4e7d45216753f701f00733851"
+              },
+              {
+                "kind": "proposal-context",
+                "identity": "pc1_a2ac0c29724731ebe425bdee94975ed425a48dc37076fdf6807c0b2399f14dc2"
+              }
+            ],
+            "writes": [
+              {
+                "kind": "source-span",
+                "identity": "src/sample.rs:0..36:rg1_36_e4278012fdd38bdede6c9370e46e96315b539be4e7d45216753f701f00733851"
+              }
+            ],
+            "requires": [
+              {
+                "kind": "proposal-context",
+                "identity": "pc1_a2ac0c29724731ebe425bdee94975ed425a48dc37076fdf6807c0b2399f14dc2"
+              },
+              {
+                "kind": "recipe",
+                "identity": "implicit:rewrite-region/v1"
+              }
+            ],
+            "invalidates": [
+              {
+                "kind": "file",
+                "identity": "src/sample.rs"
+              },
+              {
+                "kind": "proposal-context",
+                "identity": "pc1_a2ac0c29724731ebe425bdee94975ed425a48dc37076fdf6807c0b2399f14dc2"
+              }
+            ]
+          },
+          "provenance": {
+            "subject_schema": "deslop.workorder/3",
+            "subject_identity": "wo3_775f1616c45bbe3e6fb81f3933f2a8a217a52308d87cc762c882e4962ec89cf8",
+            "proposal_context": "pc1_a2ac0c29724731ebe425bdee94975ed425a48dc37076fdf6807c0b2399f14dc2",
+            "project_snapshot": null,
+            "analysis": null
+          },
+          "unknowns": []
+        }
+      ],
+      "affected_identities": [
+        "src/sample.rs:1-3:0-36"
+      ],
+      "declared_read_set": [
+        "File:src/sample.rs",
+        "ProposalContext:pc1_a2ac0c29724731ebe425bdee94975ed425a48dc37076fdf6807c0b2399f14dc2",
+        "Recipe:implicit:rewrite-region/v1",
+        "SourceBytes:rg1_36_e4278012fdd38bdede6c9370e46e96315b539be4e7d45216753f701f00733851",
+        "source:src/sample.py:rg1_26_d63149cb6c604d1b288c4e50cecc4ba669c7b7559509e8e8d52f8927986b67d3",
+        "source:src/sample.rs:rg1_36_e4278012fdd38bdede6c9370e46e96315b539be4e7d45216753f701f00733851"
+      ],
+      "preconditions": [
+        "return is in tail position and control flow remains unchanged"
+      ],
+      "verification_plan": [
+        "protect tests, checks, error handling, and public contracts during review",
+        "re-run declared checks against the exact target revision and full read set"
+      ]
+    },
+    "installed_apply": {
+      "schema": "deslop.apply/1",
+      "verified": {
+        "schema": "deslop.verify/1",
+        "results": [
+          {
+            "workorder_id": "wo3_8c3053a7721e839daecfa6b3b3e5a61d53e3d8df2fde15eaf7c7d122bc4ac590",
+            "path": "value.rs",
+            "passed": true,
+            "verdict": "coverage-unknown",
+            "reasons": [
+              "coverage disabled",
+              "mutation disabled"
+            ]
+          }
+        ]
+      },
+      "written": [
+        "/tmp/deslop-plan-smoke-8b1scoo8/apply/value.rs"
+      ]
+    },
+    "installed_undo_stdout": "restored ./value.rs\n",
+    "installed_source_restored_exactly": true
+  },
+  "fictional_fixtures": {
+    "scope": "Engineering smoke only; not independent corpus evidence",
+    "directory_sources": {
+      "base/src/sample.rs": "fn value() -> i32 {\n    1\n}\n",
+      "base/src/sample.py": "def value():\n    return 1\n",
+      "target/src/sample.rs": "fn value() -> i32 {\n    return 1;\n}\n",
+      "target/src/sample.py": "def value():\n    return 1\n"
+    },
+    "apply_original": "fn value() -> i32 {\n    return 1;\n}\n",
+    "apply_patch": {
+      "schema": "deslop.patch/3",
+      "workorder_id": "wo3_8c3053a7721e839daecfa6b3b3e5a61d53e3d8df2fde15eaf7c7d122bc4ac590",
+      "revision_guard": "rg1_36_512d86c29e09f1637c3decc310e18adb743af2f9cc82a3184e9e80727bff7a17",
+      "proposal_context": {
+        "schema": "deslop.proposal-context/1",
+        "analyzer_semantics": "deslop-analyzer/2",
+        "context_id": "pc1_459add27547e4a690811da5088bbb0827fd274404638d0db55b6e5698322d334",
+        "requested_scope": [
+          {
+            "path": "",
+            "kind": "directory"
+          }
+        ],
+        "analyzer": {
+          "min_duplication_tokens": 24,
+          "long_method_nloc": 40,
+          "min_meaningful_tokens": 8,
+          "rust": {
+            "long_method_nloc": null
+          },
+          "clojure": {
+            "long_method_nloc": null
+          },
+          "julia": {
+            "long_method_nloc": null
+          },
+          "python": {
+            "long_method_nloc": null
+          },
+          "javascript": {
+            "long_method_nloc": null
+          },
+          "typescript": {
+            "long_method_nloc": null
+          },
+          "generic": {
+            "long_method_nloc": null
+          },
+          "rust_external": false,
+          "julia_external": "off",
+          "julia_project": null,
+          "suppression": {
+            "disabled_rules": [],
+            "ignore_paths": [],
+            "rules": {}
+          },
+          "boundary": {
+            "enabled": true,
+            "min_key_length": 4,
+            "extra_sinks": [],
+            "ignore_keys": [],
+            "skip_artifacts": [
+              ".pre-commit-config.yaml",
+              "Cargo.lock",
+              "Cargo.toml",
+              "JuliaProject.toml",
+              "Manifest.toml",
+              "Pipfile",
+              "Project.toml",
+              "bun.lockb",
+              "clippy.toml",
+              "codecov.yml",
+              "composer.json",
+              "deno.json",
+              "deslop.toml",
+              "jsconfig.json",
+              "mkdocs.yml",
+              "package-lock.json",
+              "package.json",
+              "poetry.lock",
+              "pyproject.toml",
+              "renovate.json",
+              "rust-toolchain.toml",
+              "rustfmt.toml",
+              "tsconfig.json"
+            ]
+          }
+        },
+        "excluded_fingerprints": [],
+        "sources": [
+          {
+            "path": "value.rs",
+            "lang": "rust",
+            "revision_guard": "rg1_36_512d86c29e09f1637c3decc310e18adb743af2f9cc82a3184e9e80727bff7a17",
+            "analysis": {
+              "status": "complete",
+              "diagnostics": []
+            }
+          }
+        ],
+        "external_capabilities": [],
+        "workorder_set_digest": "dg1_abd18cb22d39a769b6c5bac734d19c846ba83c47df26b3bc4657eb231426281c"
+      },
+      "replacement": "fn value() -> i32 {\n    1\n}\n",
+      "by": "installed-smoke"
+    },
+    "mcp_input": "[\n[]\n{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/call\", \"params\": {\"name\": \"missing\"}}\n{\"jsonrpc\": \"2.0\", \"method\": \"tools/list\"}\n{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"initialize\", \"params\": {}}\n{\"jsonrpc\": \"2.0\", \"id\": 3, \"method\": \"tools/call\", \"params\": {\"name\": \"rules\", \"arguments\": {\"rule\": \"long-method\"}}}\n{\"jsonrpc\": \"2.0\", \"id\": 4, \"method\": \"tools/call\", \"params\": {\"name\": \"revision_cleanup\", \"arguments\": {\"from\": \"/tmp/deslop-plan-smoke-8b1scoo8/base\", \"to\": \"/tmp/deslop-plan-smoke-8b1scoo8/target\", \"scope\": [\"src\"]}}}\n",
+    "trajectory": {
+      "schema": "deslop.trajectory/1",
+      "format": "opencode.export/{info,messages}",
+      "base": {
+        "identity": {
+          "revision": "base",
+          "tree_hash": "blake3:084d619330c4d688f5df02908d031893b4ed7c14f5b9421062472220966398d4"
+        },
+        "files": {
+          "sample.rs": "fn value() -> i32 {\n    1\n}\n"
+        }
+      },
+      "final_snapshot": {
+        "identity": {
+          "revision": "final",
+          "tree_hash": "blake3:32c1cd50cfd7ba4ea58d0474e3447ed91e8e1b03180f498daa1bb24c0c0c4b3c"
+        },
+        "files": {
+          "sample.rs": "fn value() -> i32 {\n    return 1;\n}\n"
+        }
+      },
+      "events": [
+        {
+          "id": "edit-1",
+          "ordinal": 0,
+          "group": "message:message-1",
+          "path": "sample.rs",
+          "kind": "modify",
+          "before": {
+            "hash": "blake3:4f4e7463fd6a13d76134576582ceaaf26af1af382faedab84f37d95daa09321a",
+            "content": "fn value() -> i32 {\n    1\n}\n"
+          },
+          "after": {
+            "hash": "blake3:5a5a9f4424324b0fd15d8a3c1d6fe05702d15114f5ff45ab091a78039d0add0b",
+            "content": "fn value() -> i32 {\n    return 1;\n}\n"
+          }
+        }
+      ],
+      "observations": [],
+      "missing_history": [],
+      "license": {
+        "approved": true,
+        "spdx": "MIT",
+        "source_uri": "fictional-engineering-fixture:not-study-data"
+      },
+      "integrity": {
+        "algorithm": "blake3",
+        "source_digest": "blake3:5eaa9db31457f7d925438280a24d3366053ba6f5179121818a016681f3a865c5",
+        "verified": true
+      },
+      "protected_paths": []
+    },
+    "family_cards": {
+      "schema": "deslop.family-cards/1",
+      "pilot_report_schema": "deslop.pilot-eval/1",
+      "protocol_pin": "p1-smoke-v1",
+      "analyzer_config_pin": "blake3:0cee2581cf2ddd8bad422e5432edd1d3b83b3782c542ce3410e3981e4c799460",
+      "pilot_report_digest": "blake3:beb695ed2c4ff86ecc53c4d4b1e2bea20f3a1c5ae1c775e587bd38cc5678579a",
+      "evidence_status": "pilot-engineering-evidence-only",
+      "promotion_status": "blocked-pending-independent-held-out-artifact",
+      "report_notes": [
+        "Cards are generated from the actual validated pilot report returned by evaluate_dir; no arbitrary report JSON is accepted.",
+        "Canonical family/rule/language mappings are checked before card construction.",
+        "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only."
+      ],
+      "pilot_failures": [],
+      "cards": [
+        {
+          "schema": "deslop.family-card/1",
+          "family": "duplication",
+          "language": "rust",
+          "rules": [
+            "duplicate-block",
+            "near-duplicate"
+          ],
+          "supported_rules": [
+            "duplicate-block",
+            "near-duplicate"
+          ],
+          "capability": "supported",
+          "data_status": "observed",
+          "scope": "Within-file analysis of the selected source range under the pinned analyzer configuration; cross-file/project context is unavailable and is never represented as complete coverage.",
+          "metrics": [
+            {
+              "family": "duplication",
+              "language": "rust",
+              "provenance": "challenge",
+              "unit_kind": "callable",
+              "true_positives": 1,
+              "false_positives": 0,
+              "false_negatives": 0,
+              "true_negatives": 1,
+              "input_total": 2,
+              "eligible_total": 2,
+              "abstained": 0,
+              "unsupported": 0,
+              "analyzed": 2,
+              "predicted_positive": 1,
+              "precision": 1.0,
+              "recall": 1.0,
+              "recommendation_rate": 0.5,
+              "abstention": 0.0,
+              "analysis_coverage": 1.0
+            },
+            {
+              "family": "duplication",
+              "language": "rust",
+              "provenance": "engineering-synthetic",
+              "unit_kind": "callable",
+              "true_positives": 0,
+              "false_positives": 0,
+              "false_negatives": 0,
+              "true_negatives": 0,
+              "input_total": 1,
+              "eligible_total": 0,
+              "abstained": 0,
+              "unsupported": 0,
+              "analyzed": 1,
+              "predicted_positive": 1,
+              "precision": null,
+              "recall": null,
+              "recommendation_rate": 1.0,
+              "abstention": 0.0,
+              "analysis_coverage": 1.0
+            }
+          ],
+          "coverage": [
+            {
+              "provenance": "challenge",
+              "unit_kind": "callable",
+              "input_total": 2,
+              "analyzed": 2,
+              "unsupported": 0,
+              "abstained": 0,
+              "analysis_coverage": 1.0
+            },
+            {
+              "provenance": "engineering-synthetic",
+              "unit_kind": "callable",
+              "input_total": 1,
+              "analyzed": 1,
+              "unsupported": 0,
+              "abstained": 0,
+              "analysis_coverage": 1.0
+            }
+          ],
+          "reviewer_load_proxy": [
+            {
+              "provenance": "challenge",
+              "unit_kind": "callable",
+              "input_total": 2,
+              "predicted_positive": 1,
+              "recommendation_rate": 0.5,
+              "definition": "predicted-positive cases / input rows; proxy only, not measured reviewer time or effort"
+            },
+            {
+              "provenance": "engineering-synthetic",
+              "unit_kind": "callable",
+              "input_total": 1,
+              "predicted_positive": 1,
+              "recommendation_rate": 1.0,
+              "definition": "predicted-positive cases / input rows; proxy only, not measured reviewer time or effort"
+            }
+          ],
+          "semantic_preconditions": [
+            "At least two regions share the same or near-same token sequence in context.",
+            "The selected source range and within-file scope are sufficient to observe both regions; cross-file reuse is unavailable.",
+            "Any cleanup candidate must preserve task requirements, compatibility, side effects, and public behavior under exact verification."
+          ],
+          "counterexamples": [
+            "Version-conditional branches, test fixtures, and compatibility shims may be intentionally redundant.",
+            "Generated code or required defensive checks may repeat tokens without being removable."
+          ],
+          "uncertainty": [
+            "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only.",
+            "Annotations are self-declared reviewer records (declared provenance/blinding/identities); external independence is unverified and confirmatory validation is unproven until a roster, consent record, and frozen protocol exist. Scores use declared-attestation ground truth only where eligibility holds; all other rows are reported, never scored.",
+            "clustered-confidence-unavailable: no repository/task clustering model on local engineering data; rates are point estimates with explicit disjoint denominators; zero denominators are null. A confirmatory interval requires pilot variance plus owner sign-off under the frozen protocol.",
+            "sampling: reported rates are unweighted sampled-case descriptive estimates, not deployment precision or prevalence; unequal selection probabilities and workload strata are disclosed per row and never pooled into population claims; no weighted or clustered interval is computed without a declared protocol.",
+            "Metrics are descriptive sampled-case rates, not deployment precision, prevalence, or a confidence interval; zero denominators remain null."
+          ],
+          "disposition": "review-only: a detector observation is not a cleanup authorization; each candidate requires a separate semantic and verification decision.",
+          "promotion": {
+            "status": "blocked",
+            "permitted": false,
+            "reason": "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only."
+          }
+        },
+        {
+          "schema": "deslop.family-card/1",
+          "family": "duplication",
+          "language": "python",
+          "rules": [
+            "duplicate-block",
+            "near-duplicate"
+          ],
+          "supported_rules": [
+            "duplicate-block",
+            "near-duplicate"
+          ],
+          "capability": "supported",
+          "data_status": "missing",
+          "scope": "Within-file analysis of the selected source range under the pinned analyzer configuration; cross-file/project context is unavailable and is never represented as complete coverage.",
+          "metrics": [],
+          "coverage": [],
+          "reviewer_load_proxy": [],
+          "semantic_preconditions": [
+            "At least two regions share the same or near-same token sequence in context.",
+            "The selected source range and within-file scope are sufficient to observe both regions; cross-file reuse is unavailable.",
+            "Any cleanup candidate must preserve task requirements, compatibility, side effects, and public behavior under exact verification."
+          ],
+          "counterexamples": [
+            "Version-conditional branches, test fixtures, and compatibility shims may be intentionally redundant.",
+            "Generated code or required defensive checks may repeat tokens without being removable."
+          ],
+          "uncertainty": [
+            "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only.",
+            "Annotations are self-declared reviewer records (declared provenance/blinding/identities); external independence is unverified and confirmatory validation is unproven until a roster, consent record, and frozen protocol exist. Scores use declared-attestation ground truth only where eligibility holds; all other rows are reported, never scored.",
+            "clustered-confidence-unavailable: no repository/task clustering model on local engineering data; rates are point estimates with explicit disjoint denominators; zero denominators are null. A confirmatory interval requires pilot variance plus owner sign-off under the frozen protocol.",
+            "sampling: reported rates are unweighted sampled-case descriptive estimates, not deployment precision or prevalence; unequal selection probabilities and workload strata are disclosed per row and never pooled into population claims; no weighted or clustered interval is computed without a declared protocol.",
+            "Metrics are descriptive sampled-case rates, not deployment precision, prevalence, or a confidence interval; zero denominators remain null.",
+            "No unsealed pilot stratum was observed for this family/language; no detector rate is asserted."
+          ],
+          "disposition": "review-only: a detector observation is not a cleanup authorization; each candidate requires a separate semantic and verification decision.",
+          "promotion": {
+            "status": "blocked",
+            "permitted": false,
+            "reason": "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only."
+          }
+        },
+        {
+          "schema": "deslop.family-card/1",
+          "family": "long-method-complexity",
+          "language": "rust",
+          "rules": [
+            "long-method"
+          ],
+          "supported_rules": [
+            "long-method"
+          ],
+          "capability": "supported",
+          "data_status": "missing",
+          "scope": "Within-file analysis of the selected source range under the pinned analyzer configuration; cross-file/project context is unavailable and is never represented as complete coverage.",
+          "metrics": [],
+          "coverage": [],
+          "reviewer_load_proxy": [],
+          "semantic_preconditions": [
+            "The selected callable concentrates multiple responsibilities or branch clusters.",
+            "A complexity/length observation does not establish a safe split boundary or a maintenance benefit.",
+            "Any extraction must preserve evaluation order, error timing, ownership/types, and the declared task contract."
+          ],
+          "counterexamples": [
+            "An inherent single algorithm may be long without a clean split line; extraction can harm the contract.",
+            "Generated code may be retained by a regeneration policy despite real concentration."
+          ],
+          "uncertainty": [
+            "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only.",
+            "Annotations are self-declared reviewer records (declared provenance/blinding/identities); external independence is unverified and confirmatory validation is unproven until a roster, consent record, and frozen protocol exist. Scores use declared-attestation ground truth only where eligibility holds; all other rows are reported, never scored.",
+            "clustered-confidence-unavailable: no repository/task clustering model on local engineering data; rates are point estimates with explicit disjoint denominators; zero denominators are null. A confirmatory interval requires pilot variance plus owner sign-off under the frozen protocol.",
+            "sampling: reported rates are unweighted sampled-case descriptive estimates, not deployment precision or prevalence; unequal selection probabilities and workload strata are disclosed per row and never pooled into population claims; no weighted or clustered interval is computed without a declared protocol.",
+            "Metrics are descriptive sampled-case rates, not deployment precision, prevalence, or a confidence interval; zero denominators remain null.",
+            "No unsealed pilot stratum was observed for this family/language; no detector rate is asserted."
+          ],
+          "disposition": "review-only: a detector observation is not a cleanup authorization; each candidate requires a separate semantic and verification decision.",
+          "promotion": {
+            "status": "blocked",
+            "permitted": false,
+            "reason": "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only."
+          }
+        },
+        {
+          "schema": "deslop.family-card/1",
+          "family": "long-method-complexity",
+          "language": "python",
+          "rules": [
+            "long-method"
+          ],
+          "supported_rules": [
+            "long-method"
+          ],
+          "capability": "supported",
+          "data_status": "missing",
+          "scope": "Within-file analysis of the selected source range under the pinned analyzer configuration; cross-file/project context is unavailable and is never represented as complete coverage.",
+          "metrics": [],
+          "coverage": [],
+          "reviewer_load_proxy": [],
+          "semantic_preconditions": [
+            "The selected callable concentrates multiple responsibilities or branch clusters.",
+            "A complexity/length observation does not establish a safe split boundary or a maintenance benefit.",
+            "Any extraction must preserve evaluation order, error timing, ownership/types, and the declared task contract."
+          ],
+          "counterexamples": [
+            "An inherent single algorithm may be long without a clean split line; extraction can harm the contract.",
+            "Generated code may be retained by a regeneration policy despite real concentration."
+          ],
+          "uncertainty": [
+            "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only.",
+            "Annotations are self-declared reviewer records (declared provenance/blinding/identities); external independence is unverified and confirmatory validation is unproven until a roster, consent record, and frozen protocol exist. Scores use declared-attestation ground truth only where eligibility holds; all other rows are reported, never scored.",
+            "clustered-confidence-unavailable: no repository/task clustering model on local engineering data; rates are point estimates with explicit disjoint denominators; zero denominators are null. A confirmatory interval requires pilot variance plus owner sign-off under the frozen protocol.",
+            "sampling: reported rates are unweighted sampled-case descriptive estimates, not deployment precision or prevalence; unequal selection probabilities and workload strata are disclosed per row and never pooled into population claims; no weighted or clustered interval is computed without a declared protocol.",
+            "Metrics are descriptive sampled-case rates, not deployment precision, prevalence, or a confidence interval; zero denominators remain null.",
+            "No unsealed pilot stratum was observed for this family/language; no detector rate is asserted."
+          ],
+          "disposition": "review-only: a detector observation is not a cleanup authorization; each candidate requires a separate semantic and verification decision.",
+          "promotion": {
+            "status": "blocked",
+            "permitted": false,
+            "reason": "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only."
+          }
+        },
+        {
+          "schema": "deslop.family-card/1",
+          "family": "wrappers-indirection",
+          "language": "rust",
+          "rules": [
+            "redundant-closure",
+            "py-list-comprehension-wrapper",
+            "useless-format"
+          ],
+          "supported_rules": [
+            "redundant-closure",
+            "useless-format"
+          ],
+          "capability": "supported",
+          "data_status": "missing",
+          "scope": "Within-file analysis of the selected source range under the pinned analyzer configuration; cross-file/project context is unavailable and is never represented as complete coverage.",
+          "metrics": [],
+          "coverage": [],
+          "reviewer_load_proxy": [],
+          "semantic_preconditions": [
+            "The wrapper forwards unchanged arguments or adds only needless formatting with no required behavior.",
+            "Reflection, dynamic dispatch, error mapping, type/lifetime adaptation, and side effects must be ruled out.",
+            "Any cleanup must preserve API identity, dispatch, evaluation order, and error behavior."
+          ],
+          "counterexamples": [
+            "A thin public-API stability or compatibility wrapper can be structurally redundant yet required.",
+            "Reflection or dynamic dispatch can make apparently unused indirection observable."
+          ],
+          "uncertainty": [
+            "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only.",
+            "Annotations are self-declared reviewer records (declared provenance/blinding/identities); external independence is unverified and confirmatory validation is unproven until a roster, consent record, and frozen protocol exist. Scores use declared-attestation ground truth only where eligibility holds; all other rows are reported, never scored.",
+            "clustered-confidence-unavailable: no repository/task clustering model on local engineering data; rates are point estimates with explicit disjoint denominators; zero denominators are null. A confirmatory interval requires pilot variance plus owner sign-off under the frozen protocol.",
+            "sampling: reported rates are unweighted sampled-case descriptive estimates, not deployment precision or prevalence; unequal selection probabilities and workload strata are disclosed per row and never pooled into population claims; no weighted or clustered interval is computed without a declared protocol.",
+            "Metrics are descriptive sampled-case rates, not deployment precision, prevalence, or a confidence interval; zero denominators remain null.",
+            "No unsealed pilot stratum was observed for this family/language; no detector rate is asserted."
+          ],
+          "disposition": "review-only: a detector observation is not a cleanup authorization; each candidate requires a separate semantic and verification decision.",
+          "promotion": {
+            "status": "blocked",
+            "permitted": false,
+            "reason": "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only."
+          }
+        },
+        {
+          "schema": "deslop.family-card/1",
+          "family": "wrappers-indirection",
+          "language": "python",
+          "rules": [
+            "redundant-closure",
+            "py-list-comprehension-wrapper",
+            "useless-format"
+          ],
+          "supported_rules": [
+            "py-list-comprehension-wrapper"
+          ],
+          "capability": "supported",
+          "data_status": "missing",
+          "scope": "Within-file analysis of the selected source range under the pinned analyzer configuration; cross-file/project context is unavailable and is never represented as complete coverage.",
+          "metrics": [],
+          "coverage": [],
+          "reviewer_load_proxy": [],
+          "semantic_preconditions": [
+            "The wrapper forwards unchanged arguments or adds only needless formatting with no required behavior.",
+            "Reflection, dynamic dispatch, error mapping, type/lifetime adaptation, and side effects must be ruled out.",
+            "Any cleanup must preserve API identity, dispatch, evaluation order, and error behavior."
+          ],
+          "counterexamples": [
+            "A thin public-API stability or compatibility wrapper can be structurally redundant yet required.",
+            "Reflection or dynamic dispatch can make apparently unused indirection observable."
+          ],
+          "uncertainty": [
+            "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only.",
+            "Annotations are self-declared reviewer records (declared provenance/blinding/identities); external independence is unverified and confirmatory validation is unproven until a roster, consent record, and frozen protocol exist. Scores use declared-attestation ground truth only where eligibility holds; all other rows are reported, never scored.",
+            "clustered-confidence-unavailable: no repository/task clustering model on local engineering data; rates are point estimates with explicit disjoint denominators; zero denominators are null. A confirmatory interval requires pilot variance plus owner sign-off under the frozen protocol.",
+            "sampling: reported rates are unweighted sampled-case descriptive estimates, not deployment precision or prevalence; unequal selection probabilities and workload strata are disclosed per row and never pooled into population claims; no weighted or clustered interval is computed without a declared protocol.",
+            "Metrics are descriptive sampled-case rates, not deployment precision, prevalence, or a confidence interval; zero denominators remain null.",
+            "No unsealed pilot stratum was observed for this family/language; no detector rate is asserted."
+          ],
+          "disposition": "review-only: a detector observation is not a cleanup authorization; each candidate requires a separate semantic and verification decision.",
+          "promotion": {
+            "status": "blocked",
+            "permitted": false,
+            "reason": "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only."
+          }
+        },
+        {
+          "schema": "deslop.family-card/1",
+          "family": "branch-simplification",
+          "language": "rust",
+          "rules": [
+            "reimpl-boolean"
+          ],
+          "supported_rules": [],
+          "capability": "unsupported",
+          "data_status": "missing",
+          "scope": "Within-file analysis of the selected source range under the pinned analyzer configuration; cross-file/project context is unavailable and is never represented as complete coverage.",
+          "metrics": [],
+          "coverage": [],
+          "reviewer_load_proxy": [],
+          "semantic_preconditions": [
+            "A boolean expression has observable literal selection or redundant-looking boolean structure.",
+            "Truth-table equivalence and language-specific overload/macro behavior must be established before any rewrite.",
+            "Automatic application additionally requires exact candidate verification; this card grants none."
+          ],
+          "counterexamples": [
+            "Defensive checks and NaN-sensitive floating-point comparisons can require explicit-looking branches.",
+            "Macro- or overload-dependent semantics can invalidate a seemingly redundant form."
+          ],
+          "uncertainty": [
+            "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only.",
+            "Annotations are self-declared reviewer records (declared provenance/blinding/identities); external independence is unverified and confirmatory validation is unproven until a roster, consent record, and frozen protocol exist. Scores use declared-attestation ground truth only where eligibility holds; all other rows are reported, never scored.",
+            "clustered-confidence-unavailable: no repository/task clustering model on local engineering data; rates are point estimates with explicit disjoint denominators; zero denominators are null. A confirmatory interval requires pilot variance plus owner sign-off under the frozen protocol.",
+            "sampling: reported rates are unweighted sampled-case descriptive estimates, not deployment precision or prevalence; unequal selection probabilities and workload strata are disclosed per row and never pooled into population claims; no weighted or clustered interval is computed without a declared protocol.",
+            "Metrics are descriptive sampled-case rates, not deployment precision, prevalence, or a confidence interval; zero denominators remain null.",
+            "No unsealed pilot stratum was observed for this family/language; no detector rate is asserted.",
+            "The canonical mapping has no detector capability for this language; unsupported rows are not scored as negatives."
+          ],
+          "disposition": "unsupported",
+          "promotion": {
+            "status": "blocked",
+            "permitted": false,
+            "reason": "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only."
+          }
+        },
+        {
+          "schema": "deslop.family-card/1",
+          "family": "branch-simplification",
+          "language": "python",
+          "rules": [
+            "reimpl-boolean"
+          ],
+          "supported_rules": [],
+          "capability": "unsupported",
+          "data_status": "missing",
+          "scope": "Within-file analysis of the selected source range under the pinned analyzer configuration; cross-file/project context is unavailable and is never represented as complete coverage.",
+          "metrics": [],
+          "coverage": [],
+          "reviewer_load_proxy": [],
+          "semantic_preconditions": [
+            "A boolean expression has observable literal selection or redundant-looking boolean structure.",
+            "Truth-table equivalence and language-specific overload/macro behavior must be established before any rewrite.",
+            "Automatic application additionally requires exact candidate verification; this card grants none."
+          ],
+          "counterexamples": [
+            "Defensive checks and NaN-sensitive floating-point comparisons can require explicit-looking branches.",
+            "Macro- or overload-dependent semantics can invalidate a seemingly redundant form."
+          ],
+          "uncertainty": [
+            "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only.",
+            "Annotations are self-declared reviewer records (declared provenance/blinding/identities); external independence is unverified and confirmatory validation is unproven until a roster, consent record, and frozen protocol exist. Scores use declared-attestation ground truth only where eligibility holds; all other rows are reported, never scored.",
+            "clustered-confidence-unavailable: no repository/task clustering model on local engineering data; rates are point estimates with explicit disjoint denominators; zero denominators are null. A confirmatory interval requires pilot variance plus owner sign-off under the frozen protocol.",
+            "sampling: reported rates are unweighted sampled-case descriptive estimates, not deployment precision or prevalence; unequal selection probabilities and workload strata are disclosed per row and never pooled into population claims; no weighted or clustered interval is computed without a declared protocol.",
+            "Metrics are descriptive sampled-case rates, not deployment precision, prevalence, or a confidence interval; zero denominators remain null.",
+            "No unsealed pilot stratum was observed for this family/language; no detector rate is asserted.",
+            "The canonical mapping has no detector capability for this language; unsupported rows are not scored as negatives."
+          ],
+          "disposition": "unsupported",
+          "promotion": {
+            "status": "blocked",
+            "permitted": false,
+            "reason": "No independent held-out result exists: external roster/consent, frozen confirmatory protocol, and an independent artifact are unavailable. Promotion is blocked; this card remains pilot engineering evidence only."
+          }
+        }
+      ]
+    }
+  },
+  "randomness": "No randomized study or model invocation in these final engineering gates; frozen corpus seeds remain in its pinned artifacts.",
+  "external_service_limits": "No claim of reproducing agent/model behavior; public-export adapter source pinned to OpenCode dff8fbc149fb7492e4f07b713ac31ea70d9a541c. Scratch absolute paths must be rematerialized and proposals regenerated, not reused as authority.",
+  "blocked": [
+    "Authorized Sjoberg/Buse full texts",
+    "Independent licensed corpus and annotations",
+    "Pilot variance and owner-approved preregistration freeze",
+    "Consented participants, ethics approval and held-out maintenance tasks",
+    "Independent snapshot/revision/trajectory benefit comparisons"
+  ],
+  "signature": "Codex (gpt-6-astra)"
+}
