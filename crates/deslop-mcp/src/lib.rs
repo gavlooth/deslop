@@ -53,21 +53,18 @@ pub fn run<R: BufRead, W: Write>(reader: R, writer: &mut W) -> Result<()> {
                 // Request failures are isolated to this line. A valid notification has no
                 // response, including when its method or tool arguments are invalid.
                 let parsed = serde_json::from_str::<Value>(&line);
-                if parsed
-                    .as_ref()
-                    .ok()
-                    .is_some_and(|request| {
-                        request.is_object()
-                            && request.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
-                            && request.get("method").is_some_and(Value::is_string)
-                            && request.get("id").is_none()
-                    })
-                {
+                if parsed.as_ref().ok().is_some_and(|request| {
+                    request.is_object()
+                        && request.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+                        && request.get("method").is_some_and(Value::is_string)
+                        && request.get("id").is_none()
+                }) {
                     continue;
                 }
                 let (id, code) = match parsed {
                     Ok(request) if request.is_object() => {
-                        let valid_envelope = request.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+                        let valid_envelope = request.get("jsonrpc").and_then(Value::as_str)
+                            == Some("2.0")
                             && request.get("method").is_some_and(Value::is_string);
                         let code = if valid_envelope { -32602 } else { -32600 };
                         (request.get("id").cloned().unwrap_or(Value::Null), code)
@@ -674,7 +671,9 @@ fn revision_cleanup_tool(args: &Value) -> Result<Value> {
             &base, &target, &scope, config, task,
         )?)?);
     }
-    Ok(serde_json::to_value(compare_paths_with_scope(&base, &target, &scope, config)?)?)
+    Ok(serde_json::to_value(compare_paths_with_scope(
+        &base, &target, &scope, config,
+    )?)?)
 }
 
 fn required_path_arg(args: &Value, key: &str) -> Result<PathBuf> {
@@ -685,7 +684,7 @@ fn required_path_arg(args: &Value, key: &str) -> Result<PathBuf> {
     Ok(PathBuf::from(value))
 }
 
-fn strict_object<'a>(args: &'a Value, allowed: &[&str], tool: &str) -> Result<()> {
+fn strict_object(args: &Value, allowed: &[&str], tool: &str) -> Result<()> {
     let Some(object) = args.as_object() else {
         bail!("{tool} arguments must be an object");
     };
@@ -1442,7 +1441,11 @@ mod tests {
     #[test]
     fn rules_tool_keeps_table_default_and_rejects_unknown_arguments() {
         let table = rules_tool(&Value::Null).expect("default rules");
-        assert!(table["rules"].as_str().is_some_and(|text| text.starts_with("rule")));
+        assert!(
+            table["rules"]
+                .as_str()
+                .is_some_and(|text| text.starts_with("rule"))
+        );
         let error = rules_tool(&json!({ "unexpected": true }))
             .expect_err("unknown rules argument must fail");
         assert!(error.to_string().contains("does not accept argument"));

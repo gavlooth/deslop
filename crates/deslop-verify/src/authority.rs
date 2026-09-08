@@ -6,7 +6,7 @@ use deslop_parse::CapabilityAuthority;
 use deslop_protocol::{SharedWorkOrder, WorkOrderImpact, WorkOrderResource, WorkOrderResourceKind};
 use serde::{Deserialize, Serialize};
 
-pub const VERIFIER_PLAN_SCHEMA: &str = "deslop.verifier-plan/1";
+pub const VERIFIER_PLAN_SCHEMA: &str = "deslop.verifier-plan/2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -143,6 +143,8 @@ pub struct VerifierExecutionPolicy {
     pub maximum_output_bytes: usize,
     pub maximum_files: usize,
     pub maximum_file_bytes: usize,
+    pub maximum_memory_bytes: u64,
+    pub maximum_processes: u32,
     pub readable_roots: Vec<PathBuf>,
     pub writable_roots: Vec<PathBuf>,
     pub environment_allowlist: Vec<String>,
@@ -158,6 +160,8 @@ impl VerifierExecutionPolicy {
             maximum_output_bytes: 1_048_576,
             maximum_files: 10_000,
             maximum_file_bytes: 16 * 1_048_576,
+            maximum_memory_bytes: 2 * 1024 * 1024 * 1024,
+            maximum_processes: 256,
             readable_roots: vec![PathBuf::from(".")],
             writable_roots: vec![PathBuf::from(".")],
             environment_allowlist: vec![
@@ -179,6 +183,8 @@ impl VerifierExecutionPolicy {
             || self.maximum_output_bytes == 0
             || self.maximum_files == 0
             || self.maximum_file_bytes == 0
+            || self.maximum_memory_bytes == 0
+            || self.maximum_processes == 0
         {
             bail!("verifier execution limits must be nonzero and command time must fit total time");
         }
@@ -794,9 +800,9 @@ fn derive_plan_id(plan: &VerifierPlan) -> Result<String> {
         residual_uncertainty: &plan.residual_uncertainty,
     })?;
     let mut hasher = blake3::Hasher::new();
-    hasher.update(b"deslop verifier plan v1\0");
+    hasher.update(b"deslop verifier plan v2\0");
     hasher.update(&payload);
-    Ok(format!("vp1_{}", hasher.finalize().to_hex()))
+    Ok(format!("vp2_{}", hasher.finalize().to_hex()))
 }
 
 #[cfg(test)]

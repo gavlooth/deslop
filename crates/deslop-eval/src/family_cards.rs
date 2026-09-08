@@ -145,8 +145,12 @@ pub fn write_family_cards(path: &Path, cards: &FamilyCardsReport) -> Result<()> 
     cards.validate()?;
     let rendered = serde_json::to_string_pretty(cards)?;
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent)
-        .with_context(|| format!("failed to create card output directory {}", parent.display()))?;
+    fs::create_dir_all(parent).with_context(|| {
+        format!(
+            "failed to create card output directory {}",
+            parent.display()
+        )
+    })?;
     let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
     writeln!(tmp, "{rendered}")?;
     tmp.as_file().sync_all()?;
@@ -178,8 +182,9 @@ impl FamilyCardsReport {
         }
         let mut identities = BTreeSet::new();
         for &family in PILOT_FAMILIES {
-            let all_rules = family_rules(family)
-                .ok_or_else(|| anyhow::anyhow!("pilot family mapping disappeared for `{family}`"))?;
+            let all_rules = family_rules(family).ok_or_else(|| {
+                anyhow::anyhow!("pilot family mapping disappeared for `{family}`")
+            })?;
             for language in PILOT_LANGUAGES {
                 let Some(card) = self
                     .cards
@@ -197,7 +202,8 @@ impl FamilyCardsReport {
                         card.schema
                     );
                 }
-                let mapped: Vec<String> = all_rules.iter().map(|rule| (*rule).to_string()).collect();
+                let mapped: Vec<String> =
+                    all_rules.iter().map(|rule| (*rule).to_string()).collect();
                 if card.rules != mapped {
                     bail!("family-card rules drifted for `{family}`/{language:?}");
                 }
@@ -221,9 +227,11 @@ impl FamilyCardsReport {
                 if card.capability != expected_capability {
                     bail!("family-card capability drifted for `{family}`/{language:?}");
                 }
-                if card.metrics.iter().any(|metric| {
-                    metric.family != family || metric.language != language
-                }) {
+                if card
+                    .metrics
+                    .iter()
+                    .any(|metric| metric.family != family || metric.language != language)
+                {
                     bail!("family-card metrics cross a family/language boundary");
                 }
                 if card.coverage.len() != card.metrics.len()
@@ -257,8 +265,9 @@ fn build_from_validated_report(report: &PilotEvalReport) -> Result<FamilyCardsRe
             }
         }
         for language in PILOT_LANGUAGES {
-            let supported = stratum_rules(family, language)
-                .ok_or_else(|| anyhow::anyhow!("pilot language mapping disappeared for `{family}`"))?;
+            let supported = stratum_rules(family, language).ok_or_else(|| {
+                anyhow::anyhow!("pilot language mapping disappeared for `{family}`")
+            })?;
             let metrics: Vec<StratumScore> = report
                 .strata
                 .iter()

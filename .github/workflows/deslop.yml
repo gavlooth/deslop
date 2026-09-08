@@ -27,8 +27,8 @@ jobs:
         run: cargo run -p deslop-eval --bin research-registry -- check crates/deslop-eval/src
       - name: Check local mathematical and authority regressions
         run: cargo test -p deslop-metrics -p deslop-protocol -p deslop-report -p deslop-verify -p deslop-lsp -p deslop-mcp
-      - name: Check licensed local pilot import contracts
-        run: cargo test -p deslop-eval --test p1_pilot
+      - name: Check pilot import and composed trajectory contracts
+        run: cargo test -p deslop-eval --test p1_pilot --test p2_composed --test p6_trajectory
       - name: Build shipped MCP surface
         run: cargo build -p deslop-cli --features mcp
 

@@ -123,7 +123,10 @@ fn validate_backup_target(path: &Path) -> Result<()> {
     if let Ok(metadata) = fs::symlink_metadata(path)
         && metadata.file_type().is_symlink()
     {
-        bail!("refusing to write through backup symlink {}", path.display());
+        bail!(
+            "refusing to write through backup symlink {}",
+            path.display()
+        );
     }
     Ok(())
 }
@@ -261,7 +264,10 @@ fn restore_backup(backup: &Path, restored: &mut Vec<PathBuf>) -> Result<()> {
     let metadata = fs::symlink_metadata(backup)
         .with_context(|| format!("failed to inspect {}", backup.display()))?;
     if metadata.file_type().is_symlink() {
-        bail!("refusing to restore through backup symlink {}", backup.display());
+        bail!(
+            "refusing to restore through backup symlink {}",
+            backup.display()
+        );
     }
     let original = original_path_from_backup(backup)?;
     fs::rename(backup, &original).with_context(|| {

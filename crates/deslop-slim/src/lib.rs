@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::AnalyzerConfig;
-use deslop_core::{revision_guard, FileAnalysis, RevisionGuard, Span};
+use deslop_core::{FileAnalysis, RevisionGuard, Span, revision_guard};
 use deslop_protocol::{
     CharacterizationTest, Patch, ProposalSource, SHARED_WORK_ORDER_SCHEMA, SharedWorkOrder,
     WorkOrder, WorkOrderKind, WorkOrderSubject, propose_work_orders as propose_batch,
@@ -138,8 +138,7 @@ impl PreparedRun {
                 continue;
             }
             prompts.insert(work_order.id.clone(), build_prompt(work_order)?);
-            let characterization =
-                deslop_protocol::characterization_work_order_for(work_order);
+            let characterization = deslop_protocol::characterization_work_order_for(work_order);
             characterization_prompts.insert(
                 work_order.id.clone(),
                 build_characterization_prompt(&characterization)?,
@@ -263,7 +262,6 @@ impl PreparedRun {
     }
 }
 
-
 pub fn resolve_egress_consent(explicit: bool, is_interactive: bool) -> EgressDecision {
     if explicit {
         EgressDecision::Granted
@@ -304,7 +302,6 @@ pub fn egress_consent_error(provider: &str, base_url: &str, summary: EgressSumma
         egress_prompt_message(provider, base_url, summary)
     )
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlimReport {
@@ -1062,14 +1059,14 @@ fn prepared_sources(sources: &[ProposalSource]) -> Vec<PreparedSource> {
 fn ensure_readset(root: &Path, readset: &[PreparedSource]) -> Result<()> {
     for source in readset {
         let path = root.join(&source.path);
-        let text = fs::read_to_string(&path)
-            .with_context(|| format!("prepared run input drift: failed to read {}", path.display()))?;
+        let text = fs::read_to_string(&path).with_context(|| {
+            format!(
+                "prepared run input drift: failed to read {}",
+                path.display()
+            )
+        })?;
         let lines = text.lines().count().max(1);
-        let actual = revision_guard(
-            &source.path,
-            Span::new(1, lines, 0, text.len()),
-            &text,
-        );
+        let actual = revision_guard(&source.path, Span::new(1, lines, 0, text.len()), &text);
         if actual != source.revision_guard {
             bail!(
                 "prepared run input drift: source `{}` changed after preparation; refusing provider request",
@@ -1681,17 +1678,19 @@ mod tests {
     #[test]
     fn prepared_run_rejects_source_drift_before_provider_request() -> Result<()> {
         let fixture = SlimTestFixture::identity()?;
-        let prepared = PreparedRun::prepare(fixture.recorded_options(
-            false,
-            false,
-            CoverageConfig::Disabled,
-        ))?;
-        fs::write(&fixture.source, "fn identity(value: i32) -> i32 { value }\n")?;
+        let prepared =
+            PreparedRun::prepare(fixture.recorded_options(false, false, CoverageConfig::Disabled))?;
+        fs::write(
+            &fixture.source,
+            "fn identity(value: i32) -> i32 { value }\n",
+        )?;
         let client = CountingClient {
             prompts: RefCell::new(Vec::new()),
         };
 
-        let error = prepared.run(&client).expect_err("drift must abort prepared run");
+        let error = prepared
+            .run(&client)
+            .expect_err("drift must abort prepared run");
         assert!(error.to_string().contains("prepared run input drift"));
         assert!(client.prompts.borrow().is_empty());
         Ok(())
@@ -1761,7 +1760,6 @@ mod tests {
         assert!(client.prompts.borrow().is_empty());
         Ok(())
     }
-
 
     #[test]
     fn recorded_client_e2e_applies_verified_rewrite() -> Result<()> {

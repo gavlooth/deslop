@@ -17,9 +17,9 @@ use serde::{Deserialize, Serialize};
 mod lifecycle;
 mod planner;
 mod recipe;
+pub mod revision_cleanup;
 mod service;
 mod work_order;
-pub mod revision_cleanup;
 
 /// Stable legacy finding-proposal work-order schema retained for explicit compatibility.
 pub const LEGACY_WORK_ORDER_SCHEMA: &str = "deslop.workorder/3";

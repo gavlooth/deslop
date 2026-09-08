@@ -826,9 +826,11 @@ mod tests {
                 .after
                 .contains("let __deslop_m57_condition_1 = flag")
         );
-        assert!(!candidate.edits()[0].after.contains(
-            "let __deslop_m57_condition = flag; if __deslop_m57_condition {"
-        ));
+        assert!(
+            !candidate.edits()[0]
+                .after
+                .contains("let __deslop_m57_condition = flag; if __deslop_m57_condition {")
+        );
     }
 
     #[test]

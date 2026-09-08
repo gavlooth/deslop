@@ -19,10 +19,12 @@ semantic conflict.
 
 `deslop-verify` owns the following strict M7 layers:
 
-1. `deslop.verifier-plan/1` binds one exact shared work order and project snapshot to a dependency-closed check set,
+1. `deslop.verifier-plan/2` binds one exact shared work order and project snapshot to a dependency-closed check set,
    adapter/compiler/language-server precondition decisions, execution policy, and residual uncertainty. Complete
    impact coverage selects checks by intersecting work-order resources. Incomplete/truncated/unknown coverage selects
    every project build, lint, type, and test fallback.
+   Its required process/memory budgets are enforced by a fresh user cgroup scope; per-file size is an
+   inherited kernel limit. Missing enforcement rejects execution rather than reverting to an unscoped shell.
 2. Provider observations are artifact- and snapshot-bound. Adapter, compiler, and language-server conclusions are
    retained independently. Current accepted Proven and Disproven evidence yields Conflict and blocks; no provider
    precedence chooses a winner. Syntax and runtime labels cannot masquerade as these semantic providers.

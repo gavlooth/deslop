@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use deslop_analyzer::{
-    revision_cleanup::compare_paths_with_scope, AnalyzerConfig, AnalyzerLangConfig, BoundaryConfig,
-    JuliaExternal, RuleSuppression, Suppression, scan_paths, scan_paths_with_config,
+    AnalyzerConfig, AnalyzerLangConfig, BoundaryConfig, JuliaExternal, RuleSuppression,
+    Suppression, revision_cleanup::compare_paths_with_scope, scan_paths, scan_paths_with_config,
 };
 use deslop_core::{
     AnalysisStatus, FileAnalysis, FileReport, Severity, reports_analysis_status,
@@ -23,9 +23,10 @@ use deslop_metrics::{
     render_json as render_metrics_json, render_text as render_metrics_text,
 };
 use deslop_protocol::{
-    revision_cleanup::revision_cleanup_proposals, SharedWorkOrder, WorkOrderProtocolInput,
-    WorkOrderProtocolRequest, WorkOrderService, propose_work_orders,
-    propose_work_orders_with_exclusions, shared_finding_work_orders, shared_transformation_work_orders,
+    SharedWorkOrder, WorkOrderProtocolInput, WorkOrderProtocolRequest, WorkOrderService,
+    propose_work_orders, propose_work_orders_with_exclusions,
+    revision_cleanup::revision_cleanup_proposals, shared_finding_work_orders,
+    shared_transformation_work_orders,
 };
 use deslop_recipes::{TransformationCandidate, detect_rust_recipe_report};
 use deslop_report::{render_json, render_sarif, render_text};
@@ -205,7 +206,6 @@ struct RevisionCleanupArgs {
     #[arg(long)]
     task: Option<String>,
 }
-
 
 #[derive(Debug, Args)]
 struct ScanArgs {
@@ -1408,7 +1408,13 @@ fn run_fix_request(
         let client = RecordedClient::from_path(path)?;
         return prepared.run_with_progress(&client, progress);
     }
-    run_real_provider_fix(request.provider, request.base_url, request.explicit_consent, prepared, progress)
+    run_real_provider_fix(
+        request.provider,
+        request.base_url,
+        request.explicit_consent,
+        prepared,
+        progress,
+    )
 }
 
 fn run_real_provider_fix(
@@ -1424,12 +1430,7 @@ fn run_real_provider_fix(
     }
     let provider_name = provider.as_str();
     let destination = provider_base_url(provider_name, base_url.as_deref());
-    require_cli_egress_consent(
-        provider_name,
-        &destination,
-        summary,
-        explicit_consent,
-    )?;
+    require_cli_egress_consent(provider_name, &destination, summary, explicit_consent)?;
     match provider {
         SlimProvider::Anthropic => {
             let client = AnthropicClient::from_env(prepared.model().to_owned())?;
@@ -2200,9 +2201,14 @@ fn target_scope(target: &Path, paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
                 return canonical
                     .strip_prefix(&target)
                     .map(Path::to_path_buf)
-                    .map_err(|_| anyhow::anyhow!("scope path {} is outside target root", path.display()));
+                    .map_err(|_| {
+                        anyhow::anyhow!("scope path {} is outside target root", path.display())
+                    });
             }
-            if path.components().any(|component| component == std::path::Component::ParentDir) {
+            if path
+                .components()
+                .any(|component| component == std::path::Component::ParentDir)
+            {
                 bail!("scope path {} must be target-rooted", path.display());
             }
             let candidate = cwd.join(path);
@@ -2211,7 +2217,9 @@ fn target_scope(target: &Path, paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
                     .canonicalize()
                     .ok()
                     .and_then(|canonical| canonical.strip_prefix(&cwd).ok().map(Path::to_path_buf))
-                    .ok_or_else(|| anyhow::anyhow!("scope path {} cannot be rooted at target", path.display()));
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("scope path {} cannot be rooted at target", path.display())
+                    });
             }
             Ok(path.clone())
         })
@@ -2822,7 +2830,14 @@ mod tests {
 
     #[test]
     fn parses_rule_explanation_and_revision_cleanup_contracts() {
-        let cli = Cli::parse_from(["deslop", "rules", "--rule", "long-method", "--format", "json"]);
+        let cli = Cli::parse_from([
+            "deslop",
+            "rules",
+            "--rule",
+            "long-method",
+            "--format",
+            "json",
+        ]);
         let Command::Rules(args) = cli.command else {
             panic!("expected rules command");
         };

@@ -8,16 +8,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
-use deslop_analyzer::revision_cleanup::{
-    compare_paths_with_scope, FindingDisposition, RevisionComparison,
-};
 use deslop_analyzer::AnalyzerConfig;
+use deslop_analyzer::revision_cleanup::{
+    FindingDisposition, RevisionComparison, compare_paths_with_scope,
+};
 use deslop_core::{Finding, Span};
 use serde::Serialize;
 
-use crate::{
-    propose_work_orders_with_exclusions, SharedWorkOrder, WorkOrder,
-};
+use crate::{SharedWorkOrder, WorkOrder, propose_work_orders_with_exclusions};
 
 pub const REVISION_CLEANUP_PROPOSAL_SCHEMA: &str = "deslop.revision-cleanup-proposal/1";
 
@@ -62,7 +60,7 @@ pub fn revision_cleanup_proposals(
     let mut verification = BTreeSet::new();
 
     for order in batch.work_orders {
-        if !incomparable && !order_is_attributed(&order, &comparison) {
+        if !incomparable && !order_is_attributed(&order, &comparison, &canonical_target) {
             continue;
         }
         let mut order = order;
@@ -87,7 +85,12 @@ pub fn revision_cleanup_proposals(
                 source.revision_guard
             ));
         }
-        for resource in shared.access().reads.iter().chain(shared.access().requires.iter()) {
+        for resource in shared
+            .access()
+            .reads
+            .iter()
+            .chain(shared.access().requires.iter())
+        {
             reads.insert(format!("{:?}:{}", resource.kind, resource.identity));
         }
         for finding in &order.findings {
@@ -96,7 +99,8 @@ pub fn revision_cleanup_proposals(
             }
         }
         verification.insert(
-            "re-run declared checks against the exact target revision and full read set".to_string(),
+            "re-run declared checks against the exact target revision and full read set"
+                .to_string(),
         );
         verification.insert(
             "protect tests, checks, error handling, and public contracts during review".to_string(),
@@ -111,7 +115,9 @@ pub fn revision_cleanup_proposals(
         );
     }
     if proposals.is_empty() && comparison.comparable {
-        verification.insert("no introduced or uncertain target finding was eligible for proposal".to_string());
+        verification.insert(
+            "no introduced or uncertain target finding was eligible for proposal".to_string(),
+        );
     }
     Ok(RevisionCleanupProposalBatch {
         schema: REVISION_CLEANUP_PROPOSAL_SCHEMA.to_string(),
@@ -142,13 +148,24 @@ fn ensure_target_scan_matches(
         .files()
         .map(|file| {
             (
-                normalize_target_path(target, &file.key().path),
+                normalize_target_path(
+                    target,
+                    &batch.analysis.snapshot().root().join(&file.key().path),
+                ),
                 blake3::hash(file.source()).to_hex().to_string(),
             )
         })
         .collect::<BTreeMap<_, _>>();
     if actual != comparison.target_sources {
-        bail!("target proposal scan source bytes drifted from comparison");
+        let differing: Vec<_> = comparison
+            .target_sources
+            .keys()
+            .chain(actual.keys())
+            .filter(|path| comparison.target_sources.get(*path) != actual.get(*path))
+            .take(8)
+            .map(|path| (path, comparison.target_sources.get(path), actual.get(path)))
+            .collect();
+        bail!("target proposal scan source bytes drifted from comparison: {differing:?}");
     }
     Ok(())
 }
@@ -159,7 +176,7 @@ fn normalize_target_path(target: &Path, path: &Path) -> PathBuf {
         .unwrap_or_else(|_| path.to_path_buf())
 }
 
-fn order_is_attributed(order: &WorkOrder, comparison: &RevisionComparison) -> bool {
+fn order_is_attributed(order: &WorkOrder, comparison: &RevisionComparison, root: &Path) -> bool {
     comparison.findings.iter().any(|attributed| {
         matches!(
             attributed.disposition,
@@ -167,17 +184,21 @@ fn order_is_attributed(order: &WorkOrder, comparison: &RevisionComparison) -> bo
         ) && attributed
             .finding
             .as_ref()
-            .is_some_and(|finding| finding_matches_order(finding, order))
+            .is_some_and(|finding| finding_matches_order(finding, order, root))
     })
 }
 
-fn finding_matches_order(finding: &Finding, order: &WorkOrder) -> bool {
-    finding.path == order.path && spans_overlap(finding.span, Span::new(
-        order.region.start_line,
-        order.region.end_line,
-        order.region.start_byte,
-        order.region.end_byte,
-    ))
+fn finding_matches_order(finding: &Finding, order: &WorkOrder, root: &Path) -> bool {
+    finding.path == normalize_target_path(root, &order.path)
+        && spans_overlap(
+            finding.span,
+            Span::new(
+                order.region.start_line,
+                order.region.end_line,
+                order.region.start_byte,
+                order.region.end_byte,
+            ),
+        )
 }
 
 fn spans_overlap(left: Span, right: Span) -> bool {

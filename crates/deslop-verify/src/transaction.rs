@@ -14,9 +14,8 @@ use crate::{
     PreChangeCharacterization, RecipeDemotionRecord, RecipeDemotionStore, UndoState,
     VerificationCheck, VerificationCheckKind, VerificationDisposition, VerificationEvidence,
     VerifierExecutionPolicy, VerifierFailure, VerifierFailureKind, VerifierPlan,
-    VerifierPlanStatus, VerifierStage, commit_atomic_sources_with_injection,
-    recover_incomplete_transactions, evaluate_evidence,
-    restore_committed_transaction,
+    VerifierPlanStatus, VerifierStage, commit_atomic_sources_with_injection, evaluate_evidence,
+    recover_incomplete_transactions, restore_committed_transaction,
 };
 
 pub const VERIFICATION_TRANSACTION_SCHEMA: &str = "deslop.verification-transaction/1";

@@ -1256,9 +1256,11 @@ fn dynamic(flag: bool) -> i32 {
         assert!(candidates(root.path(), "rust-remove-literal-dead-arm").is_empty());
         let chains = candidates(root.path(), "rust-convert-exhaustive-chain-to-match");
         assert_eq!(chains.len(), 1);
-        assert!(chains[0].required_results().iter().any(|item| {
-            item.condition == CHAIN_EQUALITY && item.state == ProofState::Unknown
-        }));
+        assert!(
+            chains[0].required_results().iter().any(|item| {
+                item.condition == CHAIN_EQUALITY && item.state == ProofState::Unknown
+            })
+        );
     }
 
     #[test]

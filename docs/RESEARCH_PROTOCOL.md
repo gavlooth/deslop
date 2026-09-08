@@ -353,3 +353,113 @@ Per-source verdicts, reusing the registry license-record convention
   repository. No 12-family licensed Rust/Python import set exists either.
   External P1 study is therefore BLOCKED; reachable protocol/engineering
   requirements in this file are complete.
+
+## Engineering interfaces after P1 (not a completed study)
+
+The following interfaces produce review evidence. They do not freeze this
+protocol, confer statistical promotion, or satisfy P7 human-benefit criteria.
+
+### Execution and editor contracts
+
+- CLI/MCP patch batches are prepared together, checked as a composed candidate
+  when a selected check exists, and rejected without source writes if a patch,
+  composed check or commit-boundary read set fails. Review-only results are
+  not default write authorization. Transaction journals distinguish committed,
+  rolled-back and recovery-required state.
+- External selected commands run under a fresh systemd user scope, namespace
+  sandbox, cleared environment, kernel per-file limit and output/time bounds.
+  `deslop.verifier-plan/2` requires memory/process budgets; defaults are 2 GiB,
+  no swap and 256 processes. Missing user manager/controllers, `prlimit`,
+  sandbox or unsupported adapters fail closed. File-count watchdogs may
+  detect an overrun after it occurs; they are **not a hard aggregate disk quota**.
+  This is not certification for arbitrary hostile workloads.
+- System executable/library directories and the staged workspace are the
+  supported mounts. An environment allowlist does not authorize exposing host
+  homes: HOME/CARGO_HOME/RUSTUP_HOME/TMPDIR resolve inside scratch space.
+  Toolchains outside supported roots are unavailable, not a reason to mount
+  host credentials. Automatic coverage/cargo-mutants/cosmic-ray adapters
+  without a policy-bound launcher report unavailable; supplied outcomes
+  remain evidence with their existing provenance limits.
+- Rust native mutation validity supports a plain `cargo test` invocation with
+  preserved build flags and a separate `--no-run` phase. Unsupported shell
+  runners or unavailable toolchains have unknown viability. Unviable mutants
+  and timeouts are not kills; incomplete runs do not become a no-survivor claim.
+- Prepared Slim runs bind exact prompts, source/read sets, model and egress
+  summary before consent. Source drift aborts. LSP initialization returns the
+  standard capabilities envelope and edits bind an exact document version.
+  MCP request failures do not terminate subsequent healthy requests.
+
+### Revision comparison and proposals
+
+```sh
+deslop revision-cleanup --from BASE_DIR --to TARGET_DIR --scope src
+deslop revision-cleanup --from BASE_DIR --to TARGET_DIR --scope src \
+  --task 'Preserve public API, checks, and error behavior'
+```
+
+Both directories must be materialized under a matched configuration, grammar,
+scope and build context. The lower-level strict snapshot API also records VCS
+materialization identity; a revision label is not itself comparable evidence.
+Results distinguish introduced/inherited/removed/moved/uncertain and carry
+explicit incomparability reasons. Exact duplicate matches remain ambiguous.
+Proposal mode uses existing shared work orders, source guards and verification
+plans; it rechecks the target scan against the compared source manifest.
+There is no matched independent result showing that these hypotheses outperform
+snapshot-only analysis.
+
+### Trajectory evidence
+
+```sh
+cargo run -p deslop-eval --bin trajectory-eval -- \
+  adapt-opencode EXPORT.json BASE.json FINAL.json LICENSE.json OUTPUT.json WORKSPACE_ROOT
+cargo run -p deslop-eval --bin trajectory-eval -- replay OUTPUT.json
+cargo run -p deslop-eval --bin trajectory-eval -- candidates OUTPUT.json
+```
+
+The neutral `deslop.trajectory/1` schema requires revision/tree identities,
+content-hashed edit events, license/integrity records and explicit missing
+history. Imported observations are untrusted and never become executable
+commands. Replay must reproduce the submitted final supported source inventory.
+Supported snapshots are UTF-8 regular source files; symlinks/special files and
+reserved `.git`, `.jj`, `.deslop`, `target` components are not source inventory.
+
+The public OpenCode adapter is pinned to
+[`dff8fbc149fb7492e4f07b713ac31ea70d9a541c`](https://github.com/anomalyco/opencode/tree/dff8fbc149fb7492e4f07b713ac31ea70d9a541c):
+[`export.ts`](https://github.com/anomalyco/opencode/blob/dff8fbc149fb7492e4f07b713ac31ea70d9a541c/packages/opencode/src/cli/cmd/export.ts)
+defines `{info,messages}`, and
+[`edit.ts`](https://github.com/anomalyco/opencode/blob/dff8fbc149fb7492e4f07b713ac31ea70d9a541c/packages/opencode/src/tool/edit.ts)
+defines public `filePath/oldString/newString/replaceAll` inputs. Only completed
+public edit/write events are adapted, not private reasoning or shell execution.
+Absolute file paths require the explicit original workspace root. Unsupported
+patch events and contradictory replay reject rather than guessing.
+
+Reversion proposals are bounded, deterministically ordered, replay-compatible
+and strictly smaller under a local source-line positional cost. Caller-protected
+paths and policy identity are retained; this is not a TRIM reproduction,
+one-minimality result, or autonomous maintenance-benefit optimizer.
+The cache hashes complete candidate source and complete declared check policy;
+imported cache status is not authorization. The application API independently
+stages the supplied patches, requires exact candidate inventory equality, then
+uses the existing verifier/apply route. A default review-only proposal still
+does not write; explicit owner approval is separate from replay.
+
+### Disclosure and family cards
+
+```sh
+deslop rules --rule long-method --format json
+cargo run -p deslop-eval --bin pilot-eval -- cards --dir PILOT_DIR --protocol-pin PIN
+```
+
+`deslop.findings/3` replaces /2 on current JSON scan surfaces and adds separate
+per-rule research metadata. SARIF rule properties carry the same disclosure;
+MCP `rules` can explain a rule. The bundle is embedded for installed use, not
+loaded from the caller's checkout. Unknown third-party rules have no invented
+research record. Claims, paper population, implementation fidelity, evaluation
+artifacts and forbidden interpretations remain separate from ProofState.
+
+Cards are derived through the validated P1 evaluator, not arbitrary report JSON:
+four families × Rust/Python, disjoint observed strata, explicit missing samples,
+unsupported capabilities, counterexamples and blocked promotion. No confidence
+interval, deployable precision or independent evaluation is manufactured.
+Frozen M8 report/model-card reproduction is an engineering reproducibility
+check only; its `evidence_only` disposition remains unchanged.

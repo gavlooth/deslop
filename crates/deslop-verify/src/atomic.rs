@@ -186,7 +186,9 @@ pub fn commit_atomic_sources_with_injection(
     if let Err(error) = validate_replacements(&root, replacements) {
         let rollback = rollback_from_manifest(&root, &directory, &mut manifest, &manifest_path);
         return match rollback {
-            Ok(()) => Err(error).context("replacement verification failed; transaction rolled back"),
+            Ok(()) => {
+                Err(error).context("replacement verification failed; transaction rolled back")
+            }
             Err(rollback) => Err(error).context(format!(
                 "replacement verification failed and rollback failed: {rollback}"
             )),

@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use deslop_core::{FileReport, Finding, Lang};
 use serde::{Deserialize, Serialize};
 
@@ -88,12 +88,28 @@ pub struct Incomparability {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, tag = "kind", rename_all = "kebab-case")]
 pub enum IncomparabilityReason {
-    Schema { base: String, target: String },
+    Schema {
+        base: String,
+        target: String,
+    },
     AnalyzerConfig,
-    Grammar { path: PathBuf, base: String, target: String },
-    Scope { base: Vec<PathBuf>, target: Vec<PathBuf> },
-    BuildContext { base: String, target: String },
-    Materialization { base: SnapshotMaterialization, target: SnapshotMaterialization },
+    Grammar {
+        path: PathBuf,
+        base: String,
+        target: String,
+    },
+    Scope {
+        base: Vec<PathBuf>,
+        target: Vec<PathBuf>,
+    },
+    BuildContext {
+        base: String,
+        target: String,
+    },
+    Materialization {
+        base: SnapshotMaterialization,
+        target: SnapshotMaterialization,
+    },
 }
 
 /// An analyzer projection and its exact source materialization, detached from filesystem paths.
@@ -144,7 +160,7 @@ impl RevisionSnapshot {
         for file in scan.analysis.files() {
             let g = file.grammar();
             grammar.insert(
-                normalize(&file.key().path),
+                normalize(&scan.analysis.snapshot().root().join(&file.key().path)),
                 format!(
                     "lang={:?};dialect={};selector={};grammar={};version={};parser-build={}",
                     g.lang(),
@@ -182,7 +198,10 @@ impl RevisionSnapshot {
                 finding.path = normalize(&finding.path);
             }
         }
-        let mut scope = scope.into_iter().map(|path| normalize(&path)).collect::<Vec<_>>();
+        let mut scope = scope
+            .into_iter()
+            .map(|path| normalize(&path))
+            .collect::<Vec<_>>();
         scope.sort();
         scope.dedup();
         Self {
@@ -207,16 +226,14 @@ impl RevisionSnapshot {
 }
 
 fn normalize_path(root: Option<&Path>, path: &Path) -> PathBuf {
-    if let Some(root) = root {
-        if path.is_absolute() {
-            if let Ok(relative) = path.strip_prefix(root) {
-                return relative.to_path_buf();
-            }
-        }
+    if let Some(root) = root
+        && path.is_absolute()
+        && let Ok(relative) = path.strip_prefix(root)
+    {
+        return relative.to_path_buf();
     }
     path.to_path_buf()
 }
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -287,7 +304,13 @@ pub fn compare_paths_with_scope(
 fn scope_paths(root: &Path, scope: &[PathBuf]) -> Vec<PathBuf> {
     scope
         .iter()
-        .map(|path| if path == Path::new(".") { root.to_path_buf() } else { root.join(path) })
+        .map(|path| {
+            if path == Path::new(".") {
+                root.to_path_buf()
+            } else {
+                root.join(path)
+            }
+        })
         .collect()
 }
 
@@ -335,7 +358,8 @@ pub fn compare_snapshots(
             .iter()
             .enumerate()
             .filter(|(index, finding)| {
-                !used.contains(index) && same_content_identity(base, finding, target, target_finding)
+                !used.contains(index)
+                    && same_content_identity(base, finding, target, target_finding)
             })
             .collect::<Vec<_>>();
         let same_path = candidates
@@ -352,47 +376,46 @@ pub fn compare_snapshots(
             .filter(|finding| same_content_identity(target, finding, target, target_finding))
             .count()
             > 1;
-        let (disposition, counterpart, evidence) = if (all_matches > 1 || duplicate_target)
-            && !candidates.is_empty()
-        {
-            let (index, finding) = candidates[0];
-            used.insert(index);
-            (
-                FindingDisposition::Uncertain,
-                Some((*finding).clone()),
-                "duplicate identical regions make source attribution ambiguous".to_string(),
-            )
-        } else if same_path.len() == 1 {
-            let (index, finding) = same_path[0];
-            used.insert(index);
-            (
-                FindingDisposition::Inherited,
-                Some((*finding).clone()),
-                "exact source bytes and source identity persisted".to_string(),
-            )
-        } else if candidates.len() == 1 {
-            let (index, finding) = candidates[0];
-            used.insert(index);
-            (
-                FindingDisposition::Moved,
-                Some((*finding).clone()),
-                "same finding content moved to a different source path".to_string(),
-            )
-        } else if candidates.len() > 1 {
-            let (index, finding) = candidates[0];
-            used.insert(index);
-            (
-                FindingDisposition::Uncertain,
-                Some((*finding).clone()),
-                "duplicate identical regions make source attribution ambiguous".to_string(),
-            )
-        } else {
-            (
-                FindingDisposition::Introduced,
-                None,
-                "no matching base finding with stable rule and source bytes".to_string(),
-            )
-        };
+        let (disposition, counterpart, evidence) =
+            if (all_matches > 1 || duplicate_target) && !candidates.is_empty() {
+                let (index, finding) = candidates[0];
+                used.insert(index);
+                (
+                    FindingDisposition::Uncertain,
+                    Some((*finding).clone()),
+                    "duplicate identical regions make source attribution ambiguous".to_string(),
+                )
+            } else if same_path.len() == 1 {
+                let (index, finding) = same_path[0];
+                used.insert(index);
+                (
+                    FindingDisposition::Inherited,
+                    Some((*finding).clone()),
+                    "exact source bytes and source identity persisted".to_string(),
+                )
+            } else if candidates.len() == 1 {
+                let (index, finding) = candidates[0];
+                used.insert(index);
+                (
+                    FindingDisposition::Moved,
+                    Some((*finding).clone()),
+                    "same finding content moved to a different source path".to_string(),
+                )
+            } else if candidates.len() > 1 {
+                let (index, finding) = candidates[0];
+                used.insert(index);
+                (
+                    FindingDisposition::Uncertain,
+                    Some((*finding).clone()),
+                    "duplicate identical regions make source attribution ambiguous".to_string(),
+                )
+            } else {
+                (
+                    FindingDisposition::Introduced,
+                    None,
+                    "no matching base finding with stable rule and source bytes".to_string(),
+                )
+            };
         output.push(AttributedFinding {
             finding: Some(target_finding.clone()),
             counterpart,
@@ -457,10 +480,16 @@ pub fn compare_snapshots(
 
 fn validate_snapshot(snapshot: &RevisionSnapshot) -> Result<()> {
     if snapshot.schema != REVISION_CLEANUP_SCHEMA {
-        bail!("unsupported revision cleanup snapshot schema `{}`", snapshot.schema);
+        bail!(
+            "unsupported revision cleanup snapshot schema `{}`",
+            snapshot.schema
+        );
     }
     if snapshot.context.schema != REVISION_CLEANUP_CONTEXT_SCHEMA {
-        bail!("unsupported revision cleanup context schema `{}`", snapshot.context.schema);
+        bail!(
+            "unsupported revision cleanup context schema `{}`",
+            snapshot.context.schema
+        );
     }
     for source in &snapshot.sources {
         if source.path.as_os_str().is_empty() || source.path.is_absolute() {
@@ -487,7 +516,10 @@ fn validate_snapshot(snapshot: &RevisionSnapshot) -> Result<()> {
     Ok(())
 }
 
-fn comparability_reasons(base: &RevisionSnapshot, target: &RevisionSnapshot) -> Vec<IncomparabilityReason> {
+fn comparability_reasons(
+    base: &RevisionSnapshot,
+    target: &RevisionSnapshot,
+) -> Vec<IncomparabilityReason> {
     let mut reasons = Vec::new();
     if base.context.schema != target.context.schema {
         reasons.push(IncomparabilityReason::Schema {
@@ -527,14 +559,16 @@ fn comparability_reasons(base: &RevisionSnapshot, target: &RevisionSnapshot) -> 
         .cloned()
         .collect::<BTreeSet<_>>();
     for path in paths {
-        if let (Some(left), Some(right)) = (base.context.grammar.get(&path), target.context.grammar.get(&path)) {
-            if left != right {
-                reasons.push(IncomparabilityReason::Grammar {
-                    path,
-                    base: left.clone(),
-                    target: right.clone(),
-                });
-            }
+        if let (Some(left), Some(right)) = (
+            base.context.grammar.get(&path),
+            target.context.grammar.get(&path),
+        ) && left != right
+        {
+            reasons.push(IncomparabilityReason::Grammar {
+                path,
+                base: left.clone(),
+                target: right.clone(),
+            });
         }
     }
     reasons
@@ -545,8 +579,13 @@ fn same_materialization_kind(
 ) -> bool {
     matches!(
         (left, right),
-        (SnapshotMaterialization::Directory, SnapshotMaterialization::Directory)
-            | (SnapshotMaterialization::Vcs { .. }, SnapshotMaterialization::Vcs { .. })
+        (
+            SnapshotMaterialization::Directory,
+            SnapshotMaterialization::Directory
+        ) | (
+            SnapshotMaterialization::Vcs { .. },
+            SnapshotMaterialization::Vcs { .. }
+        )
     )
 }
 
@@ -583,9 +622,25 @@ fn identity_for(snapshot: &RevisionSnapshot, finding: &Finding) -> SourceIdentit
 fn region_hash(snapshot: &RevisionSnapshot, finding: &Finding) -> String {
     snapshot
         .source(&finding.path)
-        .and_then(|source| source.text.as_bytes().get(finding.span.start_byte..finding.span.end_byte))
+        .and_then(|source| {
+            source
+                .text
+                .as_bytes()
+                .get(finding.span.start_byte..finding.span.end_byte)
+        })
         .map(hash_bytes)
         .unwrap_or_else(|| hash_bytes(finding.message.as_bytes()))
+}
+
+fn hash_bytes(bytes: &[u8]) -> String {
+    blake3::hash(bytes).to_hex().to_string()
+}
+fn source_hashes(snapshot: &RevisionSnapshot) -> BTreeMap<PathBuf, String> {
+    snapshot
+        .sources
+        .iter()
+        .map(|source| (source.path.clone(), source.bytes_hash.clone()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -683,15 +738,4 @@ mod tests {
         let comparison = compare_snapshots(&base, &target).unwrap();
         assert_eq!(comparison.uncertain, 1);
     }
-}
-
-fn hash_bytes(bytes: &[u8]) -> String {
-    blake3::hash(bytes).to_hex().to_string()
-}
-fn source_hashes(snapshot: &RevisionSnapshot) -> BTreeMap<PathBuf, String> {
-    snapshot
-        .sources
-        .iter()
-        .map(|source| (source.path.clone(), source.bytes_hash.clone()))
-        .collect()
 }

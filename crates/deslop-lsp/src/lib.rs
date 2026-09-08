@@ -521,8 +521,7 @@ fn handle_notification(
             handle_did_save(connection, state, parsed)?;
         }
         DidCloseTextDocument::METHOD => {
-            let Ok(parsed) = serde_json::from_value::<DidCloseTextDocumentParams>(params)
-            else {
+            let Ok(parsed) = serde_json::from_value::<DidCloseTextDocumentParams>(params) else {
                 return Ok(());
             };
             handle_did_close(connection, state, parsed)?;
@@ -1464,7 +1463,6 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
     fn code_actions_include_fix_all_for_safe_findings_only() -> Result<()> {
         let text = "(not (= a b))\n(not (nil? x))\n(= (count xs) 0)\n";
@@ -1847,7 +1845,11 @@ mod tests {
         let actions = request_code_actions(&client, &uri, diagnostics.diagnostics);
         assert!(action_kind_count(&actions, CodeActionKind::QUICKFIX) > 0);
         assert!(action_kind_count(&actions, CodeActionKind::SOURCE_FIX_ALL) > 0);
-        assert!(actions.iter().all(|action| action_version(action) == Some(1)));
+        assert!(
+            actions
+                .iter()
+                .all(|action| action_version(action) == Some(1))
+        );
 
         // The previously returned edits are now stale. A new request must be
         // based on the newer content and carry only its exact version.
@@ -1861,16 +1863,18 @@ mod tests {
             "send didChange",
         );
         let newer_diagnostics = assert_reimpl_not_diagnostics(&client, &uri);
-        assert!(actions.iter().all(|action| action_version(action) == Some(1)));
-        let newer_actions = request_code_actions_with_id(
-            &client,
-            &uri,
-            newer_diagnostics.diagnostics,
-            4,
+        assert!(
+            actions
+                .iter()
+                .all(|action| action_version(action) == Some(1))
         );
-        assert!(newer_actions
-            .iter()
-            .all(|action| action_version(action) == Some(2)));
+        let newer_actions =
+            request_code_actions_with_id(&client, &uri, newer_diagnostics.diagnostics, 4);
+        assert!(
+            newer_actions
+                .iter()
+                .all(|action| action_version(action) == Some(2))
+        );
 
         send_notification(
             &client,

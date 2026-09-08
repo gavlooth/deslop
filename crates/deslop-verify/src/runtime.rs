@@ -123,9 +123,7 @@ impl<O> PolicyCommandRuntime<O> {
                 false,
             )
         })?;
-        let mut child = Command::new(&self.sandbox_program)
-            .args(&args)
-            .env_clear()
+        let mut child = resource_scoped_command(&self.sandbox_program, &args, policy)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -407,16 +405,46 @@ pub(crate) fn sandbox_arguments(
     Ok(args)
 }
 
+// The trusted outer launcher establishes hard cgroup and per-file limits
+// before starting the namespace sandbox. It never falls back to an unscoped
+// process when the user manager, controllers, prlimit or sandbox is absent.
+fn resource_scoped_command(
+    sandbox: &Path,
+    args: &[String],
+    policy: &VerifierExecutionPolicy,
+) -> Command {
+    let mut command = Command::new("/usr/bin/systemd-run");
+    command
+        .args(["--user", "--scope", "--quiet", "--collect"])
+        .arg(format!(
+            "--property=MemoryMax={}",
+            policy.maximum_memory_bytes
+        ))
+        .arg("--property=MemorySwapMax=0")
+        .arg(format!("--property=TasksMax={}", policy.maximum_processes))
+        .args(["--", "/usr/bin/prlimit"])
+        .arg(format!("--fsize={}", policy.maximum_file_bytes))
+        .arg("--")
+        .arg(sandbox)
+        .args(args)
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin");
+    for key in ["XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"] {
+        if let Some(value) = std::env::var_os(key) {
+            command.env(key, value);
+        }
+    }
+    command
+}
+
 pub(crate) fn run_bounded_sandbox_command(
     staged_root: &Path,
     command: &str,
     policy: &VerifierExecutionPolicy,
 ) -> std::io::Result<(std::process::ExitStatus, Vec<u8>, Vec<u8>)> {
-    let args = sandbox_arguments(staged_root, command, policy)
-        .map_err(std::io::Error::other)?;
-    let mut child = Command::new("bwrap")
-        .args(args)
-        .env_clear()
+    policy.validate().map_err(std::io::Error::other)?;
+    let args = sandbox_arguments(staged_root, command, policy).map_err(std::io::Error::other)?;
+    let mut child = resource_scoped_command(Path::new("/usr/bin/bwrap"), &args, policy)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -428,7 +456,11 @@ pub(crate) fn run_bounded_sandbox_command(
     let stderr_reader = thread::spawn(move || read_bounded(stderr, cap));
     let status = (|| -> std::io::Result<std::process::ExitStatus> {
         let deadline = Instant::now()
-            + Duration::from_millis(policy.maximum_command_millis.min(policy.maximum_total_millis));
+            + Duration::from_millis(
+                policy
+                    .maximum_command_millis
+                    .min(policy.maximum_total_millis),
+            );
         loop {
             let metrics = workspace_metrics(staged_root)?;
             if metrics.files > policy.maximum_files
@@ -579,7 +611,6 @@ mod tests {
     use super::*;
     use crate::VerificationCheckKind;
 
-
     #[test]
     fn allowlisted_network_and_missing_sandbox_fail_structured() {
         let mut policy = VerifierExecutionPolicy::hermetic_workspace();
@@ -598,5 +629,23 @@ mod tests {
             validate_runtime_policy(&policy, &check).unwrap_err().kind,
             VerifierFailureKind::NetworkViolation
         );
+    }
+
+    #[test]
+    fn sandbox_rejects_completed_command_exceeding_file_budget() {
+        let root = tempfile::tempdir().unwrap();
+        let mut policy = VerifierExecutionPolicy::hermetic_workspace();
+        policy.maximum_file_bytes = 1;
+        let result = run_bounded_sandbox_command(root.path(), "printf ok > result.txt", &policy);
+        // Absence of the sandbox is also an error, never a host-shell fallback.
+        if let Ok((status, _, _)) = result {
+            assert!(
+                !status.success(),
+                "a successful command exceeded its file budget"
+            );
+        }
+        if root.path().join("result.txt").exists() {
+            assert!(fs::metadata(root.path().join("result.txt")).unwrap().len() <= 1);
+        }
     }
 }

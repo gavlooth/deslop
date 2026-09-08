@@ -32,9 +32,7 @@ pub struct ResearchEvidence {
 }
 
 fn registry() -> Result<&'static Value> {
-    REGISTRY
-        .as_ref()
-        .map_err(|error| anyhow!("{error}"))
+    REGISTRY.as_ref().map_err(|error| anyhow!("{error}"))
 }
 
 /// Explain one catalog rule without interpreting its research as source proof.
@@ -68,7 +66,11 @@ pub fn explain_rule(rule: &str) -> Result<ResearchEvidence> {
         .as_array()
         .expect("validated sources")
         .iter()
-        .filter(|source| source["id"].as_str().is_some_and(|id| reference_ids.contains(id)))
+        .filter(|source| {
+            source["id"]
+                .as_str()
+                .is_some_and(|id| reference_ids.contains(id))
+        })
         .collect();
     if sources.len() != reference_ids.len() {
         bail!("bundled research registry contains unresolved references");

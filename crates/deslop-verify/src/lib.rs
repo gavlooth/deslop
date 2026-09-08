@@ -398,16 +398,16 @@ pub fn verify_patches(patches: &[Patch], options: &VerifyOptions) -> Result<Veri
             &mut run.coverage,
             &mut run.mutation,
         )?;
-        if result.passed {
-            if let PreparedOutcome::Pass(prepared_patch) = prepare_patch(
+        if result.passed
+            && let PreparedOutcome::Pass(prepared_patch) = prepare_patch(
                 patch,
                 &run.work_orders,
                 options,
                 &mut run.coverage,
                 &mut run.mutation,
-            )? {
-                prepared.push(prepared_patch);
-            }
+            )?
+        {
+            prepared.push(prepared_patch);
         }
         results.push(result);
     }
@@ -468,7 +468,8 @@ pub fn apply_patches(
             if result.passed {
                 result.passed = false;
                 result.verdict = VerificationVerdict::Rejected;
-                result.reasons
+                result
+                    .reasons
                     .push(format!("composed candidate check failed: {reason}"));
             }
         }
@@ -1314,19 +1315,6 @@ fn score_native_mutants_parallel_summary(
     drain.finish()
 }
 
-#[cfg(test)]
-fn score_native_mutants_serial_summary(
-    context: NativeMutationContext<'_>,
-    mutants: Vec<deslop_mutate::Mutant>,
-    runner: &NativeMutantRunner,
-) -> NativeMutationSummary {
-    let mut drain = NativeMutationDrain::default();
-    for job in native_mutant_jobs(mutants) {
-        drain.apply(catch_native_worker_action(job, context, runner));
-    }
-    drain.finish()
-}
-
 fn native_mutant_jobs(mutants: Vec<deslop_mutate::Mutant>) -> Vec<NativeMutantJob> {
     mutants
         .into_iter()
@@ -1511,9 +1499,9 @@ impl RustCargoMutantsProbe {
                 let text = read_report_text(path, "cargo-mutants outcomes")?;
                 MutantOutcomes::parse(&text).map_err(|err| err.to_string())
             }
-            MutationProbeMode::Auto => Err(
-                "cargo-mutants execution is unavailable without the policy sandbox".to_string(),
-            ),
+            MutationProbeMode::Auto => {
+                Err("cargo-mutants execution is unavailable without the policy sandbox".to_string())
+            }
         }
     }
 }
@@ -1594,7 +1582,6 @@ impl PythonMutationProbe {
                 reason: Some(reason.to_owned()),
             }),
         }
-
     }
     fn load_outcomes(&self, _root: &Path) -> std::result::Result<MutantOutcomes, String> {
         match &self.mode {
@@ -1602,17 +1589,15 @@ impl PythonMutationProbe {
                 let text = read_report_text(path, "cosmic-ray outcomes")?;
                 MutantOutcomes::parse(&text).map_err(|err| err.to_string())
             }
-            MutationProbeMode::Auto => Err(
-                "cosmic-ray execution is unavailable without the policy sandbox".to_string(),
-            ),
+            MutationProbeMode::Auto => {
+                Err("cosmic-ray execution is unavailable without the policy sandbox".to_string())
+            }
         }
     }
-
 }
 impl MutationProbe for PythonMutationProbe {
     fn name(&self) -> &'static str {
         "cosmic-ray"
-
     }
     fn supports(&self, source: &SourceFile) -> bool {
         source.lang == Lang::Python
@@ -1648,7 +1633,6 @@ impl MutationProbe for PythonMutationProbe {
         }
     }
 }
-
 
 #[derive(Debug, Clone)]
 struct MutantOutcomes {
@@ -2503,7 +2487,6 @@ fn find_files_with_extension(root: &Path, extension: &str) -> Vec<PathBuf> {
     paths
 }
 
-
 #[derive(Debug, Clone)]
 struct LineCoverage {
     files: Vec<LineCoverageFile>,
@@ -3185,7 +3168,9 @@ fn run_check_cmd_in_temp_project(
         match crate::runtime::run_bounded_sandbox_command(temp.path(), command, &policy) {
             Ok(output) => output,
             Err(error) => {
-                reasons.push(format!("sandbox unavailable for verification check: {error}"));
+                reasons.push(format!(
+                    "sandbox unavailable for verification check: {error}"
+                ));
                 return Ok(());
             }
         };
@@ -3216,19 +3201,36 @@ fn run_mutant_check_cmd_in_temp_project(
         let words: Vec<_> = command.split_whitespace().collect();
         if !words.starts_with(&["cargo", "test"])
             || words.iter().any(|word| {
-                !word.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"-_=/.:,".contains(&byte))
+                !word
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"-_=/.:,".contains(&byte))
             })
         {
-            bail!("Rust mutant validity requires a plain cargo test command; unsupported command has unknown viability");
+            bail!(
+                "Rust mutant validity requires a plain cargo test command; unsupported command has unknown viability"
+            );
         }
-        let build_args = words.iter().position(|word| *word == "--").unwrap_or(words.len());
+        let available =
+            crate::runtime::run_bounded_sandbox_command(temp.path(), "cargo --version", &policy)?;
+        if !available.0.success() {
+            bail!(
+                "Cargo toolchain is unavailable inside the approved sandbox; mutant viability is unknown"
+            );
+        }
+        let remaining = timeout.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            return Ok(MutantCheckOutcome::TimedOut);
+        }
+        policy.maximum_command_millis = remaining.as_millis().max(1) as u64;
+        policy.maximum_total_millis = policy.maximum_command_millis;
+        let build_args = words
+            .iter()
+            .position(|word| *word == "--")
+            .unwrap_or(words.len());
         let validity_command = format!("{} --no-run", words[..build_args].join(" "));
-        let (status, _stdout, _stderr) = crate::runtime::run_bounded_sandbox_command(
-            temp.path(),
-            &validity_command,
-            &policy,
-        )
-        .with_context(|| "sandbox unavailable for Rust mutant validity check")?;
+        let (status, _stdout, _stderr) =
+            crate::runtime::run_bounded_sandbox_command(temp.path(), &validity_command, &policy)
+                .with_context(|| "sandbox unavailable for Rust mutant validity check")?;
         if !status.success() {
             return Ok(MutantCheckOutcome::Unviable);
         }
@@ -3240,9 +3242,7 @@ fn run_mutant_check_cmd_in_temp_project(
     policy.maximum_command_millis = remaining.as_millis().max(1) as u64;
     policy.maximum_total_millis = policy.maximum_command_millis;
     match crate::runtime::run_bounded_sandbox_command(temp.path(), command, &policy) {
-        Ok((status, _stdout, _stderr)) if status.success() => {
-            Ok(MutantCheckOutcome::Survived)
-        }
+        Ok((status, _stdout, _stderr)) if status.success() => Ok(MutantCheckOutcome::Survived),
         Ok((_status, _stdout, _stderr)) => Ok(MutantCheckOutcome::Killed),
         Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {
             Ok(MutantCheckOutcome::TimedOut)
@@ -3378,7 +3378,10 @@ fn write_prepared_patches(
             if let Ok(metadata) = fs::symlink_metadata(&backup_path)
                 && metadata.file_type().is_symlink()
             {
-                bail!("refusing to write through backup symlink {}", backup_path.display());
+                bail!(
+                    "refusing to write through backup symlink {}",
+                    backup_path.display()
+                );
             }
             fs::write(&backup_path, original)
                 .with_context(|| format!("failed to write {}", backup_path.display()))?;
@@ -4035,7 +4038,6 @@ mod tests {
             work_orders,
         }
     }
-
 
     fn test_options(
         root: &Path,
@@ -4812,30 +4814,17 @@ mod tests {
     }
 
     #[test]
-    fn native_mutation_survivor_downgrades_patch_verdict() {
+    fn unsupported_rust_runner_cannot_turn_compilation_failure_into_a_kill() {
         let fixture = rust_fixture("fn f(a: i32, b: i32) -> bool {\n    return a < b;\n}\n");
-        let report = verify_single_with_options(
+        let source = SourceFile::read(fixture.temp.path().join("sample.rs")).unwrap();
+        let assessment = assess_tree_sitter_mutation(
             fixture.temp.path(),
-            patch_for(
-                &fixture.work_order,
-                "fn f(a: i32, b: i32) -> bool {\n    a < b\n}\n",
-            ),
-            test_options_with_mutation(fixture.temp.path(), Some("true"), MutationConfig::Auto),
+            &source,
+            &fixture.work_order,
+            &covered_lines_assessment([2]),
+            "false",
         );
-
-        assert_eq!(
-            report.results[0].verdict,
-            VerificationVerdict::UntestedRisky
-        );
-        assert!(
-            report.results[0]
-                .reasons
-                .iter()
-                .any(|reason| reason.contains("tree-sitter-native")
-                    && reason.contains("surviving mutant")),
-            "{:#?}",
-            report.results[0].reasons
-        );
+        assert_eq!(assessment.status, MutationStatus::Unknown);
     }
 
     #[test]
@@ -4882,36 +4871,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn native_mutation_content_keyed_check_cmd_can_kill_all_mutants() {
-        let fixture = rust_fixture("fn f(a: i32, b: i32) -> bool {\n    return a < b;\n}\n");
-        let report = verify_single_with_options(
-            fixture.temp.path(),
-            patch_for(
-                &fixture.work_order,
-                "fn f(a: i32, b: i32) -> bool {\n    a < b\n}\n",
-            ),
-            test_options_with_mutation(
-                fixture.temp.path(),
-                Some("! grep -q '<=' sample.rs 2>/dev/null"),
-                MutationConfig::Auto,
-            ),
-        );
-
-        assert_eq!(
-            report.results[0].verdict,
-            VerificationVerdict::CoverageUnknown
-        );
-        assert!(
-            report.results[0]
-                .reasons
-                .iter()
-                .any(|reason| reason.contains("no surviving mutant")),
-            "{:#?}",
-            report.results[0].reasons
-        );
-    }
-
     fn native_parallel_fixture() -> (
         tempfile::TempDir,
         SourceFile,
@@ -4929,29 +4888,6 @@ mod tests {
         let mutants = generate_mutants(&source, Some(&restrict)).expect("mutants");
         assert!(mutants.len() >= 3, "{mutants:#?}");
         (temp, source, work_order, mutants)
-    }
-
-    #[test]
-    fn native_parallel_scoring_matches_serial_scoring() {
-        let (temp, source, _work_order, mutants) = native_parallel_fixture();
-        let context = NativeMutationContext {
-            root: temp.path(),
-            source: &source,
-            command: "! grep -q '<=' sample.rs 2>/dev/null",
-            timeout: Duration::from_secs(1),
-            jobs: 2,
-        };
-
-        let serial = score_native_mutants_serial_summary(
-            context,
-            mutants.clone(),
-            &default_native_mutant_runner,
-        );
-        let parallel =
-            score_native_mutants_parallel_summary(context, mutants, &default_native_mutant_runner);
-
-        assert_eq!(parallel, serial);
-        assert_eq!(parallel.status, MutationStatus::Survived);
     }
 
     #[test]
@@ -4977,7 +4913,7 @@ mod tests {
         let summary = score_native_mutants_parallel_summary(context, mutants, &runner);
 
         assert_eq!(summary.errors, 1);
-        assert_eq!(summary.status, MutationStatus::NoSurvivor);
+        assert_eq!(summary.status, MutationStatus::Unknown);
     }
 
     #[test]
@@ -5019,62 +4955,6 @@ mod tests {
         assert_eq!(summary.status, MutationStatus::NoSurvivor);
         assert!(max_seen.load(Ordering::SeqCst) <= jobs);
         assert_eq!(max_seen.load(Ordering::SeqCst), jobs);
-    }
-
-    #[test]
-    fn native_mutation_timeout_counts_as_killed() {
-        let fixture = rust_fixture("fn f(a: i32, b: i32) -> bool {\n    return a < b;\n}\n");
-        let report = verify_single_with_options(
-            fixture.temp.path(),
-            patch_for(
-                &fixture.work_order,
-                "fn f(a: i32, b: i32) -> bool {\n    a < b\n}\n",
-            ),
-            test_options_with_mutation(
-                fixture.temp.path(),
-                Some("if grep -q '<=' sample.rs 2>/dev/null; then sleep 1; else true; fi"),
-                MutationConfig::AutoWithTimeout(Duration::from_millis(10)),
-            ),
-        );
-
-        assert_eq!(
-            report.results[0].verdict,
-            VerificationVerdict::CoverageUnknown
-        );
-        assert!(
-            report.results[0]
-                .reasons
-                .iter()
-                .any(|reason| reason.contains("timed out")),
-            "{:#?}",
-            report.results[0].reasons
-        );
-    }
-
-    #[test]
-    fn native_mutation_restricts_to_covered_lines() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let file = write_rust_fixture(
-            temp.path(),
-            "fn f(a: i32, b: i32) -> i32 {\n    let _ = a < b;\n    a + b\n}\n",
-        );
-        let source = SourceFile::read(&file).expect("source");
-        let work_order =
-            rewrite_work_order_for_region(&source, "wo_native_mutation_coverage", 1, 4);
-        let coverage = covered_lines_assessment([2]);
-        let assessment = assess_tree_sitter_mutation(
-            temp.path(),
-            &source,
-            &work_order,
-            &coverage,
-            "! grep -q '<=' sample.rs 2>/dev/null",
-        );
-
-        assert_eq!(assessment.status, MutationStatus::NoSurvivor);
-        assert!(
-            assessment.reason.expect("reason").contains("1/1 killed"),
-            "covered-line restriction should skip the line-3 arithmetic mutant"
-        );
     }
 
     #[test]
@@ -5318,7 +5198,7 @@ mod tests {
             status: NativeMutantStatus::Unviable,
         }));
         let summary = drain.finish();
-        assert_eq!(summary.status, MutationStatus::NoSurvivor);
+        assert_eq!(summary.status, MutationStatus::Unknown);
         assert_eq!(summary.viable, 1);
         assert_eq!(summary.killed, 1);
         assert_eq!(summary.timed_out, 1);

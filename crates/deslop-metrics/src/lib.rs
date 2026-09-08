@@ -1944,7 +1944,7 @@ fn consume_quoted(
 ) -> usize {
     let mut end = start + delimiter.len_utf8();
     let mut escaped = false;
-    while let Some((index, character)) = iter.next() {
+    for (index, character) in iter.by_ref() {
         end = index + character.len_utf8();
         if escaped {
             escaped = false;
@@ -1973,7 +1973,6 @@ fn consume_word(
     }
     end
 }
-
 
 fn consume_two_char_operator(
     text: &str,
@@ -2136,12 +2135,7 @@ fn peer_vocabulary_size(model: &BigramModel, held_out: &[String]) -> usize {
         .vocabulary
         .iter()
         .filter(|(token, count)| {
-            count.saturating_sub(
-                held_out_counts
-                    .get(token.as_str())
-                    .copied()
-                    .unwrap_or(0),
-            ) > 0
+            count.saturating_sub(held_out_counts.get(token.as_str()).copied().unwrap_or(0)) > 0
         })
         .count()
 }
@@ -3388,7 +3382,6 @@ mod tests {
 
     #[test]
     fn halstead_known_numbers() {
-
         let halstead = halstead_for_text(&RUST_PACK, "a + b * c");
         assert_eq!(halstead.distinct_operators, 2);
         assert_eq!(halstead.total_operators, 2);
@@ -3404,7 +3397,8 @@ mod tests {
         assert_eq!(unicode.total_operands, 4);
         assert_eq!(unicode.distinct_operands, 4);
 
-        let quoted_comment = halstead_for_text(&RUST_PACK, r#"let marker = "//"; x + y // trailing"#);
+        let quoted_comment =
+            halstead_for_text(&RUST_PACK, r#"let marker = "//"; x + y // trailing"#);
         assert!(quoted_comment.total_operators >= 1);
         assert!(quoted_comment.total_operands >= 5);
     }

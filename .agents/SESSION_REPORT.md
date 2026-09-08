@@ -13434,73 +13434,73 @@ was performed.
 
 **Signature:** Codex (gpt-6-astra), 2026-09-08.
 
-## 2026-09-08T19:26:18Z — Research plan task-agent integration checkpoint (in progress)
+## 2026-09-08 — Research plan task-agent implementation and verification
 
 **Objective/workspace:** Finish `docs/RESEARCH_PLAN.md` using task agents in
 `/home/heefoo/Documents/code/deslop`. Main owns integration and evidence.
-This is an intermediate checkpoint, not a completed research-plan claim.
 
-**Implementation coverage:** 20/50 tracked deliverables verified (40% overall;
-20/35 currently engineering-actionable items, about 57%). Fifteen human/data/
-preregistration deliverables are externally blocked. Fifteen engineering checks,
-surface integrations or final documentation tasks remain open.
+**Implementation coverage:** 33/50 tracked deliverables verified (66% overall;
+33/35 actionable engineering items). Fifteen deliverables remain externally
+blocked. Installed apply/recovery proof and reproducibility archive remain open
+at this checkpoint. This is not completion of the independent research program.
 
-**Changes:** Task agents delivered prepared Slim consent, request-local MCP
-errors, versioned LSP actions, metric estimator fixes, recipe binding hygiene,
-revision attribution/proposals, public-export trajectory replay and bounded
-reversions, family cards and CLI/MCP research surfaces. Main repaired integration
-omissions, restored dropped CLI/MCP/LSP paths, added complete composed-candidate
-checks and regressions, corrected real initialize envelopes, tightened native
-mutation validity and removed implicit host-home mounts. Findings schema is /3;
-canonical ledger now has 31 claims (new entries await final registry recheck).
-No promotion threshold or human-benefit claim was added.
+**Changes:** Task agents implemented prepared Slim consent, request-local MCP
+errors, versioned LSP actions, metric estimator corrections, recipe binding
+hygiene, revision attribution/proposals, public-export trajectory replay and
+bounded reversions, family cards, and CLI/MCP research metadata. Main repaired
+integration omissions, composed-candidate staging/read-set validation, source
+root/config normalization, native mutation validity, and hard memory/process
+limits. External checks use a fresh systemd user scope, Bubblewrap, cleared
+environment, per-file limits and time/output bounds; missing support fails
+closed. Host homes and credentials are not mounted. Findings schema is /3;
+verifier plans are /2. CI includes P1/P2/P6 regression contracts.
 
-**Commands/results already observed:** `cargo check --workspace --all-targets`
-passed before the latest safety/documentation edits. Analysis/protocol/report/
-recipe packages: 250 tests passed. A full no-fail-fast workspace run found three
-failures (LSP initialize envelope/assertion and old subset-apply expectation);
-those were repaired and `cargo test -p deslop-lsp -p deslop-verify` passed 99 tests.
-`cargo run -p deslop-eval --bin m8-calibration -- .../dataset_registry.json
-.../corpus.json /tmp/deslop-plan-m8.json` reproduced the entire frozen report+
-model-card JSON exactly: accuracy 0.5700, ECE 0.07639981649851604,
-`evidence_only` unchanged. Eight P1 family cards generated from retained
-fictional validated input, including unsupported Rust/Python branch cards.
-Primary SlopCodeBench v1 Eqs. 2–3 matched a CC=10/11 Python boundary:
-mass 96.31593290805353, erosion 0.5356805649934541, tolerance 1e-12.
-
-**Actual surfaces exercised:** A throwaway trajectory program replayed one real
-OpenCode-shaped public edit, proposed one reversion and applied it only under
-explicit fixture-owner review approval, reaching the exact base source hash.
-Default review-only application correctly did not write. A separate smoke proved
-two individually passing patches fail as a composed batch with original sources
-and no backups preserved; these scenarios are retained as P2/P6 regressions.
+**Commands/results:** `cargo fmt --all -- --check`; workspace build with
+`--features deslop-cli/mcp`; `cargo build -p deslop-slim --no-default-features`;
+`cargo test --workspace --features deslop-cli/mcp --no-fail-fast` (876 passed,
+3 ignored); `cargo clippy --workspace --all-targets --features deslop-cli/mcp
+-- -D warnings`: all passed. Full gate output: session artifact 617.
+`research-registry check crates/deslop-eval/src`: 65 rules, 16 recipes,
+281 metric fields, 31 claims; live serializers agree.
 `cargo install --locked --path crates/deslop-cli --features mcp --debug
---root /tmp/deslop-plan-install --force` succeeded after restoring missing
-`run_stdio`. Installed MCP returned request-local -32700/-32600/-32602 errors,
-suppressed a notification and handled subsequent initialize/rules/revision calls.
+--root /tmp/deslop-plan-install --force` passed with final sources.
 
-**Negative memory/current repairs:** The first M8 comparison accidentally compared
-the report against the outer wrapper; comparing both full envelopes showed zero
-differences. Initial agent edits omitted imports/helpers, an existing graph tool,
-and splice guards; integration repaired these rather than hiding failures.
-Trajectory staging mismatch was a correctly non-writable review outcome, not
-permission to weaken apply policy. Installed revision proposal smoke exposed
-canonical config normalization mismatch; fixed using existing normalization but
-the corrected installed route still needs rerun. Native compile viability must
-not be inferred from diagnostic strings; unsupported runner/build environments
-remain unknown. File watchdogs are not hard disk quotas.
+**Actual surfaces:** Installed MCP isolated -32700/-32600/-32602 errors,
+suppressed a notification, then handled initialize/rules/revision requests.
+Installed rules report metadata-only authority; installed scan emits
+`deslop.findings/3` with research metadata. Installed nested-scope revision
+proposal reports one introduced finding and one proposal. Materialized Jujutsu
+base/target comparison reports the expected introduced finding after explicit
+fixture snapshotting. P2/P6 end-to-end regressions passed in the workspace run:
+composed checks reject jointly invalid patches without source writes; a public
+OpenCode-shaped export replays and its reversion applies only under explicit
+fixture-owner review permission through the shared verifier.
 
-**Next actions:** Finish current native validity/runtime checks; run formatting,
-full workspace and feature-enabled/no-default builds, clippy, installed revision/
-MCP/report smoke, registry/table consistency and P2/P6 regressions. Finish protocol
-and checkpoint docs plus a durable reproducibility manifest. No push performed.
-External blockers remain authorized Sjoberg/Buse texts, independent licensed
-Rust/Python labels, consenting participants/ethics, pilot variance and owner
-preregistration freeze; do not mark the entire plan complete without these.
+**Measurement evidence:** Frozen M8 report and model card reproduced exactly:
+accuracy 0.5700, ECE 0.07639981649851604; `evidence_only` unchanged. Eight family
+cards generated from fictional validated P1 input, not independent evidence.
+SlopCodeBench v1 Eqs. 2–3 matched the CC=10/11 Python reference:
+mass 96.31593290805353, erosion 0.5356805649934541 (tolerance 1e-12).
 
-**Dependencies/restart:** Bubblewrap 0.12.0 and actual namespace launch succeeded
-locally. Toolchains outside supported system/staged roots may be unavailable;
-never expose cargo credentials or host homes as a cache workaround. Reinstall
-the scratch binary after final code edits before claiming final installed proof.
+**Negative memory:** Integration repaired omitted imports/helpers, existing graph
+tool and splice guards; old partial-apply expectations were replaced by composed
+checks. Native compile failure is not a killed behavioral mutant. Missing runner
+support remains unknown. File watchdogs are not aggregate disk quotas.
+An installed source-manifest assertion mistakenly expected the separate VCS
+fixture's `src/value.rs`; the actual directory fixture contains `src/sample.rs`
+and `src/sample.py`. No implementation failure was established by that assertion.
+Jujutsu revision lookup deliberately ignores unsnapshotted working-copy bytes;
+the VCS smoke required an explicit fixture snapshot.
+
+**Versions/dependencies:** cargo/rustc 1.89.0, jj 0.45.1, Bubblewrap 0.12.0,
+systemd 261. Supported system/staged toolchains are required for external checks;
+do not expose host caches or credentials to make unavailable checks pass.
+
+**Next/checkpoint:** Finish the installed apply/recovery smoke and archive exact
+input/source/toolchain/policy hashes. Authorized Sjøberg/Buse full texts,
+independent licensed Rust/Python labels, consenting participants/ethics, pilot
+variance, and owner preregistration freeze remain missing. No independent
+detector-quality, trajectory-benefit or maintenance-benefit claim is made.
+No push performed; scratch install does not replace the user's regular binary.
 
 Signature: Codex (gpt-6-astra).
