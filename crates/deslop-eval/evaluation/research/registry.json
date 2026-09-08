@@ -206,14 +206,14 @@
       "identifier_version": "n/a",
       "publication_status": "peer-reviewed journal",
       "peer_reviewed": true,
-      "dataset_artifact_revision": "unavailable: UNAVAILABLE after actual attempts: author PDF uio.no 404 (direct fetch); OpenAlex DOI closed, no repository fulltext; Scholar search API 429 (no verdict); web search found citations only, no authorized manuscript. Next: library copy.",
-      "dataset_artifact_license": "unavailable",
-      "studied_population": "unavailable: UNAVAILABLE after actual attempts: author PDF uio.no 404 (direct fetch); OpenAlex DOI closed, no repository fulltext; Scholar search API 429 (no verdict); web search found citations only, no authorized manuscript. Next: library copy.",
-      "comparison_baseline": "unavailable",
-      "relevant_sections": "unavailable",
-      "threats": "unavailable: UNAVAILABLE after actual attempts: author PDF uio.no 404 (direct fetch); OpenAlex DOI closed, no repository fulltext; Scholar search API 429 (no verdict); web search found citations only, no authorized manuscript. Next: library copy.",
-      "access": "unavailable",
-      "url": "https://doi.org/10.1109/TSE.2012.89"
+      "dataset_artifact_revision": "Author-hosted preprint accessed 2026-09-08; no study dataset imported. Journal DOI/version retained separately.",
+      "dataset_artifact_license": "Author-hosted reading copy; IEEE copyright notice. No dataset or redistribution license inferred.",
+      "studied_population": "Six professional developers selected from a 65-person pool; three adaptive/perfective maintenance tasks on four independently implemented, functionally equivalent Java web systems. Eleven completed developer-system combinations; 298 distinct modified Java files.",
+      "comparison_baseline": "Nested file-level log-linear models: developer/system/round; add 12 tool-defined smells; add file size; add revisions as a quality proxy. No randomized cleaned-versus-original intervention.",
+      "relevant_sections": "Full author manuscript pp. 1-15: sections 1-7, Tables 1-9 and appendix. Model 3 adjusted R2=0.58 with or without smell predictors; section 5.1 explicitly distinguishes God Class/Method from unmeasured Large Class/Long Method.",
+      "threats": "Small selected professional sample; four small Java web systems; one unfinished developer-system round excluded; tool-specific smell definitions; file-level effort can miss cross-file/method-level effects; first major maintenance may miss long-term effects. Revisions are a quality proxy, not direct defects. No universal harmlessness or causal benefit from reducing size follows.",
+      "access": "fulltext",
+      "url": "https://www.mn.uio.no/ifi/personer/vit/dagsj/sjoberg_etal_code-smells.pdf"
     },
     {
       "id": "neron-2015-name-resolution",

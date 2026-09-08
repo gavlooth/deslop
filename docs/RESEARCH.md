@@ -36,6 +36,7 @@ license (e.g. arXiv CC-BY) is the paper's license, never a dataset license.
 | `zhang-2024-copilot` | Zhang et al., *Copilot Refinement* (v1 title; plan cites *Copilot-in-the-Loop*), arXiv 2401.14176v1 | [R: §§1–6] | Paper CC-BY 4.0; dataset license not stated — no import claim |
 | `orlanski-2026-slopcodebench` | Orlanski et al., *SlopCodeBench*, arXiv 2603.24755v1 | [R: §1, §2 intro–§2.3, §3–§4 partial] (later result sections unread) | Paper CC-BY 4.0; dataset license not stated — no import claim |
 | `mathai-2026-trim` | Mathai et al., *TRIM*, arXiv 2607.18161v1 | [R: §§I–IVB] (evaluation sections unread) | Paper CC-BY 4.0; dataset license not stated — no import claim |
+| `sjoberg-2013-maintenance` | Sjøberg et al., *Quantifying the Effect of Code Smells on Maintenance Effort*, IEEE TSE 39(8), 1144–1156 (2013), doi:10.1109/TSE.2012.89 | [R: full author manuscript §§1–7, Tables 1–9, appendix] [UiO PDF](https://www.mn.uio.no/ifi/personer/vit/dagsj/sjoberg_etal_code-smells.pdf), accessed 2026-09-08 | Author-hosted reading copy with IEEE copyright; no dataset/redistribution grant inferred |
 | `hindle-2012-naturalness` | Hindle et al., *On the Naturalness of Software*, ICSE Jun 2012, doi:10.1109/ICSE.2012.6227135 | [R: §§I–IV] author PDF (softwareprocess.es/pubs/hindle2012ICSE.pdf) | Author manuscript; no dataset import |
 | `posnett-2011-readability` | Posnett, Hindle & Devanbu, *A Simpler Model of Software Readability*, MSR May 2011, doi:10.1145/1985441.1985454 | [R: §§1–4.3] author PDF (softwareprocess.es/pubs/posnett2011MSR-readability.pdf); rest unread | Author manuscript; Buse dataset reused from public trove, not re-imported |
 | `ray-2016-buggy-code` | Ray et al., *On the "Naturalness" of Buggy Code*, ICSE May 2016, doi:10.1145/2884781.2884848 (preprint arXiv:1506.01159) | [R: abstract + §§1–4 partial] preprint HTML (method §§2–3, RQ1–RQ3 results §4; RQ4–RQ5 comparison unread) | Preprint arXiv perpetual non-exclusive license; no dataset import |
@@ -47,11 +48,10 @@ license (e.g. arXiv CC-BY) is the paper's license, never a dataset license.
 | `bergum-2024-comprehension` | Bergum et al. comprehension data, Zenodo 14229849 | [A] Zenodo record/README only; paper not read | M8 registry pins revision `zenodo-14229849` + sha256 — reuse, do not re-pin |
 | `themis-codepreference` | Themis-CodePreference frozen artifact, `crates/deslop-eval/evaluation/m8/dataset_registry.json` | [A] registry file read | Local frozen artifact, not a paper; license/checksum from that file |
 
-Counts: 13/17 text accessed at section level (only listed sections reviewed);
+Counts: 14/17 text accessed at section level (only listed sections reviewed);
 2/17 abstract/record familiarity only (`bergum-2024-comprehension`,
-`themis-codepreference`); 2/17 metadata-only (`sjoberg-2013-maintenance`,
-`buse-2010-readability`). P0 source review is NOT complete; §5 tracks
-per-source blockers and next attempts.
+`themis-codepreference`); 1/17 metadata-only (`buse-2010-readability`).
+P0 source review is NOT complete; §5 tracks per-source blockers and next attempts.
 ## 2. Operational definition
 
 A **cleanup hypothesis** in deslop is a proposed transformation of a code
@@ -160,7 +160,20 @@ Claim units and the evidence each unit requires:
   ordering beats random inspection (AUCEC, partial/full credit). RQ4–RQ5
   (static-finder comparison) unread. Population: ~8,296 bug-fix commits, 10
   Java projects. Supports entropy-as-triage-ordering evidence only.
-- `sjoberg-2013-maintenance`, `buse-2010-readability`: metadata only; no
+- `sjoberg-2013-maintenance` (§§3–6, Tables 4–5): six selected professional
+  developers, four Java web systems, three adaptive/perfective tasks; one
+  unfinished round excluded, leaving 11 developer-system combinations and
+  298 distinct modified Java files. File-level log-linear models adjusted for
+  developer/system/round, size and revisions. After adjustment, none of 12
+  tool-defined smells predicted increased effort; Refused Bequest predicted
+  decreased effort. Model 3 adjusted R² stayed 0.58 without smell predictors.
+  This is bounded counter-evidence, not a randomized cleanup-benefit trial.
+  §5.1 did **not** measure Large Class/Long Method directly; §5.4 warns that
+  splitting files can merely redistribute or increase total effort. §6 limits
+  inference by sample, tools, file-level measurement and first-maintenance
+  setting. Retain size/task/developer controls and independent outcomes; do
+  not infer that all smells are harmless or that fewer lines prove benefit.
+- `buse-2010-readability`: metadata only; primary text still unavailable.
 - `mccabe-1976-complexity` (§§I–IV, VI–VII, scanned copy): v(G) = e−n+p
   (Def. 1); structured-program simplification v = predicates+1 (compound
   conditions count per condition; CASE uses N−1); regions-count method via
@@ -254,11 +267,10 @@ Per-facility fidelity lives ONLY in the registry (`fidelity` field per
 
 ## 5. Access blockers and next attempts (P0 source review NOT complete)
 
-- `sjoberg-2013-maintenance`: UNAVAILABLE. Author PDF
-  (uio.no …/tse13.pdf) 404 on direct fetch; OpenAlex marks the DOI closed
-  with no repository fulltext; Scholar search API rate-limited (429) so no
-  Scholar OA verdict obtainable here; web search surfaced no authorized
-  author manuscript (only citations/discussions). Next: library copy.
+- `sjoberg-2013-maintenance`: RESOLVED on 2026-09-08 through the alternate
+  [UiO author-hosted PDF](https://www.mn.uio.no/ifi/personer/vit/dagsj/sjoberg_etal_code-smells.pdf).
+  The prior `tse13.pdf` 404 and OpenAlex closed-access record did not establish
+  absence of an author manuscript. Full primary text reviewed; no dataset imported.
 - `buse-2010-readability`: UNAVAILABLE. umich author PDF: TLS cert failure on
   https; plain-http redirects to https (cert failure, unreadable). virginia
   old path: HTTP 403 on direct fetch. umich --insecure fetch: HTTP 404.

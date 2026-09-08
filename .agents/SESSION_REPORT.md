@@ -13552,3 +13552,38 @@ comparisons or P7 studies; none of those claims is made. No push performed;
 scratch installation does not replace the user's regular binary.
 
 Signature: Codex (gpt-6-astra).
+
+## 2026-09-08 — Recovered Sjøberg primary source; P0 remains partial
+
+**Objective/workspace:** Unblock primary-source review for the full research plan
+in `/home/heefoo/Documents/code/deslop`, following the user's selection of primary
+full texts as the next prerequisite.
+
+**Change/conclusion:** An alternate UiO author URL,
+`https://www.mn.uio.no/ifi/personer/vit/dagsj/sjoberg_etal_code-smells.pdf`,
+returned the actual Sjøberg et al. manuscript. Read all 15 pages, including methods,
+results, limitations and appendix. Updated its canonical registry source to
+fulltext and corrected `docs/RESEARCH.md` bibliography, findings and blocker.
+Source access does not promote any detector or confer dataset reuse rights.
+
+**Coverage/evidence:** One of the two previously unavailable requested primary
+texts is now reviewed. Overall implementation remains 35/50 original deliverables
+plus five verified late-review tasks; primary-source acquisition remains partial.
+Web search and `read` delivered the named author manuscript (session artifact
+668). Search summaries were not used as primary evidence. Registry validation
+and provenance checksum capture remain to run after this checkpoint description.
+
+**Findings/negative memory:** Model 3 adjusted R²=0.58 with or without smells after
+size/revision controls; no measured smell associated with increased effort, within
+this bounded sample. Six professionals/four Java systems/11 completed combinations,
+not an independent validation of deslop. Large Class and Long Method were not
+directly measured (§5.1). The earlier `tse13.pdf` 404 and closed OpenAlex record
+were insufficient to conclude no author manuscript existed. The unrelated 2026
+rjpn.org paper merely cites Buse–Weimer and is not its primary text.
+
+**Next/blockers:** Complete provenance/registry verification; continue only
+authorized Buse–Weimer source acquisition. Independent corpus, consent, ethics,
+pilot variance and owner freeze remain unavailable. Prior engineering test
+evidence is unchanged; no new detector-quality or human-benefit claim. No push.
+
+Signature: Codex (gpt-6-astra).
