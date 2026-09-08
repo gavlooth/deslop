@@ -1835,7 +1835,7 @@
       ],
       "evaluation_artifacts": [
         "crates/deslop-eval/tests/p1_pilot.rs",
-        "/tmp/deslop-p1-smoke.log"
+        ".agents/SESSION_REPORT.md"
       ],
       "permitted": [
         "run deterministic read-only engineering checks on licensed, integrity-validated bundles",

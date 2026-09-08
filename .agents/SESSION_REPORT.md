@@ -13363,27 +13363,37 @@ Heartbeat timestamp updated to actual observed 2026-09-08T02:02:50Z.
 ## 2026-09-08 — P1 read-only pilot evidence import/evaluation final record
 
 **Objective/current workspace:** Final P1 engineering proof was completed against the
-savedtree at the observed UTC checkpoint `2026-09-08T17:05:21Z`. This records the
+savedtree at the observed UTC correction checkpoint `2026-09-08T17:14:44Z`. This records the
 read-only pilot evidence import/evaluation contract only, not the whole P1 study or
 plan. Implementation coverage is 100% of that engineering contract, based on the
 actual CLI proof and 23 P1 tests. No external datasets were imported and no actual
 human validation was performed.
 
-**Changed files:** P1 source, tests, and documentation were already complete in the
-current working child; this recording additionally updates `.agents/HEARTBEAT.md`,
-appends this report entry, and writes `/tmp/deslop-p1-record-proof.log`. No
-production/test/Cargo implementation edits were made in this session.
+**Changed files (whole P1 milestone):** `crates/deslop-eval/src/pilot.rs`,
+`crates/deslop-eval/src/bin/pilot_eval.rs`,
+`crates/deslop-eval/tests/p1_pilot.rs`, `crates/deslop-eval/src/lib.rs`
+(module declaration), `crates/deslop-eval/Cargo.toml` (bin),
+`crates/deslop-eval/evaluation/research/registry.json` (canonical P1 policy
+claim), `docs/RESEARCH_PROTOCOL.md`, `docs/RESEARCH_PLAN.md`,
+`docs/RESEARCH.md` (generated table), `.agents/NEXT_TASK.md`,
+`.agents/HEARTBEAT.md`, and `.agents/SESSION_REPORT.md`. The recording-only
+edits in this handoff are separate from that whole P1 milestone; this does not
+claim the P1 source was unchanged overall.
 
-**Contract coverage:** Four families are represented: Rust, Python, metadata, and
-branch simplification (Rust/Python unsupported because no Clojure emitter exists
-here). Matching is within-file only, with no threshold/FN filter. Source and
-annotation licenses are separate typed records; manifests carry full config pins,
-64-hex IDs, and context pins with strict validation. Source/derived revalidation,
-per-rater observations, cleanup and adjudication, source-range prediction,
-synthetic-static-but-not-truth handling, sealed-case exclusion, unit kind,
-provenance strata, correct counters, unweighted rates, null handling, no confidence
-intervals, and no authority escalation are all represented. Fixtures are fictional
-contract fixtures, not an empirical study.
+No production/test/Cargo implementation edits were made in this recording.
+
+**Contract coverage:** Four families are represented: duplication, concentrated
+complexity/long methods, wrappers/indirection, and branch simplification.
+Languages are Rust and Python. Mapped reimplementation-boolean is Clojure-only,
+so Rust/Python branch simplification is unsupported. Matching is within-file
+only, with no threshold/FN filter. Source and annotation licenses are separate
+typed records; manifests carry full config pins, 64-hex IDs, and context pins
+with strict validation. Source/derived revalidation, per-rater observations,
+cleanup and adjudication, source-range prediction, synthetic-static-but-not-
+truth handling, sealed-case exclusion, unit kind, provenance strata, correct
+counters, unweighted rates, null handling, no confidence intervals, and no
+authority escalation are all represented. Fixtures are fictional contract
+fixtures, not an empirical study.
 
 **Exact final CLI proof:** `cargo run -q -p deslop-eval --bin pilot-eval -- eval
 --dir /tmp/deslop-p1-final-b --protocol-pin p1-smoke-v1` → exit 0; repeated for
@@ -13400,8 +13410,16 @@ Both reports said `4 cases, 1 sealed excluded`. Full captured output is
 including 23 P1 tests (`/tmp/deslop-p1-final-test-workspace.log`);
 `cargo clippy --workspace --all-targets -- -D warnings` → exit 0
 (`/tmp/deslop-p1-final-clippy.log`). Prior smoke proof recorded four cases
-(one sealed, three unsealed; predictions T,T,F), challenge TP1/TN1p/rate .5 and
-coverage 1, and synthetic prediction true with NULL truth.
+(one sealed, three unsealed; predictions T,T,F). Fictional challenge results were
+2 cases: TP=1, TN=1, FP=0, FN=0, precision=1.0, recall=1.0,
+recommendation_rate=0.5, and analysis_coverage=1.0. The synthetic result was
+1 case with prediction true, precision=null, recall=null,
+recommendation_rate=1.0, and analysis_coverage=1.0.
+
+**Registry metadata correction proof:** `cargo run -q -p deslop-eval --bin
+research-registry -- check crates/deslop-eval/src` → exit 0:
+`research registry OK: 65 rules, 16 recipes, 281 metric fields, 28 claims
+(live metrics shape checked)`.
 
 **Negative approach:** Existing 23 tests plus prior CLI bad-checksum and annotation-
 grant proofs passed. The prior CLI typo used `pilot_eval` and exited 101; corrected
