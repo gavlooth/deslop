@@ -1846,6 +1846,129 @@
         "treat supplier checks as trusted receipts or use them to filter static analysis",
         "authorize automatic cleanup or execute imported commands, network calls, or model calls"
       ]
+    },
+    {
+      "claim_id": "fac:quality-claim:revision-cleanup-evidence",
+      "kind": "quality-claim",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Comparable source snapshots support content-bound finding attribution and target-bound review proposals; attribution does not establish necessity or abandoned intent.",
+      "studied_population": "fictional local engineering fixtures; no independent revision-aware cleanup evaluation",
+      "construct": "revision-linked cleanup hypothesis",
+      "unit": "patch",
+      "facility_ids": [
+        "claim:revision-cleanup-evidence"
+      ],
+      "implementation_symbols": [
+        "deslop_analyzer::revision_cleanup::compare_paths_with_scope",
+        "deslop_protocol::revision_cleanup::revision_cleanup_proposals"
+      ],
+      "estimator_threshold_origin": "exact matching and conservative ambiguous attribution; existing detector thresholds unchanged",
+      "counterexamples": [
+        "unchanged source must have no introduced findings",
+        "duplicate identical regions remain uncertain",
+        "scope or configuration drift is incomparable"
+      ],
+      "evaluation_artifacts": [
+        "crates/deslop-analyzer/src/revision_cleanup.rs",
+        ".agents/SESSION_REPORT.md"
+      ],
+      "permitted": [
+        "explain introduced, inherited, removed, moved or uncertain findings",
+        "offer existing target-bound review work orders"
+      ],
+      "prohibited": [
+        "infer abandoned intent",
+        "claim a matched historical-analysis benefit",
+        "grant writes from attribution alone"
+      ]
+    },
+    {
+      "claim_id": "fac:quality-claim:trajectory-replay-evidence",
+      "kind": "quality-claim",
+      "support": [
+        "algorithmic",
+        "heuristic"
+      ],
+      "fidelity": "inspiration-only",
+      "references": [
+        "mathai-2026-trim"
+      ],
+      "exact_claim": "A pinned public edit/write export or neutral trajectory can be replayed as data, checked against its submitted final source inventory, and used to propose bounded reversions. Approved application requires matching staged source and existing verification policy.",
+      "studied_population": "fictional OpenCode-shaped export and neutral engineering fixtures; no benchmark trajectories imported",
+      "construct": "content-addressed replay and bounded reversion hypotheses",
+      "unit": "checkpoint-sequence",
+      "facility_ids": [
+        "claim:trajectory-replay-evidence"
+      ],
+      "implementation_symbols": [
+        "deslop_eval::trajectory::import_opencode_export_with_root",
+        "deslop_eval::trajectory::generate_candidates_with_policy",
+        "deslop_eval::trajectory::verify_and_apply_candidate"
+      ],
+      "estimator_threshold_origin": "caller-bounded enumeration; source-line positional patch cost, not the paper's minimizer or one-minimality guarantee",
+      "counterexamples": [
+        "submitted final snapshot mismatch rejects replay",
+        "unknown history cannot authorize commands",
+        "review-only candidates do not become writable because they are smaller",
+        "a different staged inventory rejects application"
+      ],
+      "evaluation_artifacts": [
+        "crates/deslop-eval/tests/p6_trajectory.rs",
+        ".agents/SESSION_REPORT.md"
+      ],
+      "permitted": [
+        "report exact supported source replay",
+        "propose bounded dependency-compatible reversions",
+        "apply only through explicit existing verification and approval"
+      ],
+      "prohibited": [
+        "claim a TRIM reproduction or one-minimality",
+        "run imported commands",
+        "treat imported outcomes or cache data as write authority",
+        "claim independent behavioral equivalence or maintainability benefit"
+      ]
+    },
+    {
+      "claim_id": "fac:quality-claim:family-evidence-cards",
+      "kind": "quality-claim",
+      "support": [
+        "heuristic"
+      ],
+      "fidelity": "none",
+      "references": [],
+      "exact_claim": "Validated pilot inputs yield a complete initial family/language card matrix with observed disjoint strata, missing capability, unknowns and blocked promotion, not independent validation.",
+      "studied_population": "fictional P1 engineering fixtures only",
+      "construct": "bounded family evidence disclosure",
+      "unit": "human-maintenance-task",
+      "facility_ids": [
+        "claim:family-evidence-cards"
+      ],
+      "implementation_symbols": [
+        "deslop_eval::family_cards::generate_family_cards",
+        "deslop_report::research::explain_rule"
+      ],
+      "estimator_threshold_origin": "existing P1 descriptive counts only; no preregistered promotion threshold exists",
+      "counterexamples": [
+        "zero samples do not imply zero risk",
+        "unsupported Rust/Python branch simplification is not a clean negative",
+        "engineering artifacts are not independent validation"
+      ],
+      "evaluation_artifacts": [
+        "crates/deslop-eval/tests/p1_pilot.rs",
+        ".agents/SESSION_REPORT.md"
+      ],
+      "permitted": [
+        "disclose evidence, scope and counterexamples",
+        "emit eight deterministic family/language cards"
+      ],
+      "prohibited": [
+        "promote a family without frozen independent evaluation",
+        "convert citations or card values into ProofState"
+      ]
     }
   ]
 }

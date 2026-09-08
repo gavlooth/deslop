@@ -15,9 +15,11 @@ deslop-metrics.workspace = true
 deslop-parse.workspace = true
 deslop-protocol.workspace = true
 deslop-recipes.workspace = true
+deslop-verify.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 blake3.workspace = true
+tempfile.workspace = true
 
 [[bin]]
 name = "m6-llm-benchmark"
@@ -53,6 +55,8 @@ path = "src/bin/research_registry.rs"
 name = "pilot-eval"
 path = "src/bin/pilot_eval.rs"
 
+[[bin]]
+name = "trajectory-eval"
+path = "src/bin/trajectory_eval.rs"
 [dev-dependencies]
 deslop-parse.workspace = true
-tempfile.workspace = true

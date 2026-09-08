@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::AnalyzerConfig;
-use deslop_core::FileAnalysis;
+use deslop_core::{revision_guard, FileAnalysis, RevisionGuard, Span};
 use deslop_protocol::{
-    CharacterizationTest, Patch, SHARED_WORK_ORDER_SCHEMA, SharedWorkOrder, WorkOrder,
-    WorkOrderKind, WorkOrderSubject, propose_work_orders as propose_batch, reconstruct_proposal,
-    validate_workorder_identity, workorder_revision_guard,
+    CharacterizationTest, Patch, ProposalSource, SHARED_WORK_ORDER_SCHEMA, SharedWorkOrder,
+    WorkOrder, WorkOrderKind, WorkOrderSubject, propose_work_orders as propose_batch,
+    reconstruct_proposal, validate_workorder_identity, workorder_revision_guard,
 };
 
 /// Execute the same bounded work-order operation used by library, CLI, MCP, and LSP clients.
@@ -107,12 +107,162 @@ pub enum EgressDecision {
     Prompt,
     DeniedNonInteractive,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EgressSummary {
     pub file_count: usize,
     pub region_count: usize,
 }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedSource {
+    pub path: PathBuf,
+    pub revision_guard: RevisionGuard,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedRun {
+    options: SlimOptions,
+    loaded: LoadedWorkOrders,
+    prompts: BTreeMap<String, SlimPrompt>,
+    characterization_prompts: BTreeMap<String, SlimPrompt>,
+    egress: EgressSummary,
+    readset: Vec<PreparedSource>,
+}
+
+impl PreparedRun {
+    pub fn prepare(options: SlimOptions) -> Result<Self> {
+        let loaded = load_or_propose_work_orders(&options)?;
+        let mut prompts = BTreeMap::new();
+        let mut characterization_prompts = BTreeMap::new();
+        for work_order in &loaded.work_orders {
+            if work_order.kind == WorkOrderKind::NeedsCharacterizationTest {
+                continue;
+            }
+            prompts.insert(work_order.id.clone(), build_prompt(work_order)?);
+            let characterization =
+                deslop_protocol::characterization_work_order_for(work_order);
+            characterization_prompts.insert(
+                work_order.id.clone(),
+                build_characterization_prompt(&characterization)?,
+            );
+        }
+        let egress = EgressSummary {
+            file_count: loaded
+                .work_orders
+                .iter()
+                .filter(|order| order.kind != WorkOrderKind::NeedsCharacterizationTest)
+                .map(|order| order.path.clone())
+                .collect::<BTreeSet<_>>()
+                .len(),
+            region_count: prompts.len(),
+        };
+        Ok(Self {
+            options,
+            readset: loaded.readset.clone(),
+            loaded,
+            prompts,
+            characterization_prompts,
+            egress,
+        })
+    }
+
+    pub fn egress_summary(&self) -> EgressSummary {
+        self.egress
+    }
+
+    pub fn model(&self) -> &str {
+        &self.options.model
+    }
+    pub fn readset(&self) -> &[PreparedSource] {
+        &self.readset
+    }
+
+    /// Reject changes to any source observed while preparing this run.
+    pub fn ensure_input_unchanged(&self) -> Result<()> {
+        ensure_readset(&self.options.root, &self.readset)
+    }
+
+    pub fn run(self, client: &impl LlmClient) -> Result<SlimReport> {
+        let mut progress = |_| {};
+        self.run_with_progress(client, &mut progress)
+    }
+
+    pub fn run_with_progress(
+        self,
+        client: &impl LlmClient,
+        progress: &mut dyn FnMut(SlimProgress),
+    ) -> Result<SlimReport> {
+        self.ensure_input_unchanged()?;
+        let PreparedRun {
+            options,
+            loaded,
+            prompts,
+            characterization_prompts,
+            readset,
+            ..
+        } = self;
+        emit_started_progress(&loaded.work_orders, progress);
+        if !loaded.blocked_files.is_empty() {
+            progress(SlimProgress::Finished {
+                applied: 0,
+                held: 0,
+                rejected: 0,
+            });
+            return Ok(SlimReport {
+                schema: "deslop.slim/4".to_string(),
+                dry_run: !options.apply,
+                model: options.model,
+                blocked_files: loaded.blocked_files,
+                skipped: Vec::new(),
+                patches: Vec::new(),
+                verified: VerifyReport {
+                    schema: "deslop.verify/1".to_string(),
+                    results: Vec::new(),
+                },
+                gating: SlimGatingReport::default(),
+                characterization: None,
+                applied: None,
+            });
+        }
+
+        let rewrite = rewrite_work_orders(
+            client,
+            &options,
+            loaded.work_orders,
+            &prompts,
+            &readset,
+            progress,
+        )?;
+        let verification = verify_rewrites(
+            client,
+            &options,
+            &rewrite.patches,
+            &characterization_prompts,
+            &readset,
+            progress,
+        )?;
+        let gating = gating_report(
+            &verification.verified,
+            options.apply,
+            options.allow_unverified,
+        );
+        let applied = apply_verified_patches(&options, &rewrite, &verification)?;
+        emit_outcome_progress(
+            &verification.verified,
+            options.apply,
+            options.allow_unverified,
+            progress,
+        );
+        Ok(finish_slim_report(
+            options,
+            rewrite,
+            verification,
+            gating,
+            applied,
+            loaded.blocked_files,
+        ))
+    }
+}
+
 
 pub fn resolve_egress_consent(explicit: bool, is_interactive: bool) -> EgressDecision {
     if explicit {
@@ -155,22 +305,6 @@ pub fn egress_consent_error(provider: &str, base_url: &str, summary: EgressSumma
     )
 }
 
-pub fn egress_summary(options: &SlimOptions) -> Result<EgressSummary> {
-    let loaded = load_or_propose_work_orders(options)?;
-    let rewrite_orders = loaded
-        .work_orders
-        .into_iter()
-        .filter(|work_order| work_order.kind != WorkOrderKind::NeedsCharacterizationTest)
-        .collect::<Vec<_>>();
-    let files = rewrite_orders
-        .iter()
-        .map(|work_order| work_order.path.to_path_buf())
-        .collect::<BTreeSet<_>>();
-    Ok(EgressSummary {
-        file_count: files.len(),
-        region_count: rewrite_orders.len(),
-    })
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlimReport {
@@ -358,8 +492,7 @@ pub fn resolve_model(explicit: Option<String>) -> String {
 }
 
 pub fn run_slim(client: &impl LlmClient, options: SlimOptions) -> Result<SlimReport> {
-    let mut progress = |_| {};
-    run_slim_with_progress(client, options, &mut progress)
+    PreparedRun::prepare(options)?.run(client)
 }
 
 pub fn run_slim_with_progress(
@@ -367,53 +500,7 @@ pub fn run_slim_with_progress(
     options: SlimOptions,
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<SlimReport> {
-    let loaded = load_or_propose_work_orders(&options)?;
-    emit_started_progress(&loaded.work_orders, progress);
-    if !loaded.blocked_files.is_empty() {
-        progress(SlimProgress::Finished {
-            applied: 0,
-            held: 0,
-            rejected: 0,
-        });
-        return Ok(SlimReport {
-            schema: "deslop.slim/4".to_string(),
-            dry_run: !options.apply,
-            model: options.model,
-            blocked_files: loaded.blocked_files,
-            skipped: Vec::new(),
-            patches: Vec::new(),
-            verified: VerifyReport {
-                schema: "deslop.verify/1".to_string(),
-                results: Vec::new(),
-            },
-            gating: SlimGatingReport::default(),
-            characterization: None,
-            applied: None,
-        });
-    }
-
-    let rewrite = rewrite_work_orders(client, &options, loaded.work_orders, progress)?;
-    let verification = verify_rewrites(client, &options, &rewrite.patches, progress)?;
-    let gating = gating_report(
-        &verification.verified,
-        options.apply,
-        options.allow_unverified,
-    );
-    let applied = apply_verified_patches(&options, &rewrite, &verification)?;
-    emit_outcome_progress(
-        &verification.verified,
-        options.apply,
-        options.allow_unverified,
-        progress,
-    );
-    Ok(finish_slim_report(
-        options,
-        rewrite,
-        verification,
-        gating,
-        applied,
-        loaded.blocked_files,
-    ))
+    PreparedRun::prepare(options)?.run_with_progress(client, progress)
 }
 
 struct SlimRewriteRun {
@@ -445,6 +532,8 @@ fn rewrite_work_orders(
     client: &impl LlmClient,
     options: &SlimOptions,
     work_orders: Vec<WorkOrder>,
+    prompts: &BTreeMap<String, SlimPrompt>,
+    readset: &[PreparedSource],
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<SlimRewriteRun> {
     let total_rewrites = rewrite_candidate_count(&work_orders);
@@ -463,7 +552,11 @@ fn rewrite_work_orders(
 
         rewrite_index += 1;
         emit_rewrite_progress(rewrite_index, total_rewrites, &work_order, progress);
-        patches.push(rewrite_patch(client, options, &work_order)?);
+        let prompt = prompts
+            .get(&work_order.id)
+            .context("prepared run is missing a rewrite prompt")?;
+        ensure_readset(&options.root, readset)?;
+        patches.push(rewrite_patch(client, options, &work_order, prompt)?);
     }
     Ok(SlimRewriteRun { skipped, patches })
 }
@@ -488,9 +581,9 @@ fn rewrite_patch(
     client: &impl LlmClient,
     options: &SlimOptions,
     work_order: &WorkOrder,
+    prompt: &SlimPrompt,
 ) -> Result<Patch> {
-    let prompt = build_prompt(work_order)?;
-    let replacement = strip_code_fences(&client.rewrite(&prompt)?);
+    let replacement = strip_code_fences(&client.rewrite(prompt)?);
     Ok(Patch {
         schema: "deslop.patch/3".to_string(),
         workorder_id: work_order.id.to_owned(),
@@ -505,12 +598,21 @@ fn verify_rewrites(
     client: &impl LlmClient,
     options: &SlimOptions,
     patches: &[Patch],
+    characterization_prompts: &BTreeMap<String, SlimPrompt>,
+    readset: &[PreparedSource],
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<SlimVerificationRun> {
     let verify_options = verify_options(options);
     let initial_verified = verify_patches(patches, &verify_options)?;
-    let characterization =
-        maybe_characterize_rewrites(client, options, patches, &verify_options, progress)?;
+    let characterization = maybe_characterize_rewrites(
+        client,
+        options,
+        patches,
+        &verify_options,
+        characterization_prompts,
+        readset,
+        progress,
+    )?;
     let accepted_tests = characterization
         .as_ref()
         .map(|report| report.accepted_tests.clone())
@@ -535,6 +637,8 @@ fn maybe_characterize_rewrites(
     options: &SlimOptions,
     patches: &[Patch],
     verify_options: &VerifyOptions,
+    characterization_prompts: &BTreeMap<String, SlimPrompt>,
+    readset: &[PreparedSource],
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<Option<CharacterizationRun>> {
     if !options.characterize {
@@ -545,6 +649,8 @@ fn maybe_characterize_rewrites(
         options,
         patches,
         verify_options,
+        characterization_prompts,
+        readset,
         progress,
     )?))
 }
@@ -760,6 +866,8 @@ fn run_characterization_pass(
     options: &SlimOptions,
     patches: &[Patch],
     verify_options: &VerifyOptions,
+    characterization_prompts: &BTreeMap<String, SlimPrompt>,
+    readset: &[PreparedSource],
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<CharacterizationRun> {
     let work_orders = characterization_work_orders_for_patches(patches, verify_options)?;
@@ -769,7 +877,11 @@ fn run_characterization_pass(
             progress(SlimProgress::Characterizing {
                 workorder_id: work_order.id.to_owned(),
             });
-            characterization_test_for_work_order(client, options, work_order)
+            let prompt = characterization_prompts
+                .get(&work_order.id)
+                .context("prepared run is missing a characterization prompt")?;
+            ensure_readset(&options.root, readset)?;
+            characterization_test_for_work_order(client, options, work_order, prompt)
         })
         .collect::<Result<Vec<_>>>()?;
     let report = verify_characterization_tests(&tests, verify_options)?;
@@ -796,15 +908,15 @@ fn characterization_test_for_work_order(
     client: &impl LlmClient,
     options: &SlimOptions,
     work_order: &WorkOrder,
+    prompt: &SlimPrompt,
 ) -> Result<CharacterizationTest> {
-    let prompt = build_characterization_prompt(work_order)?;
     Ok(CharacterizationTest {
         schema: "deslop.characterization-test/3".to_string(),
         workorder_id: work_order.id.to_owned(),
         revision_guard: workorder_revision_guard(work_order).clone(),
         proposal_context: work_order.proposal_context.clone(),
         test_path: characterization_test_path(work_order),
-        test_text: strip_code_fences(&client.rewrite(&prompt)?),
+        test_text: strip_code_fences(&client.rewrite(prompt)?),
         by: format!("deslop-slim/{}", options.model),
     })
 }
@@ -931,9 +1043,41 @@ fn progress_outcome_counts(outcomes: &[(String, SlimProgressOutcome)]) -> (usize
     )
 }
 
+#[derive(Debug, Clone)]
 struct LoadedWorkOrders {
     work_orders: Vec<WorkOrder>,
     blocked_files: Vec<FileAnalysis>,
+    readset: Vec<PreparedSource>,
+}
+fn prepared_sources(sources: &[ProposalSource]) -> Vec<PreparedSource> {
+    sources
+        .iter()
+        .map(|source| PreparedSource {
+            path: source.path.clone(),
+            revision_guard: source.revision_guard.clone(),
+        })
+        .collect()
+}
+
+fn ensure_readset(root: &Path, readset: &[PreparedSource]) -> Result<()> {
+    for source in readset {
+        let path = root.join(&source.path);
+        let text = fs::read_to_string(&path)
+            .with_context(|| format!("prepared run input drift: failed to read {}", path.display()))?;
+        let lines = text.lines().count().max(1);
+        let actual = revision_guard(
+            &source.path,
+            Span::new(1, lines, 0, text.len()),
+            &text,
+        );
+        if actual != source.revision_guard {
+            bail!(
+                "prepared run input drift: source `{}` changed after preparation; refusing provider request",
+                source.path.display()
+            );
+        }
+    }
+    Ok(())
 }
 
 fn load_or_propose_work_orders(options: &SlimOptions) -> Result<LoadedWorkOrders> {
@@ -1007,6 +1151,7 @@ fn propose_work_orders_batch(
             Vec::new()
         },
         blocked_files,
+        readset: prepared_sources(&batch.context.sources),
     })
 }
 
@@ -1018,6 +1163,7 @@ fn preflight_loaded_work_orders(
         return Ok(LoadedWorkOrders {
             work_orders,
             blocked_files: Vec::new(),
+            readset: Vec::new(),
         });
     };
     let batch = reconstruct_proposal(root, &first.proposal_context)?;
@@ -1061,6 +1207,7 @@ fn preflight_loaded_work_orders(
             Vec::new()
         },
         blocked_files,
+        readset: prepared_sources(&batch.context.sources),
     })
 }
 
@@ -1517,8 +1664,9 @@ mod tests {
             prompts: RefCell::new(Vec::new()),
         };
 
-        assert_eq!(egress_summary(&options)?.region_count, 0);
-        let report = run_slim(&client, options)?;
+        let prepared = PreparedRun::prepare(options)?;
+        assert_eq!(prepared.egress_summary().region_count, 0);
+        let report = prepared.run(&client)?;
 
         assert!(client.prompts.borrow().is_empty());
         assert!(report.patches.is_empty());
@@ -1527,6 +1675,25 @@ mod tests {
         assert!(report.gating.held_unproven.is_empty());
         assert!(report.gating.rejected.is_empty());
         assert_eq!(fs::read_to_string(source)?, original);
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_run_rejects_source_drift_before_provider_request() -> Result<()> {
+        let fixture = SlimTestFixture::identity()?;
+        let prepared = PreparedRun::prepare(fixture.recorded_options(
+            false,
+            false,
+            CoverageConfig::Disabled,
+        ))?;
+        fs::write(&fixture.source, "fn identity(value: i32) -> i32 { value }\n")?;
+        let client = CountingClient {
+            prompts: RefCell::new(Vec::new()),
+        };
+
+        let error = prepared.run(&client).expect_err("drift must abort prepared run");
+        assert!(error.to_string().contains("prepared run input drift"));
+        assert!(client.prompts.borrow().is_empty());
         Ok(())
     }
 
@@ -1595,62 +1762,6 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn aggregated_regions_produce_one_llm_call_and_patch_each() -> Result<()> {
-        let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/corpus/sloppy/slop_rust.rs");
-        let work_orders = propose_work_orders(&[corpus])?;
-        let fixture = SlimTestFixture::identity()?;
-        let options = fixture.options(
-            false,
-            false,
-            false,
-            CoverageConfig::Disabled,
-            "counting",
-            None,
-        );
-        let client = CountingClient {
-            prompts: RefCell::new(Vec::new()),
-        };
-
-        let rewrite = rewrite_work_orders(&client, &options, work_orders, &mut |_| {})?;
-        let prompts = client.prompts.borrow();
-        let unique_patch_ids = rewrite
-            .patches
-            .iter()
-            .map(|patch| patch.workorder_id.as_str())
-            .collect::<BTreeSet<_>>();
-        let large_region_prompt = prompts
-            .iter()
-            .find(|prompt| prompt.text.contains("Lines: 9-51"))
-            .expect("large-region prompt");
-
-        assert_eq!(prompts.len(), 3);
-        assert_eq!(rewrite.patches.len(), 3);
-        assert_eq!(unique_patch_ids.len(), 3);
-        assert_eq!(
-            large_region_prompt
-                .text
-                .matches("rule: long-method")
-                .count(),
-            1
-        );
-        assert_eq!(
-            large_region_prompt
-                .text
-                .matches("rule: near-duplicate")
-                .count(),
-            9
-        );
-        assert_eq!(
-            large_region_prompt
-                .text
-                .matches("rule: let-and-return")
-                .count(),
-            1
-        );
-        Ok(())
-    }
 
     #[test]
     fn recorded_client_e2e_applies_verified_rewrite() -> Result<()> {

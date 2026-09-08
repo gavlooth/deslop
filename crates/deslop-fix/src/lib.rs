@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -70,6 +71,7 @@ fn apply_fix_to_path(
     findings: Vec<Finding>,
     options: FixOptions,
 ) -> Result<FixOutcome> {
+    validate_write_target(&path)?;
     let text =
         fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let fixed = apply_findings_to_text(&text, &findings)?;
@@ -85,20 +87,66 @@ fn apply_fix_to_path(
 }
 
 fn write_changed_text(path: &Path, original: &str, fixed: String, backup: bool) -> Result<()> {
+    validate_write_target(path)?;
     if backup {
         let backup = backup_path(path);
-        fs::write(&backup, original)
+        validate_backup_target(&backup)?;
+        write_durable(&backup, original.as_bytes())
             .with_context(|| format!("failed to write {}", backup.display()))?;
     }
     let tmp = temp_path(path);
-    fs::write(&tmp, fixed).with_context(|| format!("failed to write {}", tmp.display()))?;
-    fs::rename(&tmp, path).with_context(|| {
-        format!(
-            "failed to replace {} with {}",
-            path.display(),
-            tmp.display()
-        )
-    })
+    write_durable(&tmp, fixed.as_bytes())
+        .with_context(|| format!("failed to write {}", tmp.display()))?;
+    if let Err(error) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(error).with_context(|| {
+            format!(
+                "failed to replace {} with {}",
+                path.display(),
+                tmp.display()
+            )
+        });
+    }
+    fsync_parent(path)
+}
+
+fn validate_write_target(path: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect {}", path.display()))?;
+    if !metadata.file_type().is_file() {
+        bail!("refusing to rewrite non-regular file {}", path.display());
+    }
+    Ok(())
+}
+
+fn validate_backup_target(path: &Path) -> Result<()> {
+    if let Ok(metadata) = fs::symlink_metadata(path)
+        && metadata.file_type().is_symlink()
+    {
+        bail!("refusing to write through backup symlink {}", path.display());
+    }
+    Ok(())
+}
+
+fn write_durable(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+fn fsync_parent(path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        File::open(parent)?.sync_all()?;
+    }
+    Ok(())
 }
 
 pub fn unified_file_diff(path: &Path, original: &str, fixed: &str) -> String {
@@ -157,9 +205,13 @@ pub fn apply_findings_to_text(text: &str, findings: &[Finding]) -> Result<String
     let mut last_start = text.len() + 1;
     let mut out = text.to_string();
     for splice in splices {
-        if splice.start_byte > splice.end_byte || splice.end_byte > out.len() {
+        if splice.start_byte > splice.end_byte
+            || splice.end_byte > out.len()
+            || !out.is_char_boundary(splice.start_byte)
+            || !out.is_char_boundary(splice.end_byte)
+        {
             bail!(
-                "invalid splice {}..{} for {} bytes",
+                "invalid splice {}..{} for {} UTF-8 bytes",
                 splice.start_byte,
                 splice.end_byte,
                 out.len()
@@ -206,6 +258,11 @@ pub fn undo_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
 }
 
 fn restore_backup(backup: &Path, restored: &mut Vec<PathBuf>) -> Result<()> {
+    let metadata = fs::symlink_metadata(backup)
+        .with_context(|| format!("failed to inspect {}", backup.display()))?;
+    if metadata.file_type().is_symlink() {
+        bail!("refusing to restore through backup symlink {}", backup.display());
+    }
     let original = original_path_from_backup(backup)?;
     fs::rename(backup, &original).with_context(|| {
         format!(

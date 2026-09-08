@@ -107,6 +107,23 @@ Sending source to a real provider requires explicit consent: `--yes`, the
 interactive prompt. Without consent in a non-interactive run, it refuses and
 says so. Progress goes to stderr; stdout stays machine-readable.
 
+Consent binds the prepared source/read set and provider destination; source
+drift aborts rather than rescanning under earlier consent. Selected external
+checks require the supported namespace sandbox and bounded execution policy;
+unavailable coverage/mutation adapters report unavailable rather than running
+unconfined host tools. File-budget watchdogs are not hard disk quotas.
+
+`deslop rules --rule long-method --format json` explains bundled research
+scope, counterexamples and unknowns. JSON findings use `deslop.findings/3`
+and carry separate research metadata; citations never grant write authority.
+
+`deslop revision-cleanup --from BASE_DIR --to TARGET_DIR --scope src`
+compares materialized source directories. Add `--task "preserve the public API"`
+for target-bound review proposals. Revision labels alone do not prove
+comparability, and no historical-analysis benefit has been independently
+demonstrated. See [`docs/RESEARCH_PROTOCOL.md`](docs/RESEARCH_PROTOCOL.md)
+for the experimental trajectory CLI, cards and remaining study gates.
+
 ## Refactor pathology and history analysis
 
 `deslop refactor-risk [paths]` analyzes one exact current source snapshot. It
@@ -139,7 +156,7 @@ verification instead of a fix. The full design and its evaluation gates are in
 
 The MCP server (`deslop mcp`, behind `--features mcp`) exposes `scan`,
 `propose`, `verify`, `apply`, `characterize`, `verify_characterization`,
-`metrics`, `graph`, `refactor_risk`, `rules`, and `fix`. The default build is
+`metrics`, `graph`, `refactor_risk`, `revision_cleanup`, `rules`, and `fix`. The default build is
 network-free. `fix` defaults to agent-as-consumer: it returns rewrite prompts
 and exact revision guards, and the calling agent submits patches back through
 `apply`. A server-side LLM mode exists only behind the `slim-llm` feature.

@@ -28,6 +28,7 @@ mod packs;
 pub mod refactor;
 mod sibling_gate;
 pub mod snapshot_refactor;
+pub mod revision_cleanup;
 
 pub use boundary::BoundaryConfig;
 pub use deslop_parse::FactCoverage;

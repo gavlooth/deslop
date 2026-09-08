@@ -6,22 +6,23 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use deslop_analyzer::{
     AnalyzerConfig, AnalyzerLangConfig, RuleSuppression, Suppression, SuppressionBuilder,
-    scan_paths_with_config,
+    revision_cleanup::compare_paths_with_scope, scan_paths_with_config,
 };
 use deslop_core::{AnalysisStatus, FileAnalysis, reports_analysis_status};
 use deslop_graph::{GraphConfig, graph_paths};
 use deslop_metrics::{MetricsConfig, metrics_paths};
 use deslop_protocol::{
     CharacterizationTest, Patch, WorkOrder, WorkOrderKind, propose_work_orders,
-    shared_finding_work_orders, workorder_revision_guard,
+    revision_cleanup::revision_cleanup_proposals, shared_finding_work_orders,
+    workorder_revision_guard,
 };
 use deslop_report::render_json;
 use deslop_slim::build_prompt;
 #[cfg(feature = "slim-llm")]
 use deslop_slim::{
-    AnthropicClient, EgressDecision, OpenAiClient, RecordedClient, SlimOptions,
-    egress_consent_error, egress_summary, env_egress_consent, provider_base_url,
-    resolve_egress_consent, resolve_model, run_slim,
+    AnthropicClient, EgressDecision, OpenAiClient, PreparedRun, RecordedClient, SlimOptions,
+    egress_consent_error, env_egress_consent, provider_base_url, resolve_egress_consent,
+    resolve_model,
 };
 use deslop_verify::{
     CoverageConfig, MutationConfig, VerifyOptions, apply_patches,
@@ -32,20 +33,52 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 pub fn run_stdio() -> Result<()> {
-    let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout();
-    run(stdin.lock(), &mut stdout)
+    run(std::io::stdin().lock(), &mut std::io::stdout().lock())
 }
 
 pub fn run<R: BufRead, W: Write>(reader: R, writer: &mut W) -> Result<()> {
-    for line in reader.lines() {
+    let stdin = reader;
+    for line in stdin.lines() {
         let line = line.context("failed to read MCP request")?;
         if line.trim().is_empty() {
             continue;
         }
-        if let Some(response) = handle_json(&line)? {
-            writeln!(writer, "{}", serde_json::to_string(&response)?)?;
-            writer.flush()?;
+        match handle_json(&line) {
+            Ok(Some(response)) => {
+                writeln!(writer, "{}", serde_json::to_string(&response)?)?;
+                writer.flush()?;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                // Request failures are isolated to this line. A valid notification has no
+                // response, including when its method or tool arguments are invalid.
+                let parsed = serde_json::from_str::<Value>(&line);
+                if parsed
+                    .as_ref()
+                    .ok()
+                    .is_some_and(|request| {
+                        request.is_object()
+                            && request.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+                            && request.get("method").is_some_and(Value::is_string)
+                            && request.get("id").is_none()
+                    })
+                {
+                    continue;
+                }
+                let (id, code) = match parsed {
+                    Ok(request) if request.is_object() => {
+                        let valid_envelope = request.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+                            && request.get("method").is_some_and(Value::is_string);
+                        let code = if valid_envelope { -32602 } else { -32600 };
+                        (request.get("id").cloned().unwrap_or(Value::Null), code)
+                    }
+                    Ok(_) => (Value::Null, -32600),
+                    Err(_) => (Value::Null, -32700),
+                };
+                let response = error_response(id, code, &error.to_string());
+                writeln!(writer, "{}", serde_json::to_string(&response)?)?;
+                writer.flush()?;
+            }
         }
     }
     Ok(())
@@ -53,15 +86,23 @@ pub fn run<R: BufRead, W: Write>(reader: R, writer: &mut W) -> Result<()> {
 
 pub fn handle_json(request: &str) -> Result<Option<Value>> {
     let request: Value = serde_json::from_str(request).context("failed to parse JSON-RPC")?;
-    handle_request(&request).map(Some)
+    let has_id = request.get("id").is_some();
+    let response = handle_request(&request)?;
+    Ok(has_id.then_some(response))
 }
 
 pub fn handle_request(request: &Value) -> Result<Value> {
+    if !request.is_object() {
+        bail!("JSON-RPC request must be an object");
+    }
+    if request.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        bail!("JSON-RPC request must set jsonrpc to 2.0");
+    }
     let id = request.get("id").cloned().unwrap_or(Value::Null);
     let method = request
         .get("method")
         .and_then(Value::as_str)
-        .unwrap_or_default();
+        .context("JSON-RPC request method must be a string")?;
     let result = match method {
         "initialize" => initialize_result(),
         "tools/list" => tools_list_result(),
@@ -117,6 +158,7 @@ fn tool_definitions() -> Vec<Value> {
         graph_tool_spec(),
         work_orders_tool_spec(),
         rules_tool_spec(),
+        revision_cleanup_tool_spec(),
         refactor_risk_tool_spec(),
     ]
 }
@@ -124,7 +166,7 @@ fn tool_definitions() -> Vec<Value> {
 fn scan_tool_spec() -> Value {
     tool(
         "scan",
-        "Scan paths and return deslop.findings/2 JSON.",
+        "Scan paths and return deslop.findings/3 JSON.",
         object_schema(json!({
             "paths": paths_schema(),
             "format": { "type": "string", "enum": ["json"], "default": "json" },
@@ -282,8 +324,28 @@ fn graph_tool_spec() -> Value {
 fn rules_tool_spec() -> Value {
     tool(
         "rules",
-        "Return the built-in rule catalog.",
-        object_schema(json!({})),
+        "Read-only. Without a rule, return the unchanged built-in rule catalog table. With `rule`, return deslop.rule-research/1 metadata from the bundled ledger; metadata grants no source proof or write authority. No writes, no network.",
+        object_schema(json!({
+            "rule": string_schema("Known rule name to explain as research metadata.")
+        })),
+    )
+}
+
+fn revision_cleanup_tool_spec() -> Value {
+    tool(
+        "revision_cleanup",
+        "Read-only. Compare base and target snapshot directories through the analyzer's exact revision-cleanup API, returning comparability and finding attribution. With task requirements, return target-bound existing proposals from the shared protocol API. Scope paths are rooted at target. No writes, no network.",
+        required_schema(
+            &["from", "to"],
+            json!({
+                "from": { "type": "string", "description": "Base snapshot directory." },
+                "to": { "type": "string", "description": "Target snapshot directory." },
+                "scope": paths_schema(),
+                "task": string_schema("Optional non-empty proposal task requirements."),
+                "config": config_schema("Optional deslop.toml path for analyzer settings."),
+                "analyzer": analyzer_schema()
+            }),
+        ),
     )
 }
 
@@ -531,7 +593,8 @@ fn tools_call_result(params: &Value) -> Result<Value> {
         "metrics" => metrics_tool(args)?,
         "graph" => graph_tool(args)?,
         "work_orders" => work_orders_tool(args)?,
-        "rules" => json!({ "rules": deslop_core::rules::render_table() }),
+        "rules" => rules_tool(args)?,
+        "revision_cleanup" => revision_cleanup_tool(args)?,
         "refactor_risk" => refactor_risk_tool(args)?,
         other => bail!("unknown tool `{other}`"),
     };
@@ -565,6 +628,73 @@ fn tool_result(payload: Value) -> Result<Value> {
         "structuredContent": payload,
         "isError": false,
     }))
+}
+
+fn rules_tool(args: &Value) -> Result<Value> {
+    if !args.is_null() {
+        strict_object(args, &["rule"], "rules")?;
+    }
+    let Some(rule) = args.get("rule") else {
+        return Ok(json!({ "rules": deslop_core::rules::render_table() }));
+    };
+    let rule = rule
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("rules rule must be a string"))?;
+    Ok(serde_json::to_value(
+        deslop_report::research::explain_rule(rule)?,
+    )?)
+}
+
+fn revision_cleanup_tool(args: &Value) -> Result<Value> {
+    strict_object(
+        args,
+        &["from", "to", "scope", "task", "config", "analyzer"],
+        "revision_cleanup",
+    )?;
+    let base = required_path_arg(args, "from")?;
+    let target = required_path_arg(args, "to")?;
+    anyhow::ensure!(base.is_dir(), "revision_cleanup from must be a directory");
+    anyhow::ensure!(target.is_dir(), "revision_cleanup to must be a directory");
+    let scope = optional_paths_arg(args, "scope")?.unwrap_or_else(|| vec![PathBuf::from(".")]);
+    for path in &scope {
+        if path.is_absolute()
+            || path
+                .components()
+                .any(|component| component == std::path::Component::ParentDir)
+        {
+            bail!("revision_cleanup scope must be rooted at target");
+        }
+    }
+    let config = mcp_analyzer_config(args)?;
+    if let Some(task) = args.get("task") {
+        let task = task
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("revision_cleanup task must be a string"))?;
+        return Ok(serde_json::to_value(revision_cleanup_proposals(
+            &base, &target, &scope, config, task,
+        )?)?);
+    }
+    Ok(serde_json::to_value(compare_paths_with_scope(&base, &target, &scope, config)?)?)
+}
+
+fn required_path_arg(args: &Value, key: &str) -> Result<PathBuf> {
+    let value = args
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("revision_cleanup requires string `{key}`"))?;
+    Ok(PathBuf::from(value))
+}
+
+fn strict_object<'a>(args: &'a Value, allowed: &[&str], tool: &str) -> Result<()> {
+    let Some(object) = args.as_object() else {
+        bail!("{tool} arguments must be an object");
+    };
+    for key in object.keys() {
+        if !allowed.contains(&key.as_str()) {
+            bail!("{tool} does not accept argument `{key}`");
+        }
+    }
+    Ok(())
 }
 
 fn scan_tool(args: &Value) -> Result<Value> {
@@ -648,26 +778,30 @@ fn fix_auto_tool(args: &Value) -> Result<Value> {
         backup: true,
         analyzer: mcp_analyzer_config(args)?,
     };
+    let prepared = PreparedRun::prepare(options)?;
     let report = if let Some(path) = optional_string(args, "mock") {
         let client = RecordedClient::from_path(path)?;
-        run_slim(&client, options)?
-    } else if egress_summary(&options)?.region_count == 0 {
-        run_slim(&RecordedClient::new(""), options)?
+        prepared.run(&client)?
     } else {
-        let provider = provider_arg(args)?;
-        let base_url = optional_string(args, "base_url");
-        let destination = provider_base_url(provider, base_url.as_deref());
-        require_mcp_egress_consent(args, provider, &destination, &options)?;
-        match provider {
-            "anthropic" => {
-                let client = AnthropicClient::from_env(model.clone())?;
-                run_slim(&client, options)?
+        let summary = prepared.egress_summary();
+        if summary.region_count == 0 {
+            prepared.run(&RecordedClient::new(""))?
+        } else {
+            let provider = provider_arg(args)?;
+            let base_url = optional_string(args, "base_url");
+            let destination = provider_base_url(provider, base_url.as_deref());
+            require_mcp_egress_consent(args, provider, &destination, summary)?;
+            match provider {
+                "anthropic" => {
+                    let client = AnthropicClient::from_env(model.clone())?;
+                    prepared.run(&client)?
+                }
+                "openai" => {
+                    let client = OpenAiClient::from_env(model.clone(), base_url)?;
+                    prepared.run(&client)?
+                }
+                other => bail!("unsupported fix provider `{other}`; use `anthropic` or `openai`"),
             }
-            "openai" => {
-                let client = OpenAiClient::from_env(model.clone(), base_url)?;
-                run_slim(&client, options)?
-            }
-            other => bail!("unsupported fix provider `{other}`; use `anthropic` or `openai`"),
         }
     };
     Ok(serde_json::to_value(report)?)
@@ -741,7 +875,7 @@ fn require_mcp_egress_consent(
     args: &Value,
     provider: &str,
     base_url: &str,
-    options: &SlimOptions,
+    summary: deslop_slim::EgressSummary,
 ) -> Result<()> {
     let explicit = bool_arg(args, "consent")
         || env_egress_consent(std::env::var("DESLOP_SLIM_CONSENT").ok())
@@ -750,10 +884,7 @@ fn require_mcp_egress_consent(
         EgressDecision::Granted => Ok(()),
         EgressDecision::Prompt => unreachable!("MCP fix auto is non-interactive"),
         EgressDecision::DeniedNonInteractive => {
-            bail!(
-                "{}",
-                egress_consent_error(provider, base_url, egress_summary(options)?)
-            )
+            bail!("{}", egress_consent_error(provider, base_url, summary))
         }
     }
 }
@@ -1309,6 +1440,15 @@ mod tests {
     }
 
     #[test]
+    fn rules_tool_keeps_table_default_and_rejects_unknown_arguments() {
+        let table = rules_tool(&Value::Null).expect("default rules");
+        assert!(table["rules"].as_str().is_some_and(|text| text.starts_with("rule")));
+        let error = rules_tool(&json!({ "unexpected": true }))
+            .expect_err("unknown rules argument must fail");
+        assert!(error.to_string().contains("does not accept argument"));
+    }
+
+    #[test]
     fn malformed_source_is_a_structured_domain_block_across_mcp_tools() {
         let temp = tempfile::tempdir().expect("tempdir");
         let source = temp.path().join("malformed.ts");
@@ -1320,7 +1460,7 @@ mod tests {
         let args = json!({ "paths": [source] });
 
         let scan = scan_tool(&args).expect("scan");
-        assert_eq!(scan["schema"], "deslop.findings/2");
+        assert_eq!(scan["schema"], "deslop.findings/3");
         assert_eq!(scan["status"], "partial");
 
         let proposed = propose_tool(&args).expect("propose");
@@ -1374,10 +1514,7 @@ mod tests {
             .expect("config artifact");
         fs::write(
             temp.path().join("driver.jl"),
-            concat!(
-                "phantom_knob = get(options, \"phantom-knob\")\n",
-                "println(phantom_knob)\n",
-            ),
+            "phantom_knob = get(options, \"phantom-knob\")\nprintln(phantom_knob)\n",
         )
         .expect("Julia source");
         let args = json!({ "paths": [temp.path()] });
@@ -1511,6 +1648,7 @@ mod tests {
                 "graph",
                 "work_orders",
                 "rules",
+                "revision_cleanup",
                 "refactor_risk"
             ]
         );
@@ -2090,6 +2228,28 @@ mod tests {
     }
 
     #[test]
+    fn stdio_isolates_malformed_requests_and_suppresses_notifications() {
+        let input = concat!(
+            "{not-json}\n",
+            "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{}}\n",
+            "{\"jsonrpc\":\"2.0\",\"method\":\"tools/list\"}\n",
+            "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"initialize\"}\n",
+        );
+        let mut output = Vec::new();
+        run(std::io::Cursor::new(input), &mut output).expect("stdio remains healthy");
+        let responses = String::from_utf8(output)
+            .expect("utf8")
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).expect("json"))
+            .collect::<Vec<_>>();
+        assert_eq!(responses.len(), 3);
+        assert_eq!(responses[0]["error"]["code"], -32700);
+        assert_eq!(responses[1]["id"], 6);
+        assert_eq!(responses[1]["error"]["code"], -32602);
+        assert_eq!(responses[2]["id"], 7);
+        assert!(responses[2].get("result").is_some());
+    }
+    #[test]
     fn initialize_list_scan_handshake_works() {
         let fixture = sample_fixture();
         let input = format!(
@@ -2110,7 +2270,7 @@ mod tests {
         assert_eq!(responses[1]["result"]["tools"][0]["name"], "scan");
         assert_eq!(
             structured_content(&responses[2])["schema"],
-            "deslop.findings/2"
+            "deslop.findings/3"
         );
     }
 

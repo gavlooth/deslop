@@ -8,6 +8,7 @@ use deslop_core::{FileReport, Finding};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+pub mod family_cards;
 pub mod m10_canonical;
 pub mod m10_dogfood;
 pub mod m10_external;
@@ -17,6 +18,7 @@ pub mod m8_calibration;
 pub mod m9_scale;
 pub mod pilot;
 pub mod research;
+pub mod trajectory;
 
 const DEFAULT_EPSILON: f64 = 0.0001;
 

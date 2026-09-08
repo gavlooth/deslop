@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
+use deslop_eval::family_cards::{generate_family_cards, write_family_cards};
 use deslop_eval::pilot::{PILOT_EVAL_SCHEMA, evaluate_dir, import_bundle};
 
 fn main() -> Result<()> {
     let mut arguments = std::env::args_os().skip(1);
     let mode = arguments.next().context(
-        "usage: pilot-eval <import --bundle PATH --out DIR|eval --dir DIR --protocol-pin PIN>",
+        "usage: pilot-eval <import --bundle PATH --out DIR|eval --dir DIR --protocol-pin PIN|cards --dir DIR --protocol-pin PIN>",
     )?;
     match mode.to_string_lossy().as_ref() {
         "import" => {
@@ -35,6 +36,22 @@ fn main() -> Result<()> {
                 report.cases_total,
                 report.sealed_excluded,
                 dir.join("report.json").display()
+            );
+            Ok(())
+        }
+        "cards" => {
+            let (dir, pin) = kv2(&mut arguments, "--dir", "--protocol-pin")?;
+            if arguments.next().is_some() {
+                bail!("unexpected extra pilot-eval cards arguments");
+            }
+            let pin_str = pin.to_string_lossy().into_owned();
+            let cards = generate_family_cards(&dir, &pin_str)?;
+            let output = dir.join("family_cards.json");
+            write_family_cards(&output, &cards)?;
+            println!(
+                "pilot family cards OK: {} cards -> {}",
+                cards.cards.len(),
+                output.display()
             );
             Ok(())
         }

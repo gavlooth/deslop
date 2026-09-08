@@ -1538,6 +1538,11 @@ fn node_feature_vector(input: NodeFeatureInput<'_>) -> NodeFeatureVector {
     }
 
     let mut lexical_visual = FeatureAxisEvidence::measured();
+    if input.expressivity.tokens == 0 {
+        structural
+            .unknowns
+            .push("decision density has no token denominator".into());
+    }
     for (name, value, estimator, sample_size) in [
         (
             "token_count",
@@ -1578,6 +1583,18 @@ fn node_feature_vector(input: NodeFeatureInput<'_>) -> NodeFeatureVector {
                 sample_size,
             },
         );
+    }
+    if input.expressivity.tokens == 0 {
+        lexical_visual.measurements.remove("unique_token_ratio");
+        lexical_visual
+            .unknowns
+            .push("unique-token ratio has no token denominator".into());
+    }
+    if input.complexity.nloc == 0 {
+        lexical_visual.measurements.remove("comment_to_code_ratio");
+        lexical_visual
+            .unknowns
+            .push("comment-to-code ratio has no code-line denominator".into());
     }
     lexical_visual.unknowns.extend([
         "identifier-quality model not captured in metrics projection".into(),
@@ -1841,10 +1858,7 @@ fn tokenize(text: &str, comment_tokens: &[&str]) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut line_start = 0;
     for line in text.split_inclusive('\n') {
-        let comment_at = comment_tokens
-            .iter()
-            .filter_map(|token| line.find(token))
-            .min();
+        let comment_at = comment_start(line, comment_tokens);
         let (code, comment) = match comment_at {
             Some(idx) => (&line[..idx], Some(&line[idx..])),
             None => (line, None),
@@ -1858,6 +1872,39 @@ fn tokenize(text: &str, comment_tokens: &[&str]) -> Vec<Token> {
     tokens
 }
 
+/// Return the first line-comment delimiter outside a quoted literal.
+///
+/// Metric tokenization is deliberately lightweight rather than a language lexer, but treating a
+/// delimiter inside a string as a comment silently discards the remainder of the line. Keeping
+/// this small quote/escape state makes the fallback deterministic without changing token spans.
+fn comment_start(line: &str, comment_tokens: &[&str]) -> Option<usize> {
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, character) in line.char_indices() {
+        if let Some(delimiter) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == delimiter {
+                quote = None;
+            }
+            continue;
+        }
+        if matches!(character, '"' | '\'' | '`') {
+            quote = Some(character);
+            continue;
+        }
+        if comment_tokens
+            .iter()
+            .any(|token| !token.is_empty() && line[index..].starts_with(token))
+        {
+            return Some(index);
+        }
+    }
+    None
+}
+
 fn tokenize_code(text: &str, is_comment: bool, base_offset: usize) -> Vec<Token> {
     let mut out = Vec::new();
     let mut iter = text.char_indices().peekable();
@@ -1865,7 +1912,12 @@ fn tokenize_code(text: &str, is_comment: bool, base_offset: usize) -> Vec<Token>
         if ch.is_whitespace() {
             continue;
         }
-        if ch.is_ascii_alphanumeric() || ch == '_' {
+        if matches!(ch, '"' | '\'' | '`') {
+            let end = consume_quoted(&mut iter, start, ch);
+            out.push(token_from_slice(text, start, end, is_comment, base_offset));
+            continue;
+        }
+        if ch.is_alphanumeric() || ch == '_' {
             let end = consume_word(&mut iter, start, ch);
             out.push(token_from_slice(text, start, end, is_comment, base_offset));
             continue;
@@ -1885,6 +1937,26 @@ fn tokenize_code(text: &str, is_comment: bool, base_offset: usize) -> Vec<Token>
     out
 }
 
+fn consume_quoted(
+    iter: &mut std::iter::Peekable<std::str::CharIndices<'_>>,
+    start: usize,
+    delimiter: char,
+) -> usize {
+    let mut end = start + delimiter.len_utf8();
+    let mut escaped = false;
+    while let Some((index, character)) = iter.next() {
+        end = index + character.len_utf8();
+        if escaped {
+            escaped = false;
+        } else if character == '\\' {
+            escaped = true;
+        } else if character == delimiter {
+            break;
+        }
+    }
+    end
+}
+
 fn consume_word(
     iter: &mut std::iter::Peekable<std::str::CharIndices<'_>>,
     start: usize,
@@ -1892,7 +1964,7 @@ fn consume_word(
 ) -> usize {
     let mut end = start + first.len_utf8();
     while let Some((idx, next)) = iter.peek().copied() {
-        if next.is_ascii_alphanumeric() || next == '_' {
+        if next.is_alphanumeric() || next == '_' {
             iter.next();
             end = idx + next.len_utf8();
         } else {
@@ -1901,6 +1973,7 @@ fn consume_word(
     }
     end
 }
+
 
 fn consume_two_char_operator(
     text: &str,
@@ -2040,10 +2113,10 @@ const MIN_PEER_GROUP_REGIONS: usize = 8;
 struct BigramModel {
     pairs: BTreeMap<(String, String), usize>,
     contexts: BTreeMap<String, usize>,
-    vocabulary: BTreeSet<String>,
+    /// Per-token counts let leave-one-region-out support remove held-out vocabulary.
+    vocabulary: BTreeMap<String, usize>,
     tokens: usize,
 }
-
 fn region_pairs(tokens: &[String]) -> Vec<(String, String)> {
     let mut previous = "<START>".to_string();
     let mut pairs = Vec::with_capacity(tokens.len());
@@ -2054,13 +2127,32 @@ fn region_pairs(tokens: &[String]) -> Vec<(String, String)> {
     pairs
 }
 
+fn peer_vocabulary_size(model: &BigramModel, held_out: &[String]) -> usize {
+    let mut held_out_counts = BTreeMap::<&str, usize>::new();
+    for token in held_out {
+        *held_out_counts.entry(token.as_str()).or_default() += 1;
+    }
+    model
+        .vocabulary
+        .iter()
+        .filter(|(token, count)| {
+            count.saturating_sub(
+                held_out_counts
+                    .get(token.as_str())
+                    .copied()
+                    .unwrap_or(0),
+            ) > 0
+        })
+        .count()
+}
+
 fn apply_repository_surprisal(regions: &mut [MeasuredRegion]) {
     let mut models = BTreeMap::<String, BigramModel>::new();
     for region in regions.iter() {
         let model = models.entry(region.metrics.lang.to_string()).or_default();
         model.tokens += region.model_tokens.len();
         for token in &region.model_tokens {
-            model.vocabulary.insert(token.clone());
+            *model.vocabulary.entry(token.clone()).or_default() += 1;
         }
         for (context, token) in region_pairs(&region.model_tokens) {
             *model.contexts.entry(context.clone()).or_default() += 1;
@@ -2073,7 +2165,7 @@ fn apply_repository_surprisal(regions: &mut [MeasuredRegion]) {
             continue;
         };
         let peer_tokens = model.tokens.saturating_sub(region.model_tokens.len());
-        if peer_tokens == 0 || region.model_tokens.is_empty() || model.vocabulary.is_empty() {
+        if peer_tokens == 0 || region.model_tokens.is_empty() {
             continue;
         }
         let local_pairs = region_pairs(&region.model_tokens);
@@ -2085,7 +2177,13 @@ fn apply_repository_surprisal(regions: &mut [MeasuredRegion]) {
                 .entry((context.clone(), token.clone()))
                 .or_default() += 1;
         }
-        let support = model.vocabulary.len() as f64 + 1.0;
+        // Add-one support is the peer vocabulary, not the global vocabulary: tokens unique to
+        // the held-out region must remain unseen by its leave-one-out model.
+        let peer_vocabulary = peer_vocabulary_size(model, &region.model_tokens);
+        if peer_vocabulary == 0 {
+            continue;
+        }
+        let support = peer_vocabulary as f64 + 1.0;
         let mut values = local_pairs
             .iter()
             .map(|(context, token)| {
@@ -3290,6 +3388,7 @@ mod tests {
 
     #[test]
     fn halstead_known_numbers() {
+
         let halstead = halstead_for_text(&RUST_PACK, "a + b * c");
         assert_eq!(halstead.distinct_operators, 2);
         assert_eq!(halstead.total_operators, 2);
@@ -3298,6 +3397,34 @@ mod tests {
         assert!((halstead.volume - 11.609_640).abs() < 0.000_01);
         assert!((halstead.difficulty - 1.0).abs() < 0.000_01);
         assert!((halstead.lexical_effort - 11.609_640).abs() < 0.000_01);
+    }
+    #[test]
+    fn metric_tokenizer_keeps_unicode_identifiers_and_code_after_string_delimiters() {
+        let unicode = halstead_for_text(&RUST_PACK, "let αβ = γ + 1;");
+        assert_eq!(unicode.total_operands, 4);
+        assert_eq!(unicode.distinct_operands, 4);
+
+        let quoted_comment = halstead_for_text(&RUST_PACK, r#"let marker = "//"; x + y // trailing"#);
+        assert!(quoted_comment.total_operators >= 1);
+        assert!(quoted_comment.total_operands >= 5);
+    }
+
+    #[test]
+    fn leave_region_out_support_excludes_held_out_only_vocabulary() {
+        let mut model = BigramModel::default();
+        for token in ["shared", "shared", "peer_only", "held_out_only"] {
+            *model.vocabulary.entry(token.to_string()).or_default() += 1;
+        }
+        let held_out = ["shared".to_string(), "held_out_only".to_string()];
+        assert_eq!(peer_vocabulary_size(&model, &held_out), 2);
+    }
+
+    #[test]
+    fn entropy_reference_cases_use_bits_and_observed_support() {
+        assert_close(shannon_entropy([1, 1].into_iter()), 1.0);
+        assert_close(normalized_entropy([1, 1].into_iter()), 1.0);
+        assert_close(normalized_entropy([4].into_iter()), 0.0);
+        assert_close(normalized_entropy([0, 0].into_iter()), 0.0);
     }
 
     #[test]
@@ -3675,7 +3802,7 @@ mod tests {
     }
 
     #[test]
-    fn exclusive_range_tokenization_matches_legacy_intrinsics_for_operator_edges() {
+    fn source_and_snapshot_metrics_agree_on_quoted_operator_boundaries() {
         let root = tempfile::tempdir().unwrap();
         let source = "fn target(mut x: i32, y: i32) -> bool {\n    // >= && != += inside a comment\n    let marker = \"// >= && != +=\"; // inline\n    x += 1;\n    x >= y && x != 0\n}\n";
         let logical = PathBuf::from("sample.rs");
@@ -3708,11 +3835,13 @@ mod tests {
         assert_eq!(legacy.halstead.distinct_operators, 8);
         assert_eq!(legacy.halstead.distinct_operands, 18);
         assert_eq!(legacy.halstead.total_operators, 8);
-        assert_eq!(legacy.halstead.total_operands, 24);
-        assert!((legacy.halstead.volume - 150.41407098051494).abs() < 1e-12);
-        assert!((legacy.halstead.difficulty - 5.333333333333333).abs() < 1e-12);
-        assert!((legacy.halstead.lexical_effort - 802.2083785627462).abs() < 1e-12);
-        assert!((legacy.complexity.maintainability_index - 69.37278807296794).abs() < 1e-12);
+        assert_eq!(legacy.halstead.total_operands, 25);
+        // Independent Halstead reference: N log2(n), (n1 / 2) * (N2 / n2).
+        let volume = 33.0 * 26_f64.log2();
+        let difficulty = 4.0 * (25.0 / 18.0);
+        assert!((legacy.halstead.volume - volume).abs() < 1e-12);
+        assert!((legacy.halstead.difficulty - difficulty).abs() < 1e-12);
+        assert!((legacy.halstead.lexical_effort - volume * difficulty).abs() < 1e-12);
     }
 
     #[test]

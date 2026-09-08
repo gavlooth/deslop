@@ -769,6 +769,9 @@ fn equality_case<'a>(
 }
 
 fn pattern_allowed(node: deslop_parse::NodeView<'_>) -> bool {
+    // String literals are valid patterns for `&str`, but not for every type
+    // accepted by `PartialEq`. Keep the syntactic candidate and leave the
+    // subject/pattern type check to the required semantic/build evidence.
     matches!(
         node.raw_grammar_kind(),
         "scoped_identifier"
@@ -1240,17 +1243,22 @@ fn dynamic(flag: bool) -> i32 {
     }
 
     #[test]
-    fn macro_dead_arm_and_non_exhaustive_or_duplicate_chains_abstain() {
+    fn macro_dead_arm_non_exhaustive_duplicate_and_string_chain_evidence() {
         let root = tempfile::tempdir().unwrap();
         fs::write(
             root.path().join("terminal.rs"),
             "enum M { A, B }\nfn a() { if true {} else { println!(\"dead\"); } }\n\
              fn b(m: M) { if m == M::A {} else if m == M::B {} }\n\
-             fn c(m: M) { if m == M::A {} else if m == M::A {} else {} }\n",
+             fn c(m: M) { if m == M::A {} else if m == M::A {} else {} }\n\
+             fn strings(value: &str) { if value == \"a\" {} else if value == \"b\" {} else {} }\n",
         )
         .unwrap();
         assert!(candidates(root.path(), "rust-remove-literal-dead-arm").is_empty());
-        assert!(candidates(root.path(), "rust-convert-exhaustive-chain-to-match").is_empty());
+        let chains = candidates(root.path(), "rust-convert-exhaustive-chain-to-match");
+        assert_eq!(chains.len(), 1);
+        assert!(chains[0].required_results().iter().any(|item| {
+            item.condition == CHAIN_EQUALITY && item.state == ProofState::Unknown
+        }));
     }
 
     #[test]

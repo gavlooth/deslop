@@ -32,9 +32,9 @@ use lsp_types::{
     CodeActionResponse, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
     DocumentChanges, NumberOrString, OneOf, OptionalVersionedTextDocumentIdentifier, Position,
-    PublishDiagnosticsParams, Range, ServerCapabilities, TextDocumentContentChangeEvent,
-    TextDocumentEdit, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri,
-    WorkspaceEdit,
+    PositionEncodingKind, PublishDiagnosticsParams, Range, ServerCapabilities,
+    TextDocumentContentChangeEvent, TextDocumentEdit, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Uri, WorkspaceEdit,
 };
 use serde::Deserialize;
 
@@ -132,6 +132,15 @@ struct LspAnalyzerLangConfig {
 
 impl LspState {
     fn open(&mut self, uri: Uri, path: PathBuf, text: String, version: Option<i32>) -> Result<()> {
+        if let (Some(current), Some(next)) = (
+            self.documents
+                .get(uri.as_str())
+                .and_then(|document| document.version),
+            version,
+        ) && next <= current
+        {
+            return Ok(());
+        }
         self.refresh_config_for_path(&path).ok();
         let mut documents = self.documents.clone();
         let key = uri.as_str().to_string();
@@ -156,6 +165,17 @@ impl LspState {
         changes: Vec<TextDocumentContentChangeEvent>,
         version: Option<i32>,
     ) -> Result<()> {
+        if let (Some(current), Some(next)) = (
+            self.documents
+                .get(uri.as_str())
+                .and_then(|document| document.version),
+            version,
+        ) && next <= current
+        {
+            // LSP versions are strictly increasing. Ignore delayed or
+            // duplicated notifications rather than regressing editor state.
+            return Ok(());
+        }
         let text = self
             .documents
             .get(uri.as_str())
@@ -175,13 +195,29 @@ impl LspState {
 
     fn save(&mut self, uri: &Uri, text: Option<String>) -> Result<()> {
         if let Some(text) = text {
-            let changes = vec![TextDocumentContentChangeEvent {
-                range: None,
-                range_length: None,
-                text,
-            }];
-            self.change(uri.clone(), changes, None)?;
-        } else if let Some(path) = self
+            // didSave carries no document version. If a client supplies text
+            // that differs from our last versioned didChange, retain the
+            // content for diagnostics but clear the version so no edit can
+            // be offered against an unversioned snapshot.
+            let current = self
+                .documents
+                .get(uri.as_str())
+                .map(|document| document.text.as_str())
+                .ok_or_else(|| anyhow::anyhow!("document not open: {:?}", uri))?;
+            if current != text {
+                self.change(
+                    uri.clone(),
+                    vec![TextDocumentContentChangeEvent {
+                        range: None,
+                        range_length: None,
+                        text,
+                    }],
+                    None,
+                )?;
+                return Ok(());
+            }
+        }
+        if let Some(path) = self
             .documents
             .get(uri.as_str())
             .map(|document| document.path.to_owned())
@@ -322,6 +358,9 @@ pub fn run_stdio() -> Result<()> {
 
 pub fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
+        // All position conversion in this crate is UTF-16 based. Explicitly
+        // advertising it makes the choice unambiguous to LSP 3.17 clients.
+        position_encoding: Some(PositionEncodingKind::UTF16),
         text_document_sync: Some(TextDocumentSyncCapability::Kind(
             TextDocumentSyncKind::INCREMENTAL,
         )),
@@ -332,14 +371,27 @@ pub fn server_capabilities() -> ServerCapabilities {
 
 pub fn run_connection(connection: Connection) -> Result<()> {
     let (id, init_params) = connection.initialize_start()?;
-    let init_params: lsp_types::InitializeParams =
-        serde_json::from_value(init_params).context("invalid initialize params")?;
+    let init_params: lsp_types::InitializeParams = match serde_json::from_value(init_params) {
+        Ok(params) => params,
+        Err(error) => {
+            send_response_error(
+                &connection,
+                id,
+                lsp_server::ErrorCode::InvalidParams as i32,
+                format!("invalid initialize params: {error}"),
+            )?;
+            return Ok(());
+        }
+    };
     let workspace_root = root_from_workspace_folders(init_params.workspace_folders.as_deref())
         .or_else(|| root_from_root_uri(&init_params))
         .and_then(|path| path.canonicalize().ok());
     let config_path = workspace_root.as_deref().and_then(resolve_config_path);
     let settings = load_lsp_settings(config_path.as_deref())?;
-    connection.initialize_finish(id, serde_json::to_value(server_capabilities())?)?;
+    connection.initialize_finish(
+        id,
+        serde_json::json!({ "capabilities": server_capabilities() }),
+    )?;
 
     let mut state = LspState {
         workspace_root,
@@ -367,8 +419,18 @@ pub fn run_connection(connection: Connection) -> Result<()> {
 
 fn handle_request(connection: &Connection, state: &LspState, request: Request) -> Result<()> {
     if request.method == CodeActionRequest::METHOD {
-        let params: lsp_types::CodeActionParams =
-            serde_json::from_value(request.params).context("invalid code action params")?;
+        let params: lsp_types::CodeActionParams = match serde_json::from_value(request.params) {
+            Ok(params) => params,
+            Err(error) => {
+                send_response_error(
+                    connection,
+                    request.id,
+                    lsp_server::ErrorCode::InvalidParams as i32,
+                    format!("invalid code action params: {error}"),
+                )?;
+                return Ok(());
+            }
+        };
         let actions = state
             .documents
             .get(params.text_document.uri.as_str())
@@ -379,10 +441,22 @@ fn handle_request(connection: &Connection, state: &LspState, request: Request) -
                     &document.analysis,
                     &document.findings,
                     params.range,
+                    document.version,
                 )
             })
-            .transpose()?
-            .unwrap_or_default();
+            .transpose();
+        let actions = match actions {
+            Ok(actions) => actions.unwrap_or_default(),
+            Err(error) => {
+                send_response_error(
+                    connection,
+                    request.id,
+                    lsp_server::ErrorCode::InternalError as i32,
+                    format!("failed to compute code actions: {error}"),
+                )?;
+                return Ok(());
+            }
+        };
         let response: Option<CodeActionResponse> = Some(actions);
         connection.sender.send(Message::Response(Response {
             id: request.id,
@@ -390,16 +464,31 @@ fn handle_request(connection: &Connection, state: &LspState, request: Request) -
             error: None,
         }))?;
     } else {
-        connection.sender.send(Message::Response(Response {
-            id: request.id,
-            result: None,
-            error: Some(lsp_server::ResponseError {
-                code: lsp_server::ErrorCode::MethodNotFound as i32,
-                message: format!("method not found: {}", request.method),
-                data: None,
-            }),
-        }))?;
+        send_response_error(
+            connection,
+            request.id,
+            lsp_server::ErrorCode::MethodNotFound as i32,
+            format!("method not found: {}", request.method),
+        )?;
     }
+    Ok(())
+}
+
+fn send_response_error(
+    connection: &Connection,
+    id: lsp_server::RequestId,
+    code: i32,
+    message: String,
+) -> Result<()> {
+    connection.sender.send(Message::Response(Response {
+        id,
+        result: None,
+        error: Some(lsp_server::ResponseError {
+            code,
+            message,
+            data: None,
+        }),
+    }))?;
     Ok(())
 }
 
@@ -408,26 +497,35 @@ fn handle_notification(
     state: &mut LspState,
     notification: Notification,
 ) -> Result<()> {
-    match notification.method.as_str() {
+    let Notification { method, params } = notification;
+    match method.as_str() {
         DidOpenTextDocument::METHOD => {
-            let params: DidOpenTextDocumentParams =
-                serde_json::from_value(notification.params).context("invalid didOpen params")?;
-            handle_did_open(connection, state, params)?;
+            let Ok(parsed) = serde_json::from_value::<DidOpenTextDocumentParams>(params.clone())
+            else {
+                return Ok(());
+            };
+            handle_did_open(connection, state, parsed)?;
         }
         DidChangeTextDocument::METHOD => {
-            let params: DidChangeTextDocumentParams =
-                serde_json::from_value(notification.params).context("invalid didChange params")?;
-            handle_did_change(connection, state, params)?;
+            let Ok(parsed) = serde_json::from_value::<DidChangeTextDocumentParams>(params.clone())
+            else {
+                return Ok(());
+            };
+            handle_did_change(connection, state, parsed)?;
         }
         DidSaveTextDocument::METHOD => {
-            let params: DidSaveTextDocumentParams =
-                serde_json::from_value(notification.params).context("invalid didSave params")?;
-            handle_did_save(connection, state, params)?;
+            let Ok(parsed) = serde_json::from_value::<DidSaveTextDocumentParams>(params.clone())
+            else {
+                return Ok(());
+            };
+            handle_did_save(connection, state, parsed)?;
         }
         DidCloseTextDocument::METHOD => {
-            let params: DidCloseTextDocumentParams =
-                serde_json::from_value(notification.params).context("invalid didClose params")?;
-            handle_did_close(connection, state, params)?;
+            let Ok(parsed) = serde_json::from_value::<DidCloseTextDocumentParams>(params)
+            else {
+                return Ok(());
+            };
+            handle_did_close(connection, state, parsed)?;
         }
         _ => {}
     }
@@ -832,15 +930,15 @@ pub fn diagnostics_for_analysis(
 }
 
 fn analysis_diagnostic(text: &str, diagnostic: &AnalysisDiagnostic) -> Diagnostic {
-    let range = diagnostic.span.map_or_else(
-        || Range::new(Position::new(0, 0), Position::new(0, 0)),
-        |span| {
+    let range = diagnostic
+        .span
+        .map(|span| {
             Range::new(
                 byte_offset_position_utf16(text, span.start_byte, span.start_line),
                 byte_offset_position_utf16(text, span.end_byte, span.end_line),
             )
-        },
-    );
+        })
+        .unwrap_or_else(|| full_document_range(text));
     Diagnostic {
         range,
         severity: Some(DiagnosticSeverity::ERROR),
@@ -868,12 +966,19 @@ pub fn code_actions(
     analysis: &AnalysisProvenance,
     findings: &[Finding],
     requested_range: Range,
+    version: Option<i32>,
 ) -> Result<Vec<CodeActionOrCommand>> {
+    // A WorkspaceEdit without a version can overwrite newer editor content.
+    // Never manufacture an unversioned fallback when the source revision is
+    // unavailable (for example after an unversioned didSave payload).
+    let Some(version) = version else {
+        return Ok(Vec::new());
+    };
     if !analysis.permits_rewrites() {
         return Ok(Vec::new());
     }
     let mut actions = Vec::new();
-    actions.extend(fix_all_action(uri.clone(), text, findings)?);
+    actions.extend(fix_all_action(uri.clone(), text, findings, version)?);
     for finding in findings {
         if !is_code_action_fixable(finding)
             || !ranges_overlap(&finding_range(text, finding), &requested_range)
@@ -893,6 +998,7 @@ pub fn code_actions(
                     uri.clone(),
                     text,
                     fixed,
+                    version,
                 )])),
                 ..WorkspaceEdit::default()
             }),
@@ -929,6 +1035,7 @@ fn fix_all_action(
     uri: Uri,
     text: &str,
     findings: &[Finding],
+    version: i32,
 ) -> Result<Option<CodeActionOrCommand>> {
     let fixable = findings
         .iter()
@@ -947,7 +1054,7 @@ fn fix_all_action(
         kind: Some(CodeActionKind::SOURCE_FIX_ALL),
         edit: Some(WorkspaceEdit {
             document_changes: Some(DocumentChanges::Edits(vec![whole_document_edit(
-                uri, text, fixed,
+                uri, text, fixed, version,
             )])),
             ..WorkspaceEdit::default()
         }),
@@ -956,9 +1063,12 @@ fn fix_all_action(
     })))
 }
 
-fn whole_document_edit(uri: Uri, text: &str, fixed: String) -> TextDocumentEdit {
+fn whole_document_edit(uri: Uri, text: &str, fixed: String, version: i32) -> TextDocumentEdit {
     TextDocumentEdit {
-        text_document: OptionalVersionedTextDocumentIdentifier { uri, version: None },
+        text_document: OptionalVersionedTextDocumentIdentifier {
+            uri,
+            version: Some(version),
+        },
         edits: vec![OneOf::Left(TextEdit::new(full_document_range(text), fixed))],
     }
 }
@@ -1262,6 +1372,7 @@ mod tests {
                 &report.analysis,
                 &report.findings,
                 requested_range(),
+                Some(1),
             )?
             .is_empty()
         );
@@ -1291,15 +1402,25 @@ mod tests {
             message: "unresolved reference".to_string(),
             ..safe.clone()
         };
-
         let safe_actions = code_actions(
             uri(),
             text,
             &AnalysisProvenance::complete(),
             std::slice::from_ref(&safe),
             requested_range(),
+            Some(1),
         )?;
         assert_eq!(safe_actions.len(), 2);
+        assert_eq!(
+            first_action_with_kind(&safe_actions, CodeActionKind::QUICKFIX)
+                .edit
+                .as_ref()
+                .and_then(|edit| match edit.document_changes.as_ref()? {
+                    DocumentChanges::Edits(edits) => Some(edits[0].text_document.version),
+                    _ => None,
+                }),
+            Some(Some(1))
+        );
         let action = first_action_with_kind(&safe_actions, CodeActionKind::QUICKFIX);
         assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
         assert!(action.edit.is_some());
@@ -1310,6 +1431,7 @@ mod tests {
             &AnalysisProvenance::complete(),
             &[llm_only],
             requested_range(),
+            Some(1),
         )?;
         assert!(risky_actions.is_empty());
 
@@ -1319,10 +1441,29 @@ mod tests {
             &AnalysisProvenance::complete(),
             &[never_auto],
             requested_range(),
+            Some(1),
         )?;
         assert!(report_only_actions.is_empty());
         Ok(())
     }
+    #[test]
+    fn code_actions_require_a_known_document_version() -> Result<()> {
+        let text = "(not (= a b))\n";
+        let findings = sample_findings(text);
+        assert!(
+            code_actions(
+                uri(),
+                text,
+                &AnalysisProvenance::complete(),
+                &findings,
+                requested_range(),
+                None,
+            )?
+            .is_empty()
+        );
+        Ok(())
+    }
+
 
     #[test]
     fn code_actions_include_fix_all_for_safe_findings_only() -> Result<()> {
@@ -1334,6 +1475,7 @@ mod tests {
             &AnalysisProvenance::complete(),
             &findings,
             requested_range(),
+            Some(1),
         )?;
 
         let fix_all = first_action_with_kind(&actions, CodeActionKind::SOURCE_FIX_ALL);
@@ -1351,6 +1493,7 @@ mod tests {
             &AnalysisProvenance::complete(),
             &sample_findings(risky_text),
             requested_range(),
+            Some(1),
         )?;
         assert_eq!(
             action_kind_count(&risky_actions, CodeActionKind::SOURCE_FIX_ALL),
@@ -1501,6 +1644,20 @@ mod tests {
             }],
             Some(2),
         )?;
+        state.change(
+            uri.clone(),
+            vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "(not (= a stale))\n".to_string(),
+            }],
+            Some(1),
+        )?;
+        assert_eq!(
+            state.documents[uri.as_str()].text,
+            "(not (= a c))\n",
+            "a delayed version must not regress the current overlay"
+        );
         let second = Arc::clone(
             state
                 .workspace_analysis
@@ -1658,6 +1815,89 @@ mod tests {
         text_edit.new_text.clone()
     }
 
+    #[test]
+    fn malformed_initialize_returns_a_local_error() {
+        let (server, client) = Connection::memory();
+        let server_thread = thread::spawn(move || run_connection(server).expect("server"));
+        send_request(
+            &client,
+            1,
+            "initialize",
+            serde_json::Value::Null,
+            "send malformed initialize",
+        );
+        let response = recv_response(&client);
+        assert_eq!(
+            response.error.as_ref().map(|error| error.code),
+            Some(lsp_server::ErrorCode::InvalidParams as i32)
+        );
+        server_thread.join().expect("join server");
+    }
+
+    #[test]
+    fn json_rpc_loop_publishes_versioned_actions_and_rejects_malformed_requests() {
+        let (server, client) = Connection::memory();
+        let server_thread = thread::spawn(move || run_connection(server).expect("server"));
+        let uri = uri();
+        let text = "(not (= a b))\n";
+
+        initialize(&client);
+        open_document(&client, &uri, text);
+        let diagnostics = assert_reimpl_not_diagnostics(&client, &uri);
+        let actions = request_code_actions(&client, &uri, diagnostics.diagnostics);
+        assert!(action_kind_count(&actions, CodeActionKind::QUICKFIX) > 0);
+        assert!(action_kind_count(&actions, CodeActionKind::SOURCE_FIX_ALL) > 0);
+        assert!(actions.iter().all(|action| action_version(action) == Some(1)));
+
+        // The previously returned edits are now stale. A new request must be
+        // based on the newer content and carry only its exact version.
+        send_notification(
+            &client,
+            DidChangeTextDocument::METHOD,
+            json!({
+                "textDocument": { "uri": &uri, "version": 2 },
+                "contentChanges": [{ "text": "(not (= a c))\n" }]
+            }),
+            "send didChange",
+        );
+        let newer_diagnostics = assert_reimpl_not_diagnostics(&client, &uri);
+        assert!(actions.iter().all(|action| action_version(action) == Some(1)));
+        let newer_actions = request_code_actions_with_id(
+            &client,
+            &uri,
+            newer_diagnostics.diagnostics,
+            4,
+        );
+        assert!(newer_actions
+            .iter()
+            .all(|action| action_version(action) == Some(2)));
+
+        send_notification(
+            &client,
+            DidChangeTextDocument::METHOD,
+            json!({}),
+            "send malformed didChange",
+        );
+
+        // Malformed request parameters produce a request-local error; the
+        // server remains alive to answer the next request.
+        send_request(
+            &client,
+            5,
+            CodeActionRequest::METHOD,
+            json!({ "textDocument": {} }),
+            "send malformed codeAction",
+        );
+        let malformed = recv_response(&client);
+        assert_eq!(
+            malformed.error.as_ref().map(|error| error.code),
+            Some(lsp_server::ErrorCode::InvalidParams as i32)
+        );
+        let _ = request_code_actions_with_id(&client, &uri, Vec::new(), 6);
+
+        shutdown(&client, server_thread);
+    }
+
     fn first_action_with_kind(
         actions: &[CodeActionOrCommand],
         kind: CodeActionKind,
@@ -1671,6 +1911,20 @@ mod tests {
                 _ => None,
             })
             .expect("code action")
+    }
+
+    fn action_version(action: &CodeActionOrCommand) -> Option<i32> {
+        let CodeActionOrCommand::CodeAction(action) = action else {
+            return None;
+        };
+        let Some(WorkspaceEdit {
+            document_changes: Some(DocumentChanges::Edits(edits)),
+            ..
+        }) = action.edit.as_ref()
+        else {
+            return None;
+        };
+        edits.first().and_then(|edit| edit.text_document.version)
     }
 
     fn action_kind_count(actions: &[CodeActionOrCommand], kind: CodeActionKind) -> usize {
@@ -1710,7 +1964,8 @@ mod tests {
         );
         let initialize = recv_response(connection);
         assert!(initialize.error.is_none(), "{initialize:#?}");
-        assert!(initialize.result.is_some());
+        let result = initialize.result.expect("initialize result");
+        assert_eq!(result["capabilities"]["positionEncoding"], json!("utf-16"));
         send_notification(connection, "initialized", json!({}), "send initialized");
     }
 
@@ -1752,9 +2007,18 @@ mod tests {
         uri: &Uri,
         diagnostics: Vec<Diagnostic>,
     ) -> Vec<CodeActionOrCommand> {
+        request_code_actions_with_id(connection, uri, diagnostics, 2)
+    }
+
+    fn request_code_actions_with_id(
+        connection: &Connection,
+        uri: &Uri,
+        diagnostics: Vec<Diagnostic>,
+        id: i32,
+    ) -> Vec<CodeActionOrCommand> {
         send_request(
             connection,
-            2,
+            id,
             CodeActionRequest::METHOD,
             json!({
                 "textDocument": { "uri": uri },

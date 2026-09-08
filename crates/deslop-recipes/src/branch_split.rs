@@ -381,8 +381,8 @@ pub fn detect_independent_branch_splits(
                     edits: vec![TransformationEdit::exact_node_replacement(
                         source.clone(),
                         target_span,
-                        branch.text().into(),
-                        render_split(predicate.text(), &actions),
+                        branch.text().to_string(),
+                        render_split(analysis, branch, predicate.text(), &actions)?,
                     )],
                     safety: SafetyClass::SafeWithPrecondition,
                     disposition: CandidateDisposition::ReviewRequired,
@@ -587,13 +587,63 @@ fn slice_crossings(
     crossings.into_iter().collect()
 }
 
-fn render_split(predicate: &str, actions: &[deslop_parse::NodeView<'_>]) -> String {
+fn render_split(
+    analysis: &ProjectAnalysis,
+    branch: deslop_parse::NodeView<'_>,
+    predicate: &str,
+    actions: &[deslop_parse::NodeView<'_>],
+) -> Result<String, BranchSplitRecipeError> {
+    let binding = fresh_condition_binding(analysis, branch)?;
     let branches = actions
         .iter()
-        .map(|action| format!("if {TEMP_NAME} {{ {} }}", action.text()))
+        .map(|action| format!("if {binding} {{ {} }}", action.text()))
         .collect::<Vec<_>>()
         .join(" ");
-    format!("{{ let {TEMP_NAME} = {predicate}; {branches} }}")
+    Ok(format!("{{ let {binding} = {predicate}; {branches} }}"))
+}
+
+fn fresh_condition_binding(
+    analysis: &ProjectAnalysis,
+    branch: deslop_parse::NodeView<'_>,
+) -> Result<String, BranchSplitRecipeError> {
+    let mut current = Some(branch.id());
+    let function = loop {
+        let Some(id) = current else {
+            return Err(BranchSplitRecipeError::Projection(
+                "branch has no enclosing function scope".into(),
+            ));
+        };
+        let node = analysis
+            .node(id)
+            .map_err(|error| BranchSplitRecipeError::Projection(error.to_string()))?;
+        if node.raw_grammar_kind() == "function_item" {
+            break node;
+        }
+        current = node.parent();
+    };
+    let occupied = std::iter::once(function.id())
+        .chain(
+            analysis
+                .descendant_node_ids(function.id())
+                .map_err(|error| BranchSplitRecipeError::Projection(error.to_string()))?,
+        )
+        .filter_map(|id| analysis.node(id).ok())
+        .filter(|node| node.raw_grammar_kind() == "identifier")
+        .map(|node| node.text().to_string())
+        .collect::<BTreeSet<_>>();
+    let base = "__deslop_m57_condition";
+    if !occupied.contains(base) {
+        return Ok(base.into());
+    }
+    for suffix in 1.. {
+        let candidate = format!("{base}_{suffix}");
+        if !occupied.contains(&candidate) {
+            return Ok(candidate);
+        }
+    }
+    Err(BranchSplitRecipeError::Projection(
+        "unable to allocate a hygienic generated condition binding".into(),
+    ))
 }
 
 fn split_delta(
@@ -759,6 +809,26 @@ mod tests {
         let mut stale = value;
         stale["disposition"] = serde_json::json!("automatic");
         assert!(serde_json::from_value::<TransformationCandidate>(stale).is_err());
+    }
+
+    #[test]
+    fn generated_condition_binding_avoids_existing_name() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(
+            root.path().join("split.rs"),
+            "fn a() {} fn b() {} \
+             fn run(flag: bool, __deslop_m57_condition: bool) { if flag { a(); b(); } }\n",
+        )
+        .unwrap();
+        let candidate = candidates(root.path()).pop().unwrap();
+        assert!(
+            candidate.edits()[0]
+                .after
+                .contains("let __deslop_m57_condition_1 = flag")
+        );
+        assert!(!candidate.edits()[0].after.contains(
+            "let __deslop_m57_condition = flag; if __deslop_m57_condition {"
+        ));
     }
 
     #[test]

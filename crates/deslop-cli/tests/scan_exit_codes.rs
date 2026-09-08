@@ -46,7 +46,7 @@ fn malformed_scan_returns_incomplete_exit_with_structured_output() {
 
     assert_eq!(output.status.code(), Some(2));
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("scan JSON");
-    assert_eq!(value["schema"], "deslop.findings/2");
+    assert_eq!(value["schema"], "deslop.findings/3");
     assert_eq!(value["status"], "partial");
     assert!(
         value["reports"][0]["findings"]

@@ -9,6 +9,8 @@ use deslop_protocol::{WorkOrder, validate_workorder_identity};
 use serde::Serialize;
 use serde_json::json;
 
+pub mod research;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
     Text,
@@ -74,14 +76,36 @@ pub fn render_text(reports: &[FileReport]) -> String {
 }
 
 pub fn render_json(reports: &[FileReport]) -> Result<String> {
+    let research = report_research(reports)?;
     Ok(serde_json::to_string_pretty(&ReportEnvelope {
-        schema: "deslop.findings/2",
+        schema: "deslop.findings/3",
         status: reports_analysis_status(reports),
         reports,
+        research,
     })?)
 }
 
+fn report_research(
+    reports: &[FileReport],
+) -> Result<BTreeMap<&str, Option<research::ResearchEvidence>>> {
+    let mut evidence = BTreeMap::new();
+    for finding in reports.iter().flat_map(|report| &report.findings) {
+        if let std::collections::btree_map::Entry::Vacant(entry) =
+            evidence.entry(finding.rule.as_str())
+        {
+            let detail = if deslop_core::rules::is_known(&finding.rule) {
+                Some(research::explain_rule(&finding.rule)?)
+            } else {
+                None
+            };
+            entry.insert(detail);
+        }
+    }
+    Ok(evidence)
+}
+
 pub fn render_sarif(reports: &[FileReport]) -> Result<String> {
+    let research = report_research(reports)?;
     let mut rules: BTreeMap<String, Vec<SafetyClass>> = BTreeMap::new();
     let mut results = Vec::new();
     for report in reports {
@@ -121,7 +145,7 @@ pub fn render_sarif(reports: &[FileReport]) -> Result<String> {
             json!({
                 "id": id,
                 "shortDescription": { "text": id },
-                "properties": { "safety": safety }
+                "properties": { "safety": safety, "research": research.get(id.as_str()) }
             })
         })
         .collect::<Vec<_>>();
@@ -213,6 +237,7 @@ struct ReportEnvelope<'a> {
     schema: &'static str,
     status: AnalysisStatus,
     reports: &'a [FileReport],
+    research: BTreeMap<&'a str, Option<research::ResearchEvidence>>,
 }
 
 #[cfg(test)]
@@ -287,7 +312,7 @@ mod tests {
 
         let json: serde_json::Value =
             serde_json::from_str(&render_json(&reports).expect("json")).expect("value");
-        assert_eq!(json["schema"], "deslop.findings/2");
+        assert_eq!(json["schema"], "deslop.findings/3");
         assert_eq!(json["status"], "partial");
 
         let sarif: serde_json::Value =

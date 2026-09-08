@@ -13433,3 +13433,74 @@ Buse unavailable). No install/restart was needed beyond the new dev binary; no p
 was performed.
 
 **Signature:** Codex (gpt-6-astra), 2026-09-08.
+
+## 2026-09-08T19:26:18Z — Research plan task-agent integration checkpoint (in progress)
+
+**Objective/workspace:** Finish `docs/RESEARCH_PLAN.md` using task agents in
+`/home/heefoo/Documents/code/deslop`. Main owns integration and evidence.
+This is an intermediate checkpoint, not a completed research-plan claim.
+
+**Implementation coverage:** 20/50 tracked deliverables verified (40% overall;
+20/35 currently engineering-actionable items, about 57%). Fifteen human/data/
+preregistration deliverables are externally blocked. Fifteen engineering checks,
+surface integrations or final documentation tasks remain open.
+
+**Changes:** Task agents delivered prepared Slim consent, request-local MCP
+errors, versioned LSP actions, metric estimator fixes, recipe binding hygiene,
+revision attribution/proposals, public-export trajectory replay and bounded
+reversions, family cards and CLI/MCP research surfaces. Main repaired integration
+omissions, restored dropped CLI/MCP/LSP paths, added complete composed-candidate
+checks and regressions, corrected real initialize envelopes, tightened native
+mutation validity and removed implicit host-home mounts. Findings schema is /3;
+canonical ledger now has 31 claims (new entries await final registry recheck).
+No promotion threshold or human-benefit claim was added.
+
+**Commands/results already observed:** `cargo check --workspace --all-targets`
+passed before the latest safety/documentation edits. Analysis/protocol/report/
+recipe packages: 250 tests passed. A full no-fail-fast workspace run found three
+failures (LSP initialize envelope/assertion and old subset-apply expectation);
+those were repaired and `cargo test -p deslop-lsp -p deslop-verify` passed 99 tests.
+`cargo run -p deslop-eval --bin m8-calibration -- .../dataset_registry.json
+.../corpus.json /tmp/deslop-plan-m8.json` reproduced the entire frozen report+
+model-card JSON exactly: accuracy 0.5700, ECE 0.07639981649851604,
+`evidence_only` unchanged. Eight P1 family cards generated from retained
+fictional validated input, including unsupported Rust/Python branch cards.
+Primary SlopCodeBench v1 Eqs. 2–3 matched a CC=10/11 Python boundary:
+mass 96.31593290805353, erosion 0.5356805649934541, tolerance 1e-12.
+
+**Actual surfaces exercised:** A throwaway trajectory program replayed one real
+OpenCode-shaped public edit, proposed one reversion and applied it only under
+explicit fixture-owner review approval, reaching the exact base source hash.
+Default review-only application correctly did not write. A separate smoke proved
+two individually passing patches fail as a composed batch with original sources
+and no backups preserved; these scenarios are retained as P2/P6 regressions.
+`cargo install --locked --path crates/deslop-cli --features mcp --debug
+--root /tmp/deslop-plan-install --force` succeeded after restoring missing
+`run_stdio`. Installed MCP returned request-local -32700/-32600/-32602 errors,
+suppressed a notification and handled subsequent initialize/rules/revision calls.
+
+**Negative memory/current repairs:** The first M8 comparison accidentally compared
+the report against the outer wrapper; comparing both full envelopes showed zero
+differences. Initial agent edits omitted imports/helpers, an existing graph tool,
+and splice guards; integration repaired these rather than hiding failures.
+Trajectory staging mismatch was a correctly non-writable review outcome, not
+permission to weaken apply policy. Installed revision proposal smoke exposed
+canonical config normalization mismatch; fixed using existing normalization but
+the corrected installed route still needs rerun. Native compile viability must
+not be inferred from diagnostic strings; unsupported runner/build environments
+remain unknown. File watchdogs are not hard disk quotas.
+
+**Next actions:** Finish current native validity/runtime checks; run formatting,
+full workspace and feature-enabled/no-default builds, clippy, installed revision/
+MCP/report smoke, registry/table consistency and P2/P6 regressions. Finish protocol
+and checkpoint docs plus a durable reproducibility manifest. No push performed.
+External blockers remain authorized Sjoberg/Buse texts, independent licensed
+Rust/Python labels, consenting participants/ethics, pilot variance and owner
+preregistration freeze; do not mark the entire plan complete without these.
+
+**Dependencies/restart:** Bubblewrap 0.12.0 and actual namespace launch succeeded
+locally. Toolchains outside supported system/staged roots may be unavailable;
+never expose cargo credentials or host homes as a cache workaround. Reinstall
+the scratch binary after final code edits before claiming final installed proof.
+
+Signature: Codex (gpt-6-astra).

@@ -21,7 +21,6 @@ use deslop_protocol::{
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
-use wait_timeout::ChildExt;
 
 mod atomic;
 mod authority;
@@ -390,6 +389,7 @@ pub fn verify_patches(patches: &[Patch], options: &VerifyOptions) -> Result<Veri
     ensure_unique_patch_ids(patches)?;
     let mut run = verification_run(patches, options)?;
     let mut results = Vec::new();
+    let mut prepared = Vec::new();
     for patch in patches {
         let result = verify_one_patch(
             patch,
@@ -398,7 +398,31 @@ pub fn verify_patches(patches: &[Patch], options: &VerifyOptions) -> Result<Veri
             &mut run.coverage,
             &mut run.mutation,
         )?;
+        if result.passed {
+            if let PreparedOutcome::Pass(prepared_patch) = prepare_patch(
+                patch,
+                &run.work_orders,
+                options,
+                &mut run.coverage,
+                &mut run.mutation,
+            )? {
+                prepared.push(prepared_patch);
+            }
+        }
         results.push(result);
+    }
+    if let Some(reason) =
+        composed_snapshot_check(&options.root, &prepared, options.check_cmd.as_deref())?
+    {
+        for result in &mut results {
+            if result.passed {
+                result.passed = false;
+                result.verdict = VerificationVerdict::Rejected;
+                result
+                    .reasons
+                    .push(format!("composed candidate check failed: {reason}"));
+            }
+        }
     }
     Ok(VerifyReport {
         schema: "deslop.verify/1".to_string(),
@@ -414,6 +438,7 @@ pub fn apply_patches(
     validate_patch_schemas(patches)?;
     validate_characterization_test_schemas(&options.characterization_tests)?;
     ensure_unique_patch_ids(patches)?;
+    let initial_workspace = crate::transaction::snapshot_workspace(&options.root)?;
     let mut run = verification_run(patches, options)?;
     let mut results = Vec::new();
     let mut prepared = Vec::new();
@@ -436,7 +461,37 @@ pub fn apply_patches(
             PreparedOutcome::Reject(result) => results.push(result),
         }
     }
-
+    if let Some(reason) =
+        composed_snapshot_check(&options.root, &prepared, options.check_cmd.as_deref())?
+    {
+        for result in &mut results {
+            if result.passed {
+                result.passed = false;
+                result.verdict = VerificationVerdict::Rejected;
+                result.reasons
+                    .push(format!("composed candidate check failed: {reason}"));
+            }
+        }
+    }
+    if crate::transaction::snapshot_workspace(&options.root)? != initial_workspace {
+        for result in &mut results {
+            result.passed = false;
+            result.verdict = VerificationVerdict::Rejected;
+            result
+                .reasons
+                .push("declared workspace read set changed before live write".into());
+        }
+    }
+    if results.iter().any(|result| !result.passed) {
+        return Ok(ApplyReport {
+            schema: "deslop.apply/1".to_string(),
+            verified: VerifyReport {
+                schema: "deslop.verify/1".to_string(),
+                results,
+            },
+            written: Vec::new(),
+        });
+    }
     let written = write_prepared_patches(&options.root, &prepared, backup)?;
     Ok(ApplyReport {
         schema: "deslop.apply/1".to_string(),
@@ -1140,8 +1195,8 @@ impl NativeMutationSummary {
             _ => MutationAssessment {
                 status: MutationStatus::Unknown,
                 reason: Some(format!(
-                    "native mutation found no viable mutants in region ({} unviable, {} errors)",
-                    self.unviable, self.errors
+                    "native mutation evidence is incomplete ({} timed out, {} unviable, {} errors)",
+                    self.timed_out, self.unviable, self.errors
                 )),
             },
         }
@@ -1187,8 +1242,6 @@ impl NativeMutationDrain {
                 self.killed += 1;
             }
             NativeMutantStatus::TimedOut => {
-                self.viable += 1;
-                self.killed += 1;
                 self.timed_out += 1;
             }
             NativeMutantStatus::Unviable => {
@@ -1200,7 +1253,7 @@ impl NativeMutationDrain {
     fn finish(self) -> NativeMutationSummary {
         let status = if self.survivor.is_some() {
             MutationStatus::Survived
-        } else if self.viable > 0 {
+        } else if self.viable > 0 && self.errors == 0 && self.timed_out == 0 {
             MutationStatus::NoSurvivor
         } else {
             MutationStatus::Unknown
@@ -1353,6 +1406,7 @@ fn native_mutant_status(outcome: MutantCheckOutcome) -> NativeMutantStatus {
         MutantCheckOutcome::Survived => NativeMutantStatus::Survived,
         MutantCheckOutcome::Killed => NativeMutantStatus::Killed,
         MutantCheckOutcome::TimedOut => NativeMutantStatus::TimedOut,
+        MutantCheckOutcome::Unviable => NativeMutantStatus::Unviable,
     }
 }
 
@@ -1385,6 +1439,7 @@ enum MutantCheckOutcome {
     Survived,
     Killed,
     TimedOut,
+    Unviable,
 }
 
 fn run_mutant_check_cmd_on_temp_copy(
@@ -1407,8 +1462,7 @@ fn run_mutant_check_cmd_on_temp_copy(
 
 #[derive(Debug, Clone)]
 enum MutationProbeMode {
-    Disabled,
-    Auto { command: String },
+    Auto,
     OutcomesFile(PathBuf),
 }
 
@@ -1421,14 +1475,10 @@ impl RustCargoMutantsProbe {
     fn new(config: &MutationConfig) -> Self {
         let mode = match config {
             MutationConfig::Disabled
+            | MutationConfig::AutoWithOptions { .. }
             | MutationConfig::AutoWithTimeout(_)
-            | MutationConfig::AutoWithOptions { .. } => MutationProbeMode::Disabled,
-            MutationConfig::Auto => MutationProbeMode::Auto {
-                command: "cargo".to_string(),
-            },
-            MutationConfig::AutoWithCommand(command) => MutationProbeMode::Auto {
-                command: command.to_owned(),
-            },
+            | MutationConfig::Auto
+            | MutationConfig::AutoWithCommand(_) => MutationProbeMode::Auto,
             MutationConfig::OutcomesFile(path) => {
                 MutationProbeMode::OutcomesFile(path.to_path_buf())
             }
@@ -1455,41 +1505,18 @@ impl RustCargoMutantsProbe {
         }
     }
 
-    fn load_outcomes(&self, root: &Path) -> std::result::Result<MutantOutcomes, String> {
+    fn load_outcomes(&self, _root: &Path) -> std::result::Result<MutantOutcomes, String> {
         match &self.mode {
-            MutationProbeMode::Disabled => Err("mutation disabled".to_string()),
             MutationProbeMode::OutcomesFile(path) => {
                 let text = read_report_text(path, "cargo-mutants outcomes")?;
                 MutantOutcomes::parse(&text).map_err(|err| err.to_string())
             }
-            MutationProbeMode::Auto { command } => {
-                if !cargo_mutants_available(command, root) {
-                    return Err("mutation-unknown: cargo-mutants not available".to_string());
-                }
-                let temp = TempDir::new()
-                    .map_err(|err| format!("failed to create mutation tempdir: {err}"))?;
-                let output = Command::new(command)
-                    .args(["mutants", "--json", "--output"])
-                    .arg(temp.path())
-                    .current_dir(root)
-                    .output()
-                    .map_err(|err| format!("failed to run cargo-mutants: {err}"))?;
-                let outcomes_path = temp.path().join("outcomes.json");
-                if !outcomes_path.exists() {
-                    return Err(command_failure_reason(
-                        "cargo-mutants",
-                        output.status,
-                        &output.stderr,
-                    )
-                    .replace("coverage unknown", "mutation unknown"));
-                }
-                let text = read_report_text(&outcomes_path, "cargo-mutants outcomes")?;
-                MutantOutcomes::parse(&text).map_err(|err| err.to_string())
-            }
+            MutationProbeMode::Auto => Err(
+                "cargo-mutants execution is unavailable without the policy sandbox".to_string(),
+            ),
         }
     }
 }
-
 impl MutationProbe for RustCargoMutantsProbe {
     fn name(&self) -> &'static str {
         "cargo-mutants"
@@ -1539,14 +1566,10 @@ impl PythonMutationProbe {
     fn new(config: &MutationConfig) -> Self {
         let mode = match config {
             MutationConfig::Disabled
+            | MutationConfig::AutoWithOptions { .. }
             | MutationConfig::AutoWithTimeout(_)
-            | MutationConfig::AutoWithOptions { .. } => MutationProbeMode::Disabled,
-            MutationConfig::Auto => MutationProbeMode::Auto {
-                command: "cosmic-ray".to_string(),
-            },
-            MutationConfig::AutoWithCommand(command) => MutationProbeMode::Auto {
-                command: command.to_owned(),
-            },
+            | MutationConfig::Auto
+            | MutationConfig::AutoWithCommand(_) => MutationProbeMode::Auto,
             MutationConfig::OutcomesFile(path) => {
                 MutationProbeMode::OutcomesFile(path.to_path_buf())
             }
@@ -1571,25 +1594,26 @@ impl PythonMutationProbe {
                 reason: Some(reason.to_owned()),
             }),
         }
-    }
 
-    fn load_outcomes(&self, root: &Path) -> std::result::Result<MutantOutcomes, String> {
+    }
+    fn load_outcomes(&self, _root: &Path) -> std::result::Result<MutantOutcomes, String> {
         match &self.mode {
-            MutationProbeMode::Disabled => Err("mutation disabled".to_string()),
             MutationProbeMode::OutcomesFile(path) => {
                 let text = read_report_text(path, "cosmic-ray outcomes")?;
                 MutantOutcomes::parse(&text).map_err(|err| err.to_string())
             }
-            MutationProbeMode::Auto { command } => run_cosmic_ray(command, root),
+            MutationProbeMode::Auto => Err(
+                "cosmic-ray execution is unavailable without the policy sandbox".to_string(),
+            ),
         }
     }
-}
 
+}
 impl MutationProbe for PythonMutationProbe {
     fn name(&self) -> &'static str {
         "cosmic-ray"
-    }
 
+    }
     fn supports(&self, source: &SourceFile) -> bool {
         source.lang == Lang::Python
     }
@@ -1625,122 +1649,6 @@ impl MutationProbe for PythonMutationProbe {
     }
 }
 
-fn cargo_mutants_available(command: &str, root: &Path) -> bool {
-    Command::new(command)
-        .args(["mutants", "--version"])
-        .current_dir(root)
-        .output()
-        .is_ok_and(|output| output.status.success())
-}
-
-fn cosmic_ray_available(command: &str, root: &Path) -> bool {
-    Command::new(command)
-        .arg("--version")
-        .current_dir(root)
-        .output()
-        .is_ok_and(|output| output.status.success())
-}
-
-fn run_cosmic_ray(command: &str, root: &Path) -> std::result::Result<MutantOutcomes, String> {
-    if !cosmic_ray_available(command, root) {
-        return Err("mutation-unknown: cosmic-ray not available".to_string());
-    }
-    let config = cosmic_ray_config(root)
-        .ok_or_else(|| "mutation-unknown: cosmic-ray config not found".to_string())?;
-    let temp = TempDir::new().map_err(|err| format!("failed to create mutation tempdir: {err}"))?;
-    let session = temp.path().join("cosmic-ray.sqlite");
-    let init = Command::new(command)
-        .arg("init")
-        .arg(&config)
-        .arg(&session)
-        .current_dir(root)
-        .output()
-        .map_err(|err| format!("failed to run cosmic-ray init: {err}"))?;
-    if !init.status.success() {
-        return Err(
-            command_failure_reason("cosmic-ray init", init.status, &init.stderr)
-                .replace("coverage unknown", "mutation unknown"),
-        );
-    }
-    let exec = Command::new(command)
-        .arg("exec")
-        .arg(&config)
-        .arg(&session)
-        .current_dir(root)
-        .output()
-        .map_err(|err| format!("failed to run cosmic-ray exec: {err}"))?;
-    if !exec.status.success() {
-        return Err(
-            command_failure_reason("cosmic-ray exec", exec.status, &exec.stderr)
-                .replace("coverage unknown", "mutation unknown"),
-        );
-    }
-    let text = dump_sqlite_to_json(&session)?;
-    MutantOutcomes::parse(&text).map_err(|err| err.to_string())
-}
-
-fn cosmic_ray_config(root: &Path) -> Option<PathBuf> {
-    [
-        "cosmic-ray.toml",
-        "cosmic_ray.toml",
-        "cosmic-ray.ini",
-        "cosmic_ray.ini",
-    ]
-    .iter()
-    .map(|name| root.join(name))
-    .find(|path| path.exists())
-}
-
-const COSMIC_RAY_SQLITE_DUMP_SCRIPT: &str = r#"
-import json
-import sqlite3
-import sys
-
-def quote_ident(name):
-    return '"' + name.replace('"', '""') + '"'
-
-def decode(value):
-    if isinstance(value, bytes):
-        return value.decode("utf-8", "replace")
-    if isinstance(value, str):
-        text = value.strip()
-        if text.startswith("{") or text.startswith("["):
-            try:
-                return json.loads(text)
-            except Exception:
-                return value
-    return value
-
-db = sqlite3.connect(sys.argv[1])
-rows = []
-for (table,) in db.execute("select name from sqlite_master where type='table'"):
-    cols = [row[1] for row in db.execute("pragma table_info(%s)" % quote_ident(table))]
-    for row in db.execute("select * from %s" % quote_ident(table)):
-        item = {"__table": table}
-        item.update({col: decode(value) for col, value in zip(cols, row)})
-        rows.append(item)
-print(json.dumps({"cosmic_ray_sqlite": rows}, default=str))
-"#;
-
-fn dump_sqlite_to_json(path: &Path) -> std::result::Result<String, String> {
-    let output = Command::new("python3")
-        .arg("-c")
-        .arg(COSMIC_RAY_SQLITE_DUMP_SCRIPT)
-        .arg(path)
-        .output()
-        .map_err(|err| format!("failed to inspect cosmic-ray sqlite with python3: {err}"))?;
-    if output.status.success() {
-        String::from_utf8(output.stdout)
-            .map_err(|err| format!("cosmic-ray sqlite dump was not utf8: {err}"))
-    } else {
-        Err(command_failure_reason(
-            "python3 cosmic-ray sqlite dump",
-            output.status,
-            &output.stderr,
-        )
-        .replace("coverage unknown", "mutation unknown"))
-    }
-}
 
 #[derive(Debug, Clone)]
 struct MutantOutcomes {
@@ -2413,36 +2321,20 @@ fn assess_line_coverage(
     }))
 }
 
-fn cargo_llvm_cov_available(command: &str, root: &Path) -> bool {
-    Command::new(command)
-        .args(["llvm-cov", "--version"])
-        .current_dir(root)
-        .output()
-        .is_ok_and(|output| output.status.success())
+fn cargo_llvm_cov_available(_command: &str, _root: &Path) -> bool {
+    false
 }
 
-fn cloverage_available(command: &str, root: &Path) -> bool {
-    Command::new(command)
-        .args(["cloverage", "--help"])
-        .current_dir(root)
-        .output()
-        .is_ok_and(|output| output.status.success())
+fn cloverage_available(_command: &str, _root: &Path) -> bool {
+    false
 }
 
-fn julia_available(command: &str, root: &Path) -> bool {
-    Command::new(command)
-        .arg("--version")
-        .current_dir(root)
-        .output()
-        .is_ok_and(|output| output.status.success())
+fn julia_available(_command: &str, _root: &Path) -> bool {
+    false
 }
 
-fn coverage_py_available(command: &str, root: &Path) -> bool {
-    Command::new(command)
-        .arg("--version")
-        .current_dir(root)
-        .output()
-        .is_ok_and(|output| output.status.success())
+fn coverage_py_available(_command: &str, _root: &Path) -> bool {
+    false
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2516,28 +2408,14 @@ fn run_coverage_tool(
 }
 
 fn run_coverage_tool_with_env(
-    tool: CoverageToolCommand,
-    root: &Path,
+    _tool: CoverageToolCommand,
+    _root: &Path,
     tool_name: &str,
-    envs: &[(&str, &Path)],
+    _envs: &[(&str, &Path)],
 ) -> std::result::Result<(), String> {
-    let mut command = Command::new(&tool.program);
-    command.args(&tool.args).current_dir(root);
-    for (name, value) in envs {
-        command.env(name, value);
-    }
-    let output = command
-        .output()
-        .map_err(|err| format!("failed to run {tool_name}: {err}"))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(command_failure_reason(
-            tool_name,
-            output.status,
-            &output.stderr,
-        ))
-    }
+    Err(format!(
+        "coverage command unavailable without the policy sandbox: {tool_name}"
+    ))
 }
 
 fn run_julia_coverage(command: &str, root: &Path) -> std::result::Result<LineCoverage, String> {
@@ -2579,31 +2457,17 @@ fn run_coverage_py(command: &str, root: &Path) -> std::result::Result<LineCovera
 }
 
 fn run_output_file_command(
-    command: &str,
-    root: &Path,
+    _command: &str,
+    _root: &Path,
     tool_name: &str,
-    temp_label: &str,
-    output_name: &str,
-    read_label: &str,
-    configure: impl FnOnce(&mut Command, &Path),
+    _temp_label: &str,
+    _output_name: &str,
+    _read_label: &str,
+    _configure: impl FnOnce(&mut Command, &Path),
 ) -> std::result::Result<String, String> {
-    let temp =
-        TempDir::new().map_err(|err| format!("failed to create {temp_label} tempdir: {err}"))?;
-    let output_path = temp.path().join(output_name);
-    let mut cmd = Command::new(command);
-    configure(&mut cmd, &output_path);
-    let output = cmd
-        .current_dir(root)
-        .output()
-        .map_err(|err| format!("failed to run {tool_name}: {err}"))?;
-    if !output.status.success() {
-        return Err(command_failure_reason(
-            tool_name,
-            output.status,
-            &output.stderr,
-        ));
-    }
-    read_report_text(&output_path, read_label)
+    Err(format!(
+        "coverage command unavailable without the policy sandbox: {tool_name}"
+    ))
 }
 
 fn read_report_text(path: &Path, label: &str) -> std::result::Result<String, String> {
@@ -2639,17 +2503,6 @@ fn find_files_with_extension(root: &Path, extension: &str) -> Vec<PathBuf> {
     paths
 }
 
-fn command_failure_reason(name: &str, status: std::process::ExitStatus, stderr: &[u8]) -> String {
-    let stderr = String::from_utf8_lossy(stderr);
-    if stderr.trim().is_empty() {
-        format!("{name} failed with status {status}; coverage unknown")
-    } else {
-        format!(
-            "{name} failed with status {status}: {}; coverage unknown",
-            stderr.trim()
-        )
-    }
-}
 
 #[derive(Debug, Clone)]
 struct LineCoverage {
@@ -3327,14 +3180,17 @@ fn run_check_cmd_in_temp_project(
     let temp = TempDir::new().context("failed to create check tempdir")?;
     copy_project_for_check(root, temp.path())?;
     setup(temp.path())?;
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .current_dir(temp.path())
-        .output()
-        .with_context(|| format!("failed to run check command `{command}`"))?;
-    if !output.status.success() {
-        reasons.push(check_cmd_failure_reason(output.status, &output.stderr));
+    let policy = VerifierExecutionPolicy::hermetic_workspace();
+    let (status, _stdout, stderr) =
+        match crate::runtime::run_bounded_sandbox_command(temp.path(), command, &policy) {
+            Ok(output) => output,
+            Err(error) => {
+                reasons.push(format!("sandbox unavailable for verification check: {error}"));
+                return Ok(());
+            }
+        };
+    if !status.success() {
+        reasons.push(check_cmd_failure_reason(status, &stderr));
     }
     Ok(())
 }
@@ -3344,49 +3200,54 @@ fn run_mutant_check_cmd_in_temp_project(
     lang: Lang,
     command: &str,
     timeout: Duration,
-    worker_id: usize,
+    _worker_id: usize,
     setup: impl FnOnce(&Path) -> Result<()>,
 ) -> Result<MutantCheckOutcome> {
     let temp = TempDir::new().context("failed to create mutation check tempdir")?;
     copy_project_for_check(root, temp.path())?;
     setup(temp.path())?;
-    let mut child = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .current_dir(temp.path())
-        .env("RUST_TEST_THREADS", "1")
-        .env("CARGO_BUILD_JOBS", "1")
-        .env("JULIA_NUM_THREADS", "1")
-        .env("PYTHONHASHSEED", "0")
-        .envs(mutation_worker_env(temp.path(), lang, worker_id))
-        .spawn()
-        .with_context(|| format!("failed to run check command `{command}`"))?;
-    match child.wait_timeout(timeout)? {
-        Some(status) if status.success() => Ok(MutantCheckOutcome::Survived),
-        Some(_) => Ok(MutantCheckOutcome::Killed),
-        None => {
-            let _ = child.kill();
-            let _ = child.wait();
-            Ok(MutantCheckOutcome::TimedOut)
+    let mut policy = VerifierExecutionPolicy::hermetic_workspace();
+    policy.maximum_command_millis = timeout.as_millis().max(1) as u64;
+    policy.maximum_total_millis = policy.maximum_command_millis;
+    let started = std::time::Instant::now();
+    if lang == Lang::Rust {
+        // Preserve Cargo build flags, but never infer a compiler command from
+        // an arbitrary shell pipeline or a different test runner.
+        let words: Vec<_> = command.split_whitespace().collect();
+        if !words.starts_with(&["cargo", "test"])
+            || words.iter().any(|word| {
+                !word.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"-_=/.:,".contains(&byte))
+            })
+        {
+            bail!("Rust mutant validity requires a plain cargo test command; unsupported command has unknown viability");
+        }
+        let build_args = words.iter().position(|word| *word == "--").unwrap_or(words.len());
+        let validity_command = format!("{} --no-run", words[..build_args].join(" "));
+        let (status, _stdout, _stderr) = crate::runtime::run_bounded_sandbox_command(
+            temp.path(),
+            &validity_command,
+            &policy,
+        )
+        .with_context(|| "sandbox unavailable for Rust mutant validity check")?;
+        if !status.success() {
+            return Ok(MutantCheckOutcome::Unviable);
         }
     }
-}
-
-fn mutation_worker_env(
-    temp_root: &Path,
-    lang: Lang,
-    worker_id: usize,
-) -> Vec<(&'static str, PathBuf)> {
-    match lang {
-        Lang::Rust => vec![(
-            "CARGO_TARGET_DIR",
-            temp_root.join(format!(".deslop-target-{worker_id}")),
-        )],
-        Lang::Julia => vec![(
-            "JULIA_DEPOT_PATH",
-            temp_root.join(format!(".deslop-julia-depot-{worker_id}")),
-        )],
-        _ => Vec::new(),
+    let remaining = timeout.saturating_sub(started.elapsed());
+    if remaining.is_zero() {
+        return Ok(MutantCheckOutcome::TimedOut);
+    }
+    policy.maximum_command_millis = remaining.as_millis().max(1) as u64;
+    policy.maximum_total_millis = policy.maximum_command_millis;
+    match crate::runtime::run_bounded_sandbox_command(temp.path(), command, &policy) {
+        Ok((status, _stdout, _stderr)) if status.success() => {
+            Ok(MutantCheckOutcome::Survived)
+        }
+        Ok((_status, _stdout, _stderr)) => Ok(MutantCheckOutcome::Killed),
+        Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {
+            Ok(MutantCheckOutcome::TimedOut)
+        }
+        Err(error) => Err(error).context("sandbox unavailable for mutation check"),
     }
 }
 
@@ -3510,20 +3371,25 @@ fn write_prepared_patches(
     if expected.is_empty() {
         return Ok(Vec::new());
     }
+    if backup {
+        for (path, original) in &expected {
+            let physical = canonical_root.join(path);
+            let backup_path = PathBuf::from(format!("{}.deslop.bak", physical.display()));
+            if let Ok(metadata) = fs::symlink_metadata(&backup_path)
+                && metadata.file_type().is_symlink()
+            {
+                bail!("refusing to write through backup symlink {}", backup_path.display());
+            }
+            fs::write(&backup_path, original)
+                .with_context(|| format!("failed to write {}", backup_path.display()))?;
+        }
+    }
     let receipt = commit_atomic_sources(
         &canonical_root,
         Path::new(".deslop/undo"),
         &expected,
         &replacements,
     )?;
-    if backup {
-        for (path, original) in expected {
-            let physical = canonical_root.join(path);
-            let backup_path = PathBuf::from(format!("{}.deslop.bak", physical.display()));
-            fs::write(&backup_path, original)
-                .with_context(|| format!("failed to write {}", backup_path.display()))?;
-        }
-    }
     Ok(receipt
         .written
         .into_iter()
@@ -3583,6 +3449,37 @@ fn write_replacement_file(path: &Path, original: &str, text: String, backup: boo
     let tmp = deslop_tmp_path(path);
     fs::write(&tmp, text).with_context(|| format!("failed to write {}", tmp.display()))?;
     fs::rename(&tmp, path).with_context(|| format!("failed to replace {}", path.display()))
+}
+
+fn composed_snapshot_check(
+    root: &Path,
+    prepared: &[PreparedPatch],
+    command: Option<&str>,
+) -> Result<Option<String>> {
+    let Some(command) = command else {
+        return Ok(None);
+    };
+    if prepared.is_empty() {
+        return Ok(None);
+    }
+    let staged = TempDir::new().context("failed to create composed check workspace")?;
+    copy_project_for_check(root, staged.path())?;
+    for (path, patches) in group_prepared_patches(root, prepared) {
+        if let Some((_original, replacement)) = prepared_patch_file_contents(&path, patches)? {
+            let relative = relative_to_root(root, &path)?;
+            let destination = staged.path().join(relative);
+            fs::write(destination, replacement)?;
+        }
+    }
+    let policy = VerifierExecutionPolicy::hermetic_workspace();
+    let (status, _stdout, stderr) =
+        crate::runtime::run_bounded_sandbox_command(staged.path(), command, &policy)
+            .with_context(|| "sandbox unavailable for composed verification")?;
+    if status.success() {
+        Ok(None)
+    } else {
+        Ok(Some(check_cmd_failure_reason(status, &stderr)))
+    }
 }
 
 fn deslop_tmp_path(path: &Path) -> PathBuf {
@@ -4139,15 +4036,6 @@ mod tests {
         }
     }
 
-    fn assert_apply_gate_outputs(report: &ApplyReport, rust_file: &Path, clj_file: &Path) {
-        assert_eq!(report.verified.passed_count(), 1);
-        assert_eq!(report.verified.failed_count(), 1);
-        let rust_text = fs::read_to_string(rust_file).expect("read rust");
-        let clj_text = fs::read_to_string(clj_file).expect("read clj");
-        assert!(rust_text.contains("    1"));
-        assert!(clj_text.contains("(assert ok)"));
-        assert!(PathBuf::from(format!("{}.deslop.bak", rust_file.display())).exists());
-    }
 
     fn test_options(
         root: &Path,
@@ -5287,7 +5175,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_writes_only_removable_patches_by_default() {
+    fn rejected_patch_aborts_entire_apply_batch_without_backups() {
         let fixture = apply_gate_fixture();
         let passing = work_order_with_path_suffix(&fixture.work_orders, "sample.rs");
         let failing = work_order_containing(&fixture.work_orders, "assert");
@@ -5302,6 +5190,8 @@ mod tests {
             patch_for(passing, "fn f() -> i32 {\n    1\n}\n"),
             patch_for(failing, "\n"),
         ];
+        let original_rust = fs::read(&fixture.rust_file).unwrap();
+        let original_clj = fs::read(&fixture.clj_file).unwrap();
         let report = apply_patches(
             &patches,
             &test_options(
@@ -5312,7 +5202,11 @@ mod tests {
             true,
         )
         .expect("apply");
-        assert_apply_gate_outputs(&report, &fixture.rust_file, &fixture.clj_file);
+        assert_eq!(report.verified.failed_count(), 1);
+        assert!(report.written.is_empty());
+        assert_eq!(fs::read(&fixture.rust_file).unwrap(), original_rust);
+        assert_eq!(fs::read(&fixture.clj_file).unwrap(), original_clj);
+        assert!(!PathBuf::from(format!("{}.deslop.bak", fixture.rust_file.display())).exists());
     }
 
     #[test]
@@ -5400,5 +5294,34 @@ mod tests {
         assert!(applied.written.is_empty());
         assert!(!marker.exists(), "check command must not run");
         assert_eq!(fs::read_to_string(source).unwrap(), original);
+    }
+    #[test]
+    fn native_mutation_does_not_count_timeouts_or_unviable_as_behavioral_kills() {
+        let detail = |id| NativeMutantDetail {
+            id,
+            line: 1,
+            operator: "test",
+            original: "a".into(),
+            mutated: "b".into(),
+        };
+        let mut drain = NativeMutationDrain::default();
+        drain.apply(NativeMutantAction::Outcome(NativeMutantOutcome {
+            detail: detail(0),
+            status: NativeMutantStatus::Killed,
+        }));
+        drain.apply(NativeMutantAction::Outcome(NativeMutantOutcome {
+            detail: detail(1),
+            status: NativeMutantStatus::TimedOut,
+        }));
+        drain.apply(NativeMutantAction::Outcome(NativeMutantOutcome {
+            detail: detail(2),
+            status: NativeMutantStatus::Unviable,
+        }));
+        let summary = drain.finish();
+        assert_eq!(summary.status, MutationStatus::NoSurvivor);
+        assert_eq!(summary.viable, 1);
+        assert_eq!(summary.killed, 1);
+        assert_eq!(summary.timed_out, 1);
+        assert_eq!(summary.unviable, 1);
     }
 }

@@ -14,7 +14,8 @@ use crate::{
     PreChangeCharacterization, RecipeDemotionRecord, RecipeDemotionStore, UndoState,
     VerificationCheck, VerificationCheckKind, VerificationDisposition, VerificationEvidence,
     VerifierExecutionPolicy, VerifierFailure, VerifierFailureKind, VerifierPlan,
-    VerifierPlanStatus, VerifierStage, commit_atomic_sources_with_injection, evaluate_evidence,
+    VerifierPlanStatus, VerifierStage, commit_atomic_sources_with_injection,
+    recover_incomplete_transactions, evaluate_evidence,
     restore_committed_transaction,
 };
 
@@ -127,6 +128,8 @@ pub fn execute_verification_transaction(
             options.root.display()
         )
     })?;
+    recover_incomplete_transactions(&root, &options.undo_root)
+        .context("failed to recover incomplete verification transactions")?;
     let recipe_id = candidate.recipe().id().as_str();
     let store = RecipeDemotionStore::load(&root, &options.demotion_journal)?;
     if store.is_demoted(recipe_id) {
@@ -146,10 +149,10 @@ pub fn execute_verification_transaction(
     let expected_sources = read_exact_sources(&root, candidate)?;
     let replacements = build_replacements(candidate, &expected_sources)?;
     validate_patch_budget(order, &expected_sources, &replacements)?;
+    let initial_workspace = snapshot_workspace(&root)?;
     let staged = TempDir::new().context("failed to create M7 staged workspace")?;
     crate::copy_project_for_check(&root, staged.path())?;
     write_source_map(staged.path(), &replacements)?;
-
     let expected_delta = candidate.expected_delta();
     let mut evidence = Vec::new();
     let mut failures = Vec::new();
@@ -163,7 +166,6 @@ pub fn execute_verification_transaction(
     ) {
         failures.push(failure);
     }
-
     let before_format = snapshot_workspace(staged.path())?;
     for check in plan
         .checks()
@@ -297,10 +299,50 @@ pub fn execute_verification_transaction(
         });
     }
 
+    if snapshot_workspace(&root)? != initial_workspace {
+        return Ok(rejected_report(
+            order,
+            plan,
+            failure(
+                VerifierStage::Commit,
+                VerifierFailureKind::StaleRevision,
+                None,
+                "declared workspace read set changed before atomic commit",
+                true,
+            ),
+        ));
+    }
+    let commit_sources = read_exact_sources(&root, candidate)?;
+    if commit_sources != expected_sources {
+        return Ok(rejected_report(
+            order,
+            plan,
+            failure(
+                VerifierStage::Commit,
+                VerifierFailureKind::StaleRevision,
+                None,
+                "declared read set changed before atomic commit",
+                true,
+            ),
+        ));
+    }
+    if let Err(error) = build_replacements(candidate, &commit_sources) {
+        return Ok(rejected_report(
+            order,
+            plan,
+            failure(
+                VerifierStage::Commit,
+                VerifierFailureKind::StaleRevision,
+                None,
+                format!("declared target revision changed before atomic commit: {error}"),
+                true,
+            ),
+        ));
+    }
     let receipt = match commit_atomic_sources_with_injection(
         &root,
         &options.undo_root,
-        &expected_sources,
+        &commit_sources,
         &formatted_sources,
         options.atomic_failure,
     ) {
@@ -349,8 +391,9 @@ pub fn execute_verification_transaction(
     ) {
         Ok(()) => applied_report(order, plan, decision, receipt),
         Err(live_failure) => {
-            restore_committed_transaction(&root, &receipt.manifest)?;
-            let rollback_verified = sources_equal(&root, &expected_sources)?
+            let rollback = restore_committed_transaction(&root, &receipt.manifest);
+            let rollback_verified = rollback.is_ok()
+                && sources_equal(&root, &expected_sources)?
                 && compare_graph_delta(
                     runtime,
                     &root,
@@ -370,14 +413,34 @@ pub fn execute_verification_transaction(
                 &formatted_sources,
                 std::slice::from_ref(&live_failure),
             )?;
+            let mut failures = vec![live_failure];
+            let (status, written) = if rollback.is_ok() {
+                (VerificationTransactionStatus::RolledBack, Vec::new())
+            } else {
+                failures.push(failure(
+                    VerifierStage::Rollback,
+                    VerifierFailureKind::RollbackFailed,
+                    None,
+                    rollback
+                        .as_ref()
+                        .err()
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| "committed transaction rollback failed".into()),
+                    false,
+                ));
+                (
+                    VerificationTransactionStatus::RecoveryRequired,
+                    receipt.written.clone(),
+                )
+            };
             Ok(VerificationTransactionReport {
                 schema: VERIFICATION_TRANSACTION_SCHEMA.into(),
                 work_order: order.id().as_str().into(),
                 verifier_plan: plan.id().into(),
-                status: VerificationTransactionStatus::RolledBack,
+                status,
                 evidence: Some(decision),
-                failures: vec![live_failure],
-                written: Vec::new(),
+                failures,
+                written,
                 undo_manifest: Some(receipt.manifest),
                 demotion,
                 rollback_verified,
@@ -386,7 +449,6 @@ pub fn execute_verification_transaction(
         }
     }
 }
-
 fn transformation_candidate(order: &SharedWorkOrder) -> Result<&TransformationCandidate> {
     match order.subject() {
         WorkOrderSubject::Transformation { candidate } => Ok(candidate),
@@ -572,10 +634,14 @@ fn validate_format_scope(
     Ok(None)
 }
 
-fn snapshot_workspace(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>> {
+pub(crate) fn snapshot_workspace(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>> {
     let mut snapshot = BTreeMap::new();
     for entry in ignore::WalkBuilder::new(root)
         .hidden(false)
+        .git_ignore(false)
+        .git_global(false)
+        .git_exclude(false)
+        .parents(false)
         .filter_entry(|entry| {
             let name = entry.file_name().to_string_lossy();
             !matches!(name.as_ref(), ".deslop" | ".git" | ".jj" | "target")

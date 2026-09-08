@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use deslop_analyzer::{
-    AnalyzerConfig, AnalyzerLangConfig, BoundaryConfig, JuliaExternal, RuleSuppression,
-    Suppression, scan_paths, scan_paths_with_config,
+    revision_cleanup::compare_paths_with_scope, AnalyzerConfig, AnalyzerLangConfig, BoundaryConfig,
+    JuliaExternal, RuleSuppression, Suppression, scan_paths, scan_paths_with_config,
 };
 use deslop_core::{
     AnalysisStatus, FileAnalysis, FileReport, Severity, reports_analysis_status,
@@ -23,17 +23,17 @@ use deslop_metrics::{
     render_json as render_metrics_json, render_text as render_metrics_text,
 };
 use deslop_protocol::{
-    SharedWorkOrder, WorkOrderProtocolInput, WorkOrderProtocolRequest, WorkOrderService,
-    propose_work_orders, propose_work_orders_with_exclusions, shared_finding_work_orders,
-    shared_transformation_work_orders,
+    revision_cleanup::revision_cleanup_proposals, SharedWorkOrder, WorkOrderProtocolInput,
+    WorkOrderProtocolRequest, WorkOrderService, propose_work_orders,
+    propose_work_orders_with_exclusions, shared_finding_work_orders, shared_transformation_work_orders,
 };
 use deslop_recipes::{TransformationCandidate, detect_rust_recipe_report};
 use deslop_report::{render_json, render_sarif, render_text};
 use deslop_slim::{
-    AnthropicClient, DEFAULT_MODEL, EgressDecision, EgressSummary, OpenAiClient, RecordedClient,
-    SlimOptions, SlimProgress, SlimProgressOutcome, SlimReport, egress_consent_error,
-    egress_prompt_message, egress_summary, env_egress_consent, provider_base_url,
-    resolve_egress_consent, run_slim_with_progress,
+    AnthropicClient, DEFAULT_MODEL, EgressDecision, EgressSummary, OpenAiClient, PreparedRun,
+    RecordedClient, SlimOptions, SlimProgress, SlimProgressOutcome, SlimReport,
+    egress_consent_error, egress_prompt_message, env_egress_consent, provider_base_url,
+    resolve_egress_consent,
 };
 use deslop_verify::{
     CoverageConfig, MutationConfig, RecipeApplyOptions, RecipeApplyStatus, VerifyOptions,
@@ -80,7 +80,8 @@ enum Command {
     Apply(ApplyArgs),
     Baseline(BaselineArgs),
     Undo(PathArgs),
-    Rules,
+    Rules(RulesArgs),
+    RevisionCleanup(RevisionCleanupArgs),
     Recipes(RecipesArgs),
     WorkOrders(WorkOrderProtocolArgs),
 }
@@ -162,6 +163,49 @@ struct PathArgs {
     #[arg(default_value = ".")]
     paths: Vec<PathBuf>,
 }
+
+#[derive(Debug, Args)]
+struct RulesArgs {
+    /// Explain one known rule from the bundled research ledger.
+    #[arg(value_name = "RULE", conflicts_with = "rule_flag")]
+    rule: Option<String>,
+
+    /// Explain one known rule (equivalent to the positional RULE).
+    #[arg(long = "rule", value_name = "RULE", conflicts_with = "rule")]
+    rule_flag: Option<String>,
+
+    /// Render rule research metadata as JSON.
+    #[arg(long, value_enum, default_value_t = RulesFormat::Table)]
+    format: RulesFormat,
+
+    /// Shorthand for `--format json`.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct RevisionCleanupArgs {
+    /// Base snapshot directory or VCS revision.
+    #[arg(long, required = true)]
+    from: String,
+
+    /// Target snapshot directory or VCS revision.
+    #[arg(long, required = true)]
+    to: String,
+
+    /// Target-rooted paths to compare and propose within.
+    #[arg(default_value = ".")]
+    paths: Vec<PathBuf>,
+
+    /// Explicit target-rooted scope (an alias for positional paths).
+    #[arg(long, value_name = "PATH", num_args = 1..)]
+    scope: Option<Vec<PathBuf>>,
+
+    /// Proposal task requirements; omit for comparison-only output.
+    #[arg(long)]
+    task: Option<String>,
+}
+
 
 #[derive(Debug, Args)]
 struct ScanArgs {
@@ -534,6 +578,12 @@ impl SlimProvider {
     }
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum RulesFormat {
+    Table,
+    Json,
+}
+
 impl From<JuliaExternalArg> for JuliaExternal {
     fn from(value: JuliaExternalArg) -> Self {
         match value {
@@ -745,7 +795,8 @@ fn main() -> Result<()> {
         Command::Apply(args) => apply(args),
         Command::Baseline(args) => baseline(args),
         Command::Undo(args) => undo(args),
-        Command::Rules => rules(),
+        Command::Rules(args) => rules(args),
+        Command::RevisionCleanup(args) => revision_cleanup(args, &config),
         Command::Recipes(args) => recipes(args),
         Command::WorkOrders(args) => work_order_protocol(args),
     }
@@ -800,24 +851,10 @@ fn apply_recipes(args: RecipeApplyArgs) -> Result<()> {
 }
 
 fn detect_recipes(args: RecipeDetectArgs) -> Result<()> {
-    if !matches!(
-        args.recipe.as_str(),
-        "rust-remove-unreachable-literal-statement"
-            | "rust-factor-equivalent-branch-fragments"
-            | "rust-merge-adjacent-conditions"
-            | "rust-split-independent-branch-actions"
-            | "rust-invert-guard-clause"
-            | "rust-remove-literal-dead-arm"
-            | "rust-convert-exhaustive-chain-to-match"
-            | "rust-extract-sese-branch-method"
-            | "rust-split-dependence-cohesive-callable"
-            | "rust-inline-exact-single-use-helper"
-            | "rust-inline-exact-single-use-temporary"
-            | "rust-remove-unused-pure-literal-expression"
-            | "rust-remove-independent-unused-literal-local"
-            | "rust-sort-simple-import-block"
-            | "rust-sort-hoisted-private-function-block"
-    ) {
+    if !deslop_recipes::enabled_rust_recipe_catalog()?
+        .iter()
+        .any(|recipe| recipe.name() == args.recipe)
+    {
         bail!("unknown production recipe `{}`", args.recipe);
     }
     let root = args
@@ -1366,37 +1403,41 @@ fn run_fix_request(
     request: FixRequest,
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<SlimReport> {
+    let prepared = PreparedRun::prepare(request.options)?;
     if let Some(path) = request.mock {
         let client = RecordedClient::from_path(path)?;
-        return run_slim_with_progress(&client, request.options, progress);
+        return prepared.run_with_progress(&client, progress);
     }
-    run_real_provider_fix(request, progress)
+    run_real_provider_fix(request.provider, request.base_url, request.explicit_consent, prepared, progress)
 }
 
 fn run_real_provider_fix(
-    request: FixRequest,
+    provider: SlimProvider,
+    base_url: Option<String>,
+    explicit_consent: bool,
+    prepared: PreparedRun,
     progress: &mut dyn FnMut(SlimProgress),
 ) -> Result<SlimReport> {
-    let summary = egress_summary(&request.options)?;
+    let summary = prepared.egress_summary();
     if summary.region_count == 0 {
-        return run_slim_with_progress(&RecordedClient::new(""), request.options, progress);
+        return prepared.run_with_progress(&RecordedClient::new(""), progress);
     }
-    let provider_name = request.provider.as_str();
-    let destination = provider_base_url(provider_name, request.base_url.as_deref());
+    let provider_name = provider.as_str();
+    let destination = provider_base_url(provider_name, base_url.as_deref());
     require_cli_egress_consent(
         provider_name,
         &destination,
         summary,
-        request.explicit_consent,
+        explicit_consent,
     )?;
-    match request.provider {
+    match provider {
         SlimProvider::Anthropic => {
-            let client = AnthropicClient::from_env(request.options.model.clone())?;
-            run_slim_with_progress(&client, request.options, progress)
+            let client = AnthropicClient::from_env(prepared.model().to_owned())?;
+            prepared.run_with_progress(&client, progress)
         }
         SlimProvider::Openai => {
-            let client = OpenAiClient::from_env(request.options.model.clone(), request.base_url)?;
-            run_slim_with_progress(&client, request.options, progress)
+            let client = OpenAiClient::from_env(prepared.model().to_owned(), base_url)?;
+            prepared.run_with_progress(&client, progress)
         }
     }
 }
@@ -2108,9 +2149,73 @@ fn undo(args: PathArgs) -> Result<()> {
     Ok(())
 }
 
-fn rules() -> Result<()> {
-    io::stdout().write_all(deslop_core::rules::render_table().as_bytes())?;
+fn rules(args: RulesArgs) -> Result<()> {
+    let rule = args.rule.or(args.rule_flag);
+    if let Some(rule) = rule {
+        let evidence = deslop_report::research::explain_rule(&rule)?;
+        if args.json || matches!(args.format, RulesFormat::Json) {
+            print_pretty_json(&evidence)?;
+        } else {
+            // A rule argument is the opt-in detail mode; keep the catalog table unchanged
+            // when no rule is requested.
+            print_pretty_json(&evidence)?;
+        }
+    } else if args.json || matches!(args.format, RulesFormat::Json) {
+        bail!("--format json/--json requires a RULE");
+    } else {
+        io::stdout().write_all(deslop_core::rules::render_table().as_bytes())?;
+    }
     Ok(())
+}
+
+fn revision_cleanup(args: RevisionCleanupArgs, config: &DeslopConfig) -> Result<()> {
+    let paths = args.scope.clone().unwrap_or(args.paths);
+    let mut materialized = Vec::new();
+    let base = resolve_revision_spec(&args.from, &paths, &mut materialized)?;
+    let target = resolve_revision_spec(&args.to, &paths, &mut materialized)?;
+    let analyzer = analyzer_config(config, false, None, None)?;
+    let scope = target_scope(&target, &paths)?;
+    let rendered = if let Some(task) = args.task {
+        serde_json::to_string_pretty(&revision_cleanup_proposals(
+            &base, &target, &scope, analyzer, task,
+        )?)?
+    } else {
+        serde_json::to_string_pretty(&compare_paths_with_scope(&base, &target, &scope, analyzer)?)?
+    };
+    println!("{rendered}");
+    Ok(())
+}
+
+fn target_scope(target: &Path, paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    let target = target.canonicalize()?;
+    let cwd = std::env::current_dir()?.canonicalize()?;
+    paths
+        .iter()
+        .map(|path| {
+            if path == Path::new(".") {
+                return Ok(PathBuf::from("."));
+            }
+            if path.is_absolute() {
+                let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+                return canonical
+                    .strip_prefix(&target)
+                    .map(Path::to_path_buf)
+                    .map_err(|_| anyhow::anyhow!("scope path {} is outside target root", path.display()));
+            }
+            if path.components().any(|component| component == std::path::Component::ParentDir) {
+                bail!("scope path {} must be target-rooted", path.display());
+            }
+            let candidate = cwd.join(path);
+            if candidate.exists() && target != cwd {
+                return candidate
+                    .canonicalize()
+                    .ok()
+                    .and_then(|canonical| canonical.strip_prefix(&cwd).ok().map(Path::to_path_buf))
+                    .ok_or_else(|| anyhow::anyhow!("scope path {} cannot be rooted at target", path.display()));
+            }
+            Ok(path.clone())
+        })
+        .collect()
 }
 
 fn paths_since(paths: Vec<PathBuf>, since: Option<String>) -> Result<Vec<PathBuf>> {
@@ -2713,5 +2818,34 @@ mod tests {
         assert!(args.false_positive);
         assert_eq!(args.corpus, PathBuf::from("tests/corpus"));
         assert_eq!(args.paths, vec![PathBuf::from("src")]);
+    }
+
+    #[test]
+    fn parses_rule_explanation_and_revision_cleanup_contracts() {
+        let cli = Cli::parse_from(["deslop", "rules", "--rule", "long-method", "--format", "json"]);
+        let Command::Rules(args) = cli.command else {
+            panic!("expected rules command");
+        };
+        assert_eq!(args.rule_flag.as_deref(), Some("long-method"));
+        assert!(matches!(args.format, RulesFormat::Json));
+
+        let cli = Cli::parse_from([
+            "deslop",
+            "revision-cleanup",
+            "--from",
+            "base",
+            "--to",
+            "target",
+            "src",
+            "--task",
+            "preserve behavior",
+        ]);
+        let Command::RevisionCleanup(args) = cli.command else {
+            panic!("expected revision cleanup command");
+        };
+        assert_eq!(args.from, "base");
+        assert_eq!(args.to, "target");
+        assert_eq!(args.paths, vec![PathBuf::from("src")]);
+        assert_eq!(args.task.as_deref(), Some("preserve behavior"));
     }
 }

@@ -19,6 +19,7 @@ mod planner;
 mod recipe;
 mod service;
 mod work_order;
+pub mod revision_cleanup;
 
 /// Stable legacy finding-proposal work-order schema retained for explicit compatibility.
 pub const LEGACY_WORK_ORDER_SCHEMA: &str = "deslop.workorder/3";

@@ -116,7 +116,15 @@ pub fn commit_atomic_sources_with_injection(
         .with_context(|| format!("failed to resolve transaction root {}", root.display()))?;
     validate_live_sources(&root, expected)?;
     let transaction = derive_transaction_id(expected, replacements)?;
-    let directory = root.join(undo_root).join(&transaction);
+    let undo_directory = root.join(undo_root);
+    fs::create_dir_all(&undo_directory)?;
+    let undo_directory = undo_directory
+        .canonicalize()
+        .with_context(|| format!("failed to resolve undo root {}", undo_directory.display()))?;
+    if undo_directory.strip_prefix(&root).is_err() {
+        bail!("undo root escapes the transaction root through a symlink");
+    }
+    let directory = undo_directory.join(&transaction);
     fs::create_dir_all(directory.join("originals"))?;
     let mut files = Vec::new();
     for (index, (path, original)) in expected.iter().enumerate() {
@@ -157,7 +165,6 @@ pub fn commit_atomic_sources_with_injection(
         }
         temporary.push((path.clone(), temp));
     }
-    maybe_inject(injection, AtomicFailurePoint::AfterTemporaryFiles)?;
     manifest.state = UndoState::Committing;
     write_manifest(&manifest_path, &manifest)?;
 
@@ -176,11 +183,25 @@ pub fn commit_atomic_sources_with_injection(
             return Err(error);
         }
     }
+    if let Err(error) = validate_replacements(&root, replacements) {
+        let rollback = rollback_from_manifest(&root, &directory, &mut manifest, &manifest_path);
+        return match rollback {
+            Ok(()) => Err(error).context("replacement verification failed; transaction rolled back"),
+            Err(rollback) => Err(error).context(format!(
+                "replacement verification failed and rollback failed: {rollback}"
+            )),
+        };
+    }
     manifest.state = UndoState::Committed;
     write_manifest(&manifest_path, &manifest)?;
     fsync_directory(&directory)?;
-    maybe_inject(injection, AtomicFailurePoint::AfterCommitMarker)?;
-    validate_replacements(&root, replacements)?;
+    if let Err(error) = maybe_inject(injection, AtomicFailurePoint::AfterCommitMarker) {
+        if injection.is_some_and(|injection| injection.mode == AtomicFailureMode::Crash) {
+            return Err(error);
+        }
+        rollback_from_manifest(&root, &directory, &mut manifest, &manifest_path)?;
+        return Err(error);
+    }
     Ok(AtomicCommitReceipt {
         transaction,
         manifest: manifest_path,
@@ -197,6 +218,10 @@ pub fn recover_incomplete_transactions(root: &Path, undo_root: &Path) -> Result<
     let directory = root.join(undo_root);
     if !directory.exists() {
         return Ok(Vec::new());
+    }
+    let directory = directory.canonicalize()?;
+    if directory.strip_prefix(&root).is_err() {
+        bail!("undo root escapes the recovery root through a symlink");
     }
     let mut recovered = Vec::new();
     let mut entries = fs::read_dir(&directory)?.collect::<std::result::Result<Vec<_>, _>>()?;

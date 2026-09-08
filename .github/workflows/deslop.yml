@@ -11,6 +11,27 @@ permissions:
   security-events: write
 
 jobs:
+  research-contract:
+    name: Local research and execution contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check registry against live serializers
+        run: cargo run -p deslop-eval --bin research-registry -- check crates/deslop-eval/src
+      - name: Check local mathematical and authority regressions
+        run: cargo test -p deslop-metrics -p deslop-protocol -p deslop-report -p deslop-verify -p deslop-lsp -p deslop-mcp
+      - name: Check licensed local pilot import contracts
+        run: cargo test -p deslop-eval --test p1_pilot
+      - name: Build shipped MCP surface
+        run: cargo build -p deslop-cli --features mcp
+
   scan:
     name: deslop scan
     runs-on: ubuntu-latest

@@ -355,6 +355,7 @@ dependencies = [
  "deslop-parse",
  "deslop-protocol",
  "deslop-recipes",
+ "deslop-verify",
  "serde",
  "serde_json",
  "tempfile",

@@ -18,6 +18,7 @@ pub(crate) fn tool_definitions() -> Vec<Value> {
         metrics_tool_spec(),
         graph_tool_spec(),
         rules_tool_spec(),
+        revision_cleanup_tool_spec(),
     ]
 }
 
@@ -65,7 +66,7 @@ impl ToolBehavior {
 fn scan_tool_spec() -> Value {
     tool(
         "scan",
-        "Read-only. Scan paths and return deslop.findings/2 JSON: per-file findings with rule, severity, safety class, span, analysis status, and any deterministic edit. Start here to see what deslop would change. No writes, no network. Unknown rule names in analyzer overrides are rejected.",
+        "Read-only. Scan paths and return deslop.findings/3 JSON: per-file findings with rule, severity, safety class, span, analysis status, and any deterministic edit. Start here to see what deslop would change. No writes, no network. Unknown rule names in analyzer overrides are rejected.",
         ToolBehavior::read_only("Scan for findings"),
         object_schema(json!({
             "paths": paths_schema(),
@@ -237,9 +238,29 @@ fn graph_tool_spec() -> Value {
 fn rules_tool_spec() -> Value {
     tool(
         "rules",
-        "Read-only. Return the built-in rule catalog: rule name, safety class, and default action. No writes, no network.",
+        "Read-only. Without a rule, return the unchanged built-in rule catalog table. With `rule`, return deslop.rule-research/1 metadata from the bundled ledger; metadata grants no source proof or write authority. No writes, no network.",
         ToolBehavior::read_only("Rule catalog"),
-        object_schema(json!({})),
+        object_schema(json!({
+            "rule": string_schema("Known rule name to explain as research metadata.")
+        })),
+    )
+}
+
+fn revision_cleanup_tool_spec() -> Value {
+    tool(
+        "revision_cleanup",
+        "Read-only. Compare base and target snapshot directories through the analyzer's exact revision-cleanup API, returning comparability and finding attribution. With task requirements, return target-bound existing proposals from the shared protocol API. Scope paths are rooted at target. No writes, no network.",
+        required_schema(
+            &["from", "to"],
+            json!({
+                "from": { "type": "string", "description": "Base snapshot directory." },
+                "to": { "type": "string", "description": "Target snapshot directory." },
+                "scope": paths_schema(),
+                "task": string_schema("Optional non-empty proposal task requirements."),
+                "config": config_schema("Optional deslop.toml path for analyzer settings."),
+                "analyzer": analyzer_schema()
+            }),
+        ),
     )
 }
 
