@@ -346,8 +346,10 @@ Per-source verdicts, reusing the registry license-record convention
 - All other P0 literature sources
   (`crates/deslop-eval/evaluation/research/registry.json` sources): paper
   terms only (arXiv/author-manuscript/DOI access), dataset artifact licenses
-  unverified or revisions unpinned — no import. Sjoberg/Buse full texts
-  remain blocked; not retried per assignment.
+  unverified or revisions unpinned — no import. Sjøberg/Buse primary manuscripts
+  were subsequently recovered and reviewed on 2026-09-08; provenance and limits
+  are recorded in `docs/RESEARCH.md` §5. That resolves text access only, not
+  independent Rust/Python corpus or human-study prerequisites.
 - Annotators / consent / ethics: no independent annotator roster, no
   participant-consent record, and no ethics approval exist anywhere in the
   repository. No 12-family licensed Rust/Python import set exists either.

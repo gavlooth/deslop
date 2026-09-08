@@ -192,8 +192,9 @@ Claim units and the evidence each unit requires:
   Euler; nonstructured characterization (branch in/out of loop/decision,
   graphs a–d, Results 1–2); testing methodology: v is the minimal independent
   test-path count, explicitly "will by no means guarantee or prove the
-  software" (§VII). No assertion about deslop's implementation; that
-  comparison is P3 fidelity work, not done.
+  software" (§VII). The citation alone does not establish deslop implementation
+  fidelity; local definitions and accounting limits are specified separately
+  in `docs/M11_METRICS_MIGRATION.md`.
 - `bergum-2024-comprehension` (Zenodo record): EEG/eye-tracking Java
   atoms-of-confusion trials (24 participants per M8 registry).
   Comprehension-correctness/time evidence, not preference evidence; keep the
@@ -289,11 +290,11 @@ Per-facility fidelity lives ONLY in the registry (`fidelity` field per
   validation still failed; browser fetch timed out, then `curl --insecure`
   retrieved the public author-linked PDF. Title, authors and 14-page content
   match the named work; do not claim TLS-authenticated or publisher-byte identity.
-  PDF SHA-256: `3b195a00e6e74cc4414f1c46c7c7b7cb5378e2d44ef422d5969054cd53038046`.
+  PDF SHA-256: `7eb4313d2a3d2f090de5eab362970b9ac69b7da205b8dac32f7d299a6644fac9`.
   Earlier 404s targeted different filenames; closed aggregator records were
   not proof that no author manuscript existed. No dataset/model imported.
 - Sjøberg PDF SHA-256:
-  `7b4c18db64b4912518734db67b0f11e82439b762dcd26c40660548076b3cd383`.
+  `bce67dea23fb44051c18a4ace609ae09229664e7a40ff075e62280d5ba29b66c`.
   Only provenance and bounded notes are committed, not copyrighted PDF copies.
 - Record-only M8 sources and explicitly unread sections retain their limited
   status. Neither newly read paper independently validates deslop's detectors,

@@ -13575,14 +13575,14 @@ notes. No PDF, training corpus or model is redistributed in the repository.
 **Coverage/evidence:** Both previously unavailable requested primary texts are
 now reviewed: 36/50 original deliverables plus five verified late-review tasks.
 Web `read` delivered Sjøberg (artifact 668); browser publication links, curl,
-pdfinfo and local `read` delivered and verified Buse. Search summaries were not
-primary evidence. Sjøberg-only ledger validation passed (65 rules/16 recipes/
-281 metric fields/31 claims). Validate the updated two-source ledger after
-this checkpoint description. Source hashes:
-- Sjøberg, 655632 bytes:
-  `7b4c18db64b4912518734db67b0f11e82439b762dcd26c40660548076b3cd383`
+primary evidence. Updated two-source ledger validation passed (65 rules/16
+recipes/281 metric fields/31 claims), both strict report-contract tests passed,
+and the rebuilt scratch install served metadata-only rules and the MCP request
+stream. Source hashes crosschecked with Python hashlib and sha256sum:
+- Sjøberg, 866532 bytes:
+  `bce67dea23fb44051c18a4ace609ae09229664e7a40ff075e62280d5ba29b66c`
 - Buse–Weimer, 1635323 bytes:
-  `3b195a00e6e74cc4414f1c46c7c7b7cb5378e2d44ef422d5969054cd53038046`
+  `7eb4313d2a3d2f090de5eab362970b9ac69b7da205b8dac32f7d299a6644fac9`
 
 **Findings/negative memory:** Model 3 adjusted R²=0.58 with or without smells after
 size/revision controls; no measured smell associated with increased effort, within
@@ -13597,8 +13597,16 @@ Section 6 explicitly distinguishes descriptive associations from prescriptive
 cleanup. No blank-line or identifier-shortening prescription follows. An earlier
 author-URL 404 used the wrong filename. A closed aggregator record and failed
 reader transport were insufficient to establish source unavailability.
+The initial manually recorded PDF checksums and Sjøberg byte count were wrong;
+an archive assertion caught the mismatch. Recomputed both directly from the
+downloaded, identity-checked PDFs with two independent hashing implementations
+and corrected all current ledger/docs/report occurrences. Do not use the earlier
+checkpoint's incorrect transcriptions. A smoke also used an unsupported
+`rules --explain` option and assumed the wrong authority wording; the established
+`rules --rule long-method --format json` command succeeded without code changes.
 
-**Next/blockers:** Verify the updated ledger and installed report metadata.
+**Next/blockers:** Refresh the archive with corrected provenance and revalidate
+the corrected embedded ledger projection.
 Independent corpus, consent, ethics, pilot variance and owner freeze remain
 unavailable (14 original deliverables blocked). Prior engineering test evidence
 is unchanged; no new detector-quality or human-benefit claim. No push.
