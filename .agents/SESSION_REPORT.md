@@ -13666,8 +13666,8 @@ Signature: Codex (gpt-6-astra).
 and system-installation history from `/home/heefoo/Documents/code/deslop` to the
 configured Git remote.
 
-**Implementation coverage:** Publication is complete through source commit
-`285357c1`; this changes distribution state, not the research coverage. The plan
+**Implementation coverage:** Publication is complete through handoff commit
+`770c391b`; this changes distribution state, not the research coverage. The plan
 remains 36/50 original deliverables complete, with 14 external-study deliverables
 blocked on independent data, approvals and participants.
 
@@ -13675,18 +13675,21 @@ blocked on independent data, approvals and participants.
 `jj git push --remote origin --bookmark main` refused because `main@origin` was
 non-tracking. `jj bookmark track main@origin` imported tracking state; the retry
 successfully moved `main` on `origin` from `39db6b589246` to
-`285357c1b942` and uploaded 318 objects. Jujutsu then created an empty mutable
-working-copy commit above immutable published `main`.
+`285357c1b942` and uploaded 318 objects. After describing the publication entry,
+a second push advanced origin to `770c391bb6b7`; `jj git fetch --remote origin`
+reported no change, and `main`, `main@git`, and `main@origin` all resolved to
+that commit.
 
 **Negative memory/checkpoint:** A colocated Git remote bookmark can exist without
 Jujutsu tracking it; moving the local bookmark is insufficient until
 `jj bookmark track main@origin`. This was a safe fast-forward, not a force push.
-This report entry itself was necessarily created after the first push and must
-be described, then `main` advanced and pushed once more.
+The working-copy commit became immutable after each successful push, and Jujutsu
+created a new empty mutable commit above it as designed.
 
-**Current recommendation/next:** Describe this publication handoff, advance
-`main` to it, push `origin`, and verify local/remote bookmark agreement. No
-history was squashed or flattened. The system binary remains `/usr/local/bin/deslop`
-with OpenAI/GPT-6 Astra built-in defaults.
+**Current recommendation:** This final report update supersedes the prior
+next-step wording. Describe and publish it as the last handoff commit. No history
+was squashed, flattened, or force-pushed. The system binary remains
+`/usr/local/bin/deslop` with OpenAI/GPT-6 Astra built-in defaults. The 14
+independent-study deliverables remain explicitly blocked rather than fabricated.
 
 Signature: Codex (gpt-6-astra).
