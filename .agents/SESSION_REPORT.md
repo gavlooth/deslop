@@ -13624,9 +13624,9 @@ Signature: Codex (gpt-6-astra).
 **Objective/workspace:** Compile and install deslop system-wide from
 `/home/heefoo/Documents/code/deslop`, with `gpt-6-astra` as its built-in model.
 
-**Implementation coverage:** Requested installation/default cutover is implemented;
-verification remains in progress. The separate research plan remains 36/50 complete
-with 14 external study deliverables blocked.
+**Implementation coverage:** Requested installation/default cutover is complete.
+The separate research plan remains 36/50 complete with 14 external study
+deliverables blocked.
 
 **Changes:** A task agent changed the clean fallback pair to
 `provider = "openai"` and `model = "gpt-6-astra"` across Slim, CLI and both MCP
@@ -13640,17 +13640,22 @@ provider consent gating; release build with MCP; and focused clippy all passed.
 /usr/local/bin/deslop` passed. Source and installed binary SHA-256 both equal
 `4b27e6e5258247a6f8a7fe91e649857389a80d303ae325c739ce565b28114600`;
 installed file is root-owned mode 0755 and `--help` lists the MCP command.
+Final installed smoke with `DESLOP_SLIM_MODEL` and consent unset returned
+`deslop.slim/4`, `dry_run: true`, `model: "gpt-6-astra"` from
+`/usr/local/bin/deslop fix --paths . --mock ... --quiet`. Installed MCP
+`initialize` and `tools/list` succeeded; the `fix` input schema reports
+`provider.default = "openai"`.
+**Negative memory/checkpoint:** The first model smoke called `deslop fix .`, but
+`fix` accepts paths via `--paths`; clap rejected the positional argument before
+behavior ran. Re-running with the supported option passed. The mock contained
+no source regions, intentionally avoiding network egress and API-key use while
+still exercising installed default resolution and serialized report output.
 
-**Negative memory/current checkpoint:** The first model smoke called
-`deslop fix .`, but `fix` takes paths through its option contract rather than
-a positional argument; clap rejected `.` before behavior ran. This is smoke
-syntax error, not an implementation failure. Re-run with supported arguments,
-then inspect installed MCP `tools/list` for provider default. Do not claim final
-model-default verification until those checks pass.
-
-**Next/blockers:** Exercise `/usr/local/bin/deslop fix --mock ...` with
-`DESLOP_SLIM_MODEL` unset, verify report model `gpt-6-astra`, verify installed
-MCP provider default `openai`, and record final evidence. System installation
-does not resolve the independent corpus/human-study blockers. No push.
+**Current recommendation:** `/usr/local/bin/deslop` is the verified system
+installation. Explicit `--provider`, `--model`, `DESLOP_SLIM_MODEL`, or local
+`deslop.toml` values continue to override built-ins. Real OpenAI execution still
+requires an environment API key and explicit source-egress consent; neither was
+stored or weakened. System installation does not resolve the independent
+corpus/human-study blockers. No push.
 
 Signature: Codex (gpt-6-astra).
