@@ -13659,3 +13659,34 @@ stored or weakened. System installation does not resolve the independent
 corpus/human-study blockers. No push.
 
 Signature: Codex (gpt-6-astra).
+
+## 2026-09-09 — Published implementation and system-default checkpoints
+
+**Objective/workspace:** Publish the completed engineering, evidence, source-review,
+and system-installation history from `/home/heefoo/Documents/code/deslop` to the
+configured Git remote.
+
+**Implementation coverage:** Publication is complete through source commit
+`285357c1`; this changes distribution state, not the research coverage. The plan
+remains 36/50 original deliverables complete, with 14 external-study deliverables
+blocked on independent data, approvals and participants.
+
+**Commands/results:** `jj bookmark set main -r @` advanced local `main`. Initial
+`jj git push --remote origin --bookmark main` refused because `main@origin` was
+non-tracking. `jj bookmark track main@origin` imported tracking state; the retry
+successfully moved `main` on `origin` from `39db6b589246` to
+`285357c1b942` and uploaded 318 objects. Jujutsu then created an empty mutable
+working-copy commit above immutable published `main`.
+
+**Negative memory/checkpoint:** A colocated Git remote bookmark can exist without
+Jujutsu tracking it; moving the local bookmark is insufficient until
+`jj bookmark track main@origin`. This was a safe fast-forward, not a force push.
+This report entry itself was necessarily created after the first push and must
+be described, then `main` advanced and pushed once more.
+
+**Current recommendation/next:** Describe this publication handoff, advance
+`main` to it, push `origin`, and verify local/remote bookmark agreement. No
+history was squashed or flattened. The system binary remains `/usr/local/bin/deslop`
+with OpenAI/GPT-6 Astra built-in defaults.
+
+Signature: Codex (gpt-6-astra).
